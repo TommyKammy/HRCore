@@ -30,10 +30,32 @@ Do not relax these settings for provider mocks, LocalStack/dev AWS setup,
 stack-freeze ADR work, issue-lint implementation, or Phase 1 HR workflow work.
 Those scopes belong to separate issues.
 
+## Second Code Owner Prerequisite
+
+Do not enable `require_code_owner_reviews` together with
+`require_last_push_approval` while `.github/CODEOWNERS` names only
+`@TommyKammy`. That combination can deadlock PRs authored or last pushed by the
+sole Code Owner, because the latest pusher cannot satisfy the required approval.
+
+Before applying the protection rule below, a repository operator must:
+
+1. Invite a second maintainer with write access to `TommyKammy/HRCore`.
+2. Update `.github/CODEOWNERS` so the repository-wide rule names both real
+   write-access maintainers, for example:
+
+   ```text
+   * @TommyKammy @<second-write-access-maintainer>
+   ```
+
+3. Confirm the second owner is a real GitHub user or team with write access. Do
+   not use a placeholder, bot without approval authority, or account that cannot
+   approve pull requests.
+
 ## Operator Checklist
 
 Apply the branch protection after this PR is merged or after the workflow status
-check has appeared at least once for the repository:
+check has appeared at least once for the repository, and only after the second
+Code Owner prerequisite above is complete:
 
 ```sh
 gh api \

@@ -33,6 +33,10 @@ test("repository-owned review policy requires CODEOWNERS and anti-self-approval 
     "Stale approval dismissal when new commits are pushed.",
     "Review from Code Owners using `.github/CODEOWNERS`.",
     "Approval of the most recent reviewable push by someone other than the person\n  who pushed it.",
+    "Do not enable `require_code_owner_reviews` together with\n`require_last_push_approval` while `.github/CODEOWNERS` names only\n`@TommyKammy`.",
+    "* @TommyKammy @<second-write-access-maintainer>",
+    "Confirm the second owner is a real GitHub user or team with write access.",
+    "Do\n   not use a placeholder, bot without approval authority, or account that cannot\n   approve pull requests.",
     '"require_code_owner_reviews": true',
     '"require_last_push_approval": true',
     '"required_approving_review_count": 1',
@@ -48,6 +52,7 @@ test("repository-owned review policy requires CODEOWNERS and anti-self-approval 
     "`npm run verify:pre-pr`",
     "Required CI status check `verify-pre-pr` is expected to pass.",
     "CODEOWNERS review is required before merge.",
+    "Branch protection with CODEOWNERS review and last-push approval will only\n      be enabled after CODEOWNERS names at least two real write-access\n      maintainers.",
     "Approval is from a reviewer who did not author or push the latest commit under review.",
   ]) {
     assert.ok(

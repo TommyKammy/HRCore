@@ -1,3 +1,6 @@
 # Initial repository ownership baseline.
 # Branch protection for main must require review from Code Owners.
+# Before enabling branch protection with both Code Owner review and last-push
+# approval, invite a second write-access maintainer and add that real GitHub
+# account to the rule below. Do not use placeholder owners.
 * @TommyKammy

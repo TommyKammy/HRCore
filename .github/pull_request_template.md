@@ -13,4 +13,7 @@
 
 - [ ] Required CI status check `verify-pre-pr` is expected to pass.
 - [ ] CODEOWNERS review is required before merge.
+- [ ] Branch protection with CODEOWNERS review and last-push approval will only
+      be enabled after CODEOWNERS names at least two real write-access
+      maintainers.
 - [ ] Approval is from a reviewer who did not author or push the latest commit under review.
