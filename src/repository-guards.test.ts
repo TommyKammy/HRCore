@@ -80,3 +80,42 @@ test("repository-owned review policy supports single-maintainer protection", asy
     );
   }
 });
+
+test("initial backend stack decision freezes Fastify and Drizzle", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0001-initial-backend-stack.md"),
+    readRepoFile("README.md"),
+  ]);
+
+  for (const requiredAdrText of [
+    "# ADR 0001: Initial Backend Stack",
+    "## Status\n\nAccepted",
+    "## Date\n\n2026-05-16",
+    "- Author: TommyKammy",
+    "- Approver: TommyKammy",
+    "- Two-key reviewer: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, production operations, compliance evidence, or irreversible data shape.",
+    "HRCore selects Fastify as the initial backend framework for PoC and MVP-A readiness.",
+    "HRCore selects Drizzle as the initial ORM and migration baseline for PoC and MVP-A readiness.",
+    "NestJS is deferred for the initial baseline.",
+    "Prisma is deferred for the initial baseline.",
+    "NestJS or Prisma may replace the selected baseline only through a later Accepted ADR that explicitly supersedes this ADR.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      adr.includes(requiredAdrText),
+      `missing stack ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^- (Author|Approver):\s*<[^>]+>\s*$/m,
+    "accepted ADR decision owners must be named, not placeholders",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0001: Initial Backend Stack\]\(docs\/adr\/0001-initial-backend-stack\.md\)/,
+  );
+});
