@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
 
 const readRepoFile = (path: string): Promise<string> =>
-  readFile(new URL(`../${path}`, import.meta.url), "utf8");
+  readFile(join(process.cwd(), path), "utf8");
 
 test("GitHub Actions CI runs the canonical pre-PR verification command", async () => {
   const workflow = await readRepoFile(".github/workflows/ci.yml");
 
   assert.match(workflow, /^name: CI$/m);
   assert.match(workflow, /^\s+pull_request:$/m);
+  assert.match(workflow, /^\s+merge_group:$/m);
   assert.match(workflow, /^\s+verify-pre-pr:$/m);
   assert.match(workflow, /^\s+node-version: "22"$/m);
   assert.match(workflow, /^\s+run: npm ci$/m);
@@ -25,7 +27,21 @@ test("repository-owned review policy requires CODEOWNERS and anti-self-approval 
     ],
   );
 
-  assert.match(codeowners, /^\* @TommyKammy$/m);
+  const repositoryWideOwnershipRule = codeowners
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("* "));
+
+  assert.ok(
+    repositoryWideOwnershipRule,
+    "missing repository-wide CODEOWNERS rule",
+  );
+  assert.match(repositoryWideOwnershipRule, /(?:^|\s)@TommyKammy(?:\s|$)/u);
+  assert.doesNotMatch(
+    repositoryWideOwnershipRule,
+    /<second-write-access-maintainer>/u,
+    "active CODEOWNERS rule must not contain placeholder owners",
+  );
 
   for (const requiredPolicyText of [
     "Required status check: `verify-pre-pr`",
