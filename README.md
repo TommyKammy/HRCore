@@ -42,8 +42,9 @@ and branch protection are added in issue #64. It runs:
 
 The command does not require provider credentials, a production database, cloud
 accounts, HR provider services, or workstation-local paths. `npm run audit`
-uses the configured npm registry for vulnerability data. The Drizzle check uses
-the local SQLite default from `drizzle.config.ts` unless `DATABASE_URL` is set.
+uses the configured npm registry for vulnerability data, so the canonical
+command is not an offline-only check. The Drizzle check uses the local SQLite
+default from `drizzle.config.ts` unless `DATABASE_URL` is set.
 
 The individual checks remain available for focused local reproduction:
 
