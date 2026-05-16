@@ -5,12 +5,14 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "audit": "npm audit --audit-level=moderate",
     "build": "tsc -p tsconfig.json",
     "db:check": "drizzle-kit check --config=drizzle.config.ts",
     "dev": "tsx src/server.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run build && node --test \"dist/**/*.test.js\""
+    "test": "npm run build && node --test \"dist/**/*.test.js\"",
+    "verify:pre-pr": "npm run build && npm test && npm run format:check && npm run audit && npm run db:check"
   },
   "engines": {
     "node": ">=22"

@@ -25,27 +25,34 @@ Install dependencies from a clean checkout using the committed lockfile:
 npm ci
 ```
 
-Build the TypeScript project:
+Run the canonical local pre-PR verification command:
+
+```sh
+npm run verify:pre-pr
+```
+
+This is the repo-owned contract for supervised PR readiness before GitHub Actions
+and branch protection are added in issue #64. It runs:
+
+- TypeScript build: `npm run build`
+- Smoke tests: `npm test`
+- Formatting check: `npm run format:check`
+- Dependency audit: `npm run audit`
+- Drizzle migration/config check: `npm run db:check`
+
+The command does not require provider credentials, a production database, cloud
+accounts, HR provider services, or workstation-local paths. `npm run audit`
+uses the configured npm registry for vulnerability data, so the canonical
+command is not an offline-only check. The Drizzle check uses the local SQLite
+default from `drizzle.config.ts` unless `DATABASE_URL` is set.
+
+The individual checks remain available for focused local reproduction:
 
 ```sh
 npm run build
-```
-
-Run the smoke tests:
-
-```sh
 npm test
-```
-
-Check formatting:
-
-```sh
 npm run format:check
-```
-
-Check the Drizzle migration configuration without requiring a production database:
-
-```sh
+npm run audit
 npm run db:check
 ```
 
