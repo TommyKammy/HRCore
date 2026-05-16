@@ -4,6 +4,8 @@ Open-source HR core system for identity-driven employee lifecycle management, on
 
 This repository is currently at the baseline seed stage. It provides the minimum Fastify, Drizzle, and OpenAPI-first structure needed for later phases without implementing Phase 1 HR business workflows.
 
+The initial backend stack decision is recorded in [ADR 0001: Initial Backend Stack](docs/adr/0001-initial-backend-stack.md). Fastify and Drizzle are the frozen PoC/MVP-A baseline unless a later accepted ADR supersedes that decision.
+
 ## Baseline structure
 
 - `src/app.ts` builds the Fastify application.
