@@ -12,8 +12,9 @@
 ## Review Gate
 
 - [ ] Required CI status check `verify-pre-pr` is expected to pass.
-- [ ] CODEOWNERS review is required before merge.
-- [ ] Branch protection with CODEOWNERS review and last-push approval will only
-      be enabled after CODEOWNERS names at least two real write-access
-      maintainers.
-- [ ] Approval is from a reviewer who did not author or push the latest commit under review.
+- [ ] Single-maintainer mode is active unless CODEOWNERS names at least two real
+      write-access maintainers.
+- [ ] Single-maintainer mode keeps CODEOWNERS review and latest-push approval
+      disabled to avoid a merge deadlock.
+- [ ] Codex Connector current-head review and unresolved review threads are the
+      required compensating review gate in single-maintainer mode.

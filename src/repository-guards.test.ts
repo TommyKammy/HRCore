@@ -18,7 +18,7 @@ test("GitHub Actions CI runs the canonical pre-PR verification command", async (
   assert.match(workflow, /^\s+run: npm run verify:pre-pr$/m);
 });
 
-test("repository-owned review policy requires CODEOWNERS and anti-self-approval gates", async () => {
+test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
       readRepoFile(".github/CODEOWNERS"),
@@ -45,10 +45,13 @@ test("repository-owned review policy requires CODEOWNERS and anti-self-approval 
 
   for (const requiredPolicyText of [
     "Required status check: `verify-pre-pr`",
-    "At least one approving review.",
-    "Stale approval dismissal when new commits are pushed.",
-    "Review from Code Owners using `.github/CODEOWNERS`.",
-    "Approval of the most recent reviewable push by someone other than the person\n  who pushed it.",
+    "HRCore currently runs in single-maintainer mode.",
+    "Do not enable these settings in single-maintainer mode:",
+    "`require_code_owner_reviews`",
+    "`require_last_push_approval`",
+    "required approving review count above `0`",
+    "`codex-supervisor` must continue to gate PRs on the current-head Codex\n  Connector review signal and unresolved review threads.",
+    '"required_pull_request_reviews": null',
     "Do not enable `require_code_owner_reviews` together with\n`require_last_push_approval` while `.github/CODEOWNERS` names only\n`@TommyKammy`.",
     "* @TommyKammy @<second-write-access-maintainer>",
     "Confirm the second owner is a real GitHub user or team with write access.",
@@ -67,9 +70,9 @@ test("repository-owned review policy requires CODEOWNERS and anti-self-approval 
   for (const requiredTemplateText of [
     "`npm run verify:pre-pr`",
     "Required CI status check `verify-pre-pr` is expected to pass.",
-    "CODEOWNERS review is required before merge.",
-    "Branch protection with CODEOWNERS review and last-push approval will only\n      be enabled after CODEOWNERS names at least two real write-access\n      maintainers.",
-    "Approval is from a reviewer who did not author or push the latest commit under review.",
+    "Single-maintainer mode is active unless CODEOWNERS names at least two real\n      write-access maintainers.",
+    "Single-maintainer mode keeps CODEOWNERS review and latest-push approval\n      disabled to avoid a merge deadlock.",
+    "Codex Connector current-head review and unresolved review threads are the\n      required compensating review gate in single-maintainer mode.",
   ]) {
     assert.ok(
       pullRequestTemplate.includes(requiredTemplateText),

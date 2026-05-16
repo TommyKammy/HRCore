@@ -12,7 +12,41 @@ fully enforced by files committed in a pull request.
   canonical local readiness command, `npm run verify:pre-pr`.
 - Target: pull requests into `main`.
 
-## Required Review Policy
+## Single-Maintainer Protection Policy
+
+HRCore currently runs in single-maintainer mode. In this mode, GitHub cannot
+technically enforce both Code Owner review and latest-push self-approval
+prevention without creating a merge deadlock for PRs authored or pushed by the
+sole maintainer.
+
+Configure `main` so every merge requires:
+
+- Passing required status check `verify-pre-pr` before merge.
+- Strict required status checks so branches must be up to date before merge.
+- Conversation resolution before merge.
+- Branch protection enforcement for administrators.
+
+Do not enable these settings in single-maintainer mode:
+
+- `require_code_owner_reviews`
+- `require_last_push_approval`
+- required approving review count above `0`
+
+Compensating controls in single-maintainer mode:
+
+- `codex-supervisor` must continue to gate PRs on the current-head Codex
+  Connector review signal and unresolved review threads.
+- Every PR must include the issue link, verification evidence, and scope guard
+  checklist from `.github/pull_request_template.md`.
+- Epic completion must receive a separate implementation review before the epic
+  is treated as done.
+- Branch protection must still require the `verify-pre-pr` status check and
+  conversation resolution.
+
+## Multi-Maintainer Review Policy
+
+Use this stricter policy only after adding a second real write-access maintainer
+or team to the repository and to `.github/CODEOWNERS`.
 
 Configure `main` so every merge requires:
 
@@ -53,9 +87,8 @@ Before applying the protection rule below, a repository operator must:
 
 ## Operator Checklist
 
-Apply the branch protection after this PR is merged or after the workflow status
-check has appeared at least once for the repository, and only after the second
-Code Owner prerequisite above is complete:
+Apply the single-maintainer branch protection after this PR is merged or after
+the workflow status check has appeared at least once for the repository:
 
 ```sh
 gh api \
@@ -69,12 +102,7 @@ gh api \
     "contexts": ["verify-pre-pr"]
   },
   "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": true,
-    "required_approving_review_count": 1,
-    "require_last_push_approval": true
-  },
+  "required_pull_request_reviews": null,
   "restrictions": null,
   "required_conversation_resolution": true
 }
@@ -82,5 +110,20 @@ JSON
 ```
 
 If applying through the GitHub UI, configure `Settings -> Branches -> Branch
-protection rules -> main` with the setting names listed in the required review
-policy above. Keep the required status check name exactly `verify-pre-pr`.
+protection rules -> main` with the setting names listed in the
+single-maintainer protection policy above. Keep the required status check name
+exactly `verify-pre-pr`.
+
+After the second Code Owner prerequisite is complete, update this rule to the
+multi-maintainer review policy by setting:
+
+```json
+{
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true,
+    "required_approving_review_count": 1,
+    "require_last_push_approval": true
+  }
+}
+```
