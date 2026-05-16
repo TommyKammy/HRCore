@@ -13,6 +13,7 @@ This repository is currently at the baseline seed stage. It provides the minimum
 - `src/persistence/schema.ts` is the Drizzle schema entry point for later issues.
 - `drizzle/` is the Drizzle migration output directory.
 - `drizzle.config.ts` is a local Drizzle Kit configuration that defaults to a local SQLite file under `.local/`.
+- `npm run db:check` runs the committed Drizzle Kit CLI against the local migration configuration.
 - `docs/adr/0000-adr-process.md` defines ADR numbering, approver metadata, two-key handling, and precedence rules.
 - `docs/adr/template.md` is the template for future ADRs.
 
@@ -40,6 +41,12 @@ Check formatting:
 
 ```sh
 npm run format:check
+```
+
+Check the Drizzle migration configuration without requiring a production database:
+
+```sh
+npm run db:check
 ```
 
 Start the local server:
