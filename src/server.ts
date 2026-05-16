@@ -5,10 +5,28 @@ import { buildApp } from "./app.js";
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "127.0.0.1";
 
+export function resolvePort(portValue = process.env.PORT): number {
+  if (portValue === undefined) {
+    return DEFAULT_PORT;
+  }
+
+  const normalizedPort = portValue.trim();
+  if (!/^\d+$/.test(normalizedPort)) {
+    throw new Error("PORT must be an integer between 0 and 65535.");
+  }
+
+  const port = Number(normalizedPort);
+  if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("PORT must be an integer between 0 and 65535.");
+  }
+
+  return port;
+}
+
 export async function startServer(): Promise<void> {
-  const app = await buildApp({ logger: true });
-  const port = Number.parseInt(process.env.PORT ?? String(DEFAULT_PORT), 10);
+  const port = resolvePort();
   const host = process.env.HOST ?? DEFAULT_HOST;
+  const app = await buildApp({ logger: true });
 
   await app.listen({ port, host });
 }

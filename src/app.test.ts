@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildApp } from "./app.js";
+import { loadOpenApiContract } from "./openapi.js";
+import { resolvePort } from "./server.js";
 
 test("GET /health returns the smoke-test health response", async (t) => {
   const app = await buildApp();
@@ -39,4 +41,28 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.equal(contract.openapi, "3.1.0");
   assert.equal(contract.info.title, "HRCore API");
   assert.ok(contract.paths["/health"]);
+});
+
+test("OpenAPI contract loading is independent from process cwd", async () => {
+  const originalCwd = process.cwd();
+  process.chdir("..");
+  try {
+    const contract = await loadOpenApiContract();
+    assert.equal((contract as { openapi?: unknown }).openapi, "3.1.0");
+  } finally {
+    process.chdir(originalCwd);
+  }
+});
+
+test("resolvePort accepts only explicit integer port values", () => {
+  assert.equal(resolvePort(undefined), 3000);
+  assert.equal(resolvePort("0"), 0);
+  assert.equal(resolvePort("3000"), 3000);
+
+  for (const invalidPort of ["", "3000abc", "abc3000", "-1", "65536"]) {
+    assert.throws(
+      () => resolvePort(invalidPort),
+      /PORT must be an integer between 0 and 65535/,
+    );
+  }
 });
