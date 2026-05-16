@@ -91,8 +91,8 @@ test("initial backend stack decision freezes Fastify and Drizzle", async () => {
     "# ADR 0001: Initial Backend Stack",
     "## Status\n\nAccepted",
     "## Date\n\n2026-05-16",
-    "- Author: <issue assignee>",
-    "- Approver: <maintainer or delegated architecture owner>",
+    "- Author: TommyKammy",
+    "- Approver: TommyKammy",
     "- Two-key reviewer: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, production operations, compliance evidence, or irreversible data shape.",
     "HRCore selects Fastify as the initial backend framework for PoC and MVP-A readiness.",
     "HRCore selects Drizzle as the initial ORM and migration baseline for PoC and MVP-A readiness.",
@@ -107,6 +107,12 @@ test("initial backend stack decision freezes Fastify and Drizzle", async () => {
       `missing stack ADR text: ${requiredAdrText}`,
     );
   }
+
+  assert.doesNotMatch(
+    adr,
+    /^- (Author|Approver):\s*<[^>]+>\s*$/m,
+    "accepted ADR decision owners must be named, not placeholders",
+  );
 
   assert.match(
     readme,

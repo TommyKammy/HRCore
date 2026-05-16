@@ -10,8 +10,8 @@ Accepted
 
 ## Decision owners
 
-- Author: <issue assignee>
-- Approver: <maintainer or delegated architecture owner>
+- Author: TommyKammy
+- Approver: TommyKammy
 - Two-key reviewer: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, production operations, compliance evidence, or irreversible data shape.
 
 ## Context
