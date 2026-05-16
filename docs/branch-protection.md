@@ -34,6 +34,9 @@ Do not enable these settings in single-maintainer mode:
 
 Compensating controls in single-maintainer mode:
 
+- `.github/CODEOWNERS` must not declare an active repository-wide sole-owner
+  rule. Keep the future multi-maintainer rule commented out until a real second
+  write-access maintainer or team exists.
 - `codex-supervisor` must continue to gate PRs on the current-head Codex
   Connector review signal and unresolved review threads.
 - Every PR must include the issue link, verification evidence, and scope guard
@@ -67,15 +70,16 @@ Those scopes belong to separate issues.
 ## Second Code Owner Prerequisite
 
 Do not enable `require_code_owner_reviews` together with
-`require_last_push_approval` while `.github/CODEOWNERS` names only
-`@TommyKammy`. That combination can deadlock PRs authored or last pushed by the
-sole Code Owner, because the latest pusher cannot satisfy the required approval.
+`require_last_push_approval` while `.github/CODEOWNERS` has no active
+multi-maintainer rule or names only `@TommyKammy`. That combination can deadlock
+PRs authored or last pushed by the sole Code Owner, because the latest pusher
+cannot satisfy the required approval.
 
 Before applying the protection rule below, a repository operator must:
 
 1. Invite a second maintainer with write access to `TommyKammy/HRCore`.
-2. Update `.github/CODEOWNERS` so the repository-wide rule names both real
-   write-access maintainers, for example:
+2. Update `.github/CODEOWNERS` so the commented repository-wide rule becomes an
+   active rule naming both real write-access maintainers, for example:
 
    ```text
    * @TommyKammy @<second-write-access-maintainer>

@@ -27,20 +27,19 @@ test("repository-owned review policy supports single-maintainer protection", asy
     ],
   );
 
-  const repositoryWideOwnershipRule = codeowners
+  const activeRepositoryWideOwnershipRule = codeowners
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .find((line) => line.startsWith("* "));
 
-  assert.ok(
-    repositoryWideOwnershipRule,
-    "missing repository-wide CODEOWNERS rule",
+  assert.equal(
+    activeRepositoryWideOwnershipRule,
+    undefined,
+    "single-maintainer mode must not declare an active repository-wide CODEOWNERS rule",
   );
-  assert.match(repositoryWideOwnershipRule, /(?:^|\s)@TommyKammy(?:\s|$)/u);
-  assert.doesNotMatch(
-    repositoryWideOwnershipRule,
-    /<second-write-access-maintainer>/u,
-    "active CODEOWNERS rule must not contain placeholder owners",
+  assert.match(
+    codeowners,
+    /^# \* @TommyKammy @<second-write-access-maintainer-or-team>$/m,
   );
 
   for (const requiredPolicyText of [
@@ -50,9 +49,10 @@ test("repository-owned review policy supports single-maintainer protection", asy
     "`require_code_owner_reviews`",
     "`require_last_push_approval`",
     "required approving review count above `0`",
+    "`.github/CODEOWNERS` must not declare an active repository-wide sole-owner\n  rule.",
     "`codex-supervisor` must continue to gate PRs on the current-head Codex\n  Connector review signal and unresolved review threads.",
     '"required_pull_request_reviews": null',
-    "Do not enable `require_code_owner_reviews` together with\n`require_last_push_approval` while `.github/CODEOWNERS` names only\n`@TommyKammy`.",
+    "Do not enable `require_code_owner_reviews` together with\n`require_last_push_approval` while `.github/CODEOWNERS` has no active\nmulti-maintainer rule or names only `@TommyKammy`.",
     "* @TommyKammy @<second-write-access-maintainer>",
     "Confirm the second owner is a real GitHub user or team with write access.",
     "Do\n   not use a placeholder, bot without approval authority, or account that cannot\n   approve pull requests.",
@@ -71,7 +71,7 @@ test("repository-owned review policy supports single-maintainer protection", asy
     "`npm run verify:pre-pr`",
     "Required CI status check `verify-pre-pr` is expected to pass.",
     "Single-maintainer mode is active unless CODEOWNERS names at least two real\n      write-access maintainers.",
-    "Single-maintainer mode keeps CODEOWNERS review and latest-push approval\n      disabled to avoid a merge deadlock.",
+    "Single-maintainer mode keeps active CODEOWNERS rules, CODEOWNERS review,\n      and latest-push approval disabled to avoid a merge deadlock.",
     "Codex Connector current-head review and unresolved review threads are the\n      required compensating review gate in single-maintainer mode.",
   ]) {
     assert.ok(

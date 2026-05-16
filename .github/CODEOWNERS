@@ -1,6 +1,9 @@
 # Initial repository ownership baseline.
-# In single-maintainer mode, this file documents ownership but branch protection
-# must not require Code Owner review because there is no second approver.
-# Enable required Code Owner review only after a second real write-access
-# maintainer or team is added to the repository-wide rule.
-* @TommyKammy
+# HRCore currently runs in single-maintainer mode, so no active repository-wide
+# CODEOWNERS rule is declared. A sole-owner rule combined with required Code
+# Owner review can deadlock PRs authored or pushed by that same maintainer.
+#
+# After adding a second real write-access maintainer or team, enable the
+# multi-maintainer rule below and then enable required Code Owner review:
+#
+# * @TommyKammy @<second-write-access-maintainer-or-team>
