@@ -992,6 +992,86 @@ test("data-scope policy ADR preserves the MVP-A DSL and RLS boundary", async () 
   );
 });
 
+test("audit immutability ADR preserves the MVP-A hash-chain and WORM deferral boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](0004-agent-execution-cost-cap.md)\n- [ADR 0010: Break-Glass Access and Emergency Local Account MVP-A/v1 Boundary](0010-break-glass-emergency-access-boundary.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must not claim audit immutability from an ordinary mutable database row, application log, CSV export, raw payload, metadata blob, note or memo text, fixture, seed data, migration comment, README snippet, or operator note alone.",
+    "HRCore MVP-A and v1 should use append-only `audit_event` plus hash-chain and tamper-evidence semantics as the planning baseline for repository and application design.",
+    "WORM storage, S3 Object Lock, external archive buckets, retention lock mode, legal hold, cross-account storage, replication, and production immutable evidence export must not be treated as implemented or selected until a later Accepted two-key ADR defines the production storage/provider boundary.",
+    "S3 Object Lock may remain a future production-grade immutable archive option",
+    "append-only audit behavior, canonical event hashing, chain verification, and tamper-evidence checks remain required design expectations",
+    "Audit immutability checks must fail closed by default once implementation is authorized",
+    "missing previous hash",
+    "missing event hash",
+    "unsupported hash algorithm",
+    "non-canonical payload",
+    "duplicate or skipped chain sequence",
+    "broken chain",
+    "changed historical payload",
+    "missing actor, source, or correlation context",
+    "clock rollback",
+    "verification error",
+    "`updated_at`",
+    "`metadata_jsonb`",
+    "`is_admin`",
+    "object-storage path alone is not sufficient",
+    "`audit_event`",
+    "`previous_hash`",
+    "`event_hash`",
+    "`hash_algorithm`",
+    "`canonical_event_payload`",
+    "`audit_chain_scope`",
+    "`audit_chain_sequence`",
+    "`audit_chain_checkpoint`",
+    "`audit_chain_verification_result`",
+    "`external_audit_archive`",
+    "`object_lock_retention`",
+    "`legal_hold`",
+    "`archive_manifest`",
+    "`archive_evidence_uri`",
+    "conceptual/deferred anchors",
+    "#74",
+    "#75",
+    "#88",
+    "#86",
+    "Phase 2A",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement audit runtime behavior, database migrations, hash-chain code, WORM or S3 configuration, object storage integration, retention jobs, APIs, DTOs, UI workflows, export behavior, redaction behavior, policy engines, production secrets, external service dependencies, production operations, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing audit immutability ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "audit immutability ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A\/v1 Boundary\]\(docs\/adr\/0012-audit-event-hash-chain-worm-object-lock-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
