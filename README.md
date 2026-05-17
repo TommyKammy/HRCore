@@ -11,6 +11,7 @@ The Proposed break-glass access and emergency local account MVP-A/v1 boundary is
 The Proposed data-scope policy DSL and PostgreSQL RLS MVP-A/v1 boundary is recorded in [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](docs/adr/0011-data-scope-policy-dsl-rls-boundary.md).
 The Proposed audit event hash chain, WORM, and S3 Object Lock MVP-A/v1 boundary is recorded in [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md).
 The Proposed requester-equals-approver prevention DB, service, and verifier boundary is recorded in [ADR 0013: Requester-Equals-Approver Prevention DB, Service, and Verifier Boundary](docs/adr/0013-self-approval-prevention-boundary.md).
+The Proposed raw payload and CSV export redaction, watermark, and download log boundary is recorded in [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
@@ -36,6 +37,7 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 - `docs/adr/0011-data-scope-policy-dsl-rls-boundary.md` records the Proposed MVP-A/v1 boundary for data-scope policy DSL handling and PostgreSQL RLS source-of-truth deferral.
 - `docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md` records the Proposed MVP-A/v1 boundary for audit event hash-chain handling and WORM/S3 Object Lock deferral.
 - `docs/adr/0013-self-approval-prevention-boundary.md` records the Proposed MVP-A/v1 boundary for requester-equals-approver prevention across service-authoritative runtime enforcement, database supporting guards, and verifier coverage.
+- `docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md` records the Proposed MVP-A/v1 boundary for raw payload and CSV export redaction, watermark/traceability, and download-log/audit evidence.
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.

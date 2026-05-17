@@ -1166,6 +1166,103 @@ test("self-approval prevention ADR preserves the MVP-A DB service verifier bound
   );
 });
 
+test("raw payload and CSV export ADR preserves redaction watermark download-log boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](0004-agent-execution-cost-cap.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0010: Break-Glass Access and Emergency Local Account MVP-A/v1 Boundary](0010-break-glass-emergency-access-boundary.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0013: Requester-Equals-Approver Prevention DB, Service, and Verifier Boundary](0013-self-approval-prevention-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must treat raw payload viewing and CSV export as separate high-risk data-exfiltration surfaces",
+    "not ordinary screen viewing or generic admin operations",
+    "Raw provider, import, and export payloads are default-deny for viewing and download",
+    "minimized or redacted before persistence, display, export, or download",
+    "later Accepted two-key ADR",
+    "CSV export requires explicit export permission",
+    "separate from screen access, field access, raw-view access, audit-log access, HR role membership, and generic admin access",
+    "data-scope filtering",
+    "field classification",
+    "redaction or masking rules",
+    "export-template allowlists",
+    "purpose and request ownership",
+    "audit correlation",
+    "watermark or equivalent traceability marker",
+    "actor, timestamp, export job, request or correlation ID, template or scope, and redaction profile",
+    "absence of traceability must fail closed",
+    "durable audit evidence",
+    "effective actor or delegation",
+    "source surface",
+    "row or object count",
+    "watermark or manifest ID",
+    "`is_admin`",
+    "HR role membership",
+    "break-glass account",
+    "operator comment",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "CSV row",
+    "audit log entry alone is not sufficient",
+    "Break-glass and emergency access do not bypass raw-payload redaction, export permission, watermark, or download-log requirements",
+    "Approval and self-approval boundaries from ADR 0013 do not authorize data export by themselves",
+    "`export_permission`",
+    "`raw_payload_view_permission`",
+    "`audit_log_view_permission`",
+    "`redaction_profile`",
+    "`masking_rule`",
+    "`export_template`",
+    "`export_job`",
+    "`export_file_manifest`",
+    "`watermark_token`",
+    "`download_log`",
+    "`raw_payload_access_log`",
+    "`export_download_log`",
+    "`data_scope_policy`",
+    "`pii_classification`",
+    "`purpose_code`",
+    "`request_owner`",
+    "`correlation_id`",
+    "`audit_event`",
+    "conceptual/deferred anchors",
+    "#88",
+    "#86",
+    "PII masking implementation",
+    "Phase 2D",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement raw payload viewers, CSV export runtime behavior, export jobs, database migrations, SQL constraints, service code, verifier code, watermark generation, redaction logic, APIs, DTOs, UI workflows, file storage, production operations, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing raw payload/CSV export ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "raw payload/CSV export ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary\]\(docs\/adr\/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
