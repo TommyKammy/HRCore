@@ -1072,6 +1072,100 @@ test("audit immutability ADR preserves the MVP-A hash-chain and WORM deferral bo
   );
 });
 
+test("self-approval prevention ADR preserves the MVP-A DB service verifier boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0013-self-approval-prevention-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0013: Requester-Equals-Approver Prevention DB, Service, and Verifier Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](0004-agent-execution-cost-cap.md)\n- [ADR 0010: Break-Glass Access and Emergency Local Account MVP-A/v1 Boundary](0010-break-glass-emergency-access-boundary.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must not allow the same effective actor to both submit or request and approve the same business transaction.",
+    "The service or application approval command path is the authoritative enforcement point",
+    "effective actor",
+    "delegated approval context",
+    "break-glass context",
+    "role assignment",
+    "request state",
+    "workflow transition",
+    "Database constraints are required as supporting fail-closed guards",
+    "resolved user on an approval step or action",
+    "DB constraints alone are not sufficient",
+    "role-based approvers",
+    "delegated approvers",
+    "future routing rules",
+    "break-glass review",
+    "multi-step workflows",
+    "Verifier and policy-as-code coverage is required",
+    "schema, service, API, fixture, seed, and test changes",
+    "verifier checks alone are not sufficient runtime enforcement",
+    "Approval actions must fail closed once implementation is authorized",
+    "missing, ambiguous, stale, mutable through an untyped surface, or unverifiable",
+    "requester identity",
+    "approver identity",
+    "approval step binding",
+    "transaction or request binding",
+    "audit correlation",
+    "`is_admin`",
+    "HR role membership",
+    "break-glass account",
+    "operator comment",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "CSV row",
+    "audit log entry alone must not be accepted as proof",
+    "Break-glass and emergency access do not bypass the separation-of-duties rule",
+    "later Accepted two-key ADR",
+    "`transaction_request.submitter_user_id`",
+    "`approval_step.approver_user_id`",
+    "`approval_action.actor_user_id`",
+    "`effective_actor_user_id`",
+    "`delegated_actor_user_id`",
+    "`approval_policy`",
+    "`separation_of_duties_policy`",
+    "`self_approval_violation`",
+    "`approval_verification_result`",
+    "`break_glass_context`",
+    "`correlation_id`",
+    "`audit_event`",
+    "conceptual/deferred anchors",
+    "#75",
+    "#88",
+    "#86",
+    "Phase 2A",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement approval runtime behavior, database migrations, SQL constraints, triggers, service code, verifier code, APIs, DTOs, UI workflows, notification behavior, seed data, fixtures, production operations, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing self-approval ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "self-approval prevention ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0013: Requester-Equals-Approver Prevention DB, Service, and Verifier Boundary\]\(docs\/adr\/0013-self-approval-prevention-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
