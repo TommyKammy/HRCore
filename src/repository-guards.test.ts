@@ -501,6 +501,72 @@ test("My Number scope ADR preserves the MVP-A non-storage boundary", async () =>
   );
 });
 
+test("APPI processing-purpose and DSAR ADR preserves the privacy boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0006-appi-processing-purpose-dsar-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore must not add new personal-data processing surfaces unless the processing purpose, request owner, audit evidence, and allowed data classes are documented in an Accepted ADR or explicitly deferred by a Proposed two-key ADR.",
+    "HR administration/onboarding",
+    "IdP provisioning/writeback",
+    "audit/compliance evidence",
+    "support/operations",
+    "future analytics/AI",
+    "accountable human owner",
+    "request intake",
+    "identity verification outside autonomous agents",
+    "response evidence",
+    "disclosure/access",
+    "correction",
+    "use suspension",
+    "deletion/erasure",
+    "retention/legal-hold conflict handling",
+    "Deletion/erasure handling must not weaken ADR 0003 hard-delete restrictions",
+    "#70",
+    "AWS",
+    "Okta",
+    "Entra",
+    "SmartHR",
+    "Bedrock",
+    "future providers",
+    "provider/privacy classification evidence",
+    "This ADR defines the classification evidence required but does not decide production vendor contracts.",
+    "#68",
+    "#84",
+    "#88",
+    "Actual legal interpretation, statutory deadline commitments, counsel sign-off, privacy notices, contractual wording, and production privacy operations remain human/two-key responsibilities.",
+    "This ADR does not implement legal workflow screens, database migrations, OpenAPI endpoints, DTOs, UI workflows, production jobs, provider integrations, production secrets, external service dependencies, APPI/DSAR operational procedures beyond this ADR boundary, or Phase 1 HR workflows.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing APPI/DSAR ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "APPI/DSAR ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary\]\(docs\/adr\/0006-appi-processing-purpose-dsar-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
