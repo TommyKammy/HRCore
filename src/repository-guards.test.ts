@@ -262,6 +262,45 @@ test("agent execution cost-cap ADR defines MVP-A stop conditions and evidence", 
   );
 });
 
+test("run-mode governance defines taxonomy and issue-label expectations", async () => {
+  const [runModes, readme] = await Promise.all([
+    readRepoFile("docs/run-modes.md"),
+    readRepoFile("README.md"),
+  ]);
+
+  for (const requiredText of [
+    "# Run-Mode Governance",
+    "`run-mode/agent`",
+    "`run-mode/human`",
+    "`run-mode/hybrid`",
+    "`run-mode/two-key`",
+    "documentation-only ADR work",
+    "code changes",
+    "GitHub/settings changes",
+    "legal/privacy decisions",
+    "security-sensitive changes",
+    "production-impacting changes",
+    "independent implementation review",
+    "ADR 0000",
+    "Counter-approver",
+    "Time-locked review window",
+    "ADR 0004",
+    "cost-control stop conditions",
+    "current-head Codex review",
+    "branch protection",
+    "Epic completion review",
+    "Every Epic and Child issue must carry exactly one `run-mode/*` label",
+    "explicit follow-up exception",
+  ]) {
+    assert.ok(
+      runModes.includes(requiredText),
+      `missing run-mode governance text: ${requiredText}`,
+    );
+  }
+
+  assert.match(readme, /\[Run-Mode Governance\]\(docs\/run-modes\.md\)/);
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
