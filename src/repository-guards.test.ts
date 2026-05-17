@@ -218,6 +218,46 @@ test("text-merge pass procedure remains documented and discoverable", async () =
   );
 });
 
+test("text-merge pass closeout remains documented and covers target classes", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/text-merge-pass-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# Text-Merge Pass Closeout",
+    "Obsidian vault path:",
+    "Run mode:",
+    "human approval",
+    "source note path",
+    "decision/source authority used",
+    "change summary",
+    "unresolved follow-ups",
+    "Concept and scope",
+    "Governance and stakeholder",
+    "Architecture and automation",
+    "ER and data model",
+    "Field catalog",
+    "API and OpenAPI",
+    "DDL and schema",
+    "Execution planning",
+    "Review and governance source notes",
+    "Progress notes",
+    "Deferred or stopped items",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing text-merge closeout evidence text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[Text-Merge Pass Closeout\]\(docs\/text-merge-pass-closeout\.md\)/,
+  );
+});
+
 test("initial backend stack decision freezes Fastify and Drizzle", async () => {
   const [adr, readme] = await Promise.all([
     readRepoFile("docs/adr/0001-initial-backend-stack.md"),

@@ -6,6 +6,7 @@ This repository is currently at the baseline seed stage. It provides the minimum
 
 The initial backend stack decision is recorded in [ADR 0001: Initial Backend Stack](docs/adr/0001-initial-backend-stack.md). Fastify and Drizzle are the frozen PoC/MVP-A baseline unless a later accepted ADR supersedes that decision. The initial policy-as-code CI strategy is recorded in [ADR 0002: Policy-as-Code CI Strategy](docs/adr/0002-policy-as-code-ci-strategy.md). The MVP-A core stability contract is recorded in [ADR 0003: MVP-A Core Stability Contract](docs/adr/0003-mvp-a-core-stability-contract.md). The MVP-A agent cost-control boundary is recorded in [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](docs/adr/0004-agent-execution-cost-cap.md). Issue execution ownership is defined in [Run-Mode Governance](docs/run-modes.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
+The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
 
 ## Baseline structure
@@ -23,6 +24,7 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.
+- `docs/text-merge-pass-closeout.md` records the #82 text-merge pass evidence.
 
 ## Local verification
 
