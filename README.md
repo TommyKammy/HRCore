@@ -4,7 +4,7 @@ Open-source HR core system for identity-driven employee lifecycle management, on
 
 This repository is currently at the baseline seed stage. It provides the minimum Fastify, Drizzle, and OpenAPI-first structure needed for later phases without implementing Phase 1 HR business workflows.
 
-The initial backend stack decision is recorded in [ADR 0001: Initial Backend Stack](docs/adr/0001-initial-backend-stack.md). Fastify and Drizzle are the frozen PoC/MVP-A baseline unless a later accepted ADR supersedes that decision. The initial policy-as-code CI strategy is recorded in [ADR 0002: Policy-as-Code CI Strategy](docs/adr/0002-policy-as-code-ci-strategy.md). The MVP-A core stability contract is recorded in [ADR 0003: MVP-A Core Stability Contract](docs/adr/0003-mvp-a-core-stability-contract.md). The MVP-A agent cost-control boundary is recorded in [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](docs/adr/0004-agent-execution-cost-cap.md).
+The initial backend stack decision is recorded in [ADR 0001: Initial Backend Stack](docs/adr/0001-initial-backend-stack.md). Fastify and Drizzle are the frozen PoC/MVP-A baseline unless a later accepted ADR supersedes that decision. The initial policy-as-code CI strategy is recorded in [ADR 0002: Policy-as-Code CI Strategy](docs/adr/0002-policy-as-code-ci-strategy.md). The MVP-A core stability contract is recorded in [ADR 0003: MVP-A Core Stability Contract](docs/adr/0003-mvp-a-core-stability-contract.md). The MVP-A agent cost-control boundary is recorded in [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](docs/adr/0004-agent-execution-cost-cap.md). Issue execution ownership is defined in [Run-Mode Governance](docs/run-modes.md).
 
 ## Baseline structure
 
@@ -18,6 +18,7 @@ The initial backend stack decision is recorded in [ADR 0001: Initial Backend Sta
 - `npm run db:check` runs the committed Drizzle Kit CLI against the local migration configuration.
 - `docs/adr/0000-adr-process.md` defines ADR numbering, approver metadata, two-key handling, and precedence rules.
 - `docs/adr/template.md` is the template for future ADRs.
+- `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 
 ## Local verification
 
