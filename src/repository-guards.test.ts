@@ -122,6 +122,48 @@ test("initial backend stack decision freezes Fastify and Drizzle", async () => {
   );
 });
 
+test("policy-as-code CI strategy decision defines inspection surfaces and rule families", async () => {
+  const adr = await readRepoFile("docs/adr/0002-policy-as-code-ci-strategy.md");
+
+  for (const requiredAdrText of [
+    "# ADR 0002: Policy-as-Code CI Strategy",
+    "## Status\n\nAccepted",
+    "- Author: TommyKammy",
+    "- Approver: TommyKammy",
+    "- Counter-approver: Not required because this baseline defines documented CI inspection strategy and repository guard discoverability without enabling, weakening, or bypassing runtime security, identity, authorization, tenant boundaries, auditability, data retention, production operations, external provider trust, irreversible migration shape, or compliance evidence.",
+    "- Time-locked review window: Not required because this decision does not require two-key handling.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0001: Initial Backend Stack](0001-initial-backend-stack.md)",
+    "`*.sql`",
+    "`migrations/*`",
+    "`src/**/*.ts`",
+    "OpenAPI schema files",
+    "PR diffs",
+    "prohibited columns",
+    "PII raw payload persistence",
+    "export permission checks",
+    "Regex checks are acceptable only for narrow lexical sentinels",
+    "SQL parsing is required before CI treats SQL or migration structure as authoritative.",
+    "ORM metadata inspection is required before CI treats Drizzle schema shape as authoritative.",
+    "OpenAPI schema inspection is required before CI treats request, response, or export contract shape as authoritative.",
+    "PR-diff-aware checks are required before CI limits findings to changed lines or new exposures.",
+    "OPA/Rego is deferred until the first cross-surface policy needs shared rule evaluation.",
+    "This ADR does not implement the #88 Future Extension prohibited payload rule set.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      adr.includes(requiredAdrText),
+      `missing policy-as-code ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^- (Author|Approver|Counter-approver):\s*<[^>]+>\s*$/m,
+    "accepted policy ADR decision owners must be named, not placeholders",
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
