@@ -109,6 +109,57 @@ test("pull request template preserves child issue review checklist", async () =>
   }
 });
 
+test("Epic completion review procedure remains documented and discoverable", async () => {
+  const [procedure, readme] = await Promise.all([
+    readRepoFile("docs/epic-completion-review.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedProcedure = procedure.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# Epic Completion Review",
+    "child issue closure is evidence",
+    "not automatic Epic acceptance",
+    "all intended child issues",
+    "closed or explicitly deferred",
+    "merged PRs are present on `origin/main`",
+    "parent Epic issue",
+    "child issue list",
+    "merged PRs",
+    "closeout evidence",
+    "acceptance criteria",
+    "local verification",
+    "current-head Codex Connector review",
+    "unresolved review threads",
+    "ADR and run-mode records",
+    "scope exclusions",
+    "follow-up exceptions",
+    "Verdict",
+    "Blocking findings",
+    "Non-blocking follow-ups",
+    "Evidence links",
+    "Verification command and result",
+    "Epic acceptance recommendation",
+    "separate Codex review pass",
+    "must not be the same implementation attempt blindly self-accepting",
+    "ADR 0000",
+    "ADR 0004",
+    "branch protection",
+    "run-mode governance",
+    "Child Issue Review Checklist",
+  ]) {
+    assert.ok(
+      normalizedProcedure.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing Epic completion review procedure text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[Epic Completion Review\]\(docs\/epic-completion-review\.md\)/,
+  );
+});
+
 test("initial backend stack decision freezes Fastify and Drizzle", async () => {
   const [adr, readme] = await Promise.all([
     readRepoFile("docs/adr/0001-initial-backend-stack.md"),
