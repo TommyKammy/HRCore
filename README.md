@@ -8,6 +8,7 @@ The initial backend stack decision is recorded in [ADR 0001: Initial Backend Sta
 The Proposed leave of absence, childcare leave, and reduced working hours MVP-A/v1 boundary is recorded in [ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A/v1 Handling Boundary](docs/adr/0008-leave-work-arrangement-boundary.md).
 The Proposed retiree data retention period and physical deletion exception boundary is recorded in [ADR 0009: Retiree Data Retention Period and Physical Deletion Exception Boundary](docs/adr/0009-retiree-retention-physical-deletion-boundary.md).
 The Proposed break-glass access and emergency local account MVP-A/v1 boundary is recorded in [ADR 0010: Break-Glass Access and Emergency Local Account MVP-A/v1 Boundary](docs/adr/0010-break-glass-emergency-access-boundary.md).
+The Proposed data-scope policy DSL and PostgreSQL RLS MVP-A/v1 boundary is recorded in [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](docs/adr/0011-data-scope-policy-dsl-rls-boundary.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
@@ -30,6 +31,7 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 - `docs/adr/0008-leave-work-arrangement-boundary.md` records the Proposed MVP-A/v1 boundary for leave of absence, childcare leave, and reduced working hours.
 - `docs/adr/0009-retiree-retention-physical-deletion-boundary.md` records the Proposed MVP-A/v1 boundary for retiree data retention periods and physical deletion exceptions.
 - `docs/adr/0010-break-glass-emergency-access-boundary.md` records the Proposed MVP-A/v1 boundary for break-glass access and emergency local accounts.
+- `docs/adr/0011-data-scope-policy-dsl-rls-boundary.md` records the Proposed MVP-A/v1 boundary for data-scope policy DSL handling and PostgreSQL RLS source-of-truth deferral.
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.
