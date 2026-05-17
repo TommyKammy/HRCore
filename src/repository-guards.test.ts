@@ -1263,6 +1263,63 @@ test("raw payload and CSV export ADR preserves redaction watermark download-log 
   );
 });
 
+test("My Number extension-anchor ADR preserves external-reference and separate-schema boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0015-my-number-external-reference-separate-schema-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0015: My Number and Specific Personal Information External Reference and Separate Schema Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "MVP-A and v1 core HR tables must not store My Number or Specific Personal Information",
+    "must not hide My Number or Specific Personal Information in generic JSON, metadata, notes, raw provider payloads, audit payloads, logs, fixtures, seeds, attachments, or CSV exports",
+    "future support must be loosely coupled from core HR tables",
+    "external system of record",
+    "external vault",
+    "separate schema",
+    "separate service",
+    "reference-only integration",
+    "opaque external reference",
+    "must never be the raw My Number value",
+    "purpose binding",
+    "authorization",
+    "audit evidence",
+    "redaction",
+    "download, export, and logging restrictions",
+    "cross-schema or cross-service ownership boundary",
+    "Resolving a reference must fail closed",
+    "This ADR does not implement runtime features, database migrations, API endpoints, UI workflows, provider adapters, vault integration, secret handling, export jobs, retention jobs, or policy-as-code parser rules.",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing My Number extension-anchor ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "My Number extension-anchor ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0015: My Number and Specific Personal Information External Reference and Separate Schema Boundary\]\(docs\/adr\/0015-my-number-external-reference-separate-schema-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
