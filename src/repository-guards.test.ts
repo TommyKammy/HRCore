@@ -160,6 +160,64 @@ test("Epic completion review procedure remains documented and discoverable", asy
   );
 });
 
+test("text-merge pass procedure remains documented and discoverable", async () => {
+  const [procedure, readme] = await Promise.all([
+    readRepoFile("docs/text-merge-pass.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedProcedure = procedure.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# Text-Merge Pass Procedure",
+    "#82 performs the actual document-body merge work",
+    "executable code and tests",
+    "Accepted ADRs",
+    "repository process docs",
+    "Obsidian planning notes",
+    "issue bodies",
+    "generated notes",
+    "Accepted ADRs take precedence over conflicting planning text",
+    "repair the conflict",
+    "record an explicit follow-up",
+    "Trailing correction and review sections",
+    "merge validated content into the relevant body text",
+    "replace the trailing block with a stable ADR or repository-document reference",
+    "concept and scope notes",
+    "ER and data-model notes",
+    "DDL and schema notes",
+    "API and OpenAPI notes",
+    "field catalog notes",
+    "automation and supervisor strategy notes",
+    "governance and review notes",
+    "Future Extension architecture notes",
+    "source note path",
+    "decision/source authority used",
+    "change summary",
+    "unresolved follow-ups",
+    "whether human approval is needed",
+    "new legal, privacy, or security decision",
+    "Future Extension schema decision",
+    "unresolved ADR conflict",
+    "missing owner or evidence for a two-key decision",
+    "Phase 1 HR workflow scope",
+    "ADR 0000",
+    "ADR 0004",
+    "run-mode governance",
+    "Child Issue Review Checklist",
+    "Epic completion review",
+  ]) {
+    assert.ok(
+      normalizedProcedure.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing text-merge pass procedure text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[Text-Merge Pass Procedure\]\(docs\/text-merge-pass\.md\)/,
+  );
+});
+
 test("initial backend stack decision freezes Fastify and Drizzle", async () => {
   const [adr, readme] = await Promise.all([
     readRepoFile("docs/adr/0001-initial-backend-stack.md"),
