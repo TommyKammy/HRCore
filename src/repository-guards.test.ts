@@ -209,6 +209,59 @@ test("MVP-A core stability contract defines stable identifiers and migration res
   );
 });
 
+test("agent execution cost-cap ADR defines MVP-A stop conditions and evidence", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0004-agent-execution-cost-cap.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions",
+    "## Status\n\nAccepted",
+    "- Author: TommyKammy",
+    "- Approver: TommyKammy",
+    "- Counter-approver: Not required because this decision documents MVP-A agent cost-control boundaries and stop criteria without enabling autonomous execution, adding production operations, changing security, identity, authorization, tenant boundaries, auditability, data retention, backup or restore semantics, external provider trust, irreversible migration shape, or compliance evidence.",
+    "- Time-locked review window: Not required because this decision does not require two-key handling.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)",
+    "The MVP-A monthly agent execution budget is `JPY 30,000` for Codex App and `codex-supervisor` driven repository work combined.",
+    "Broader autonomous execution must remain blocked if this value is replaced with an unset placeholder, blank value, TODO, sample value, or operator-local note.",
+    "budget exhaustion or projected month-end overrun",
+    "repeated failed attempts",
+    "repeated same blocker",
+    "failed local verification",
+    "review-thread stalls",
+    "unexpected external-service dependency",
+    "suspicious scope expansion beyond the issue boundary",
+    "GitHub Actions concurrency reduces duplicate CI spend but does not replace `npm run verify:pre-pr`",
+    "Branch protection must continue to require `verify-pre-pr` and conversation resolution",
+    "Cost dashboard work is advisory until a later Accepted ADR or implementation issue makes it executable",
+    "closeout evidence",
+    "monthly budget ledger or dashboard snapshot",
+    "This issue records documentation and guard-test commitments only.",
+    "Later issues must implement executable budget checks, stop hooks, or dashboard integration before treating these commitments as runtime enforcement.",
+    "This ADR does not implement a full budget dashboard, billing integration, provider mock, LocalStack or development AWS decision, policy-as-code engine, Future Extension payload rule, legal or privacy scope decision, production secret, external service dependency, or Phase 1 HR workflow.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing agent cost-cap ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^- (Author|Approver|Counter-approver):\s*<[^>]+>\s*$/m,
+    "accepted cost-cap ADR decision owners must be named, not placeholders",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions\]\(docs\/adr\/0004-agent-execution-cost-cap\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
