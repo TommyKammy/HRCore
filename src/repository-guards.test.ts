@@ -567,6 +567,90 @@ test("APPI processing-purpose and DSAR ADR preserves the privacy boundary", asyn
   );
 });
 
+test("sensitive personal information ADR preserves the MVP-A non-storage boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0007-sensitive-personal-information-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must not store, expose, export, seed, fixture, log, or hide sensitive personal information",
+    "core tables",
+    "APIs",
+    "DTOs",
+    "raw provider payload storage",
+    "CSV export surfaces",
+    "audit payloads",
+    "JSON",
+    "notes",
+    "memos",
+    "attachments",
+    "migration examples",
+    "health/medical information",
+    "disability information",
+    "labor union membership",
+    "harassment or disciplinary investigation records",
+    "family origin/permanent domicile-style attributes",
+    "equivalent local category that requires stricter consent, purpose, masking, audit, or access handling",
+    "future support requires a later Accepted two-key ADR",
+    "processing purpose",
+    "consent or lawful handling basis",
+    "field-level classification",
+    "masking",
+    "export permission",
+    "audit evidence",
+    "retention/deletion behavior",
+    "accountable human owner",
+    "`person.pii_level_code`",
+    "generic PII flag alone is not sufficient",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "`audit_event`",
+    "attachment blobs",
+    "fixtures",
+    "seed data",
+    "`privacy_classification_rule`",
+    "`privacy_consent`",
+    "`processing_purpose`",
+    "field-level mask policy",
+    "export permission",
+    "conceptual/deferred anchors",
+    "#70",
+    "#84",
+    "#88",
+    "This ADR does not implement sensitive-data fields, consent flows, production privacy operations, schema changes, legal workflow screens, OpenAPI endpoints, DTOs, UI workflows, provider integrations, privacy jobs, production secrets, external service dependencies, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing sensitive personal information ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "sensitive personal information ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0007: Sensitive Personal Information Classification and MVP-A\/v1 Handling Boundary\]\(docs\/adr\/0007-sensitive-personal-information-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
