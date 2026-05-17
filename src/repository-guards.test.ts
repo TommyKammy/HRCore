@@ -805,6 +805,97 @@ test("retiree retention ADR preserves the MVP-A retention and physical deletion 
   );
 });
 
+test("break-glass ADR preserves the MVP-A emergency access boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0010-break-glass-emergency-access-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0010: Break-Glass Access and Emergency Local Account MVP-A/v1 Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](0004-agent-execution-cost-cap.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must not implement real emergency local accounts, hard-coded credentials, seed credentials, shared passwords, secret material, local bypass endpoints, unaudited administrator elevation, IdP bypass logic, or production break-glass runbooks as executable behavior.",
+    "Any future emergency access support requires a later Accepted two-key ADR",
+    "account count",
+    "custody model",
+    "credential storage location/classification",
+    "MFA or equivalent compensating control",
+    "activation criteria",
+    "approval authority",
+    "time limit",
+    "revocation/rotation",
+    "least-privilege scope",
+    "network/source restrictions",
+    "audit evidence",
+    "alerting",
+    "post-use review",
+    "test cadence",
+    "accountable human owner",
+    "Break-glass access must be fail-closed by default",
+    "absence of an Accepted ADR, named custodians, auditable activation evidence, and rotation/revocation procedure must block production emergency-access implementation",
+    "`is_admin`",
+    "`role=admin`",
+    "local account flag",
+    "environment variable",
+    "seed user",
+    "fixture user",
+    "operator note",
+    "Generic escape hatches must not be used to hide credentials, break-glass activation state, bypass decisions, emergency access approvals, or post-use review evidence.",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "`audit_event`",
+    "attachment blobs",
+    "CSV export columns",
+    "fixtures",
+    "seed data",
+    "logs",
+    "migration examples",
+    "`.env` examples",
+    "README snippets",
+    "`break_glass_account`",
+    "`emergency_access_request`",
+    "`emergency_access_approval`",
+    "`emergency_access_session`",
+    "`credential_custody_record`",
+    "`activation_evidence`",
+    "`post_use_review`",
+    "conceptual/deferred anchors",
+    "#72",
+    "#73",
+    "#74",
+    "#75",
+    "#88",
+    "This ADR does not implement emergency account product behavior, authentication code, IdP configuration, local bypass endpoints, seed credentials, `.env` secrets, database migrations, OpenAPI endpoints, DTOs, UI workflows, provider integrations, background jobs, production secrets, external service dependencies, production operations, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing break-glass ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "break-glass ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0010: Break-Glass Access and Emergency Local Account MVP-A\/v1 Boundary\]\(docs\/adr\/0010-break-glass-emergency-access-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
