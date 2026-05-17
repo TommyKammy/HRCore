@@ -651,6 +651,81 @@ test("sensitive personal information ADR preserves the MVP-A non-storage boundar
   );
 });
 
+test("leave and work-arrangement ADR preserves the MVP-A boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0008-leave-work-arrangement-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A/v1 Handling Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 may model only the generic, non-sensitive employment or work-arrangement state needed for initial HR core onboarding, assignment, or IdP/writeback readiness.",
+    "must not implement full leave-of-absence, childcare leave, reduced-hours, payroll, benefit, statutory deadline, eligibility, entitlement, medical/caregiving reason, disability, harassment, disciplinary, union, or detailed labor-case management workflows",
+    "Any future support for leave of absence, childcare leave, or reduced working hours requires a later Accepted two-key ADR",
+    "labor/legal purpose",
+    "processing purpose",
+    "sensitive-personal-information classification",
+    "consent or lawful handling basis",
+    "field-level masking",
+    "export permission",
+    "audit evidence",
+    "retention/deletion behavior",
+    "payroll/benefit boundary",
+    "accountable human owner",
+    "`employment_status`, `work_arrangement`, `lifecycle_event`, or a generic event/status flag alone is not sufficient",
+    "Generic escape hatches must not be used to store detailed leave reasons, medical/caregiving facts, childcare facts beyond the approved boundary, disability facts, harassment or disciplinary investigation facts, union activity, or equivalent sensitive labor/privacy data.",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "`audit_event`",
+    "attachment blobs",
+    "CSV export columns",
+    "fixtures",
+    "seed data",
+    "logs",
+    "migration examples",
+    "`employment_status`",
+    "`work_arrangement`",
+    "`lifecycle_event`",
+    "`leave_case`",
+    "`leave_reason`",
+    "effective-dated work pattern",
+    "conceptual/deferred anchors",
+    "#85",
+    "#84",
+    "#88",
+    "#70",
+    "This ADR does not implement leave product behavior, database migrations, OpenAPI endpoints, DTOs, approval UI, payroll/benefit logic, provider integrations, privacy jobs, production secrets, external service dependencies, legal/labor operational procedures beyond this ADR boundary, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing leave/work-arrangement ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "leave/work-arrangement ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A\/v1 Handling Boundary\]\(docs\/adr\/0008-leave-work-arrangement-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
