@@ -726,6 +726,85 @@ test("leave and work-arrangement ADR preserves the MVP-A boundary", async () => 
   );
 });
 
+test("retiree retention ADR preserves the MVP-A retention and physical deletion boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0009-retiree-retention-physical-deletion-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0009: Retiree Data Retention Period and Physical Deletion Exception Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A/v1 Handling Boundary](0008-leave-work-arrangement-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must not encode production statutory retention periods, automatic purge schedules, anonymization schedules, physical deletion exceptions, legal-hold rules, payroll/benefit retention rules, or deletion approval workflows as executable behavior.",
+    "ADR 0003 hard-delete restrictions remain in force for core HR entities unless a later Accepted two-key ADR explicitly supersedes or narrows them.",
+    "Retired employee records may remain logically inactive or ended for MVP-A and v1 only where needed for initial HR core history, assignment, IdP/writeback readiness, auditability, and rollback-safe operation.",
+    "Any future retention, anonymization, deletion, or physical deletion exception support requires a later Accepted two-key ADR",
+    "legal basis",
+    "retention period source",
+    "jurisdiction/legal-entity applicability",
+    "data category classification",
+    "legal hold behavior",
+    "deletion/anonymization trigger",
+    "audit evidence",
+    "rollback/recovery boundary",
+    "approval authority",
+    "accountable human owner",
+    "`employment_status`, `termination_date`, `lifecycle_event`, `deleted_at`, `retention_until`, or a generic retention flag alone is not sufficient",
+    "Generic escape hatches must not be used to hide retiree retention exceptions, legal hold state, deletion requests, anonymization state, or sensitive/legal retention facts.",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "`audit_event`",
+    "attachment blobs",
+    "CSV export columns",
+    "fixtures",
+    "seed data",
+    "logs",
+    "migration examples",
+    "`retention_policy`",
+    "`retention_action_log`",
+    "`legal_hold`",
+    "`deletion_request`",
+    "`anonymization_event`",
+    "`retention_until`",
+    "`physical_delete_exception`",
+    "conceptual/deferred anchors",
+    "#86",
+    "#84",
+    "#88",
+    "#85",
+    "This ADR does not implement retention product behavior, database migrations, OpenAPI endpoints, DTOs, deletion/anonymization jobs, legal workflow screens, payroll/benefit retention logic, provider integrations, privacy jobs, production secrets, external service dependencies, production data-retention operations, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing retiree retention ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "retiree retention ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0009: Retiree Data Retention Period and Physical Deletion Exception Boundary\]\(docs\/adr\/0009-retiree-retention-physical-deletion-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),

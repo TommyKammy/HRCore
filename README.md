@@ -6,6 +6,7 @@ This repository is currently at the baseline seed stage. It provides the minimum
 
 The initial backend stack decision is recorded in [ADR 0001: Initial Backend Stack](docs/adr/0001-initial-backend-stack.md). Fastify and Drizzle are the frozen PoC/MVP-A baseline unless a later accepted ADR supersedes that decision. The initial policy-as-code CI strategy is recorded in [ADR 0002: Policy-as-Code CI Strategy](docs/adr/0002-policy-as-code-ci-strategy.md). The MVP-A core stability contract is recorded in [ADR 0003: MVP-A Core Stability Contract](docs/adr/0003-mvp-a-core-stability-contract.md). The MVP-A agent cost-control boundary is recorded in [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](docs/adr/0004-agent-execution-cost-cap.md). The Proposed My Number non-storage boundary is recorded in [ADR 0005: My Number and Specific Personal Information Scope Boundary](docs/adr/0005-my-number-scope-boundary.md). The Proposed APPI processing-purpose and DSAR handling boundary is recorded in [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](docs/adr/0006-appi-processing-purpose-dsar-boundary.md). The Proposed sensitive personal information non-storage boundary is recorded in [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](docs/adr/0007-sensitive-personal-information-boundary.md). Issue execution ownership is defined in [Run-Mode Governance](docs/run-modes.md).
 The Proposed leave of absence, childcare leave, and reduced working hours MVP-A/v1 boundary is recorded in [ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A/v1 Handling Boundary](docs/adr/0008-leave-work-arrangement-boundary.md).
+The Proposed retiree data retention period and physical deletion exception boundary is recorded in [ADR 0009: Retiree Data Retention Period and Physical Deletion Exception Boundary](docs/adr/0009-retiree-retention-physical-deletion-boundary.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
@@ -26,6 +27,7 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 - `docs/adr/0006-appi-processing-purpose-dsar-boundary.md` records the Proposed APPI processing-purpose and DSAR handling boundary.
 - `docs/adr/0007-sensitive-personal-information-boundary.md` records the Proposed MVP-A/v1 non-storage and no-escape-hatch boundary for sensitive personal information.
 - `docs/adr/0008-leave-work-arrangement-boundary.md` records the Proposed MVP-A/v1 boundary for leave of absence, childcare leave, and reduced working hours.
+- `docs/adr/0009-retiree-retention-physical-deletion-boundary.md` records the Proposed MVP-A/v1 boundary for retiree data retention periods and physical deletion exceptions.
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.
