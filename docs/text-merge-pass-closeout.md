@@ -1,6 +1,7 @@
 # Text-Merge Pass Closeout
 
 Issue: #82
+Implementation PR: #102
 Run mode: `hybrid` (agent drafts; human approval is required before treating the Obsidian edits as accepted)
 Obsidian vault path: `<ObsidianVault>/Dev/HRCore`
 Repository procedure: [Text-Merge Pass Procedure](text-merge-pass.md)
