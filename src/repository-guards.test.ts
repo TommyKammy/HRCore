@@ -896,6 +896,102 @@ test("break-glass ADR preserves the MVP-A emergency access boundary", async () =
   );
 });
 
+test("data-scope policy ADR preserves the MVP-A DSL and RLS boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0011-data-scope-policy-dsl-rls-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](0004-agent-execution-cost-cap.md)\n- [ADR 0010: Break-Glass Access and Emergency Local Account MVP-A/v1 Boundary](0010-break-glass-emergency-access-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "HRCore MVP-A and v1 must not treat arbitrary `condition_jsonb`, free-form JSON, raw SQL fragments, user-authored expressions, tenant-supplied code, unchecked metadata, note or memo text, CSV columns, raw payloads, audit-event payloads, fixtures, seed data, logs, migration examples, `.env` examples, README snippets, or similar untyped surfaces as authorization policy.",
+    "HRCore MVP-A and v1 should use a constrained, allowlisted, application-owned data-scope DSL as the planning baseline for `data_scope_policy.condition_jsonb`.",
+    "PostgreSQL RLS must not be the MVP-A authorization source of truth until a later Accepted two-key ADR",
+    "tenancy/session context",
+    "connection-pool behavior",
+    "migration/rollback semantics",
+    "admin, batch, and job behavior",
+    "bypass prevention",
+    "test strategy",
+    "operational debugging procedures",
+    "RLS may remain a future defense-in-depth option",
+    "application, service, and query-layer authorization remains required",
+    "Data-scope checks must fail closed by default",
+    "unknown scope type",
+    "unknown operator",
+    "unsupported field",
+    "invalid schema version",
+    "empty policy where a policy is required",
+    "missing actor context",
+    "missing legal-entity or department context",
+    "parser error",
+    "policy-evaluation error",
+    "`is_admin`",
+    "local admin flag",
+    "role assignment",
+    "UI route permission",
+    "raw JSON blob",
+    "operator comment",
+    "scope dimensions",
+    "operators",
+    "subject or actor context",
+    "target entity context",
+    "legal entity",
+    "department or organization",
+    "employment or assignment relationship",
+    "effective-date handling",
+    "field or PII class",
+    "export, raw-view, and audit-view capability markers",
+    "schema versioning",
+    "`data_scope_policy`",
+    "`condition_jsonb`",
+    "`data_scope_condition`",
+    "`scope_dimension`",
+    "`scope_operator`",
+    "`actor_context`",
+    "`target_context`",
+    "`field_scope`",
+    "`export_scope`",
+    "`raw_payload_scope`",
+    "`audit_log_scope`",
+    "`policy_schema_version`",
+    "`policy_evaluation_result`",
+    "conceptual/deferred anchors",
+    "#73",
+    "#74",
+    "#75",
+    "#88",
+    "Phase 2A",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement authorization runtime behavior, SQL migrations, RLS policies, query builders, APIs, DTOs, UI workflows, CSV export behavior, raw payload viewers, audit-log viewers, policy engines, OPA/Rego rules, production secrets, external service dependencies, production operations, or Phase 1 HR workflow implementation.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing data-scope policy ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "data-scope policy ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A\/v1 Boundary\]\(docs\/adr\/0011-data-scope-policy-dsl-rls-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
