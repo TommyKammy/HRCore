@@ -164,6 +164,51 @@ test("policy-as-code CI strategy decision defines inspection surfaces and rule f
   );
 });
 
+test("MVP-A core stability contract defines stable identifiers and migration reservations", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0003-mvp-a-core-stability-contract.md"),
+    readRepoFile("README.md"),
+  ]);
+
+  for (const requiredAdrText of [
+    "# ADR 0003: MVP-A Core Stability Contract",
+    "## Status\n\nAccepted",
+    "- Author: TommyKammy",
+    "- Approver: TommyKammy",
+    "- Counter-approver: Not required because this contract freezes baseline schema and migration compatibility rules without changing live security, identity, authorization, tenant boundaries, auditability, data retention, backup or restore semantics, production operations, external provider trust, or compliance evidence.",
+    "- Time-locked review window: Not required because this decision does not require two-key handling.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0001: Initial Backend Stack](0001-initial-backend-stack.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)",
+    "All primary keys for core HR entities must use UUID values.",
+    "Stable entity identifiers must not be changed in place.",
+    "`entity_type` values must use `SCREAMING_SNAKE_CASE`.",
+    "Hard-delete is prohibited for core HR entities unless a later Accepted ADR explicitly supersedes this rule.",
+    "Existing enum values must not be redefined with a different meaning.",
+    "Table or column renames must keep an alias, compatibility view, compatibility column, API translation layer, or documented migration bridge until dependent code and data have moved to the new name.",
+    "Migration numbers `0001-0099` are reserved for core work.",
+    "Migration numbers `0200+` are reserved for extension work.",
+    "These invariants are policy-as-code rule commitments under ADR 0002.",
+    "This ADR does not implement a full policy engine, OPA/Rego policy, broad data-model migration, Future Extension payload rule set, legal or privacy scope decision, provider mock, LocalStack or development AWS decision, agent cost-cap control, production secret, external service dependency, or Phase 1 HR workflow.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      adr.includes(requiredAdrText),
+      `missing MVP-A core stability ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^- (Author|Approver|Counter-approver):\s*<[^>]+>\s*$/m,
+    "accepted core stability ADR decision owners must be named, not placeholders",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0003: MVP-A Core Stability Contract\]\(docs\/adr\/0003-mvp-a-core-stability-contract\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
