@@ -439,6 +439,68 @@ test("agent execution cost-cap ADR defines MVP-A stop conditions and evidence", 
   );
 });
 
+test("My Number scope ADR preserves the MVP-A non-storage boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile("docs/adr/0005-my-number-scope-boundary.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0005: My Number and Specific Personal Information Scope Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0004: Agent Execution Cost Cap and Automatic Stop Conditions](0004-agent-execution-cost-cap.md)",
+    "MVP-A and v1 must not store My Number or Specific Personal Information in HRCore core tables.",
+    "`my_number`",
+    "`individual_number`",
+    "`specific_personal_information`",
+    "OpenAPI contracts",
+    "request or response DTOs",
+    "seed data",
+    "fixtures",
+    "logs",
+    "raw provider payload storage",
+    "CSV export surfaces",
+    "migration examples",
+    "must not persist, expose, export, log, seed, fixture, or hide My Number or Specific Personal Information",
+    "JSON",
+    "note",
+    "memo",
+    "attachment",
+    "raw payload",
+    "audit fields",
+    "Existing external systems remain the system of record",
+    "future support requires a later Accepted two-key ADR",
+    "external system, external vault, separate schema, separate service, or reference-only integration",
+    "Detailed external-reference and separate-schema design is deferred to R08",
+    "#83",
+    "#88",
+    "This ADR does not implement product features, database migrations, external vault integration, legal workflow screens, APPI or DSAR policy, R08 schema design, full policy-as-code enforcement, production secrets, external services, or Phase 1 HR workflows.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing My Number scope ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "My Number scope ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0005: My Number and Specific Personal Information Scope Boundary\]\(docs\/adr\/0005-my-number-scope-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
