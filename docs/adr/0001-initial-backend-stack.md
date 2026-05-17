@@ -12,7 +12,12 @@ Accepted
 
 - Author: TommyKammy
 - Approver: TommyKammy
-- Two-key reviewer: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, production operations, compliance evidence, or irreversible data shape.
+- Counter-approver: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, auditability, data retention, production operations, provider trust, compliance evidence, or irreversible data shape.
+- Time-locked review window: Not required because this decision does not require two-key handling.
+
+## Depends on ADRs
+
+None
 
 ## Context
 
