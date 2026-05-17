@@ -1320,6 +1320,67 @@ test("My Number extension-anchor ADR preserves external-reference and separate-s
   );
 });
 
+test("sensitive personal information extension-anchor ADR preserves privacy classification consent and purpose boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0016: Sensitive Personal Information Privacy Classification, Consent, and Processing-Purpose Extension Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md)\n- [ADR 0015: My Number and Specific Personal Information External Reference and Separate Schema Boundary](0015-my-number-external-reference-separate-schema-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "MVP-A and v1 must not store, expose, export, seed, fixture, log, or hide sensitive personal information in core tables, APIs, DTOs, raw provider payloads, audit payloads, JSON, notes, memos, attachments, CSV exports, fixtures, seeds, logs, or migration examples",
+    "privacy classification",
+    "consent or lawful-handling basis",
+    "processing purpose",
+    "masking/redaction profile",
+    "export permission",
+    "audit evidence",
+    "data-scope interaction",
+    "loosely coupled extension",
+    "must not authorize display, export, logging, download, persistence, provider replay, fixture generation, seed generation, CSV generation, attachment generation, audit-payload expansion, or migration generation",
+    "generic classification flag",
+    "consent metadata",
+    "purpose text",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "`raw_payload`",
+    "`audit_event`",
+    "concrete schema names",
+    "Concrete schema, migrations, API shape, UI workflow, consent capture, DSAR operations, provider integration, retention jobs, and policy-as-code enforcement are deferred to later implementation issues or later Accepted ADRs.",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement runtime features, migrations, OpenAPI endpoints, DTOs, UI workflows, consent flows, provider integrations, privacy jobs, production secrets, external services, or policy-as-code parser rules.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing sensitive personal information extension ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "sensitive personal information extension ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0016: Sensitive Personal Information Privacy Classification, Consent, and Processing-Purpose Extension Boundary\]\(docs\/adr\/0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
