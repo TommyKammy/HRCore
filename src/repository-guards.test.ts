@@ -93,7 +93,9 @@ test("initial backend stack decision freezes Fastify and Drizzle", async () => {
     "## Date\n\n2026-05-16",
     "- Author: TommyKammy",
     "- Approver: TommyKammy",
-    "- Two-key reviewer: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, production operations, compliance evidence, or irreversible data shape.",
+    "- Counter-approver: Not required because this decision freezes the initial application framework and ORM/migration baseline without changing security, identity, authorization, tenant boundaries, auditability, data retention, production operations, provider trust, compliance evidence, or irreversible data shape.",
+    "- Time-locked review window: Not required because this decision does not require two-key handling.",
+    "## Depends on ADRs\n\nNone",
     "HRCore selects Fastify as the initial backend framework for PoC and MVP-A readiness.",
     "HRCore selects Drizzle as the initial ORM and migration baseline for PoC and MVP-A readiness.",
     "NestJS is deferred for the initial baseline.",
@@ -118,4 +120,48 @@ test("initial backend stack decision freezes Fastify and Drizzle", async () => {
     readme,
     /\[ADR 0001: Initial Backend Stack\]\(docs\/adr\/0001-initial-backend-stack\.md\)/,
   );
+});
+
+test("ADR template and process define governance metadata and precedence", async () => {
+  const [template, process] = await Promise.all([
+    readRepoFile("docs/adr/template.md"),
+    readRepoFile("docs/adr/0000-adr-process.md"),
+  ]);
+
+  for (const requiredTemplateText of [
+    "## Depends on ADRs",
+    "None",
+    "- Author:",
+    "- Approver:",
+    "- Counter-approver: Not required because <reason>, or <name>",
+    "- Time-locked review window: Not required because <reason>, or <start> to <end>",
+  ]) {
+    assert.ok(
+      template.includes(requiredTemplateText),
+      `missing ADR template governance text: ${requiredTemplateText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    template,
+    /^- Approver:\s*<[^>]+>\s*$/m,
+    "ADR template must not model Accepted ADR metadata with an unresolved approver placeholder",
+  );
+
+  for (const requiredProcessText of [
+    "Every ADR must include a `Depends on ADRs` section.",
+    "Use `None` when the ADR has no ADR dependencies.",
+    "Accepted ADRs must name an `Approver`.",
+    "Counter-approver",
+    "Time-locked review window",
+    "Two-key handling is required for decisions that affect security, identity, authorization, tenant boundaries, auditability, data retention, backup or restore semantics, production operations, external provider trust, irreversible migration shape, or compliance evidence.",
+    "newer Accepted ADRs supersede older Accepted ADRs",
+    "Accepted ADRs override README text, issue bodies, planning notes, generated docs, local scripts, and implementation comments",
+    "executable code and tests remain authoritative for observed runtime behavior",
+  ]) {
+    assert.ok(
+      process.includes(requiredProcessText),
+      `missing ADR process governance text: ${requiredProcessText}`,
+    );
+  }
 });

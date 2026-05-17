@@ -10,9 +10,14 @@ YYYY-MM-DD
 
 ## Decision owners
 
-- Author:
-- Approver:
-- Two-key reviewer: Not required because <reason>, or <name>
+- Author: <name>
+- Approver: Required before Accepted; replace this with a named maintainer or delegated architecture owner.
+- Counter-approver: Not required because <reason>, or <name>
+- Time-locked review window: Not required because <reason>, or <start> to <end>
+
+## Depends on ADRs
+
+None
 
 ## Context
 
