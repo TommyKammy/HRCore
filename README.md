@@ -14,6 +14,7 @@ The Proposed requester-equals-approver prevention DB, service, and verifier boun
 The Proposed raw payload and CSV export redaction, watermark, and download log boundary is recorded in [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md).
 The Proposed My Number and Specific Personal Information external-reference and separate-schema boundary is recorded in [ADR 0015: My Number and Specific Personal Information External Reference and Separate Schema Boundary](docs/adr/0015-my-number-external-reference-separate-schema-boundary.md).
 The Proposed sensitive personal information privacy-classification, consent, and processing-purpose extension boundary is recorded in [ADR 0016: Sensitive Personal Information Privacy Classification, Consent, and Processing-Purpose Extension Boundary](docs/adr/0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md).
+The Proposed employment-status-period and work-arrangement-period extension boundary is recorded in [ADR 0017: Employment Status and Work Arrangement Extension Boundary](docs/adr/0017-employment-status-work-arrangement-extension-boundary.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
@@ -42,6 +43,7 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 - `docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md` records the Proposed MVP-A/v1 boundary for raw payload and CSV export redaction, watermark/traceability, and download-log/audit evidence.
 - `docs/adr/0015-my-number-external-reference-separate-schema-boundary.md` records the Proposed future extension anchor for My Number and Specific Personal Information external references, vault references, separate schemas, separate services, and reference-only integration.
 - `docs/adr/0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md` records the Proposed future extension anchor for sensitive personal information privacy classification, consent or lawful-handling basis, processing purpose, masking/redaction profile, export permission, audit evidence, and data-scope interaction.
+- `docs/adr/0017-employment-status-work-arrangement-extension-boundary.md` records the Proposed future extension anchor for employment status periods, work arrangement periods, lifecycle-event linkage, primary/multiple handling, overlap constraints, correction/backdate handling, audit evidence, and privacy boundaries.
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.

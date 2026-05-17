@@ -1381,6 +1381,57 @@ test("sensitive personal information extension-anchor ADR preserves privacy clas
   );
 });
 
+test("employment status and work-arrangement extension-anchor ADR preserves generation and period-overlap boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0017-employment-status-work-arrangement-extension-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0017: Employment Status and Work Arrangement Extension Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A/v1 Handling Boundary](0008-leave-work-arrangement-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md)\n- [ADR 0016: Sensitive Personal Information Privacy Classification, Consent, and Processing-Purpose Extension Boundary](0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "future support for leave of absence, childcare leave, reduced working hours, and similar work arrangements",
+    "`employment_status_period`",
+    "`work_arrangement_period`",
+    "`lifecycle_event`",
+    "lifecycle events are evidentiary triggers or derivation inputs, not the mutable source of truth for an active period",
+    "employment status has one primary effective period per person and legal entity at a point in time",
+    "multiple simultaneous work arrangements may exist only when each arrangement type and purpose is explicitly classified",
+    "overlapping periods must be rejected unless a later Accepted ADR defines a deterministic resolution rule",
+    "correction and backdate handling must preserve audit evidence",
+    "Concrete schema, migrations, API shape, UI workflow, payroll/benefit behavior, provider integration, privacy jobs, retention jobs, and policy-as-code enforcement are deferred to later implementation issues or later Accepted ADRs.",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement runtime features, migrations, OpenAPI endpoints, DTOs, UI workflows, approval flows, payroll/benefit logic, provider integrations, privacy jobs, production secrets, external services, or policy-as-code parser rules.",
+    "ADR 0008's MVP-A/v1 leave and work-arrangement boundary remains intact",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing employment status/work-arrangement extension ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "employment status/work-arrangement extension ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0017: Employment Status and Work Arrangement Extension Boundary\]\(docs\/adr\/0017-employment-status-work-arrangement-extension-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
