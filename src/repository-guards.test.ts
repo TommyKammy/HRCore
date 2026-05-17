@@ -81,6 +81,34 @@ test("repository-owned review policy supports single-maintainer protection", asy
   }
 });
 
+test("pull request template preserves child issue review checklist", async () => {
+  const pullRequestTemplate = await readRepoFile(
+    ".github/pull_request_template.md",
+  );
+
+  for (const requiredTemplateText of [
+    "## Child Issue Review Checklist",
+    "Linked child issue:",
+    "Parent Epic:",
+    "Acceptance criteria coverage:",
+    "Local verification:",
+    "Closeout evidence:",
+    "Unresolved follow-ups:",
+    "Scope creep check:",
+    "Phase 0 boundary:",
+    "Run-mode label consistency:",
+    "ADR 0000 two-key handling:",
+    "Current-head Codex Connector review:",
+    "Unresolved review threads:",
+    "Epic completion review separation:",
+  ]) {
+    assert.ok(
+      pullRequestTemplate.includes(requiredTemplateText),
+      `missing child issue checklist text: ${requiredTemplateText}`,
+    );
+  }
+});
+
 test("initial backend stack decision freezes Fastify and Drizzle", async () => {
   const [adr, readme] = await Promise.all([
     readRepoFile("docs/adr/0001-initial-backend-stack.md"),
