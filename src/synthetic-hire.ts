@@ -53,6 +53,33 @@ export interface SyntheticHireInput {
   contactPoint?: SyntheticHireContactPointInput;
 }
 
+export interface SyntheticHireTransactionRequestInput {
+  id: string;
+  personId: string;
+  requestType: "hire";
+  statusCode: "submitted";
+  requestedAt: string;
+  correlationId: string;
+}
+
+export interface SyntheticHireRequestInput {
+  person: SyntheticHirePersonInput;
+  transactionRequest: SyntheticHireTransactionRequestInput;
+}
+
+export interface SyntheticHireLifecycleEventInput {
+  id: string;
+  eventType: "hire";
+  effectiveDate: string;
+  occurredAt: string;
+}
+
+export interface ApplySyntheticHireRequestInput {
+  request: SyntheticHireRequestInput;
+  hire: SyntheticHireInput;
+  lifecycleEvent: SyntheticHireLifecycleEventInput;
+}
+
 export interface SyntheticHirePersistenceResult {
   personId: string;
   employmentId: string;
@@ -60,11 +87,31 @@ export interface SyntheticHirePersistenceResult {
   contactPointId?: string;
 }
 
+export interface SyntheticHireRequestPersistenceResult {
+  personId: string;
+  transactionRequestId: string;
+  statusCode: "submitted";
+  correlationId: string;
+}
+
+export interface AppliedSyntheticHireRequestResult {
+  transactionRequestId: string;
+  lifecycleEventId: string;
+  personId: string;
+  statusCode: "completed";
+  correlationId: string;
+}
+
 type SyntheticHireFixtureOverrides = {
   person?: Partial<SyntheticHirePersonInput>;
   employment?: Partial<SyntheticHireEmploymentInput>;
   assignment?: Partial<SyntheticHireAssignmentInput>;
   contactPoint?: Partial<SyntheticHireContactPointInput> | null;
+};
+
+type SyntheticHireRequestFixtureOverrides = {
+  person?: Partial<SyntheticHirePersonInput>;
+  transactionRequest?: Partial<SyntheticHireTransactionRequestInput>;
 };
 
 const allowedEmploymentStatuses = new Set<SyntheticEmploymentStatus>([
@@ -125,6 +172,88 @@ export function createSyntheticHireFixture(
     assignment,
     ...(contactPoint ? { contactPoint } : {}),
   };
+}
+
+export function createSyntheticHireRequestFixture(
+  overrides: SyntheticHireRequestFixtureOverrides = {},
+): SyntheticHireRequestInput {
+  const person: SyntheticHirePersonInput = {
+    id: "person-syn-hire-001",
+    displayName: "Synthetic Hire One",
+    createdAt: "2026-05-18T00:00:00Z",
+    ...overrides.person,
+  };
+  const transactionRequest: SyntheticHireTransactionRequestInput = {
+    id: "transaction-request-syn-hire-001",
+    personId: person.id,
+    requestType: "hire",
+    statusCode: "submitted",
+    requestedAt: "2026-05-18T00:00:00Z",
+    correlationId: "correlation-syn-hire-001",
+    ...overrides.transactionRequest,
+  };
+
+  return {
+    person,
+    transactionRequest,
+  };
+}
+
+export function saveSyntheticHireRequest(
+  db: SyntheticHireDatabase,
+  input: SyntheticHireRequestInput,
+): SyntheticHireRequestPersistenceResult {
+  validateSyntheticHireRequest(input);
+
+  let savepointStarted = false;
+
+  try {
+    db.exec("SAVEPOINT synthetic_hire_request_persistence");
+    savepointStarted = true;
+
+    db.prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES (?, ?, ?)
+      `,
+    ).run(input.person.id, input.person.displayName, input.person.createdAt);
+
+    db.prepare(
+      `
+        INSERT INTO transaction_request (
+          id,
+          person_id,
+          request_type,
+          status_code,
+          requested_at,
+          correlation_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      input.transactionRequest.id,
+      input.transactionRequest.personId,
+      input.transactionRequest.requestType,
+      input.transactionRequest.statusCode,
+      input.transactionRequest.requestedAt,
+      input.transactionRequest.correlationId,
+    );
+
+    db.exec("RELEASE SAVEPOINT synthetic_hire_request_persistence");
+
+    return {
+      personId: input.person.id,
+      transactionRequestId: input.transactionRequest.id,
+      statusCode: input.transactionRequest.statusCode,
+      correlationId: input.transactionRequest.correlationId,
+    };
+  } catch (error) {
+    if (savepointStarted) {
+      rollbackNamedSavepoint(db, "synthetic_hire_request_persistence");
+    }
+
+    throw error;
+  }
 }
 
 export function saveSyntheticHire(
@@ -232,17 +361,169 @@ export function saveSyntheticHire(
   }
 }
 
-function rollbackSavepoint(db: SyntheticHireDatabase): void {
+export function applySyntheticHireRequest(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticHireRequestInput,
+): AppliedSyntheticHireRequestResult {
+  validateApplySyntheticHireRequest(input);
+
+  let savepointStarted = false;
+
   try {
-    db.exec("ROLLBACK TO SAVEPOINT synthetic_hire_persistence");
+    db.exec("SAVEPOINT synthetic_hire_request_apply");
+    savepointStarted = true;
+
+    const updateResult = db
+      .prepare(
+        `
+          UPDATE transaction_request
+          SET status_code = 'completed'
+          WHERE id = ?
+            AND person_id = ?
+            AND status_code = 'submitted'
+        `,
+      )
+      .run(input.request.transactionRequest.id, input.request.person.id);
+    requireSingleChangedRow(updateResult, "transaction_request");
+
+    db.prepare(
+      `
+        INSERT INTO employment (
+          id,
+          person_id,
+          employment_code,
+          status_code,
+          start_date,
+          end_date
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      input.hire.employment.id,
+      input.hire.employment.personId,
+      input.hire.employment.employmentCode,
+      input.hire.employment.statusCode,
+      input.hire.employment.startDate,
+      input.hire.employment.endDate ?? null,
+    );
+
+    db.prepare(
+      `
+        INSERT INTO assignment (
+          id,
+          person_id,
+          employment_id,
+          assignment_code,
+          organization_code,
+          position_code,
+          start_date,
+          end_date
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      input.hire.assignment.id,
+      input.hire.assignment.personId,
+      input.hire.assignment.employmentId,
+      input.hire.assignment.assignmentCode,
+      input.hire.assignment.organizationCode,
+      input.hire.assignment.positionCode ?? null,
+      input.hire.assignment.startDate,
+      input.hire.assignment.endDate ?? null,
+    );
+
+    if (input.hire.contactPoint) {
+      db.prepare(
+        `
+          INSERT INTO contact_point (
+            id,
+            person_id,
+            contact_type,
+            value,
+            is_primary,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+      ).run(
+        input.hire.contactPoint.id,
+        input.hire.contactPoint.personId,
+        input.hire.contactPoint.contactType,
+        input.hire.contactPoint.value,
+        toSqliteBoolean(
+          "contactPoint.isPrimary",
+          input.hire.contactPoint.isPrimary,
+        ),
+        input.hire.contactPoint.createdAt,
+      );
+    }
+
+    db.prepare(
+      `
+        INSERT INTO lifecycle_event (
+          id,
+          person_id,
+          transaction_request_id,
+          event_type,
+          effective_date,
+          occurred_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      input.lifecycleEvent.id,
+      input.request.person.id,
+      input.request.transactionRequest.id,
+      input.lifecycleEvent.eventType,
+      input.lifecycleEvent.effectiveDate,
+      input.lifecycleEvent.occurredAt,
+    );
+
+    db.exec("RELEASE SAVEPOINT synthetic_hire_request_apply");
+
+    return {
+      transactionRequestId: input.request.transactionRequest.id,
+      lifecycleEventId: input.lifecycleEvent.id,
+      personId: input.request.person.id,
+      statusCode: "completed",
+      correlationId: input.request.transactionRequest.correlationId,
+    };
+  } catch (error) {
+    if (savepointStarted) {
+      rollbackNamedSavepoint(db, "synthetic_hire_request_apply");
+    }
+
+    throw error;
+  }
+}
+
+function rollbackSavepoint(db: SyntheticHireDatabase): void {
+  rollbackNamedSavepoint(db, "synthetic_hire_persistence");
+}
+
+function rollbackNamedSavepoint(
+  db: SyntheticHireDatabase,
+  savepointName: string,
+): void {
+  try {
+    db.exec(`ROLLBACK TO SAVEPOINT ${savepointName}`);
   } catch {
     // Preserve the original write failure; rollback cleanup is best-effort.
   }
 
   try {
-    db.exec("RELEASE SAVEPOINT synthetic_hire_persistence");
+    db.exec(`RELEASE SAVEPOINT ${savepointName}`);
   } catch {
     // Preserve the original write failure; rollback cleanup is best-effort.
+  }
+}
+
+function validateSyntheticHireRequest(input: SyntheticHireRequestInput): void {
+  validatePerson(input.person);
+  validateTransactionRequest(input.transactionRequest);
+
+  if (input.transactionRequest.personId !== input.person.id) {
+    throw new Error("transactionRequest.personId must match person.id");
   }
 }
 
@@ -267,6 +548,54 @@ function validateSyntheticHire(input: SyntheticHireInput): void {
   if (input.contactPoint && input.contactPoint.personId !== input.person.id) {
     throw new Error("contactPoint.personId must match person.id");
   }
+}
+
+function validateApplySyntheticHireRequest(
+  input: ApplySyntheticHireRequestInput,
+): void {
+  validateSyntheticHireRequest(input.request);
+  validateSyntheticHire(input.hire);
+  validateLifecycleEvent(input.lifecycleEvent);
+
+  if (input.hire.person.id !== input.request.person.id) {
+    throw new Error("hire.person.id must match request.person.id");
+  }
+  if (input.lifecycleEvent.eventType !== "hire") {
+    throw new Error("lifecycleEvent.eventType must be hire");
+  }
+}
+
+function validateTransactionRequest(
+  transactionRequest: SyntheticHireTransactionRequestInput,
+): void {
+  requireNonEmpty("transactionRequest.id", transactionRequest.id);
+  requireNonEmpty("transactionRequest.personId", transactionRequest.personId);
+  if (transactionRequest.requestType !== "hire") {
+    throw new Error("transactionRequest.requestType must be hire");
+  }
+  // This PoC only models the explicit submitted -> completed apply path.
+  if (transactionRequest.statusCode !== "submitted") {
+    throw new Error("transactionRequest.statusCode must be submitted");
+  }
+  requireTimestamp(
+    "transactionRequest.requestedAt",
+    transactionRequest.requestedAt,
+  );
+  requireNonEmpty(
+    "transactionRequest.correlationId",
+    transactionRequest.correlationId,
+  );
+}
+
+function validateLifecycleEvent(
+  lifecycleEvent: SyntheticHireLifecycleEventInput,
+): void {
+  requireNonEmpty("lifecycleEvent.id", lifecycleEvent.id);
+  if (lifecycleEvent.eventType !== "hire") {
+    throw new Error("lifecycleEvent.eventType must be hire");
+  }
+  requireDate("lifecycleEvent.effectiveDate", lifecycleEvent.effectiveDate);
+  requireTimestamp("lifecycleEvent.occurredAt", lifecycleEvent.occurredAt);
 }
 
 function validatePerson(person: SyntheticHirePersonInput): void {
@@ -328,6 +657,17 @@ function requireBoolean(fieldName: string, value: unknown): boolean {
 
 function toSqliteBoolean(fieldName: string, value: unknown): 0 | 1 {
   return requireBoolean(fieldName, value) ? 1 : 0;
+}
+
+function requireSingleChangedRow(value: unknown, tableName: string): void {
+  if (!value || typeof value !== "object" || !("changes" in value)) {
+    throw new Error(`${tableName} update must report changed rows`);
+  }
+
+  const changes = (value as { changes: unknown }).changes;
+  if (changes !== 1 && changes !== 1n) {
+    throw new Error(`${tableName} must transition exactly one submitted row`);
+  }
 }
 
 function requireDate(fieldName: string, value: string): void {
