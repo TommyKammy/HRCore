@@ -47,6 +47,11 @@ test("mock Okta mastering adapter projects create, update, disable, and no-op re
     employeeNumber: "EMP-002",
     externalId: "okta-user-002",
     effectiveAt: "2026-05-18T01:00:00.000Z",
+    metadata: expectedMockMetadata(
+      "create",
+      "EMP-002",
+      "2026-05-18T01:00:00.000Z",
+    ),
   });
 
   assert.deepEqual(
@@ -70,6 +75,11 @@ test("mock Okta mastering adapter projects create, update, disable, and no-op re
       employeeNumber: "EMP-001",
       externalId: "okta-user-001",
       effectiveAt: "2026-05-18T02:00:00.000Z",
+      metadata: expectedMockMetadata(
+        "update",
+        "EMP-001",
+        "2026-05-18T02:00:00.000Z",
+      ),
     },
   );
 
@@ -85,6 +95,11 @@ test("mock Okta mastering adapter projects create, update, disable, and no-op re
       employeeNumber: "EMP-001",
       externalId: "okta-user-001",
       effectiveAt: "2026-05-18T03:00:00.000Z",
+      metadata: expectedMockMetadata(
+        "disable",
+        "EMP-001",
+        "2026-05-18T03:00:00.000Z",
+      ),
     },
   );
 
@@ -100,6 +115,11 @@ test("mock Okta mastering adapter projects create, update, disable, and no-op re
       employeeNumber: "EMP-001",
       reason: "already_deprovisioned",
       effectiveAt: "2026-05-18T04:00:00.000Z",
+      metadata: expectedMockMetadata(
+        "disable",
+        "EMP-001",
+        "2026-05-18T04:00:00.000Z",
+      ),
     },
   );
 });
@@ -145,6 +165,11 @@ test("mock Okta mastering adapter exposes retryable and permanent failure states
       message: "Synthetic retryable provider failure.",
       retryAfterSeconds: 60,
       effectiveAt: "2026-05-18T05:00:00.000Z",
+      metadata: expectedMockMetadata(
+        "create",
+        "EMP-RETRY",
+        "2026-05-18T05:00:00.000Z",
+      ),
     },
   );
 
@@ -161,6 +186,44 @@ test("mock Okta mastering adapter exposes retryable and permanent failure states
       errorCode: "mock_validation_rejected",
       message: "Synthetic permanent provider failure.",
       effectiveAt: "2026-05-18T06:00:00.000Z",
+      metadata: expectedMockMetadata(
+        "disable",
+        "EMP-PERM",
+        "2026-05-18T06:00:00.000Z",
+      ),
+    },
+  );
+});
+
+test("mock Okta mastering adapter records deterministic projection metadata for run logs", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+
+  assert.deepEqual(
+    await adapter.project({
+      operation: "create",
+      desiredUser: createSyntheticOktaUserFixture({
+        externalId: "okta-user-log-001",
+        employeeNumber: "EMP-LOG-001",
+        email: "runlog.identity@example.invalid",
+        displayName: "Run Log Identity",
+        givenName: "Run",
+        familyName: "Log",
+        status: "staged",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T07:00:00.000Z",
+      }),
+    }),
+    {
+      outcome: "success",
+      operation: "create",
+      employeeNumber: "EMP-LOG-001",
+      externalId: "okta-user-log-001",
+      effectiveAt: "2026-05-18T07:00:00.000Z",
+      metadata: expectedMockMetadata(
+        "create",
+        "EMP-LOG-001",
+        "2026-05-18T07:00:00.000Z",
+      ),
     },
   );
 });
@@ -186,3 +249,16 @@ test("real Okta mastering mode stays blocked until local placeholder credentials
     /Real Okta mastering adapter is not implemented for this PoC/,
   );
 });
+
+function expectedMockMetadata(
+  operation: string,
+  employeeNumber: string,
+  effectiveAt: string,
+) {
+  return {
+    adapterMode: "mock",
+    provider: "okta",
+    projectionKey: `okta:mock:${operation}:${employeeNumber}:${effectiveAt}`,
+    synthetic: true,
+  };
+}

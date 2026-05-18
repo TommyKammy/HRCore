@@ -47,7 +47,14 @@ export type ForcedOktaMasteringFailure =
   | RetryableOktaMasteringFailure
   | PermanentOktaMasteringFailure;
 
-export type OktaMasteringProjectionResult =
+export interface OktaMasteringProjectionMetadata {
+  provider: "okta";
+  adapterMode: "mock";
+  projectionKey: string;
+  synthetic: true;
+}
+
+type OktaMasteringProjectionResultCore =
   | {
       outcome: "success";
       operation: OktaMasteringOperation;
@@ -72,6 +79,11 @@ export type OktaMasteringProjectionResult =
       employeeNumber: string;
       effectiveAt: string;
     });
+
+export type OktaMasteringProjectionResult =
+  OktaMasteringProjectionResultCore & {
+    metadata: OktaMasteringProjectionMetadata;
+  };
 
 export interface OktaMasteringAdapter {
   project(
@@ -175,27 +187,36 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     const forcedFailure = this.forcedFailures[employeeNumber];
 
     if (forcedFailure !== undefined) {
-      return {
+      return withMockMetadata({
         ...forcedFailure,
         operation: projection.operation,
         employeeNumber,
         effectiveAt,
-      };
+      });
     }
 
+    let result: OktaMasteringProjectionResultCore;
     switch (projection.operation) {
       case "create":
-        return this.create(projection.desiredUser);
+        result = this.create(projection.desiredUser);
+        break;
       case "update":
-        return this.update(projection.desiredUser);
+        result = this.update(projection.desiredUser);
+        break;
       case "disable":
-        return this.disable(projection.employeeNumber, projection.effectiveAt);
+        result = this.disable(
+          projection.employeeNumber,
+          projection.effectiveAt,
+        );
+        break;
     }
+
+    return withMockMetadata(result);
   }
 
   private create(
     desiredUser: SyntheticOktaUserFixture,
-  ): OktaMasteringProjectionResult {
+  ): OktaMasteringProjectionResultCore {
     if (this.usersByEmployeeNumber.has(desiredUser.employeeNumber)) {
       return {
         outcome: "skipped",
@@ -215,7 +236,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
 
   private update(
     desiredUser: SyntheticOktaUserFixture,
-  ): OktaMasteringProjectionResult {
+  ): OktaMasteringProjectionResultCore {
     if (!this.usersByEmployeeNumber.has(desiredUser.employeeNumber)) {
       return {
         outcome: "skipped",
@@ -236,7 +257,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   private disable(
     employeeNumber: string,
     effectiveAt: string,
-  ): OktaMasteringProjectionResult {
+  ): OktaMasteringProjectionResultCore {
     const existingUser = this.usersByEmployeeNumber.get(employeeNumber);
 
     if (existingUser === undefined) {
@@ -273,13 +294,33 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
 function successResult(
   operation: OktaMasteringOperation,
   user: SyntheticOktaUserFixture,
-): OktaMasteringProjectionResult {
+): OktaMasteringProjectionResultCore {
   return {
     outcome: "success",
     operation,
     employeeNumber: user.employeeNumber,
     externalId: user.externalId,
     effectiveAt: user.effectiveAt,
+  };
+}
+
+function withMockMetadata(
+  result: OktaMasteringProjectionResultCore,
+): OktaMasteringProjectionResult {
+  return {
+    ...result,
+    metadata: {
+      adapterMode: "mock",
+      provider: "okta",
+      projectionKey: [
+        "okta",
+        "mock",
+        result.operation,
+        result.employeeNumber,
+        result.effectiveAt,
+      ].join(":"),
+      synthetic: true,
+    },
   };
 }
 
