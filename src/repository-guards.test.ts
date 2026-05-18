@@ -18,6 +18,31 @@ test("GitHub Actions CI runs the canonical pre-PR verification command", async (
   assert.match(workflow, /^\s+run: npm run verify:pre-pr$/m);
 });
 
+test("runtime node:sqlite usage keeps the supported Node engine floor aligned", async () => {
+  const [
+    packageJsonText,
+    packageLockJsonText,
+    localSqliteSource,
+    serverSource,
+  ] = await Promise.all([
+    readRepoFile("package.json"),
+    readRepoFile("package-lock.json"),
+    readRepoFile("src/local-sqlite.ts"),
+    readRepoFile("src/server.ts"),
+  ]);
+  const packageJson = JSON.parse(packageJsonText) as {
+    engines?: { node?: string };
+  };
+  const packageLockJson = JSON.parse(packageLockJsonText) as {
+    packages?: { ""?: { engines?: { node?: string } } };
+  };
+
+  assert.match(localSqliteSource, /import\("node:sqlite"\)/u);
+  assert.match(serverSource, /openLocalSyntheticWritebackDatabase/u);
+  assert.equal(packageJson.engines?.node, ">=22.5.0");
+  assert.equal(packageLockJson.packages?.[""]?.engines?.node, ">=22.5.0");
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
