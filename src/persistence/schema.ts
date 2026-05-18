@@ -234,6 +234,7 @@ export const audit_event = sqliteTable(
     subjectId: text("subject_id").notNull(),
     occurredAt: text("occurred_at").notNull(),
     correlationId: text("correlation_id"),
+    pocMarker: text("poc_marker", { enum: ["synthetic_poc"] }).notNull(),
   },
   (table) => [
     check("audit_event_id_non_empty", sql`length(${table.id}) > 0`),
@@ -250,6 +251,10 @@ export const audit_event = sqliteTable(
     check(
       "audit_event_occurred_at_date",
       sql`${table.occurredAt} glob '????-??-??*'`,
+    ),
+    check(
+      "audit_event_poc_marker_allowed",
+      sql`${table.pocMarker} in ('synthetic_poc')`,
     ),
   ],
 );

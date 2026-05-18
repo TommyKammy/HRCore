@@ -147,6 +147,36 @@ test("synthetic hire use case persists person, employment, and assignment togeth
         },
       ],
     );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT actor_id, action, subject_table, subject_id, occurred_at, correlation_id, poc_marker
+              FROM audit_event
+              ORDER BY
+                CASE subject_table
+                  WHEN 'transaction_request' THEN 1
+                  WHEN 'lifecycle_event' THEN 2
+                  ELSE 3
+                END,
+                id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          actor_id: "synthetic-poc-actor",
+          action: "poc.synthetic_hire.persisted",
+          subject_table: "person",
+          subject_id: "person-syn-hire-001",
+          occurred_at: "2026-05-18T00:00:00Z",
+          correlation_id: "correlation-syn-hire-direct-001",
+          poc_marker: "synthetic_poc",
+        },
+      ],
+    );
   } finally {
     db.close();
   }
@@ -264,6 +294,72 @@ test("synthetic hire request remains separate from the applied lifecycle event",
           event_type: "hire",
           effective_date: "2026-05-18",
           occurred_at: "2026-05-18T00:00:00Z",
+        },
+      ],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    saveSyntheticHireRequest(db, request);
+    applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-001",
+        eventType: "hire",
+        effectiveDate: "2026-05-18",
+        occurredAt: "2026-05-18T00:00:00Z",
+      },
+    });
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT actor_id, action, subject_table, subject_id, occurred_at, correlation_id, poc_marker
+              FROM audit_event
+              ORDER BY
+                CASE subject_table
+                  WHEN 'transaction_request' THEN 1
+                  WHEN 'lifecycle_event' THEN 2
+                  ELSE 3
+                END,
+                id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          actor_id: "synthetic-poc-actor",
+          action: "poc.synthetic_hire.request_submitted",
+          subject_table: "transaction_request",
+          subject_id: "transaction-request-syn-hire-001",
+          occurred_at: "2026-05-18T00:00:00Z",
+          correlation_id: "correlation-syn-hire-001",
+          poc_marker: "synthetic_poc",
+        },
+        {
+          actor_id: "synthetic-poc-actor",
+          action: "poc.synthetic_hire.lifecycle_applied",
+          subject_table: "lifecycle_event",
+          subject_id: "lifecycle-event-syn-hire-001",
+          occurred_at: "2026-05-18T00:00:00Z",
+          correlation_id: "correlation-syn-hire-001",
+          poc_marker: "synthetic_poc",
         },
       ],
     );

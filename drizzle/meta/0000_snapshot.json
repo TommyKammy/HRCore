@@ -167,6 +167,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "poc_marker": {
+          "name": "poc_marker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {},
@@ -197,6 +204,10 @@
         "audit_event_occurred_at_date": {
           "name": "audit_event_occurred_at_date",
           "value": "\"audit_event\".\"occurred_at\" glob '????-??-??*'"
+        },
+        "audit_event_poc_marker_allowed": {
+          "name": "audit_event_poc_marker_allowed",
+          "value": "\"audit_event\".\"poc_marker\" in ('synthetic_poc')"
         }
       }
     },

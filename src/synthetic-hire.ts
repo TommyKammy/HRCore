@@ -46,11 +46,19 @@ export interface SyntheticHireContactPointInput {
   createdAt: string;
 }
 
+export interface SyntheticHireAuditInput {
+  actorId: string;
+  correlationId: string;
+  occurredAt: string;
+  pocMarker: "synthetic_poc";
+}
+
 export interface SyntheticHireInput {
   person: SyntheticHirePersonInput;
   employment: SyntheticHireEmploymentInput;
   assignment: SyntheticHireAssignmentInput;
   contactPoint?: SyntheticHireContactPointInput;
+  audit: SyntheticHireAuditInput;
 }
 
 export interface SyntheticHireTransactionRequestInput {
@@ -120,6 +128,8 @@ const allowedEmploymentStatuses = new Set<SyntheticEmploymentStatus>([
   "terminated",
 ]);
 
+const syntheticAuditActorId = "synthetic-poc-actor";
+const syntheticAuditPocMarker = "synthetic_poc";
 const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const timestampPattern =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
@@ -170,6 +180,12 @@ export function createSyntheticHireFixture(
     person,
     employment,
     assignment,
+    audit: {
+      actorId: syntheticAuditActorId,
+      correlationId: "correlation-syn-hire-direct-001",
+      occurredAt: person.createdAt,
+      pocMarker: syntheticAuditPocMarker,
+    },
     ...(contactPoint ? { contactPoint } : {}),
   };
 }
@@ -238,6 +254,17 @@ export function saveSyntheticHireRequest(
       input.transactionRequest.requestedAt,
       input.transactionRequest.correlationId,
     );
+
+    insertSyntheticAuditEvent(db, {
+      id: `audit-event-${input.transactionRequest.id}-submitted`,
+      actorId: syntheticAuditActorId,
+      action: "poc.synthetic_hire.request_submitted",
+      subjectTable: "transaction_request",
+      subjectId: input.transactionRequest.id,
+      occurredAt: input.transactionRequest.requestedAt,
+      correlationId: input.transactionRequest.correlationId,
+      pocMarker: syntheticAuditPocMarker,
+    });
 
     db.exec("RELEASE SAVEPOINT synthetic_hire_request_persistence");
 
@@ -343,6 +370,17 @@ export function saveSyntheticHire(
         input.contactPoint.createdAt,
       );
     }
+
+    insertSyntheticAuditEvent(db, {
+      id: `audit-event-${input.person.id}-persisted`,
+      actorId: input.audit.actorId,
+      action: "poc.synthetic_hire.persisted",
+      subjectTable: "person",
+      subjectId: input.person.id,
+      occurredAt: input.audit.occurredAt,
+      correlationId: input.audit.correlationId,
+      pocMarker: input.audit.pocMarker,
+    });
 
     db.exec("RELEASE SAVEPOINT synthetic_hire_persistence");
 
@@ -493,6 +531,17 @@ export function applySyntheticHireRequest(
       );
     }
 
+    insertSyntheticAuditEvent(db, {
+      id: `audit-event-${input.lifecycleEvent.id}-applied`,
+      actorId: syntheticAuditActorId,
+      action: "poc.synthetic_hire.lifecycle_applied",
+      subjectTable: "lifecycle_event",
+      subjectId: input.lifecycleEvent.id,
+      occurredAt: input.lifecycleEvent.occurredAt,
+      correlationId: input.request.transactionRequest.correlationId,
+      pocMarker: syntheticAuditPocMarker,
+    });
+
     db.exec("RELEASE SAVEPOINT synthetic_hire_request_apply");
 
     return {
@@ -509,6 +558,49 @@ export function applySyntheticHireRequest(
 
     throw error;
   }
+}
+
+type AuditSubjectTable = "person" | "transaction_request" | "lifecycle_event";
+
+type SyntheticAuditEventInput = {
+  id: string;
+  actorId: string;
+  action: string;
+  subjectTable: AuditSubjectTable;
+  subjectId: string;
+  occurredAt: string;
+  correlationId: string;
+  pocMarker: "synthetic_poc";
+};
+
+function insertSyntheticAuditEvent(
+  db: SyntheticHireDatabase,
+  input: SyntheticAuditEventInput,
+): void {
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id,
+        actor_id,
+        action,
+        subject_table,
+        subject_id,
+        occurred_at,
+        correlation_id,
+        poc_marker
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    input.id,
+    input.actorId,
+    input.action,
+    input.subjectTable,
+    input.subjectId,
+    input.occurredAt,
+    input.correlationId,
+    input.pocMarker,
+  );
 }
 
 function rollbackSavepoint(db: SyntheticHireDatabase): void {
@@ -545,6 +637,7 @@ function validateSyntheticHire(input: SyntheticHireInput): void {
   validatePerson(input.person);
   validateEmployment(input.employment);
   validateAssignment(input.assignment);
+  validateAudit(input.audit);
 
   if (input.contactPoint) {
     validateContactPoint(input.contactPoint);
@@ -610,6 +703,15 @@ function validateLifecycleEvent(
   }
   requireDate("lifecycleEvent.effectiveDate", lifecycleEvent.effectiveDate);
   requireTimestamp("lifecycleEvent.occurredAt", lifecycleEvent.occurredAt);
+}
+
+function validateAudit(audit: SyntheticHireAuditInput): void {
+  requireNonEmpty("audit.actorId", audit.actorId);
+  requireNonEmpty("audit.correlationId", audit.correlationId);
+  requireTimestamp("audit.occurredAt", audit.occurredAt);
+  if (audit.pocMarker !== syntheticAuditPocMarker) {
+    throw new Error("audit.pocMarker must mark synthetic PoC evidence");
+  }
 }
 
 function validatePerson(person: SyntheticHirePersonInput): void {
