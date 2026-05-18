@@ -178,6 +178,95 @@ test("synthetic hire input validation fails closed before partial writes", async
   }
 });
 
+test("synthetic hire validation rejects malformed timestamps and impossible dates", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rejectedInputs = [
+      {
+        input: createSyntheticHireFixture({
+          person: {
+            createdAt: "2026-05-18Tnot-a-time",
+          },
+        }),
+        error: /person.createdAt must be an ISO timestamp/,
+      },
+      {
+        input: createSyntheticHireFixture({
+          person: {
+            createdAt: "2026-02-30T00:00:00Z",
+          },
+        }),
+        error: /person.createdAt must be an ISO timestamp/,
+      },
+      {
+        input: createSyntheticHireFixture({
+          employment: {
+            startDate: "2026-02-30",
+          },
+        }),
+        error: /employment.startDate must be an ISO date/,
+      },
+    ];
+
+    for (const { input, error } of rejectedInputs) {
+      assert.throws(() => saveSyntheticHire(db, input), error);
+    }
+
+    for (const tableName of ["person", "employment", "assignment"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must remain empty after rejected timestamp or date input`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire can run inside a caller-owned transaction", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec("BEGIN IMMEDIATE");
+
+    const result = saveSyntheticHire(db, createSyntheticHireFixture());
+
+    assert.deepEqual(result, {
+      personId: "person-syn-hire-001",
+      employmentId: "employment-syn-hire-001",
+      assignmentId: "assignment-syn-hire-001",
+      contactPointId: "contact-point-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRow(db.prepare("SELECT count(*) AS count FROM person").get()),
+      { count: 1 },
+    );
+
+    db.exec("ROLLBACK");
+
+    for (const tableName of ["person", "employment", "assignment"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must remain under the caller-owned transaction boundary`,
+      );
+    }
+  } finally {
+    if (db.isTransaction) {
+      db.exec("ROLLBACK");
+    }
+    db.close();
+  }
+});
+
 test("synthetic hire database failures roll back earlier hire writes", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -234,6 +323,73 @@ test("synthetic hire database failures roll back earlier hire writes", async (t)
       [{ id: "person-existing-contact" }],
     );
   } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire database failures inside a caller-owned transaction roll back to the savepoint", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-existing-contact', 'Synthetic Existing Contact', '2026-05-18T00:00:00Z');
+
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-syn-hire-001',
+        'person-existing-contact',
+        'work_email',
+        'synthetic.existing@example.invalid',
+        1,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    assert.throws(
+      () => saveSyntheticHire(db, createSyntheticHireFixture()),
+      /UNIQUE constraint failed/,
+    );
+
+    assert.equal(db.isTransaction, true);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id
+              FROM person
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [{ id: "person-existing-contact" }],
+    );
+    for (const tableName of ["employment", "assignment"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must remain empty after savepoint rollback`,
+      );
+    }
+
+    db.exec("ROLLBACK");
+  } finally {
+    if (db.isTransaction) {
+      db.exec("ROLLBACK");
+    }
     db.close();
   }
 });

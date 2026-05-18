@@ -6,6 +6,7 @@ export interface SqlStatement {
 
 export interface SyntheticHireDatabase {
   exec(sql: string): unknown;
+  readonly isTransaction?: boolean;
   prepare(sql: string): SqlStatement;
 }
 
@@ -73,8 +74,9 @@ const allowedEmploymentStatuses = new Set<SyntheticEmploymentStatus>([
   "terminated",
 ]);
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/u;
-const timestampPattern = /^\d{4}-\d{2}-\d{2}T/u;
+const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
+const timestampPattern =
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
 
 export function createSyntheticHireFixture(
   overrides: SyntheticHireFixtureOverrides = {},
@@ -132,10 +134,13 @@ export function saveSyntheticHire(
 ): SyntheticHirePersistenceResult {
   validateSyntheticHire(input);
 
-  let transactionStarted = false;
+  const transactionMode = db.isTransaction ? "savepoint" : "transaction";
   try {
-    db.exec("BEGIN IMMEDIATE");
-    transactionStarted = true;
+    if (transactionMode === "savepoint") {
+      db.exec("SAVEPOINT synthetic_hire_persistence");
+    } else {
+      db.exec("BEGIN IMMEDIATE");
+    }
 
     db.prepare(
       `
@@ -213,8 +218,11 @@ export function saveSyntheticHire(
       );
     }
 
-    db.exec("COMMIT");
-    transactionStarted = false;
+    if (transactionMode === "savepoint") {
+      db.exec("RELEASE SAVEPOINT synthetic_hire_persistence");
+    } else {
+      db.exec("COMMIT");
+    }
 
     return {
       personId: input.person.id,
@@ -223,7 +231,10 @@ export function saveSyntheticHire(
       ...(input.contactPoint ? { contactPointId: input.contactPoint.id } : {}),
     };
   } catch (error) {
-    if (transactionStarted) {
+    if (transactionMode === "savepoint") {
+      db.exec("ROLLBACK TO SAVEPOINT synthetic_hire_persistence");
+      db.exec("RELEASE SAVEPOINT synthetic_hire_persistence");
+    } else if (db.isTransaction) {
       db.exec("ROLLBACK");
     }
 
@@ -304,7 +315,7 @@ function requireNonEmpty(fieldName: string, value: string): void {
 
 function requireDate(fieldName: string, value: string): void {
   requireNonEmpty(fieldName, value);
-  if (!datePattern.test(value)) {
+  if (!isValidIsoDate(value)) {
     throw new Error(`${fieldName} must be an ISO date`);
   }
 }
@@ -322,7 +333,30 @@ function requireOptionalDate(
 
 function requireTimestamp(fieldName: string, value: string): void {
   requireNonEmpty(fieldName, value);
-  if (!timestampPattern.test(value)) {
+  const match = timestampPattern.exec(value);
+  if (!match || !isValidIsoDateParts(match[1], match[2], match[3])) {
     throw new Error(`${fieldName} must be an ISO timestamp`);
   }
+}
+
+function isValidIsoDate(value: string): boolean {
+  const match = datePattern.exec(value);
+  return Boolean(match && isValidIsoDateParts(match[1], match[2], match[3]));
+}
+
+function isValidIsoDateParts(
+  yearText: string,
+  monthText: string,
+  dayText: string,
+): boolean {
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month - 1 &&
+    candidate.getUTCDate() === day
+  );
 }
