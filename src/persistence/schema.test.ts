@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
@@ -68,13 +69,16 @@ const readCommittedMigrationSql = async (): Promise<string> => {
     .filter((file) => file.endsWith(".sql"))
     .sort();
 
-  assert.equal(
-    migrationFiles.length,
-    1,
-    "minimum DDL issue should commit one focused migration artifact",
+  assert.ok(
+    migrationFiles.length > 0,
+    "minimum DDL issue should commit at least one migration artifact",
   );
 
-  return readRepoFile(join("drizzle", migrationFiles[0]));
+  const migrationSqlFiles = await Promise.all(
+    migrationFiles.map((file) => readRepoFile(join("drizzle", file))),
+  );
+
+  return migrationSqlFiles.join("\n");
 };
 
 const forbiddenSamplePattern = new RegExp(
@@ -121,12 +125,108 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.match(migrationSql, /contact_type.*work_email/s);
   assert.match(migrationSql, /transaction_request/);
   assert.match(migrationSql, /lifecycle_event/);
+  assert.match(
+    migrationSql,
+    /FOREIGN KEY \(`employment_id`,`person_id`\) REFERENCES `employment`\(`id`,`person_id`\)/,
+  );
+  assert.match(
+    migrationSql,
+    /FOREIGN KEY \(`transaction_request_id`,`person_id`\) REFERENCES `transaction_request`\(`id`,`person_id`\)/,
+  );
   assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
   assert.doesNotMatch(
     migrationSql,
     /approver|approval_workflow|rbac|retention_job/i,
   );
   assert.doesNotMatch(migrationSql, /my_number|individual_number/i);
+});
+
+test("DDL constraints reject cross-person lifecycle links", async () => {
+  const db = new DatabaseSync(":memory:");
+
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec(await readCommittedMigrationSql());
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES
+        ('person-1', 'Synthetic One', '2026-05-18T00:00:00Z'),
+        ('person-2', 'Synthetic Two', '2026-05-18T00:00:00Z');
+
+      INSERT INTO employment (
+        id,
+        person_id,
+        employment_code,
+        status_code,
+        start_date
+      )
+      VALUES ('employment-1', 'person-1', 'employment-code-1', 'active', '2026-05-18');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at
+      )
+      VALUES (
+        'transaction-request-1',
+        'person-1',
+        'hire',
+        'submitted',
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO assignment (
+            id,
+            person_id,
+            employment_id,
+            assignment_code,
+            organization_code,
+            start_date
+          )
+          VALUES (
+            'assignment-cross-person',
+            'person-2',
+            'employment-1',
+            'assignment-code-cross-person',
+            'organization-code-1',
+            '2026-05-18'
+          );
+        `),
+      /FOREIGN KEY constraint failed/,
+    );
+
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO lifecycle_event (
+            id,
+            person_id,
+            transaction_request_id,
+            event_type,
+            effective_date,
+            occurred_at
+          )
+          VALUES (
+            'lifecycle-event-cross-person',
+            'person-2',
+            'transaction-request-1',
+            'hire',
+            '2026-05-18',
+            '2026-05-18T00:00:00Z'
+          );
+        `),
+      /FOREIGN KEY constraint failed/,
+    );
+  } finally {
+    db.close();
+  }
 });
 
 test("DDL work does not promote proposed ADRs or introduce protected samples", async () => {

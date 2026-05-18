@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   integer,
   sqliteTable,
   text,
@@ -43,6 +44,7 @@ export const employment = sqliteTable(
   },
   (table) => [
     uniqueIndex("employment_employment_code_unique").on(table.employmentCode),
+    uniqueIndex("employment_id_person_unique").on(table.id, table.personId),
     check("employment_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "employment_code_non_empty",
@@ -81,6 +83,11 @@ export const assignment = sqliteTable(
   },
   (table) => [
     uniqueIndex("assignment_assignment_code_unique").on(table.assignmentCode),
+    foreignKey({
+      name: "assignment_employment_person_match_fk",
+      columns: [table.employmentId, table.personId],
+      foreignColumns: [employment.id, employment.personId],
+    }),
     check("assignment_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "assignment_code_non_empty",
@@ -154,6 +161,10 @@ export const transaction_request = sqliteTable(
     correlationId: text("correlation_id"),
   },
   (table) => [
+    uniqueIndex("transaction_request_id_person_unique").on(
+      table.id,
+      table.personId,
+    ),
     check("transaction_request_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "transaction_request_type_allowed",
@@ -187,6 +198,11 @@ export const lifecycle_event = sqliteTable(
     occurredAt: text("occurred_at").notNull(),
   },
   (table) => [
+    foreignKey({
+      name: "lifecycle_event_request_person_match_fk",
+      columns: [table.transactionRequestId, table.personId],
+      foreignColumns: [transaction_request.id, transaction_request.personId],
+    }),
     check("lifecycle_event_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "lifecycle_event_type_allowed",

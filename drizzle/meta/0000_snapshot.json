@@ -89,6 +89,15 @@
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "assignment_employment_person_match_fk": {
+          "name": "assignment_employment_person_match_fk",
+          "tableFrom": "assignment",
+          "tableTo": "employment",
+          "columnsFrom": ["employment_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -341,6 +350,11 @@
           "name": "employment_employment_code_unique",
           "columns": ["employment_code"],
           "isUnique": true
+        },
+        "employment_id_person_unique": {
+          "name": "employment_id_person_unique",
+          "columns": ["id", "person_id"],
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -442,6 +456,15 @@
           "tableTo": "transaction_request",
           "columnsFrom": ["transaction_request_id"],
           "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lifecycle_event_request_person_match_fk": {
+          "name": "lifecycle_event_request_person_match_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "transaction_request",
+          "columnsFrom": ["transaction_request_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -557,7 +580,13 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "transaction_request_id_person_unique": {
+          "name": "transaction_request_id_person_unique",
+          "columns": ["id", "person_id"],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "transaction_request_person_id_person_id_fk": {
           "name": "transaction_request_person_id_person_id_fk",
