@@ -90,7 +90,7 @@ type OktaGroupProjectionResultCore =
       outcome: "permanent_failure";
       operation: OktaGroupProjectionOperation;
       employeeNumber: string;
-      errorCode: "mock_unknown_group";
+      errorCode: "mock_invalid_group_operation" | "mock_unknown_group";
       message: string;
       groupKeys: string[];
       effectiveAt: string;
@@ -276,6 +276,18 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   ): Promise<OktaGroupProjectionResult> {
     const normalizedGroupKeys = normalizeGroupKeys(projection.groupKeys);
 
+    if (projection.operation !== "replace_user_groups") {
+      return withMockGroupMetadata({
+        outcome: "permanent_failure",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        errorCode: "mock_invalid_group_operation",
+        message: "Synthetic group projection operation is not supported.",
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
     const unknownGroupKeys = normalizedGroupKeys.filter(
       (groupKey) => !this.groupsByKey.has(groupKey),
     );
@@ -286,7 +298,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
         employeeNumber: projection.employeeNumber,
         errorCode: "mock_unknown_group",
         message: "Synthetic group projection references unknown group keys.",
-        groupKeys: unknownGroupKeys,
+        groupKeys: normalizedGroupKeys,
         effectiveAt: projection.effectiveAt,
       });
     }
@@ -429,9 +441,9 @@ function withMockMetadata(
       projectionKey: [
         "okta",
         "mock",
-        result.operation,
-        result.employeeNumber,
-        result.effectiveAt,
+        encodeProjectionKeyPart(result.operation),
+        encodeProjectionKeyPart(result.employeeNumber),
+        encodeProjectionKeyPart(result.effectiveAt),
       ].join(":"),
       synthetic: true,
     },
@@ -452,14 +464,18 @@ function withMockGroupMetadata(
       projectionKey: [
         "okta",
         "mock",
-        result.operation,
-        result.employeeNumber,
-        groupKeys.join(","),
-        result.effectiveAt,
+        encodeProjectionKeyPart(result.operation),
+        encodeProjectionKeyPart(result.employeeNumber),
+        encodeProjectionKeyPart(JSON.stringify(groupKeys)),
+        encodeProjectionKeyPart(result.effectiveAt),
       ].join(":"),
       synthetic: true,
     },
   };
+}
+
+function encodeProjectionKeyPart(value: string): string {
+  return encodeURIComponent(value);
 }
 
 function normalizeGroupKeys(groupKeys: string[]): string[] {
