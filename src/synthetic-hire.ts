@@ -210,7 +210,7 @@ export function saveSyntheticHire(
         input.contactPoint.personId,
         input.contactPoint.contactType,
         input.contactPoint.value,
-        input.contactPoint.isPrimary ? 1 : 0,
+        toSqliteBoolean("contactPoint.isPrimary", input.contactPoint.isPrimary),
         input.contactPoint.createdAt,
       );
     }
@@ -308,9 +308,7 @@ function validateContactPoint(
   if (contactPoint.value.indexOf("@") <= 0) {
     throw new Error("contactPoint.value must be a skeleton work email");
   }
-  if (typeof contactPoint.isPrimary !== "boolean") {
-    throw new Error("contactPoint.isPrimary must be a boolean");
-  }
+  requireBoolean("contactPoint.isPrimary", contactPoint.isPrimary);
   requireTimestamp("contactPoint.createdAt", contactPoint.createdAt);
 }
 
@@ -318,6 +316,18 @@ function requireNonEmpty(fieldName: string, value: string): void {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${fieldName} must be a non-empty string`);
   }
+}
+
+function requireBoolean(fieldName: string, value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`${fieldName} must be a boolean`);
+  }
+
+  return value;
+}
+
+function toSqliteBoolean(fieldName: string, value: unknown): 0 | 1 {
+  return requireBoolean(fieldName, value) ? 1 : 0;
 }
 
 function requireDate(fieldName: string, value: string): void {

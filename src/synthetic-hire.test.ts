@@ -220,7 +220,7 @@ test("synthetic hire validation rejects malformed timestamps and impossible date
       {
         input: createSyntheticHireFixture({
           contactPoint: {
-            isPrimary: "true" as unknown as boolean,
+            isPrimary: "false" as unknown as boolean,
           },
         }),
         error: /contactPoint.isPrimary must be a boolean/,
