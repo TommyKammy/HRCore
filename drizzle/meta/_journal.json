@@ -8,6 +8,13 @@
       "when": 1779093734727,
       "tag": "0000_rich_redwing",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1779113482231,
+      "tag": "0001_minor_triathlon",
+      "breakpoints": true
     }
   ]
 }

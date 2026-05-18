@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -14,6 +14,18 @@ import {
 
 const readRepoFile = (path: string): Promise<string> =>
   readFile(join(process.cwd(), path), "utf8");
+
+const readCommittedMigrationSql = async (): Promise<string> => {
+  const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+
+  const migrationSqlFiles = await Promise.all(
+    migrationFiles.map((file) => readRepoFile(join("drizzle", file))),
+  );
+
+  return migrationSqlFiles.join("\n");
+};
 
 const normalizeRows = <TRow extends Record<string, unknown>>(
   rows: TRow[],
@@ -40,7 +52,7 @@ const openSchemaBackedDatabase = async (t: test.TestContext) => {
 
   const db = new sqlite.DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  db.exec(await readRepoFile("drizzle/0000_rich_redwing.sql"));
+  db.exec(await readCommittedMigrationSql());
   return db;
 };
 
@@ -313,8 +325,15 @@ test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => 
     });
 
     saveSyntheticHireRequest(db, request);
+    const applyRequest = {
+      ...request,
+      transactionRequest: {
+        ...request.transactionRequest,
+        correlationId: "correlation-input-drift-ignored",
+      },
+    };
     applySyntheticHireRequest(db, {
-      request,
+      request: applyRequest,
       hire,
       lifecycleEvent: {
         id: "lifecycle-event-syn-hire-001",

@@ -531,15 +531,12 @@ export function applySyntheticHireRequest(
       );
     }
 
-    insertSyntheticAuditEvent(db, {
+    insertSyntheticLifecycleAppliedAuditEvent(db, {
       id: `audit-event-${input.lifecycleEvent.id}-applied`,
-      actorId: syntheticAuditActorId,
-      action: "poc.synthetic_hire.lifecycle_applied",
-      subjectTable: "lifecycle_event",
       subjectId: input.lifecycleEvent.id,
       occurredAt: input.lifecycleEvent.occurredAt,
-      correlationId: input.request.transactionRequest.correlationId,
-      pocMarker: syntheticAuditPocMarker,
+      transactionRequestId: input.request.transactionRequest.id,
+      personId: input.request.person.id,
     });
 
     db.exec("RELEASE SAVEPOINT synthetic_hire_request_apply");
@@ -573,6 +570,14 @@ type SyntheticAuditEventInput = {
   pocMarker: "synthetic_poc";
 };
 
+type SyntheticLifecycleAppliedAuditEventInput = {
+  id: string;
+  subjectId: string;
+  occurredAt: string;
+  transactionRequestId: string;
+  personId: string;
+};
+
 function insertSyntheticAuditEvent(
   db: SyntheticHireDatabase,
   input: SyntheticAuditEventInput,
@@ -600,6 +605,50 @@ function insertSyntheticAuditEvent(
     input.occurredAt,
     input.correlationId,
     input.pocMarker,
+  );
+}
+
+function insertSyntheticLifecycleAppliedAuditEvent(
+  db: SyntheticHireDatabase,
+  input: SyntheticLifecycleAppliedAuditEventInput,
+): void {
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id,
+        actor_id,
+        action,
+        subject_table,
+        subject_id,
+        occurred_at,
+        correlation_id,
+        poc_marker
+      )
+      SELECT
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        correlation_id,
+        ?
+      FROM transaction_request
+      WHERE id = ?
+        AND person_id = ?
+        AND request_type = 'hire'
+        AND status_code = 'completed'
+    `,
+  ).run(
+    input.id,
+    syntheticAuditActorId,
+    "poc.synthetic_hire.lifecycle_applied",
+    "lifecycle_event",
+    input.subjectId,
+    input.occurredAt,
+    syntheticAuditPocMarker,
+    input.transactionRequestId,
+    input.personId,
   );
 }
 
