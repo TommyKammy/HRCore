@@ -54,9 +54,35 @@ export async function buildApp(
         return reply.code(400).send({ error: error.message });
       }
 
+      if (isSyntheticWritebackConstraintError(error)) {
+        return reply.code(400).send({
+          error: "writeback event violates local synthetic constraints",
+        });
+      }
+
       throw error;
     }
   });
 
   return app;
+}
+
+function isSyntheticWritebackConstraintError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const sqliteCode =
+    "code" in error && typeof error.code === "string" ? error.code : "";
+  const sqliteErrno =
+    "sqliteCode" in error && typeof error.sqliteCode === "string"
+      ? error.sqliteCode
+      : "";
+  const message = error.message.toLowerCase();
+
+  return (
+    sqliteCode.includes("SQLITE_CONSTRAINT") ||
+    sqliteErrno.includes("SQLITE_CONSTRAINT") ||
+    message.includes("constraint failed")
+  );
 }

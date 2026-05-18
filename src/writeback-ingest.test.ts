@@ -372,6 +372,42 @@ test("POST /writeback-events/work-email maps invalid synthetic input to 400", as
   );
 });
 
+test("POST /writeback-events/work-email maps local constraint failures to 400", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  const app = await buildApp({ writebackDb: db });
+  t.after(async () => {
+    await app.close();
+    db.close();
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/writeback-events/work-email",
+    payload: createSyntheticWorkEmailWritebackFixture({
+      personId: "person-writeback-missing",
+    }),
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: "writeback event violates local synthetic constraints",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM writeback_event").get(),
+    ),
+    { count: 0 },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+    ),
+    { count: 0 },
+  );
+});
+
 test("POST /writeback-events/work-email rejects non-object request bodies", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

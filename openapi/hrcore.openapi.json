@@ -59,6 +59,16 @@
           }
         },
         "responses": {
+          "400": {
+            "description": "Synthetic writeback input was malformed or violated local synthetic constraints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Synthetic writeback event was persisted and applied.",
             "content": {
@@ -85,6 +95,16 @@
           "status": {
             "type": "string",
             "const": "ok"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string"
           }
         },
         "additionalProperties": false
