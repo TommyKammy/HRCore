@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
@@ -149,8 +148,22 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.doesNotMatch(migrationSql, /my_number|individual_number/i);
 });
 
-test("DDL constraints reject cross-person lifecycle links", async () => {
-  const db = new DatabaseSync(":memory:");
+test("DDL constraints reject cross-person lifecycle links", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
 
   try {
     db.exec("PRAGMA foreign_keys = ON");
