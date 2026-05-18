@@ -4,7 +4,8 @@ import { loadOpenApiContract } from "./openapi.js";
 import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import {
   ingestSyntheticWorkEmailWriteback,
-  type SyntheticWorkEmailWritebackInput,
+  parseSyntheticWorkEmailWritebackInput,
+  SyntheticWorkEmailWritebackValidationError,
   type SyntheticWritebackDatabase,
 } from "./writeback-ingest.js";
 
@@ -40,12 +41,21 @@ export async function buildApp(
       });
     }
 
-    const result = ingestSyntheticWorkEmailWriteback(
-      options.writebackDb,
-      request.body as SyntheticWorkEmailWritebackInput,
-    );
+    try {
+      const input = parseSyntheticWorkEmailWritebackInput(request.body);
+      const result = ingestSyntheticWorkEmailWriteback(
+        options.writebackDb,
+        input,
+      );
 
-    return reply.code(201).send(result);
+      return reply.code(201).send(result);
+    } catch (error) {
+      if (error instanceof SyntheticWorkEmailWritebackValidationError) {
+        return reply.code(400).send({ error: error.message });
+      }
+
+      throw error;
+    }
   });
 
   return app;

@@ -40,6 +40,10 @@ const syntheticPocMarker = "synthetic_poc";
 const timestampPattern =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
 
+export class SyntheticWorkEmailWritebackValidationError extends Error {
+  override name = "SyntheticWorkEmailWritebackValidationError";
+}
+
 export function createSyntheticWorkEmailWritebackFixture(
   overrides: SyntheticWorkEmailWritebackFixtureOverrides = {},
 ): SyntheticWorkEmailWritebackInput {
@@ -62,13 +66,33 @@ export function ingestSyntheticWorkEmailWriteback(
   db: SyntheticWritebackDatabase,
   input: SyntheticWorkEmailWritebackInput,
 ): SyntheticWorkEmailWritebackResult {
-  validateSyntheticWorkEmailWriteback(input);
+  const validatedInput = parseSyntheticWorkEmailWritebackInput(input);
 
   let savepointStarted = false;
 
   try {
     db.exec("SAVEPOINT synthetic_work_email_writeback_ingest");
     savepointStarted = true;
+
+    const existingContactPoint = db
+      .prepare(
+        `
+          SELECT id
+          FROM contact_point
+          WHERE person_id = ?
+            AND contact_type = 'work_email'
+        `,
+      )
+      .get(validatedInput.personId);
+
+    if (
+      existingContactPoint &&
+      existingContactPoint.id !== validatedInput.contactPointId
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "contactPointId must match existing work_email contact point",
+      );
+    }
 
     db.prepare(
       `
@@ -86,10 +110,10 @@ export function ingestSyntheticWorkEmailWriteback(
           is_primary = 1
       `,
     ).run(
-      input.contactPointId,
-      input.personId,
-      input.providerValue,
-      input.receivedAt,
+      validatedInput.contactPointId,
+      validatedInput.personId,
+      validatedInput.providerValue,
+      validatedInput.receivedAt,
     );
 
     const contactPoint = db
@@ -101,7 +125,7 @@ export function ingestSyntheticWorkEmailWriteback(
             AND contact_type = 'work_email'
         `,
       )
-      .get(input.personId);
+      .get(validatedInput.personId);
 
     if (!contactPoint || typeof contactPoint.id !== "string") {
       throw new Error("contactPoint must exist after work email upsert");
@@ -124,27 +148,27 @@ export function ingestSyntheticWorkEmailWriteback(
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
     ).run(
-      input.eventId,
-      input.personId,
+      validatedInput.eventId,
+      validatedInput.personId,
       contactPoint.id,
-      input.providerName,
-      input.providerSubjectId,
-      input.providerValue,
-      input.targetContactType,
-      input.correlationId,
-      input.receivedAt,
-      input.pocMarker,
+      validatedInput.providerName,
+      validatedInput.providerSubjectId,
+      validatedInput.providerValue,
+      validatedInput.targetContactType,
+      validatedInput.correlationId,
+      validatedInput.receivedAt,
+      validatedInput.pocMarker,
     );
 
     db.exec("RELEASE SAVEPOINT synthetic_work_email_writeback_ingest");
 
     return {
-      eventId: input.eventId,
-      personId: input.personId,
+      eventId: validatedInput.eventId,
+      personId: validatedInput.personId,
       contactPointId: contactPoint.id,
-      providerName: input.providerName,
-      providerSubjectId: input.providerSubjectId,
-      correlationId: input.correlationId,
+      providerName: validatedInput.providerName,
+      providerSubjectId: validatedInput.providerSubjectId,
+      correlationId: validatedInput.correlationId,
       applied: true,
     };
   } catch (error) {
@@ -156,42 +180,87 @@ export function ingestSyntheticWorkEmailWriteback(
   }
 }
 
-function validateSyntheticWorkEmailWriteback(
-  input: SyntheticWorkEmailWritebackInput,
-): void {
-  requireNonEmpty("eventId", input.eventId);
-  requireNonEmpty("personId", input.personId);
-  requireNonEmpty("contactPointId", input.contactPointId);
-  if (input.providerName !== "synthetic_okta") {
-    throw new Error("providerName must be synthetic_okta");
+export function parseSyntheticWorkEmailWritebackInput(
+  input: unknown,
+): SyntheticWorkEmailWritebackInput {
+  if (!isRecord(input)) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "request body must be an object",
+    );
   }
-  requireNonEmpty("providerSubjectId", input.providerSubjectId);
-  requireNonEmpty("providerValue", input.providerValue);
-  if (input.providerValue.indexOf("@") <= 0) {
-    throw new Error("providerValue must be a skeleton work email");
+
+  const eventId = requireNonEmpty("eventId", input.eventId);
+  const personId = requireNonEmpty("personId", input.personId);
+  const contactPointId = requireNonEmpty(
+    "contactPointId",
+    input.contactPointId,
+  );
+  if (input.providerName !== "synthetic_okta") {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "providerName must be synthetic_okta",
+    );
+  }
+  const providerSubjectId = requireNonEmpty(
+    "providerSubjectId",
+    input.providerSubjectId,
+  );
+  const providerValue = requireNonEmpty("providerValue", input.providerValue);
+  if (providerValue.indexOf("@") <= 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "providerValue must be a skeleton work email",
+    );
   }
   if (input.targetContactType !== "work_email") {
-    throw new Error("targetContactType must be work_email");
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "targetContactType must be work_email",
+    );
   }
-  requireNonEmpty("correlationId", input.correlationId);
-  requireTimestamp("receivedAt", input.receivedAt);
+  const correlationId = requireNonEmpty("correlationId", input.correlationId);
+  const receivedAt = requireTimestamp("receivedAt", input.receivedAt);
   if (input.pocMarker !== syntheticPocMarker) {
-    throw new Error("pocMarker must mark synthetic PoC evidence");
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "pocMarker must mark synthetic PoC evidence",
+    );
   }
+
+  return {
+    eventId,
+    personId,
+    contactPointId,
+    providerName: input.providerName,
+    providerSubjectId,
+    providerValue,
+    targetContactType: input.targetContactType,
+    correlationId,
+    receivedAt,
+    pocMarker: input.pocMarker,
+  };
 }
 
-function requireNonEmpty(fieldName: string, value: string): void {
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
+}
+
+function requireNonEmpty(fieldName: string, value: unknown): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${fieldName} must be a non-empty string`);
+    throw new SyntheticWorkEmailWritebackValidationError(
+      `${fieldName} must be a non-empty string`,
+    );
   }
+
+  return value;
 }
 
-function requireTimestamp(fieldName: string, value: string): void {
-  requireNonEmpty(fieldName, value);
-  const match = timestampPattern.exec(value);
+function requireTimestamp(fieldName: string, value: unknown): string {
+  const timestamp = requireNonEmpty(fieldName, value);
+  const match = timestampPattern.exec(timestamp);
   if (!match || !isValidIsoDateParts(match[1], match[2], match[3])) {
-    throw new Error(`${fieldName} must be an ISO timestamp`);
+    throw new SyntheticWorkEmailWritebackValidationError(
+      `${fieldName} must be an ISO timestamp`,
+    );
   }
+
+  return timestamp;
 }
 
 function isValidIsoDateParts(

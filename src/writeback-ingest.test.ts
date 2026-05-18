@@ -187,6 +187,73 @@ test("synthetic work email writeback rejects invalid input before durable writes
   }
 });
 
+test("synthetic work email writeback rejects contact point id drift before evidence writes", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-authoritative-001',
+        'person-writeback-001',
+        'work_email',
+        'old.writeback@example.invalid',
+        1,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    assert.throws(
+      () =>
+        ingestSyntheticWorkEmailWriteback(
+          db,
+          createSyntheticWorkEmailWritebackFixture({
+            contactPointId: "contact-point-payload-001",
+          }),
+        ),
+      /contactPointId must match existing work_email contact point/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT id, value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        id: "contact-point-authoritative-001",
+        value: "old.writeback@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM writeback_event").get(),
+      ),
+      { count: 0 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic work email writeback rejects unknown person without partial durable writes", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -266,5 +333,75 @@ test("POST /writeback-events/work-email exposes the local synthetic ingest API",
     {
       provider_value: "confirmed.writeback@example.invalid",
     },
+  );
+});
+
+test("POST /writeback-events/work-email maps invalid synthetic input to 400", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  const app = await buildApp({ writebackDb: db });
+  t.after(async () => {
+    await app.close();
+    db.close();
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/writeback-events/work-email",
+    payload: createSyntheticWorkEmailWritebackFixture({
+      providerValue: "not-an-email",
+    }),
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: "providerValue must be a skeleton work email",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM writeback_event").get(),
+    ),
+    { count: 0 },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+    ),
+    { count: 0 },
+  );
+});
+
+test("POST /writeback-events/work-email rejects non-object request bodies", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  const app = await buildApp({ writebackDb: db });
+  t.after(async () => {
+    await app.close();
+    db.close();
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/writeback-events/work-email",
+    payload: ["not", "a", "writeback", "event"],
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: "request body must be an object",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM writeback_event").get(),
+    ),
+    { count: 0 },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+    ),
+    { count: 0 },
   );
 });
