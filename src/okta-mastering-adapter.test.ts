@@ -5,6 +5,7 @@ import {
   buildOktaMasteringAdapter,
   createSyntheticOktaUserFixture,
   resolveLocalOktaMasteringConfig,
+  type OktaGroupProjection,
   type OktaMasteringProjection,
 } from "./okta-mastering-adapter.js";
 
@@ -228,6 +229,98 @@ test("mock Okta mastering adapter records deterministic projection metadata for 
   );
 });
 
+test("mock Okta mastering adapter projects synthetic group memberships without RBAC semantics", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialGroups: [
+      {
+        externalId: "okta-group-hr-ops",
+        groupKey: "GROUP-HR-OPS",
+        displayName: "Synthetic HR Operations",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+      {
+        externalId: "okta-group-onboarding",
+        groupKey: "GROUP-ONBOARDING",
+        displayName: "Synthetic Onboarding",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+    ],
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-group-001",
+        employeeNumber: "EMP-GROUP-001",
+        email: "group.identity@example.invalid",
+        displayName: "Group Identity",
+        givenName: "Group",
+        familyName: "Identity",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const projection: OktaGroupProjection = {
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-GROUP-001",
+    groupKeys: ["GROUP-HR-OPS", "GROUP-ONBOARDING"],
+    effectiveAt: "2026-05-18T09:00:00.000Z",
+  };
+
+  assert.deepEqual(await adapter.projectGroups(projection), {
+    outcome: "success",
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-GROUP-001",
+    groupKeys: ["GROUP-HR-OPS", "GROUP-ONBOARDING"],
+    effectiveAt: "2026-05-18T09:00:00.000Z",
+    metadata: expectedMockGroupMetadata(
+      "EMP-GROUP-001",
+      ["GROUP-HR-OPS", "GROUP-ONBOARDING"],
+      "2026-05-18T09:00:00.000Z",
+    ),
+  });
+
+  assert.deepEqual(await adapter.projectGroups(projection), {
+    outcome: "skipped",
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-GROUP-001",
+    reason: "already_projected",
+    groupKeys: ["GROUP-HR-OPS", "GROUP-ONBOARDING"],
+    effectiveAt: "2026-05-18T09:00:00.000Z",
+    metadata: expectedMockGroupMetadata(
+      "EMP-GROUP-001",
+      ["GROUP-HR-OPS", "GROUP-ONBOARDING"],
+      "2026-05-18T09:00:00.000Z",
+    ),
+  });
+
+  assert.deepEqual(
+    await adapter.projectGroups({
+      operation: "replace_user_groups",
+      employeeNumber: "EMP-GROUP-001",
+      groupKeys: ["GROUP-UNKNOWN"],
+      effectiveAt: "2026-05-18T10:00:00.000Z",
+    }),
+    {
+      outcome: "permanent_failure",
+      operation: "replace_user_groups",
+      employeeNumber: "EMP-GROUP-001",
+      errorCode: "mock_unknown_group",
+      message: "Synthetic group projection references unknown group keys.",
+      groupKeys: ["GROUP-UNKNOWN"],
+      effectiveAt: "2026-05-18T10:00:00.000Z",
+      metadata: expectedMockGroupMetadata(
+        "EMP-GROUP-001",
+        ["GROUP-UNKNOWN"],
+        "2026-05-18T10:00:00.000Z",
+      ),
+    },
+  );
+});
+
 test("real Okta mastering mode stays blocked until local placeholder credentials are replaced", () => {
   const config = resolveLocalOktaMasteringConfig({
     HRCORE_OKTA_BASE_URL: "<okta-verification-tenant-url>",
@@ -259,6 +352,19 @@ function expectedMockMetadata(
     adapterMode: "mock",
     provider: "okta",
     projectionKey: `okta:mock:${operation}:${employeeNumber}:${effectiveAt}`,
+    synthetic: true,
+  };
+}
+
+function expectedMockGroupMetadata(
+  employeeNumber: string,
+  groupKeys: string[],
+  effectiveAt: string,
+) {
+  return {
+    adapterMode: "mock",
+    provider: "okta",
+    projectionKey: `okta:mock:replace_user_groups:${employeeNumber}:${groupKeys.join(",")}:${effectiveAt}`,
     synthetic: true,
   };
 }
