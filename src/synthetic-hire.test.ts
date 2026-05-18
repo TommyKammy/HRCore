@@ -217,6 +217,14 @@ test("synthetic hire validation rejects malformed timestamps and impossible date
         }),
         error: /contactPoint.value must be a skeleton work email/,
       },
+      {
+        input: createSyntheticHireFixture({
+          contactPoint: {
+            isPrimary: "true" as unknown as boolean,
+          },
+        }),
+        error: /contactPoint.isPrimary must be a boolean/,
+      },
     ];
 
     for (const { input, error } of rejectedInputs) {
@@ -242,39 +250,28 @@ test("synthetic hire validation rejects malformed timestamps and impossible date
   }
 });
 
-test("synthetic hire requires explicit transaction capability", async (t) => {
+test("synthetic hire can use a minimal database adapter without transaction introspection", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
 
   try {
-    const dbWithoutTransactionFlag = {
+    const minimalDb = {
       exec: db.exec.bind(db),
       prepare: db.prepare.bind(db),
-    } as unknown as SyntheticHireDatabase;
+    };
 
-    assert.throws(
-      () =>
-        saveSyntheticHire(
-          dbWithoutTransactionFlag,
-          createSyntheticHireFixture(),
-        ),
-      /requires an explicit transaction capability/,
+    const result = saveSyntheticHire(minimalDb, createSyntheticHireFixture());
+
+    assert.deepEqual(result, {
+      personId: "person-syn-hire-001",
+      employmentId: "employment-syn-hire-001",
+      assignmentId: "assignment-syn-hire-001",
+      contactPointId: "contact-point-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRow(db.prepare("SELECT count(*) AS count FROM person").get()),
+      { count: 1 },
     );
-
-    for (const tableName of [
-      "person",
-      "employment",
-      "assignment",
-      "contact_point",
-    ]) {
-      assert.deepEqual(
-        normalizeRow(
-          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
-        ),
-        { count: 0 },
-        `${tableName} must remain empty when transaction capability is missing`,
-      );
-    }
   } finally {
     db.close();
   }
@@ -346,18 +343,13 @@ test("synthetic hire database failures roll back earlier hire writes", async (t)
       );
     `);
 
-    const dbWithStaticTransactionFlag: SyntheticHireDatabase = {
-      isTransaction: false,
+    const minimalDb: SyntheticHireDatabase = {
       exec: db.exec.bind(db),
       prepare: db.prepare.bind(db),
     };
 
     assert.throws(
-      () =>
-        saveSyntheticHire(
-          dbWithStaticTransactionFlag,
-          createSyntheticHireFixture(),
-        ),
+      () => saveSyntheticHire(minimalDb, createSyntheticHireFixture()),
       /UNIQUE constraint failed/,
     );
     assert.equal(db.isTransaction, false);
@@ -393,7 +385,6 @@ test("synthetic hire database failures roll back earlier hire writes", async (t)
 test("synthetic hire preserves the original error when savepoint start fails", () => {
   const calls: string[] = [];
   const db: SyntheticHireDatabase = {
-    isTransaction: true,
     exec(sql: string) {
       calls.push(sql);
       if (sql === "SAVEPOINT synthetic_hire_persistence") {
