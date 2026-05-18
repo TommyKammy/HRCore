@@ -1539,6 +1539,82 @@ test("legal entity timezone and business-calendar extension-anchor ADR preserves
   );
 });
 
+test("R08 prohibited column and payload policy boundary remains documented and discoverable", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0020-r08-prohibited-column-payload-policy-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0020: R08 Prohibited Column and Payload Policy Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0005: My Number and Specific Personal Information Scope Boundary](0005-my-number-scope-boundary.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0008: Leave of Absence, Childcare Leave, and Reduced Working Hours MVP-A/v1 Handling Boundary](0008-leave-work-arrangement-boundary.md)\n- [ADR 0009: Retiree Data Retention Period and Physical Deletion Exception Boundary](0009-retiree-retention-physical-deletion-boundary.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md)\n- [ADR 0015: My Number and Specific Personal Information External Reference and Separate Schema Boundary](0015-my-number-external-reference-separate-schema-boundary.md)\n- [ADR 0016: Sensitive Personal Information Privacy Classification, Consent, and Processing-Purpose Extension Boundary](0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md)\n- [ADR 0017: Employment Status and Work Arrangement Extension Boundary](0017-employment-status-work-arrangement-extension-boundary.md)\n- [ADR 0018: Retiree Retention, Anonymization, Deletion Job, and Retention Log Extension Boundary](0018-retiree-retention-anonymization-deletion-job-retention-log-extension-boundary.md)\n- [ADR 0019: Legal Entity Timezone and Business Calendar Extension Boundary](0019-legal-entity-timezone-business-calendar-extension-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "R08 prohibited list",
+    "Number Act data",
+    "My Number",
+    "Specific Personal Information",
+    "sensitive personal information",
+    "privacy classification",
+    "consent or lawful-handling basis",
+    "processing purpose",
+    "leave of absence",
+    "childcare leave",
+    "reduced working hours",
+    "medical or caregiving reason",
+    "retiree retention",
+    "retention exception",
+    "legal hold",
+    "deletion request",
+    "anonymization request",
+    "raw provider payloads",
+    "CSV exports",
+    "audit payload expansion",
+    "generic JSON",
+    "`jsonb`",
+    "`metadata`",
+    "`note`",
+    "`memo`",
+    "fixtures",
+    "seeds",
+    "logs",
+    "attachments",
+    "migration examples",
+    "OpenAPI contracts",
+    "DTOs",
+    "repository guard / documented policy baseline",
+    "Regex or lexical checks are acceptable only for narrow sentinels",
+    "SQL parsers, TypeScript AST analyzers, OpenAPI schema analyzers, PR-diff engines, and OPA/Rego remain deferred",
+    "must not claim full policy-as-code enforcement",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement runtime features, migrations, OpenAPI endpoints, DTOs, UI workflows, provider integrations, production secrets, external services, Phase 1 HR workflows, SQL parsers, TypeScript AST analyzers, OPA/Rego rules, PR-diff engines, or broad runtime policy enforcement.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing R08 prohibited policy ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "R08 prohibited policy ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0020: R08 Prohibited Column and Payload Policy Boundary\]\(docs\/adr\/0020-r08-prohibited-column-payload-policy-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
