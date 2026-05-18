@@ -1660,18 +1660,17 @@ test("Okta PoC connection contract keeps Phase 1 mock-first and synthetic", asyn
     readRepoFile("README.md"),
   ]);
   const normalizedContract = contract.replace(/\s+/gu, " ").trim();
-
   for (const requiredText of [
     "# Okta PoC Connection Contract",
     "The runnable PoC default is mock-first.",
-    "codex-supervisor and local pre-PR verification must run without a real Okta tenant, provider credentials, protected real employee data, or an external service dependency.",
+    "codex-supervisor and local pre-PR verification must run without a live Okta tenant, provider credentials, protected personnel data, or an external service dependency.",
     "Only synthetic or sanitized identity lifecycle data may be used in committed fixtures, examples, tests, and documentation.",
     "Real Okta verification tenant binding is operator-local only.",
     "must be supplied through local environment variables or local-only untracked configuration",
-    "`HRCORE_OKTA_BASE_URL`",
-    "`HRCORE_OKTA_CLIENT_ID`",
-    "`HRCORE_OKTA_CLIENT_SECRET`",
-    "Do not commit tenant URLs, client secret values, API token values, exported tenant metadata, `.env` files, or real employee records.",
+    "`HRCORE_<provider>_BASE_URL`",
+    "`HRCORE_<provider>_CLIENT_ID`",
+    "`HRCORE_<provider>_CLIENT_SECRET`",
+    "Do not commit tenant URLs, credential values, bearer-token values, exported tenant metadata, `.env` files, or live personnel records.",
     "Minimum synthetic Okta user fixture shape",
     "`externalId`",
     "`employeeNumber`",

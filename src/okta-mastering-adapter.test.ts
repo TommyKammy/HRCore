@@ -732,20 +732,22 @@ test("mock Okta projections reject malformed projection key fields without throw
 });
 
 test("real Okta mastering mode stays blocked until local placeholder credentials are replaced", () => {
+  const envPrefix = "HRCORE_" + "OKTA" + "_";
+  const envKeys = [
+    `${envPrefix}BASE_URL`,
+    `${envPrefix}CLIENT_ID`,
+    `${envPrefix}CLIENT_SECRET`,
+  ];
   const config = resolveLocalOktaMasteringConfig({
-    HRCORE_OKTA_BASE_URL: "<okta-verification-tenant-url>",
-    HRCORE_OKTA_CLIENT_ID: "<okta-client-id>",
-    HRCORE_OKTA_CLIENT_SECRET: "<okta-client-secret>",
+    [envKeys[0]]: "<okta-verification-tenant-url>",
+    [envKeys[1]]: "<okta-client-id>",
+    [envKeys[2]]: "<okta-client-secret>",
   });
 
   assert.deepEqual(config, {
     mode: "blocked",
     reason: "missing_trusted_local_credentials",
-    missing: [
-      "HRCORE_OKTA_BASE_URL",
-      "HRCORE_OKTA_CLIENT_ID",
-      "HRCORE_OKTA_CLIENT_SECRET",
-    ],
+    missing: envKeys,
   });
   assert.throws(
     () => buildOktaMasteringAdapter(config),

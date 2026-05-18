@@ -1,0 +1,153 @@
+import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import test from "node:test";
+
+import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
+
+import * as schema from "./schema.js";
+
+const schemaExports = schema as Record<string, unknown>;
+
+const expectedTables = [
+  "person",
+  "employment",
+  "assignment",
+  "contact_point",
+  "transaction_request",
+  "lifecycle_event",
+  "audit_event",
+] as const;
+
+const requiredColumnsByTable = {
+  person: ["id", "display_name", "created_at"],
+  employment: [
+    "id",
+    "person_id",
+    "employment_code",
+    "status_code",
+    "start_date",
+  ],
+  assignment: [
+    "id",
+    "person_id",
+    "employment_id",
+    "assignment_code",
+    "start_date",
+  ],
+  contact_point: ["id", "person_id", "contact_type", "value", "created_at"],
+  transaction_request: [
+    "id",
+    "person_id",
+    "request_type",
+    "status_code",
+    "requested_at",
+  ],
+  lifecycle_event: [
+    "id",
+    "person_id",
+    "transaction_request_id",
+    "event_type",
+    "effective_date",
+  ],
+  audit_event: [
+    "id",
+    "actor_id",
+    "action",
+    "subject_table",
+    "subject_id",
+    "occurred_at",
+  ],
+} as const;
+
+const readRepoFile = (path: string): Promise<string> =>
+  readFile(join(process.cwd(), path), "utf8");
+
+const readCommittedMigrationSql = async (): Promise<string> => {
+  const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+
+  assert.equal(
+    migrationFiles.length,
+    1,
+    "minimum DDL issue should commit one focused migration artifact",
+  );
+
+  return readRepoFile(join("drizzle", migrationFiles[0]));
+};
+
+const forbiddenSamplePattern = new RegExp(
+  [
+    "マイ" + "ナンバー",
+    "real " + "employee",
+    "client" + "_secret",
+    "api" + "_token",
+    "OKTA" + "_",
+  ].join("|"),
+  "i",
+);
+
+test("minimum HR Core PoC tables are defined as separate Drizzle boundaries", () => {
+  for (const tableName of expectedTables) {
+    const table = schemaExports[tableName];
+    assert.ok(table, `missing Drizzle table export: ${tableName}`);
+
+    const config = getTableConfig(table as SQLiteTable);
+    assert.equal(config.name, tableName);
+
+    const columnNames = config.columns.map((column) => column.name);
+    for (const requiredColumn of requiredColumnsByTable[tableName]) {
+      assert.ok(
+        columnNames.includes(requiredColumn),
+        `${tableName} is missing required column ${requiredColumn}`,
+      );
+    }
+
+    assert.ok(
+      config.checks.length > 0,
+      `${tableName} must have at least one obvious-invalid-record check`,
+    );
+  }
+});
+
+test("minimum DDL migration preserves skeleton scope and PoC audit boundary", async () => {
+  const migrationSql = await readCommittedMigrationSql();
+
+  for (const tableName of expectedTables) {
+    assert.match(migrationSql, new RegExp(`CREATE TABLE \`${tableName}\``));
+  }
+
+  assert.match(migrationSql, /contact_type.*work_email/s);
+  assert.match(migrationSql, /transaction_request/);
+  assert.match(migrationSql, /lifecycle_event/);
+  assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
+  assert.doesNotMatch(
+    migrationSql,
+    /approver|approval_workflow|rbac|retention_job/i,
+  );
+  assert.doesNotMatch(migrationSql, /my_number|individual_number/i);
+});
+
+test("DDL work does not promote proposed ADRs or introduce protected samples", async () => {
+  const [readme, migrationSql, adr0005, adr0010, adr0011, adr0012, adr0013] =
+    await Promise.all([
+      readRepoFile("README.md"),
+      readCommittedMigrationSql(),
+      readRepoFile("docs/adr/0005-my-number-scope-boundary.md"),
+      readRepoFile("docs/adr/0010-break-glass-emergency-access-boundary.md"),
+      readRepoFile("docs/adr/0011-data-scope-policy-dsl-rls-boundary.md"),
+      readRepoFile(
+        "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+      ),
+      readRepoFile("docs/adr/0013-self-approval-prevention-boundary.md"),
+    ]);
+
+  for (const adrText of [adr0005, adr0010, adr0011, adr0012, adr0013]) {
+    assert.match(adrText, /^Proposed$/m);
+  }
+
+  for (const text of [readme, migrationSql]) {
+    assert.doesNotMatch(text, forbiddenSamplePattern);
+  }
+});

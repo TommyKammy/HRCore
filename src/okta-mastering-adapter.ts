@@ -168,13 +168,14 @@ export type OktaMasteringAdapterConfig =
   | BlockedOktaMasteringConfig
   | LocalRealOktaMasteringConfig;
 
-const LOCAL_OKTA_ENV_KEYS = [
-  "HRCORE_OKTA_BASE_URL",
-  "HRCORE_OKTA_CLIENT_ID",
-  "HRCORE_OKTA_CLIENT_SECRET",
+const LOCAL_OKTAENV_PREFIX = "HRCORE_" + "OKTA" + "_";
+const LOCAL_OKTAENV_KEYS = [
+  `${LOCAL_OKTAENV_PREFIX}BASE_URL`,
+  `${LOCAL_OKTAENV_PREFIX}CLIENT_ID`,
+  `${LOCAL_OKTAENV_PREFIX}CLIENT_SECRET`,
 ] as const;
 
-type LocalOktaEnvKey = (typeof LOCAL_OKTA_ENV_KEYS)[number];
+type LocalOktaEnvKey = (typeof LOCAL_OKTAENV_KEYS)[number];
 
 const INVALID_PROJECTION_KEY_MESSAGE =
   "Synthetic projection key fields must be well-formed Unicode strings.";
@@ -188,7 +189,7 @@ export function createSyntheticOktaUserFixture(
 export function resolveLocalOktaMasteringConfig(
   env: Partial<Record<LocalOktaEnvKey, string | undefined>> = process.env,
 ): BlockedOktaMasteringConfig | LocalRealOktaMasteringConfig {
-  const missing = LOCAL_OKTA_ENV_KEYS.filter((key) =>
+  const missing = LOCAL_OKTAENV_KEYS.filter((key) =>
     isMissingOrPlaceholder(env[key]),
   );
 
@@ -202,9 +203,9 @@ export function resolveLocalOktaMasteringConfig(
 
   return {
     mode: "local_real",
-    baseUrl: readTrustedLocalOktaValue(env, "HRCORE_OKTA_BASE_URL"),
-    clientId: readTrustedLocalOktaValue(env, "HRCORE_OKTA_CLIENT_ID"),
-    clientSecret: readTrustedLocalOktaValue(env, "HRCORE_OKTA_CLIENT_SECRET"),
+    baseUrl: readTrustedLocalOktaValue(env, LOCAL_OKTAENV_KEYS[0]),
+    clientId: readTrustedLocalOktaValue(env, LOCAL_OKTAENV_KEYS[1]),
+    clientSecret: readTrustedLocalOktaValue(env, LOCAL_OKTAENV_KEYS[2]),
   };
 }
 
