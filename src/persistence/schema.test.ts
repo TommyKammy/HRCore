@@ -129,9 +129,17 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
     migrationSql,
     /FOREIGN KEY \(`employment_id`,`person_id`\) REFERENCES `employment`\(`id`,`person_id`\)/,
   );
+  assert.doesNotMatch(
+    migrationSql,
+    /FOREIGN KEY \(`employment_id`\) REFERENCES `employment`\(`id`\)/,
+  );
   assert.match(
     migrationSql,
     /FOREIGN KEY \(`transaction_request_id`,`person_id`\) REFERENCES `transaction_request`\(`id`,`person_id`\)/,
+  );
+  assert.doesNotMatch(
+    migrationSql,
+    /FOREIGN KEY \(`transaction_request_id`\) REFERENCES `transaction_request`\(`id`\)/,
   );
   assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
   assert.doesNotMatch(

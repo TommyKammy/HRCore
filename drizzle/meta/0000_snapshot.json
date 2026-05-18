@@ -81,15 +81,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "assignment_employment_id_employment_id_fk": {
-          "name": "assignment_employment_id_employment_id_fk",
-          "tableFrom": "assignment",
-          "tableTo": "employment",
-          "columnsFrom": ["employment_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "assignment_employment_person_match_fk": {
           "name": "assignment_employment_person_match_fk",
           "tableFrom": "assignment",
@@ -446,15 +437,6 @@
           "tableFrom": "lifecycle_event",
           "tableTo": "person",
           "columnsFrom": ["person_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "lifecycle_event_transaction_request_id_transaction_request_id_fk": {
-          "name": "lifecycle_event_transaction_request_id_transaction_request_id_fk",
-          "tableFrom": "lifecycle_event",
-          "tableTo": "transaction_request",
-          "columnsFrom": ["transaction_request_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"

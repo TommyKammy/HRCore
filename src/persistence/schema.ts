@@ -72,9 +72,7 @@ export const assignment = sqliteTable(
     personId: text("person_id")
       .notNull()
       .references(() => person.id),
-    employmentId: text("employment_id")
-      .notNull()
-      .references(() => employment.id),
+    employmentId: text("employment_id").notNull(),
     assignmentCode: text("assignment_code").notNull(),
     organizationCode: text("organization_code").notNull(),
     positionCode: text("position_code"),
@@ -188,9 +186,7 @@ export const lifecycle_event = sqliteTable(
     personId: text("person_id")
       .notNull()
       .references(() => person.id),
-    transactionRequestId: text("transaction_request_id").references(
-      () => transaction_request.id,
-    ),
+    transactionRequestId: text("transaction_request_id"),
     eventType: text("event_type", {
       enum: ["hire", "assignment_change", "termination"],
     }).notNull(),
