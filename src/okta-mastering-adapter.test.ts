@@ -348,6 +348,71 @@ test("mock Okta mastering adapter projects synthetic group memberships without R
   );
 });
 
+test("mock Okta group projection metadata uses locale-independent group key ordering", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialGroups: [
+      {
+        externalId: "okta-group-alpha",
+        groupKey: "GROUP-ALPHA",
+        displayName: "Synthetic Alpha",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+      {
+        externalId: "okta-group-zeta",
+        groupKey: "GROUP-ZETA",
+        displayName: "Synthetic Zeta",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+    ],
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-group-order-001",
+        employeeNumber: "EMP-GROUP-ORDER-001",
+        email: "group.order@example.invalid",
+        displayName: "Group Order",
+        givenName: "Group",
+        familyName: "Order",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const originalLocaleCompare = String.prototype.localeCompare;
+  String.prototype.localeCompare = () => {
+    throw new Error("group key normalization must not use locale collation");
+  };
+
+  try {
+    assert.deepEqual(
+      await adapter.projectGroups({
+        operation: "replace_user_groups",
+        employeeNumber: "EMP-GROUP-ORDER-001",
+        groupKeys: [" GROUP-ZETA ", "GROUP-ALPHA", "GROUP-ZETA"],
+        effectiveAt: "2026-05-18T12:00:00.000Z",
+      }),
+      {
+        outcome: "success",
+        operation: "replace_user_groups",
+        employeeNumber: "EMP-GROUP-ORDER-001",
+        groupKeys: ["GROUP-ALPHA", "GROUP-ZETA"],
+        effectiveAt: "2026-05-18T12:00:00.000Z",
+        metadata: expectedMockGroupMetadata(
+          "EMP-GROUP-ORDER-001",
+          ["GROUP-ALPHA", "GROUP-ZETA"],
+          "2026-05-18T12:00:00.000Z",
+        ),
+      },
+    );
+  } finally {
+    String.prototype.localeCompare = originalLocaleCompare;
+  }
+});
+
 test("real Okta mastering mode stays blocked until local placeholder credentials are replaced", () => {
   const config = resolveLocalOktaMasteringConfig({
     HRCORE_OKTA_BASE_URL: "<okta-verification-tenant-url>",

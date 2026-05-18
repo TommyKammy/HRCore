@@ -464,8 +464,20 @@ function withMockGroupMetadata(
 
 function normalizeGroupKeys(groupKeys: string[]): string[] {
   return Array.from(new Set(groupKeys.map((groupKey) => groupKey.trim()))).sort(
-    (left, right) => left.localeCompare(right),
+    compareGroupKeys,
   );
+}
+
+function compareGroupKeys(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+
+  if (left > right) {
+    return 1;
+  }
+
+  return 0;
 }
 
 function areSameGroupSet(left: string[], right: string[]): boolean {
