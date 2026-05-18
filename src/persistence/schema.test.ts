@@ -57,6 +57,7 @@ const requiredColumnsByTable = {
     "subject_table",
     "subject_id",
     "occurred_at",
+    "poc_marker",
   ],
 } as const;
 
