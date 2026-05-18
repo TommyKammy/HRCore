@@ -107,7 +107,7 @@ export function ingestSyntheticWorkEmailWriteback(
         VALUES (?, ?, 'work_email', ?, 1, ?)
         ON CONFLICT(person_id, contact_type) DO UPDATE SET
           value = excluded.value,
-          is_primary = 1
+          is_primary = excluded.is_primary
       `,
     ).run(
       validatedInput.contactPointId,
