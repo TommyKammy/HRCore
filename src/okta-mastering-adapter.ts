@@ -17,7 +17,16 @@ export interface SyntheticOktaUserFixture {
   effectiveAt: string;
 }
 
+export interface SyntheticOktaGroupFixture {
+  externalId: string;
+  groupKey: string;
+  displayName: string;
+  purpose: "poc_identity_lifecycle_membership";
+  effectiveAt: string;
+}
+
 export type OktaMasteringOperation = "create" | "update" | "disable";
+export type OktaGroupProjectionOperation = "replace_user_groups";
 
 export type OktaMasteringProjection =
   | {
@@ -29,6 +38,13 @@ export type OktaMasteringProjection =
       employeeNumber: string;
       effectiveAt: string;
     };
+
+export interface OktaGroupProjection {
+  operation: OktaGroupProjectionOperation;
+  employeeNumber: string;
+  groupKeys: string[];
+  effectiveAt: string;
+}
 
 export type RetryableOktaMasteringFailure = {
   outcome: "retryable_failure";
@@ -53,6 +69,39 @@ export interface OktaMasteringProjectionMetadata {
   projectionKey: string;
   synthetic: true;
 }
+
+type OktaGroupProjectionResultCore =
+  | {
+      outcome: "success";
+      operation: OktaGroupProjectionOperation;
+      employeeNumber: string;
+      groupKeys: string[];
+      effectiveAt: string;
+    }
+  | {
+      outcome: "skipped";
+      operation: OktaGroupProjectionOperation;
+      employeeNumber: string;
+      reason: "already_projected" | "missing_user";
+      groupKeys: string[];
+      effectiveAt: string;
+    }
+  | {
+      outcome: "permanent_failure";
+      operation: OktaGroupProjectionOperation;
+      employeeNumber: string;
+      errorCode:
+        | "mock_invalid_group_operation"
+        | "mock_invalid_projection_key"
+        | "mock_unknown_group";
+      message: string;
+      groupKeys: string[];
+      effectiveAt: string;
+    };
+
+export type OktaGroupProjectionResult = OktaGroupProjectionResultCore & {
+  metadata: OktaMasteringProjectionMetadata;
+};
 
 type OktaMasteringProjectionResultCore =
   | {
@@ -89,11 +138,15 @@ export interface OktaMasteringAdapter {
   project(
     projection: OktaMasteringProjection,
   ): Promise<OktaMasteringProjectionResult>;
+  projectGroups(
+    projection: OktaGroupProjection,
+  ): Promise<OktaGroupProjectionResult>;
 }
 
 export interface MockOktaMasteringConfig {
   mode: "mock";
   initialUsers?: SyntheticOktaUserFixture[];
+  initialGroups?: SyntheticOktaGroupFixture[];
   forcedFailures?: Record<string, ForcedOktaMasteringFailure>;
 }
 
@@ -122,6 +175,9 @@ const LOCAL_OKTA_ENV_KEYS = [
 ] as const;
 
 type LocalOktaEnvKey = (typeof LOCAL_OKTA_ENV_KEYS)[number];
+
+const INVALID_PROJECTION_KEY_MESSAGE =
+  "Synthetic projection key fields must be well-formed Unicode strings.";
 
 export function createSyntheticOktaUserFixture(
   fixture: SyntheticOktaUserFixture,
@@ -170,11 +226,18 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     SyntheticOktaUserFixture
   >();
 
+  private readonly groupsByKey = new Map<string, SyntheticOktaGroupFixture>();
+
+  private readonly groupKeysByEmployeeNumber = new Map<string, string[]>();
+
   private readonly forcedFailures: Record<string, ForcedOktaMasteringFailure>;
 
   constructor(config: MockOktaMasteringConfig) {
     for (const user of config.initialUsers ?? []) {
       this.usersByEmployeeNumber.set(user.employeeNumber, { ...user });
+    }
+    for (const group of config.initialGroups ?? []) {
+      this.groupsByKey.set(group.groupKey, { ...group });
     }
     this.forcedFailures = config.forcedFailures ?? {};
   }
@@ -184,6 +247,17 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   ): Promise<OktaMasteringProjectionResult> {
     const employeeNumber = getProjectionEmployeeNumber(projection);
     const effectiveAt = getProjectionEffectiveAt(projection);
+    if (!areProjectionKeyFieldsWellFormed([employeeNumber, effectiveAt])) {
+      return withMockMetadata({
+        outcome: "permanent_failure",
+        operation: projection.operation,
+        employeeNumber,
+        errorCode: "mock_invalid_projection_key",
+        message: INVALID_PROJECTION_KEY_MESSAGE,
+        effectiveAt,
+      });
+    }
+
     const forcedFailure = this.forcedFailures[employeeNumber];
 
     if (forcedFailure !== undefined) {
@@ -212,6 +286,92 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     }
 
     return withMockMetadata(result);
+  }
+
+  async projectGroups(
+    projection: OktaGroupProjection,
+  ): Promise<OktaGroupProjectionResult> {
+    const normalizedGroupKeys = normalizeGroupKeys(projection.groupKeys);
+    if (
+      !areProjectionKeyFieldsWellFormed([
+        projection.employeeNumber,
+        projection.effectiveAt,
+        ...normalizedGroupKeys,
+      ])
+    ) {
+      return withMockGroupMetadata({
+        outcome: "permanent_failure",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        errorCode: "mock_invalid_projection_key",
+        message: INVALID_PROJECTION_KEY_MESSAGE,
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
+    if (projection.operation !== "replace_user_groups") {
+      return withMockGroupMetadata({
+        outcome: "permanent_failure",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        errorCode: "mock_invalid_group_operation",
+        message: "Synthetic group projection operation is not supported.",
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
+    const unknownGroupKeys = normalizedGroupKeys.filter(
+      (groupKey) => !this.groupsByKey.has(groupKey),
+    );
+    if (unknownGroupKeys.length > 0) {
+      return withMockGroupMetadata({
+        outcome: "permanent_failure",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        errorCode: "mock_unknown_group",
+        message: "Synthetic group projection references unknown group keys.",
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
+    if (!this.usersByEmployeeNumber.has(projection.employeeNumber)) {
+      return withMockGroupMetadata({
+        outcome: "skipped",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        reason: "missing_user",
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
+    const currentGroupKeys =
+      this.groupKeysByEmployeeNumber.get(projection.employeeNumber) ?? [];
+    if (areSameGroupSet(currentGroupKeys, normalizedGroupKeys)) {
+      return withMockGroupMetadata({
+        outcome: "skipped",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        reason: "already_projected",
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
+    this.groupKeysByEmployeeNumber.set(projection.employeeNumber, [
+      ...normalizedGroupKeys,
+    ]);
+
+    return withMockGroupMetadata({
+      outcome: "success",
+      operation: "replace_user_groups",
+      employeeNumber: projection.employeeNumber,
+      groupKeys: normalizedGroupKeys,
+      effectiveAt: projection.effectiveAt,
+    });
   }
 
   private create(
@@ -315,13 +475,123 @@ function withMockMetadata(
       projectionKey: [
         "okta",
         "mock",
-        result.operation,
-        result.employeeNumber,
-        result.effectiveAt,
+        encodeProjectionKeyPart(result.operation),
+        encodeProjectionKeyPart(result.employeeNumber),
+        encodeProjectionKeyPart(result.effectiveAt),
       ].join(":"),
       synthetic: true,
     },
   };
+}
+
+function withMockGroupMetadata(
+  result: OktaGroupProjectionResultCore,
+): OktaGroupProjectionResult {
+  const groupKeys = [...result.groupKeys];
+
+  return {
+    ...result,
+    groupKeys,
+    metadata: {
+      adapterMode: "mock",
+      provider: "okta",
+      projectionKey: [
+        "okta",
+        "mock",
+        encodeProjectionKeyPart(result.operation),
+        encodeProjectionKeyPart(result.employeeNumber),
+        encodeProjectionKeyPart(JSON.stringify(groupKeys)),
+        encodeProjectionKeyPart(result.effectiveAt),
+      ].join(":"),
+      synthetic: true,
+    },
+  };
+}
+
+function encodeProjectionKeyPart(value: string): string {
+  return encodeURIComponent(toWellFormedString(value));
+}
+
+function areProjectionKeyFieldsWellFormed(values: string[]): boolean {
+  return values.every(isWellFormedString);
+}
+
+function isWellFormedString(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (!isLowSurrogate(nextCodeUnit)) {
+        return false;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (isLowSurrogate(codeUnit)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function toWellFormedString(value: string): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (isLowSurrogate(nextCodeUnit)) {
+        result += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        result += "\uFFFD";
+      }
+      continue;
+    }
+
+    result += isLowSurrogate(codeUnit) ? "\uFFFD" : value[index];
+  }
+
+  return result;
+}
+
+function isHighSurrogate(codeUnit: number): boolean {
+  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+}
+
+function isLowSurrogate(codeUnit: number): boolean {
+  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
+}
+
+function normalizeGroupKeys(groupKeys: string[]): string[] {
+  return Array.from(new Set(groupKeys.map((groupKey) => groupKey.trim()))).sort(
+    compareGroupKeys,
+  );
+}
+
+function compareGroupKeys(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+
+  if (left > right) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function areSameGroupSet(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizeGroupKeys(left);
+  const normalizedRight = normalizeGroupKeys(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every(
+      (groupKey, index) => groupKey === normalizedRight[index],
+    )
+  );
 }
 
 function getProjectionEmployeeNumber(projection: OktaMasteringProjection) {

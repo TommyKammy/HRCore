@@ -52,6 +52,31 @@ provider payloads, customer exports, legal/labor leave details, retiree
 retention details, emergency access credentials, or broad metadata escape
 hatches.
 
+## Minimum synthetic Okta group projection scope
+
+The Phase 1 PoC may project synthetic user membership into a predeclared
+synthetic group set only. The minimum group projection surface is:
+
+- `groupKey`: stable synthetic HRCore-side group key.
+- `externalId`: stable synthetic Okta-side group identifier.
+- `displayName`: artificial group display name.
+- `purpose`: fixed to `poc_identity_lifecycle_membership`.
+- `effectiveAt`: ISO-8601 timestamp used to order membership projection
+  examples.
+
+The only in-scope group operation is `replace_user_groups` for a synthetic
+employee identity already present in the mock adapter. It replaces that user's
+synthetic membership set, is idempotent for an identical set, and fails closed
+when a projection references a group key outside the predeclared synthetic
+group set.
+
+Group projection in this PoC is not authorization. It does not implement RBAC,
+data-scope policy evaluation, approval routing, entitlements, group creation,
+group deletion, group hierarchy, group rules, production Okta group management,
+real tenant group sync, or database-backed tenant group state. ADR 0011 and ADR
+0013 remain Proposed anchors for later authorization and approval boundaries
+only.
+
 This contract does not implement the Okta adapter, OpenAPI endpoints, database
 migrations, production secret handling, protected-data handling paths, or
 provider writeback runtime behavior.
