@@ -1432,6 +1432,62 @@ test("employment status and work-arrangement extension-anchor ADR preserves gene
   );
 });
 
+test("retiree retention extension-anchor ADR preserves action-log audit-event and no-runtime boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0018-retiree-retention-anonymization-deletion-job-retention-log-extension-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0018: Retiree Retention, Anonymization, Deletion Job, and Retention Log Extension Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0006: APPI Processing-Purpose and DSAR Handling Boundary](0006-appi-processing-purpose-dsar-boundary.md)\n- [ADR 0007: Sensitive Personal Information Classification and MVP-A/v1 Handling Boundary](0007-sensitive-personal-information-boundary.md)\n- [ADR 0009: Retiree Data Retention Period and Physical Deletion Exception Boundary](0009-retiree-retention-physical-deletion-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0014: Raw Payload and CSV Export Redaction, Watermark, and Download Log Boundary](0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md)\n- [ADR 0016: Sensitive Personal Information Privacy Classification, Consent, and Processing-Purpose Extension Boundary](0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md)\n- [ADR 0017: Employment Status and Work Arrangement Extension Boundary](0017-employment-status-work-arrangement-extension-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "ADR 0009's MVP-A/v1 retiree retention and physical deletion exception boundary remains intact",
+    "`retention_policy`",
+    "`anonymization_request`",
+    "`deletion_request`",
+    "`legal_hold`",
+    "`retention_exception`",
+    "`retention_action_log`",
+    "`audit_event`",
+    "`correlation_id`",
+    "system-generated retention actions must be recorded in `retention_action_log`",
+    "human operations must be recorded in `audit_event`",
+    "When one workflow includes both system retention actions and human operations, the records must share a `correlation_id`",
+    "Retention-action evidence is not a substitute for human audit evidence",
+    "human audit evidence is not a substitute for system retention-action evidence",
+    "Concrete schema, migrations, API shape, UI workflow, deletion/anonymization jobs, legal workflow, payroll/benefit retention behavior, provider integration, production operations, and policy-as-code enforcement are deferred to later implementation issues or later Accepted ADRs.",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement runtime features, migrations, OpenAPI endpoints, DTOs, UI workflows, deletion/anonymization jobs, legal workflow screens, payroll/benefit retention logic, provider integrations, production secrets, external services, or policy-as-code parser rules.",
+    "ADR 0009's retiree retention and physical deletion exception boundary remains intact",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing retiree retention extension ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "retiree retention extension ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0018: Retiree Retention, Anonymization, Deletion Job, and Retention Log Extension Boundary\]\(docs\/adr\/0018-retiree-retention-anonymization-deletion-job-retention-log-extension-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
