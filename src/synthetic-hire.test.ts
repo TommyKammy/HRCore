@@ -5,7 +5,10 @@ import test from "node:test";
 
 import {
   createSyntheticHireFixture,
+  createSyntheticHireRequestFixture,
+  applySyntheticHireRequest,
   saveSyntheticHire,
+  saveSyntheticHireRequest,
   type SyntheticHireDatabase,
 } from "./synthetic-hire.js";
 
@@ -143,6 +146,279 @@ test("synthetic hire use case persists person, employment, and assignment togeth
           created_at: "2026-05-18T00:00:00Z",
         },
       ],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request remains separate from the applied lifecycle event", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    const requestResult = saveSyntheticHireRequest(db, request);
+
+    assert.deepEqual(requestResult, {
+      personId: "person-syn-hire-001",
+      transactionRequestId: "transaction-request-syn-hire-001",
+      statusCode: "submitted",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, request_type, status_code, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          request_type: "hire",
+          status_code: "submitted",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 0 },
+      "a request/change intent must exist before any applied lifecycle event",
+    );
+
+    const appliedResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-001",
+        eventType: "hire",
+        effectiveDate: "2026-05-18",
+        occurredAt: "2026-05-18T00:00:00Z",
+      },
+    });
+
+    assert.deepEqual(appliedResult, {
+      transactionRequestId: "transaction-request-syn-hire-001",
+      lifecycleEventId: "lifecycle-event-syn-hire-001",
+      personId: "person-syn-hire-001",
+      statusCode: "completed",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.notEqual(
+      appliedResult.transactionRequestId,
+      appliedResult.lifecycleEventId,
+      "the applied event must be a distinct record, not the request row reused",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, status_code, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          status_code: "completed",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, transaction_request_id, event_type, effective_date, occurred_at
+              FROM lifecycle_event
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "lifecycle-event-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          transaction_request_id: "transaction-request-syn-hire-001",
+          event_type: "hire",
+          effective_date: "2026-05-18",
+          occurred_at: "2026-05-18T00:00:00Z",
+        },
+      ],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply rejects submitted non-hire transaction requests", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-syn-hire-001', 'Synthetic Hire One', '2026-05-18T00:00:00Z');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES (
+        'transaction-request-syn-hire-001',
+        'person-syn-hire-001',
+        'change',
+        'submitted',
+        '2026-05-18T00:00:00Z',
+        'correlation-syn-hire-001'
+      );
+    `);
+
+    assert.throws(
+      () =>
+        applySyntheticHireRequest(db, {
+          request,
+          hire,
+          lifecycleEvent: {
+            id: "lifecycle-event-syn-hire-001",
+            eventType: "hire",
+            effectiveDate: "2026-05-18",
+            occurredAt: "2026-05-18T00:00:00Z",
+          },
+        }),
+      /NOT NULL constraint failed: lifecycle_event\.person_id/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT request_type, status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        request_type: "change",
+        status_code: "submitted",
+      },
+    );
+    for (const tableName of [
+      "employment",
+      "assignment",
+      "contact_point",
+      "lifecycle_event",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must remain empty after rejected non-hire request apply`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply does not require run changes metadata", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const metadataFreeDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          run(...values) {
+            statement.run(...values);
+            return undefined;
+          },
+        };
+      },
+    };
+
+    saveSyntheticHireRequest(metadataFreeDb, request);
+
+    const appliedResult = applySyntheticHireRequest(metadataFreeDb, {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-001",
+        eventType: "hire",
+        effectiveDate: "2026-05-18",
+        occurredAt: "2026-05-18T00:00:00Z",
+      },
+    });
+
+    assert.deepEqual(appliedResult, {
+      transactionRequestId: "transaction-request-syn-hire-001",
+      lifecycleEventId: "lifecycle-event-syn-hire-001",
+      personId: "person-syn-hire-001",
+      statusCode: "completed",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT request_type, status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        request_type: "hire",
+        status_code: "completed",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
     );
   } finally {
     db.close();
