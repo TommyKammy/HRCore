@@ -385,6 +385,90 @@ test("mock Okta mastering adapter projects synthetic group memberships without R
   );
 });
 
+test("mock Okta group projection rejects invalid operations before membership writes", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialGroups: [
+      {
+        externalId: "okta-group-primary",
+        groupKey: "GROUP-PRIMARY",
+        displayName: "Synthetic Primary",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+      {
+        externalId: "okta-group-secondary",
+        groupKey: "GROUP-SECONDARY",
+        displayName: "Synthetic Secondary",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+    ],
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-invalid-group-op-001",
+        employeeNumber: "EMP-GROUP-INVALID-OP-001",
+        email: "group.invalid.operation@example.invalid",
+        displayName: "Group Invalid Operation",
+        givenName: "Group",
+        familyName: "Invalid Operation",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const originalProjection: OktaGroupProjection = {
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-GROUP-INVALID-OP-001",
+    groupKeys: ["GROUP-PRIMARY"],
+    effectiveAt: "2026-05-18T09:00:00.000Z",
+  };
+
+  assert.equal(
+    (await adapter.projectGroups(originalProjection)).outcome,
+    "success",
+  );
+
+  assert.deepEqual(
+    await adapter.projectGroups({
+      operation: "append_user_group",
+      employeeNumber: "EMP-GROUP-INVALID-OP-001",
+      groupKeys: ["GROUP-SECONDARY"],
+      effectiveAt: "2026-05-18T10:00:00.000Z",
+    } as unknown as OktaGroupProjection),
+    {
+      outcome: "permanent_failure",
+      operation: "replace_user_groups",
+      employeeNumber: "EMP-GROUP-INVALID-OP-001",
+      errorCode: "mock_invalid_group_operation",
+      message: "Synthetic group projection operation is not supported.",
+      groupKeys: ["GROUP-SECONDARY"],
+      effectiveAt: "2026-05-18T10:00:00.000Z",
+      metadata: expectedMockGroupMetadata(
+        "EMP-GROUP-INVALID-OP-001",
+        ["GROUP-SECONDARY"],
+        "2026-05-18T10:00:00.000Z",
+      ),
+    },
+  );
+
+  assert.deepEqual(await adapter.projectGroups(originalProjection), {
+    outcome: "skipped",
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-GROUP-INVALID-OP-001",
+    reason: "already_projected",
+    groupKeys: ["GROUP-PRIMARY"],
+    effectiveAt: "2026-05-18T09:00:00.000Z",
+    metadata: expectedMockGroupMetadata(
+      "EMP-GROUP-INVALID-OP-001",
+      ["GROUP-PRIMARY"],
+      "2026-05-18T09:00:00.000Z",
+    ),
+  });
+});
+
 test("mock Okta group projection metadata uses locale-independent group key ordering", async () => {
   const adapter = buildOktaMasteringAdapter({
     mode: "mock",
