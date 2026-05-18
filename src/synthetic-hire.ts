@@ -683,10 +683,14 @@ function validateSyntheticHireRequest(input: SyntheticHireRequestInput): void {
 }
 
 function validateSyntheticHire(input: SyntheticHireInput): void {
+  validateSyntheticHireRecords(input);
+  validateAudit(input.audit);
+}
+
+function validateSyntheticHireRecords(input: SyntheticHireInput): void {
   validatePerson(input.person);
   validateEmployment(input.employment);
   validateAssignment(input.assignment);
-  validateAudit(input.audit);
 
   if (input.contactPoint) {
     validateContactPoint(input.contactPoint);
@@ -710,7 +714,7 @@ function validateApplySyntheticHireRequest(
   input: ApplySyntheticHireRequestInput,
 ): void {
   validateSyntheticHireRequest(input.request);
-  validateSyntheticHire(input.hire);
+  validateSyntheticHireRecords(input.hire);
   validateLifecycleEvent(input.lifecycleEvent);
 
   if (input.hire.person.id !== input.request.person.id) {

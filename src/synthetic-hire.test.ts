@@ -540,6 +540,66 @@ test("synthetic hire apply does not require run changes metadata", async (t) => 
   }
 });
 
+test("synthetic hire apply does not reject unused hire audit payload", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = {
+      ...createSyntheticHireFixture(),
+      audit: {
+        actorId: "",
+        correlationId: "",
+        occurredAt: "not-a-timestamp",
+        pocMarker: "not_synthetic_poc" as "synthetic_poc",
+      },
+    };
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    saveSyntheticHireRequest(db, request);
+
+    const appliedResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-001",
+        eventType: "hire",
+        effectiveDate: "2026-05-18",
+        occurredAt: "2026-05-18T00:00:00Z",
+      },
+    });
+
+    assert.deepEqual(appliedResult, {
+      transactionRequestId: "transaction-request-syn-hire-001",
+      lifecycleEventId: "lifecycle-event-syn-hire-001",
+      personId: "person-syn-hire-001",
+      statusCode: "completed",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT correlation_id, poc_marker
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      {
+        correlation_id: "correlation-syn-hire-001",
+        poc_marker: "synthetic_poc",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire input validation fails closed before partial writes", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
