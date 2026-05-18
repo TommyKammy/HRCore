@@ -41,6 +41,48 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.equal(contract.openapi, "3.1.0");
   assert.equal(contract.info.title, "HRCore API");
   assert.ok(contract.paths["/health"]);
+  assert.ok(contract.paths["/provisioning-runs"]);
+});
+
+test("GET /provisioning-runs exposes minimal synthetic run evidence", async (t) => {
+  const app = await buildApp();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/provisioning-runs",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(
+    response.headers["content-type"],
+    "application/json; charset=utf-8",
+  );
+
+  assert.deepEqual(response.json(), {
+    runs: [
+      {
+        runId: "synthetic-okta-run-001",
+        status: "completed",
+        targetOperation: "create",
+        result: "success",
+        correlationId:
+          "okta:mock:create:EMP-LOG-001:2026-05-18T07%3A00%3A00.000Z",
+        synthetic: true,
+      },
+      {
+        runId: "synthetic-okta-run-002",
+        status: "needs_attention",
+        targetOperation: "disable",
+        result: "permanent_failure",
+        correlationId:
+          "okta:mock:disable:EMP-PERM:2026-05-18T06%3A00%3A00.000Z",
+        synthetic: true,
+      },
+    ],
+  });
 });
 
 test("OpenAPI contract loading is independent from process cwd", async () => {

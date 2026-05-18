@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { loadOpenApiContract } from "./openapi.js";
+import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 
 export interface BuildAppOptions {
   logger?: boolean;
@@ -20,6 +21,10 @@ export async function buildApp(
   app.get("/openapi.json", async (_request, reply) => {
     const contract = await loadOpenApiContract();
     return reply.type("application/json").send(contract);
+  });
+
+  app.get("/provisioning-runs", async () => {
+    return listSyntheticProvisioningRuns();
   });
 
   return app;
