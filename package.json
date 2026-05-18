@@ -15,7 +15,7 @@
     "verify:pre-pr": "npm run build && npm test && npm run format:check && npm run audit && npm run db:check"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.5.0"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

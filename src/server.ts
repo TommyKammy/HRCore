@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 import { buildApp } from "./app.js";
+import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "127.0.0.1";
@@ -23,10 +24,26 @@ export function resolvePort(portValue = process.env.PORT): number {
   return port;
 }
 
+export async function buildServerApp() {
+  const writebackDb = await openLocalSyntheticWritebackDatabase();
+
+  try {
+    const app = await buildApp({ logger: true, writebackDb });
+    app.addHook("onClose", async () => {
+      writebackDb.close();
+    });
+
+    return app;
+  } catch (error) {
+    writebackDb.close();
+    throw error;
+  }
+}
+
 export async function startServer(): Promise<void> {
   const port = resolvePort();
   const host = process.env.HOST ?? DEFAULT_HOST;
-  const app = await buildApp({ logger: true });
+  const app = await buildServerApp();
 
   await app.listen({ port, host });
 }

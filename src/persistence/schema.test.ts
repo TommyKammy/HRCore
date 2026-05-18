@@ -17,6 +17,7 @@ const expectedTables = [
   "transaction_request",
   "lifecycle_event",
   "audit_event",
+  "writeback_event",
 ] as const;
 
 const requiredColumnsByTable = {
@@ -57,6 +58,18 @@ const requiredColumnsByTable = {
     "subject_table",
     "subject_id",
     "occurred_at",
+    "poc_marker",
+  ],
+  writeback_event: [
+    "id",
+    "person_id",
+    "contact_point_id",
+    "provider_name",
+    "provider_subject_id",
+    "provider_value",
+    "target_contact_type",
+    "correlation_id",
+    "received_at",
     "poc_marker",
   ],
 } as const;
@@ -123,6 +136,8 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   }
 
   assert.match(migrationSql, /contact_type.*work_email/s);
+  assert.match(migrationSql, /writeback_event/);
+  assert.match(migrationSql, /provider_name.*synthetic_okta/s);
   assert.match(migrationSql, /transaction_request/);
   assert.match(migrationSql, /lifecycle_event/);
   assert.match(
@@ -140,6 +155,10 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.doesNotMatch(
     migrationSql,
     /FOREIGN KEY \(`transaction_request_id`\) REFERENCES `transaction_request`\(`id`\)/,
+  );
+  assert.match(
+    migrationSql,
+    /FOREIGN KEY \(`contact_point_id`,`person_id`\) REFERENCES `contact_point`\(`id`,`person_id`\)/,
   );
   assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
   assert.doesNotMatch(
@@ -242,6 +261,56 @@ test("DDL constraints reject cross-person lifecycle links", async (t) => {
             'hire',
             '2026-05-18',
             '2026-05-18T00:00:00Z'
+          );
+        `),
+      /FOREIGN KEY constraint failed/,
+    );
+
+    db.exec(`
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-1',
+        'person-1',
+        'work_email',
+        'person.one@example.invalid',
+        1,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO writeback_event (
+            id,
+            person_id,
+            contact_point_id,
+            provider_name,
+            provider_subject_id,
+            provider_value,
+            target_contact_type,
+            correlation_id,
+            received_at,
+            poc_marker
+          )
+          VALUES (
+            'writeback-event-cross-person',
+            'person-2',
+            'contact-point-1',
+            'synthetic_okta',
+            'synthetic-okta-user-1',
+            'person.two@example.invalid',
+            'work_email',
+            'correlation-cross-person',
+            '2026-05-18T00:00:00Z',
+            'synthetic_poc'
           );
         `),
       /FOREIGN KEY constraint failed/,
