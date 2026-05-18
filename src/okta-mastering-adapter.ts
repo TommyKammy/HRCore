@@ -90,7 +90,10 @@ type OktaGroupProjectionResultCore =
       outcome: "permanent_failure";
       operation: OktaGroupProjectionOperation;
       employeeNumber: string;
-      errorCode: "mock_invalid_group_operation" | "mock_unknown_group";
+      errorCode:
+        | "mock_invalid_group_operation"
+        | "mock_invalid_projection_key"
+        | "mock_unknown_group";
       message: string;
       groupKeys: string[];
       effectiveAt: string;
@@ -173,6 +176,9 @@ const LOCAL_OKTA_ENV_KEYS = [
 
 type LocalOktaEnvKey = (typeof LOCAL_OKTA_ENV_KEYS)[number];
 
+const INVALID_PROJECTION_KEY_MESSAGE =
+  "Synthetic projection key fields must be well-formed Unicode strings.";
+
 export function createSyntheticOktaUserFixture(
   fixture: SyntheticOktaUserFixture,
 ): SyntheticOktaUserFixture {
@@ -241,6 +247,17 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   ): Promise<OktaMasteringProjectionResult> {
     const employeeNumber = getProjectionEmployeeNumber(projection);
     const effectiveAt = getProjectionEffectiveAt(projection);
+    if (!areProjectionKeyFieldsWellFormed([employeeNumber, effectiveAt])) {
+      return withMockMetadata({
+        outcome: "permanent_failure",
+        operation: projection.operation,
+        employeeNumber,
+        errorCode: "mock_invalid_projection_key",
+        message: INVALID_PROJECTION_KEY_MESSAGE,
+        effectiveAt,
+      });
+    }
+
     const forcedFailure = this.forcedFailures[employeeNumber];
 
     if (forcedFailure !== undefined) {
@@ -275,6 +292,22 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     projection: OktaGroupProjection,
   ): Promise<OktaGroupProjectionResult> {
     const normalizedGroupKeys = normalizeGroupKeys(projection.groupKeys);
+    if (
+      !areProjectionKeyFieldsWellFormed([
+        projection.employeeNumber,
+        projection.effectiveAt,
+      ])
+    ) {
+      return withMockGroupMetadata({
+        outcome: "permanent_failure",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        errorCode: "mock_invalid_projection_key",
+        message: INVALID_PROJECTION_KEY_MESSAGE,
+        groupKeys: normalizedGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
 
     if (projection.operation !== "replace_user_groups") {
       return withMockGroupMetadata({
@@ -475,7 +508,60 @@ function withMockGroupMetadata(
 }
 
 function encodeProjectionKeyPart(value: string): string {
-  return encodeURIComponent(value);
+  return encodeURIComponent(toWellFormedString(value));
+}
+
+function areProjectionKeyFieldsWellFormed(values: string[]): boolean {
+  return values.every(isWellFormedString);
+}
+
+function isWellFormedString(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (!isLowSurrogate(nextCodeUnit)) {
+        return false;
+      }
+      index += 1;
+      continue;
+    }
+
+    if (isLowSurrogate(codeUnit)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function toWellFormedString(value: string): string {
+  let result = "";
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (isHighSurrogate(codeUnit)) {
+      const nextCodeUnit = value.charCodeAt(index + 1);
+      if (isLowSurrogate(nextCodeUnit)) {
+        result += value[index] + value[index + 1];
+        index += 1;
+      } else {
+        result += "\uFFFD";
+      }
+      continue;
+    }
+
+    result += isLowSurrogate(codeUnit) ? "\uFFFD" : value[index];
+  }
+
+  return result;
+}
+
+function isHighSurrogate(codeUnit: number): boolean {
+  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
+}
+
+function isLowSurrogate(codeUnit: number): boolean {
+  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
 }
 
 function normalizeGroupKeys(groupKeys: string[]): string[] {

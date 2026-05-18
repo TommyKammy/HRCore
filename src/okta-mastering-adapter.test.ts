@@ -595,6 +595,111 @@ test("mock Okta group projection metadata encodes group keys unambiguously", asy
   );
 });
 
+test("mock Okta projections reject malformed projection key fields without throwing", async () => {
+  const malformedSurrogate = "\uD800";
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialGroups: [
+      {
+        externalId: "okta-group-stable",
+        groupKey: "GROUP-STABLE",
+        displayName: "Synthetic Stable",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+      {
+        externalId: "okta-group-replacement",
+        groupKey: "GROUP-REPLACEMENT",
+        displayName: "Synthetic Replacement",
+        purpose: "poc_identity_lifecycle_membership",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      },
+    ],
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-malformed-key-001",
+        employeeNumber: "EMP-MALFORMED-001",
+        email: "malformed.key@example.invalid",
+        displayName: "Malformed Key",
+        givenName: "Malformed",
+        familyName: "Key",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const userResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-malformed-key-002",
+      employeeNumber: `EMP-${malformedSurrogate}`,
+      email: "malformed.user@example.invalid",
+      displayName: "Malformed User",
+      givenName: "Malformed",
+      familyName: "User",
+      status: "staged",
+      departmentCode: "DEPT-SYN",
+      effectiveAt: "2026-05-18T14:00:00.000Z",
+    }),
+  });
+
+  assert.equal(userResult.outcome, "permanent_failure");
+  if (userResult.outcome !== "permanent_failure") {
+    assert.fail("malformed user projection should fail closed");
+  }
+  assert.equal(userResult.errorCode, "mock_invalid_projection_key");
+  assert.equal(
+    userResult.message,
+    "Synthetic projection key fields must be well-formed Unicode strings.",
+  );
+  assert.match(userResult.metadata.projectionKey, /EMP-%EF%BF%BD/);
+
+  const originalProjection: OktaGroupProjection = {
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-MALFORMED-001",
+    groupKeys: ["GROUP-STABLE"],
+    effectiveAt: "2026-05-18T14:30:00.000Z",
+  };
+  assert.equal(
+    (await adapter.projectGroups(originalProjection)).outcome,
+    "success",
+  );
+
+  const groupResult = await adapter.projectGroups({
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-MALFORMED-001",
+    groupKeys: ["GROUP-REPLACEMENT"],
+    effectiveAt: `2026-05-18T15:00:00.000Z${malformedSurrogate}`,
+  });
+
+  assert.equal(groupResult.outcome, "permanent_failure");
+  if (groupResult.outcome !== "permanent_failure") {
+    assert.fail("malformed group projection should fail closed");
+  }
+  assert.equal(groupResult.errorCode, "mock_invalid_projection_key");
+  assert.equal(
+    groupResult.message,
+    "Synthetic projection key fields must be well-formed Unicode strings.",
+  );
+  assert.match(groupResult.metadata.projectionKey, /%EF%BF%BD$/);
+
+  assert.deepEqual(await adapter.projectGroups(originalProjection), {
+    outcome: "skipped",
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-MALFORMED-001",
+    reason: "already_projected",
+    groupKeys: ["GROUP-STABLE"],
+    effectiveAt: "2026-05-18T14:30:00.000Z",
+    metadata: expectedMockGroupMetadata(
+      "EMP-MALFORMED-001",
+      ["GROUP-STABLE"],
+      "2026-05-18T14:30:00.000Z",
+    ),
+  });
+});
+
 test("real Okta mastering mode stays blocked until local placeholder credentials are replaced", () => {
   const config = resolveLocalOktaMasteringConfig({
     HRCORE_OKTA_BASE_URL: "<okta-verification-tenant-url>",
