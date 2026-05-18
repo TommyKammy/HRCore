@@ -1654,6 +1654,63 @@ test("run-mode governance defines taxonomy and issue-label expectations", async 
   assert.match(readme, /\[Run-Mode Governance\]\(docs\/run-modes\.md\)/);
 });
 
+test("Okta PoC connection contract keeps Phase 1 mock-first and synthetic", async () => {
+  const [contract, readme] = await Promise.all([
+    readRepoFile("docs/okta-poc-connection-contract.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedContract = contract.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# Okta PoC Connection Contract",
+    "The runnable PoC default is mock-first.",
+    "codex-supervisor and local pre-PR verification must run without a real Okta tenant, provider credentials, protected real employee data, or an external service dependency.",
+    "Only synthetic or sanitized identity lifecycle data may be used in committed fixtures, examples, tests, and documentation.",
+    "Real Okta verification tenant binding is operator-local only.",
+    "must be supplied through local environment variables or local-only untracked configuration",
+    "`HRCORE_OKTA_BASE_URL`",
+    "`HRCORE_OKTA_CLIENT_ID`",
+    "`HRCORE_OKTA_CLIENT_SECRET`",
+    "Do not commit tenant URLs, client secret values, API token values, exported tenant metadata, `.env` files, or real employee records.",
+    "Minimum synthetic Okta user fixture shape",
+    "`externalId`",
+    "`employeeNumber`",
+    "`email`",
+    "`displayName`",
+    "`givenName`",
+    "`familyName`",
+    "`status`",
+    "`departmentCode`",
+    "`managerExternalId`",
+    "`effectiveAt`",
+    "create",
+    "update",
+    "disable",
+    "This contract does not implement the Okta adapter, OpenAPI endpoints, database migrations, production secret handling, protected-data handling paths, or provider writeback runtime behavior.",
+    "ADR 0005 through ADR 0020 remain Proposed unless their own files contain completed ADR 0000 two-key evidence.",
+  ]) {
+    assert.ok(
+      normalizedContract.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing Okta PoC contract text: ${requiredText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    contract,
+    /https:\/\/[^<\s)]+\.okta(?:preview)?\.com/u,
+    "Okta PoC contract must not commit a concrete tenant URL",
+  );
+  assert.doesNotMatch(
+    contract,
+    /^## Status\s+Accepted$/m,
+    "Okta PoC contract must not claim Proposed ADRs are Accepted",
+  );
+  assert.match(
+    readme,
+    /\[Okta PoC Connection Contract\]\(docs\/okta-poc-connection-contract\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),

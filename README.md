@@ -21,6 +21,7 @@ The Proposed R08 prohibited column and prohibited payload policy boundary is rec
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
+The Phase 1 Okta mastering PoC connection mode is defined in [Okta PoC Connection Contract](docs/okta-poc-connection-contract.md).
 
 ## Baseline structure
 
@@ -54,6 +55,9 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.
 - `docs/text-merge-pass-closeout.md` records the #82 text-merge pass evidence.
+- `docs/okta-poc-connection-contract.md` records the mock-first Phase 1 Okta
+  mastering PoC contract, local-only real tenant binding placeholders, and
+  minimum synthetic user fixture shape.
 
 ## Local verification
 
