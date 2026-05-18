@@ -270,7 +270,9 @@ test("mock Okta mastering adapter projects synthetic group memberships without R
     effectiveAt: "2026-05-18T09:00:00.000Z",
   };
 
-  assert.deepEqual(await adapter.projectGroups(projection), {
+  const successResult = await adapter.projectGroups(projection);
+
+  assert.deepEqual(successResult, {
     outcome: "success",
     operation: "replace_user_groups",
     employeeNumber: "EMP-GROUP-001",
@@ -282,6 +284,8 @@ test("mock Okta mastering adapter projects synthetic group memberships without R
       "2026-05-18T09:00:00.000Z",
     ),
   });
+
+  successResult.groupKeys.push("GROUP-MUTATED-BY-CALLER");
 
   assert.deepEqual(await adapter.projectGroups(projection), {
     outcome: "skipped",
@@ -316,6 +320,29 @@ test("mock Okta mastering adapter projects synthetic group memberships without R
         "EMP-GROUP-001",
         ["GROUP-UNKNOWN"],
         "2026-05-18T10:00:00.000Z",
+      ),
+    },
+  );
+
+  assert.deepEqual(
+    await adapter.projectGroups({
+      operation: "replace_user_groups",
+      employeeNumber: "EMP-MISSING",
+      groupKeys: ["GROUP-UNKNOWN"],
+      effectiveAt: "2026-05-18T11:00:00.000Z",
+    }),
+    {
+      outcome: "permanent_failure",
+      operation: "replace_user_groups",
+      employeeNumber: "EMP-MISSING",
+      errorCode: "mock_unknown_group",
+      message: "Synthetic group projection references unknown group keys.",
+      groupKeys: ["GROUP-UNKNOWN"],
+      effectiveAt: "2026-05-18T11:00:00.000Z",
+      metadata: expectedMockGroupMetadata(
+        "EMP-MISSING",
+        ["GROUP-UNKNOWN"],
+        "2026-05-18T11:00:00.000Z",
       ),
     },
   );

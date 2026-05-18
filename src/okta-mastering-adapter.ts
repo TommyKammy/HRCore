@@ -276,17 +276,6 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   ): Promise<OktaGroupProjectionResult> {
     const normalizedGroupKeys = normalizeGroupKeys(projection.groupKeys);
 
-    if (!this.usersByEmployeeNumber.has(projection.employeeNumber)) {
-      return withMockGroupMetadata({
-        outcome: "skipped",
-        operation: "replace_user_groups",
-        employeeNumber: projection.employeeNumber,
-        reason: "missing_user",
-        groupKeys: normalizedGroupKeys,
-        effectiveAt: projection.effectiveAt,
-      });
-    }
-
     const unknownGroupKeys = normalizedGroupKeys.filter(
       (groupKey) => !this.groupsByKey.has(groupKey),
     );
@@ -298,6 +287,17 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
         errorCode: "mock_unknown_group",
         message: "Synthetic group projection references unknown group keys.",
         groupKeys: unknownGroupKeys,
+        effectiveAt: projection.effectiveAt,
+      });
+    }
+
+    if (!this.usersByEmployeeNumber.has(projection.employeeNumber)) {
+      return withMockGroupMetadata({
+        outcome: "skipped",
+        operation: "replace_user_groups",
+        employeeNumber: projection.employeeNumber,
+        reason: "missing_user",
+        groupKeys: normalizedGroupKeys,
         effectiveAt: projection.effectiveAt,
       });
     }
@@ -315,10 +315,9 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
       });
     }
 
-    this.groupKeysByEmployeeNumber.set(
-      projection.employeeNumber,
-      normalizedGroupKeys,
-    );
+    this.groupKeysByEmployeeNumber.set(projection.employeeNumber, [
+      ...normalizedGroupKeys,
+    ]);
 
     return withMockGroupMetadata({
       outcome: "success",
@@ -442,8 +441,11 @@ function withMockMetadata(
 function withMockGroupMetadata(
   result: OktaGroupProjectionResultCore,
 ): OktaGroupProjectionResult {
+  const groupKeys = [...result.groupKeys];
+
   return {
     ...result,
+    groupKeys,
     metadata: {
       adapterMode: "mock",
       provider: "okta",
@@ -452,7 +454,7 @@ function withMockGroupMetadata(
         "mock",
         result.operation,
         result.employeeNumber,
-        result.groupKeys.join(","),
+        groupKeys.join(","),
         result.effectiveAt,
       ].join(":"),
       synthetic: true,
