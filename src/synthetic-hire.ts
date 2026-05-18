@@ -373,18 +373,53 @@ export function applySyntheticHireRequest(
     db.exec("SAVEPOINT synthetic_hire_request_apply");
     savepointStarted = true;
 
-    const updateResult = db
-      .prepare(
-        `
-          UPDATE transaction_request
-          SET status_code = 'completed'
-          WHERE id = ?
-            AND person_id = ?
-            AND status_code = 'submitted'
-        `,
-      )
-      .run(input.request.transactionRequest.id, input.request.person.id);
-    requireSingleChangedRow(updateResult, "transaction_request");
+    // Fail closed on missing or non-hire requests without relying on adapter row-count metadata.
+    db.prepare(
+      `
+        INSERT INTO lifecycle_event (
+          id,
+          person_id,
+          transaction_request_id,
+          event_type,
+          effective_date,
+          occurred_at
+        )
+        VALUES (
+          ?,
+          (
+            SELECT person_id
+            FROM transaction_request
+            WHERE id = ?
+              AND person_id = ?
+              AND request_type = 'hire'
+              AND status_code = 'submitted'
+          ),
+          ?,
+          ?,
+          ?,
+          ?
+        )
+      `,
+    ).run(
+      input.lifecycleEvent.id,
+      input.request.transactionRequest.id,
+      input.request.person.id,
+      input.request.transactionRequest.id,
+      input.lifecycleEvent.eventType,
+      input.lifecycleEvent.effectiveDate,
+      input.lifecycleEvent.occurredAt,
+    );
+
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET status_code = 'completed'
+        WHERE id = ?
+          AND person_id = ?
+          AND request_type = 'hire'
+          AND status_code = 'submitted'
+      `,
+    ).run(input.request.transactionRequest.id, input.request.person.id);
 
     db.prepare(
       `
@@ -457,27 +492,6 @@ export function applySyntheticHireRequest(
         input.hire.contactPoint.createdAt,
       );
     }
-
-    db.prepare(
-      `
-        INSERT INTO lifecycle_event (
-          id,
-          person_id,
-          transaction_request_id,
-          event_type,
-          effective_date,
-          occurred_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-    ).run(
-      input.lifecycleEvent.id,
-      input.request.person.id,
-      input.request.transactionRequest.id,
-      input.lifecycleEvent.eventType,
-      input.lifecycleEvent.effectiveDate,
-      input.lifecycleEvent.occurredAt,
-    );
 
     db.exec("RELEASE SAVEPOINT synthetic_hire_request_apply");
 
@@ -657,17 +671,6 @@ function requireBoolean(fieldName: string, value: unknown): boolean {
 
 function toSqliteBoolean(fieldName: string, value: unknown): 0 | 1 {
   return requireBoolean(fieldName, value) ? 1 : 0;
-}
-
-function requireSingleChangedRow(value: unknown, tableName: string): void {
-  if (!value || typeof value !== "object" || !("changes" in value)) {
-    throw new Error(`${tableName} update must report changed rows`);
-  }
-
-  const changes = (value as { changes: unknown }).changes;
-  if (changes !== 1 && changes !== 1n) {
-    throw new Error(`${tableName} must transition exactly one submitted row`);
-  }
 }
 
 function requireDate(fieldName: string, value: string): void {
