@@ -42,6 +42,38 @@
           }
         }
       }
+    },
+    "/writeback-events/work-email": {
+      "post": {
+        "operationId": "ingestSyntheticWorkEmailWriteback",
+        "summary": "Ingest synthetic work email writeback evidence",
+        "description": "Accepts local-only synthetic provider-confirmed work email writeback events. This is not a production webhook, signature verification surface, real Okta call, approval workflow, or audit immutability claim.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyntheticWorkEmailWritebackInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Synthetic writeback event was persisted and applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticWorkEmailWritebackResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local writeback ingest database was not configured."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -105,6 +137,95 @@
             "type": "string"
           },
           "synthetic": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SyntheticWorkEmailWritebackInput": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "personId",
+          "contactPointId",
+          "providerName",
+          "providerSubjectId",
+          "providerValue",
+          "targetContactType",
+          "correlationId",
+          "receivedAt",
+          "pocMarker"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "contactPointId": {
+            "type": "string"
+          },
+          "providerName": {
+            "type": "string",
+            "const": "synthetic_okta"
+          },
+          "providerSubjectId": {
+            "type": "string"
+          },
+          "providerValue": {
+            "type": "string"
+          },
+          "targetContactType": {
+            "type": "string",
+            "const": "work_email"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "receivedAt": {
+            "type": "string"
+          },
+          "pocMarker": {
+            "type": "string",
+            "const": "synthetic_poc"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SyntheticWorkEmailWritebackResult": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "personId",
+          "contactPointId",
+          "providerName",
+          "providerSubjectId",
+          "correlationId",
+          "applied"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "contactPointId": {
+            "type": "string"
+          },
+          "providerName": {
+            "type": "string",
+            "const": "synthetic_okta"
+          },
+          "providerSubjectId": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "applied": {
             "type": "boolean",
             "const": true
           }

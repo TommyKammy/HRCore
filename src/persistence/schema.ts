@@ -142,6 +142,70 @@ export const contact_point = sqliteTable(
   ],
 );
 
+export const writeback_event = sqliteTable(
+  "writeback_event",
+  {
+    id: syntheticId(),
+    personId: text("person_id")
+      .notNull()
+      .references(() => person.id),
+    contactPointId: text("contact_point_id")
+      .notNull()
+      .references(() => contact_point.id),
+    providerName: text("provider_name", { enum: ["synthetic_okta"] }).notNull(),
+    providerSubjectId: text("provider_subject_id").notNull(),
+    providerValue: text("provider_value").notNull(),
+    targetContactType: text("target_contact_type", {
+      enum: ["work_email"],
+    }).notNull(),
+    correlationId: text("correlation_id").notNull(),
+    receivedAt: text("received_at").notNull(),
+    pocMarker: text("poc_marker", { enum: ["synthetic_poc"] })
+      .notNull()
+      .default("synthetic_poc"),
+  },
+  (table) => [
+    uniqueIndex("writeback_event_correlation_unique").on(table.correlationId),
+    check("writeback_event_id_non_empty", sql`length(${table.id}) > 0`),
+    check(
+      "writeback_event_contact_point_id_non_empty",
+      sql`length(${table.contactPointId}) > 0`,
+    ),
+    check(
+      "writeback_event_provider_name_allowed",
+      sql`${table.providerName} in ('synthetic_okta')`,
+    ),
+    check(
+      "writeback_event_provider_subject_id_non_empty",
+      sql`length(${table.providerSubjectId}) > 0`,
+    ),
+    check(
+      "writeback_event_provider_value_non_empty",
+      sql`length(${table.providerValue}) > 0`,
+    ),
+    check(
+      "writeback_event_provider_work_email_shape",
+      sql`${table.targetContactType} != 'work_email' or instr(${table.providerValue}, '@') > 1`,
+    ),
+    check(
+      "writeback_event_target_contact_type_allowed",
+      sql`${table.targetContactType} in ('work_email')`,
+    ),
+    check(
+      "writeback_event_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "writeback_event_received_at_date",
+      sql`${table.receivedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "writeback_event_poc_marker_allowed",
+      sql`${table.pocMarker} in ('synthetic_poc')`,
+    ),
+  ],
+);
+
 export const transaction_request = sqliteTable(
   "transaction_request",
   {

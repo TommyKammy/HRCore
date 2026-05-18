@@ -17,6 +17,7 @@ const expectedTables = [
   "transaction_request",
   "lifecycle_event",
   "audit_event",
+  "writeback_event",
 ] as const;
 
 const requiredColumnsByTable = {
@@ -57,6 +58,18 @@ const requiredColumnsByTable = {
     "subject_table",
     "subject_id",
     "occurred_at",
+    "poc_marker",
+  ],
+  writeback_event: [
+    "id",
+    "person_id",
+    "contact_point_id",
+    "provider_name",
+    "provider_subject_id",
+    "provider_value",
+    "target_contact_type",
+    "correlation_id",
+    "received_at",
     "poc_marker",
   ],
 } as const;
@@ -123,6 +136,8 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   }
 
   assert.match(migrationSql, /contact_type.*work_email/s);
+  assert.match(migrationSql, /writeback_event/);
+  assert.match(migrationSql, /provider_name.*synthetic_okta/s);
   assert.match(migrationSql, /transaction_request/);
   assert.match(migrationSql, /lifecycle_event/);
   assert.match(

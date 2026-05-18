@@ -42,6 +42,7 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.equal(contract.info.title, "HRCore API");
   assert.ok(contract.paths["/health"]);
   assert.ok(contract.paths["/provisioning-runs"]);
+  assert.ok(contract.paths["/writeback-events/work-email"]);
 });
 
 test("GET /provisioning-runs exposes minimal synthetic run evidence", async (t) => {
