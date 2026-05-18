@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import { buildApp } from "./app.js";
 import { loadOpenApiContract } from "./openapi.js";
-import { resolvePort } from "./server.js";
+import { buildServerApp, resolvePort } from "./server.js";
+import { createSyntheticWorkEmailWritebackFixture } from "./writeback-ingest.js";
 
 test("GET /health returns the smoke-test health response", async (t) => {
   const app = await buildApp();
@@ -119,4 +123,57 @@ test("resolvePort accepts only explicit integer port values", () => {
       /PORT must be an integer between 0 and 65535/,
     );
   }
+});
+
+test("buildServerApp wires the local writeback database into the actual server app", async (t) => {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  const tempDirectory = await mkdtemp(join(tmpdir(), "hrcore-server-db-"));
+  process.env.DATABASE_URL = `file:${join(tempDirectory, "hrcore.sqlite")}`;
+
+  t.after(async () => {
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const app = await buildServerApp();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const db = await import("node:sqlite");
+  const sqlite = new db.DatabaseSync(join(tempDirectory, "hrcore.sqlite"));
+  t.after(() => {
+    sqlite.close();
+  });
+
+  sqlite.exec(`
+    PRAGMA foreign_keys = ON;
+    INSERT INTO person (id, display_name, created_at)
+    VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+  `);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/writeback-events/work-email",
+    payload: createSyntheticWorkEmailWritebackFixture(),
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(
+    sqlite
+      .prepare(
+        `
+          SELECT provider_value
+          FROM writeback_event
+          WHERE id = 'writeback-event-work-email-001'
+        `,
+      )
+      .get()?.provider_value,
+    "confirmed.writeback@example.invalid",
+  );
 });

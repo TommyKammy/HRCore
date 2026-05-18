@@ -39,6 +39,18 @@ type SyntheticWorkEmailWritebackFixtureOverrides =
 const syntheticPocMarker = "synthetic_poc";
 const timestampPattern =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
+const syntheticWorkEmailWritebackFields = [
+  "eventId",
+  "personId",
+  "contactPointId",
+  "providerName",
+  "providerSubjectId",
+  "providerValue",
+  "targetContactType",
+  "correlationId",
+  "receivedAt",
+  "pocMarker",
+];
 
 export class SyntheticWorkEmailWritebackValidationError extends Error {
   override name = "SyntheticWorkEmailWritebackValidationError";
@@ -186,6 +198,17 @@ export function parseSyntheticWorkEmailWritebackInput(
   if (!isRecord(input)) {
     throw new SyntheticWorkEmailWritebackValidationError(
       "request body must be an object",
+    );
+  }
+
+  const unsupportedFields = Object.keys(input).filter(
+    (field) => !syntheticWorkEmailWritebackFields.includes(field),
+  );
+  if (unsupportedFields.length > 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      `request body contains unsupported fields: ${unsupportedFields.join(
+        ", ",
+      )}`,
     );
   }
 

@@ -121,6 +121,7 @@ export const contact_point = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [
+    uniqueIndex("contact_point_id_person_unique").on(table.id, table.personId),
     uniqueIndex("contact_point_person_type_unique").on(
       table.personId,
       table.contactType,
@@ -149,9 +150,7 @@ export const writeback_event = sqliteTable(
     personId: text("person_id")
       .notNull()
       .references(() => person.id),
-    contactPointId: text("contact_point_id")
-      .notNull()
-      .references(() => contact_point.id),
+    contactPointId: text("contact_point_id").notNull(),
     providerName: text("provider_name", { enum: ["synthetic_okta"] }).notNull(),
     providerSubjectId: text("provider_subject_id").notNull(),
     providerValue: text("provider_value").notNull(),
@@ -166,6 +165,11 @@ export const writeback_event = sqliteTable(
   },
   (table) => [
     uniqueIndex("writeback_event_correlation_unique").on(table.correlationId),
+    foreignKey({
+      name: "writeback_event_contact_point_person_match_fk",
+      columns: [table.contactPointId, table.personId],
+      foreignColumns: [contact_point.id, contact_point.personId],
+    }),
     check("writeback_event_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "writeback_event_contact_point_id_non_empty",

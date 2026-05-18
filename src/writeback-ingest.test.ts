@@ -606,3 +606,47 @@ test("POST /writeback-events/work-email rejects missing request bodies before du
     { count: 0 },
   );
 });
+
+test("POST /writeback-events/work-email rejects unsupported request fields before durable writes", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  const app = await buildApp({ writebackDb: db });
+  t.after(async () => {
+    await app.close();
+  });
+  t.after(() => {
+    db.close();
+  });
+
+  db.exec(`
+    INSERT INTO person (id, display_name, created_at)
+    VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+  `);
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/writeback-events/work-email",
+    payload: {
+      ...createSyntheticWorkEmailWritebackFixture(),
+      unexpectedProviderHint: "ignore-me",
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: "request body contains unsupported fields: unexpectedProviderHint",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM writeback_event").get(),
+    ),
+    { count: 0 },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+    ),
+    { count: 0 },
+  );
+});
