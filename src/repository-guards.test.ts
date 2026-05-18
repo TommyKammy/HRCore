@@ -1488,6 +1488,57 @@ test("retiree retention extension-anchor ADR preserves action-log audit-event an
   );
 });
 
+test("legal entity timezone and business-calendar extension-anchor ADR preserves future-date worker boundary", async () => {
+  const [adr, readme] = await Promise.all([
+    readRepoFile(
+      "docs/adr/0019-legal-entity-timezone-business-calendar-extension-boundary.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAdr = adr.replace(/\s+/gu, " ").trim();
+
+  for (const requiredAdrText of [
+    "# ADR 0019: Legal Entity Timezone and Business Calendar Extension Boundary",
+    "## Status\n\nProposed",
+    "- Author: TommyKammy",
+    "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+    "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+    "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    "## Depends on ADRs\n\n- [ADR 0000: Architecture Decision Record Process](0000-adr-process.md)\n- [ADR 0002: Policy-as-Code CI Strategy](0002-policy-as-code-ci-strategy.md)\n- [ADR 0003: MVP-A Core Stability Contract](0003-mvp-a-core-stability-contract.md)\n- [ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary](0011-data-scope-policy-dsl-rls-boundary.md)\n- [ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary](0012-audit-event-hash-chain-worm-object-lock-boundary.md)\n- [ADR 0017: Employment Status and Work Arrangement Extension Boundary](0017-employment-status-work-arrangement-extension-boundary.md)\n- [Run-Mode Governance](../run-modes.md)",
+    "`legal_entity`",
+    "`timezone_resolver`",
+    "`business_calendar`",
+    "`future_date_apply_worker`",
+    "Future-date processing must not hard-code `Asia/Tokyo` as the universal runtime authority",
+    "Timezone and business-calendar authority must be resolved through an explicit `legal_entity` or configured owner boundary",
+    "Missing timezone authority, missing business-calendar authority, ambiguous legal-entity ownership, or unresolved calendar version must fail closed",
+    "Future-date apply worker behavior is a design boundary only",
+    "Audit evidence must bind the scheduled action, legal entity, timezone source, business-calendar source, effective date, worker identity, replay or correction reason, outcome, and `correlation_id`",
+    "Replay and correction must not recompute historical outcomes from a changed timezone or calendar without preserving the original authority and a corrected replacement record",
+    "Concrete schema, migrations, API shape, UI workflow, worker implementation, calendar library, calendar provider, provider integration, production operations, and policy-as-code enforcement are deferred to later implementation issues or later Accepted ADRs.",
+    "This ADR stays Proposed until ADR 0000 two-key evidence is complete",
+    "This ADR does not implement runtime features, migrations, OpenAPI endpoints, DTOs, UI workflows, future-date workers, calendar libraries, provider integrations, production secrets, external services, or policy-as-code parser rules.",
+    "## Supersedes\n\nNone",
+    "## Superseded by\n\nNone",
+  ]) {
+    assert.ok(
+      normalizedAdr.includes(requiredAdrText.replace(/\s+/gu, " ").trim()),
+      `missing legal entity/timezone/business-calendar extension ADR text: ${requiredAdrText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    adr,
+    /^## Status\s+Accepted$/m,
+    "legal entity/timezone/business-calendar extension ADR must remain Proposed until two-key evidence is complete",
+  );
+
+  assert.match(
+    readme,
+    /\[ADR 0019: Legal Entity Timezone and Business Calendar Extension Boundary\]\(docs\/adr\/0019-legal-entity-timezone-business-calendar-extension-boundary\.md\)/,
+  );
+});
+
 test("run-mode governance defines taxonomy and issue-label expectations", async () => {
   const [runModes, readme] = await Promise.all([
     readRepoFile("docs/run-modes.md"),
