@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   createSyntheticHireFixture,
   saveSyntheticHire,
+  type SyntheticHireDatabase,
 } from "./synthetic-hire.js";
 
 const readRepoFile = (path: string): Promise<string> =>
@@ -208,19 +209,70 @@ test("synthetic hire validation rejects malformed timestamps and impossible date
         }),
         error: /employment.startDate must be an ISO date/,
       },
+      {
+        input: createSyntheticHireFixture({
+          contactPoint: {
+            value: "@example.invalid",
+          },
+        }),
+        error: /contactPoint.value must be a skeleton work email/,
+      },
     ];
 
     for (const { input, error } of rejectedInputs) {
       assert.throws(() => saveSyntheticHire(db, input), error);
     }
 
-    for (const tableName of ["person", "employment", "assignment"]) {
+    for (const tableName of [
+      "person",
+      "employment",
+      "assignment",
+      "contact_point",
+    ]) {
       assert.deepEqual(
         normalizeRow(
           db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
         ),
         { count: 0 },
         `${tableName} must remain empty after rejected timestamp or date input`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire requires explicit transaction capability", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const dbWithoutTransactionFlag = {
+      exec: db.exec.bind(db),
+      prepare: db.prepare.bind(db),
+    } as unknown as SyntheticHireDatabase;
+
+    assert.throws(
+      () =>
+        saveSyntheticHire(
+          dbWithoutTransactionFlag,
+          createSyntheticHireFixture(),
+        ),
+      /requires an explicit transaction capability/,
+    );
+
+    for (const tableName of [
+      "person",
+      "employment",
+      "assignment",
+      "contact_point",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must remain empty when transaction capability is missing`,
       );
     }
   } finally {
@@ -294,10 +346,21 @@ test("synthetic hire database failures roll back earlier hire writes", async (t)
       );
     `);
 
+    const dbWithStaticTransactionFlag: SyntheticHireDatabase = {
+      isTransaction: false,
+      exec: db.exec.bind(db),
+      prepare: db.prepare.bind(db),
+    };
+
     assert.throws(
-      () => saveSyntheticHire(db, createSyntheticHireFixture()),
+      () =>
+        saveSyntheticHire(
+          dbWithStaticTransactionFlag,
+          createSyntheticHireFixture(),
+        ),
       /UNIQUE constraint failed/,
     );
+    assert.equal(db.isTransaction, false);
 
     for (const tableName of ["employment", "assignment"]) {
       assert.deepEqual(
@@ -325,6 +388,31 @@ test("synthetic hire database failures roll back earlier hire writes", async (t)
   } finally {
     db.close();
   }
+});
+
+test("synthetic hire preserves the original error when savepoint start fails", () => {
+  const calls: string[] = [];
+  const db: SyntheticHireDatabase = {
+    isTransaction: true,
+    exec(sql: string) {
+      calls.push(sql);
+      if (sql === "SAVEPOINT synthetic_hire_persistence") {
+        throw new Error("savepoint start failed");
+      }
+      if (sql.startsWith("ROLLBACK TO")) {
+        throw new Error("no such savepoint");
+      }
+    },
+    prepare() {
+      throw new Error("prepare must not run when savepoint start fails");
+    },
+  };
+
+  assert.throws(
+    () => saveSyntheticHire(db, createSyntheticHireFixture()),
+    /savepoint start failed/,
+  );
+  assert.deepEqual(calls, ["SAVEPOINT synthetic_hire_persistence"]);
 });
 
 test("synthetic hire database failures inside a caller-owned transaction roll back to the savepoint", async (t) => {

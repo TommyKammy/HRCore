@@ -6,7 +6,7 @@ export interface SqlStatement {
 
 export interface SyntheticHireDatabase {
   exec(sql: string): unknown;
-  readonly isTransaction?: boolean;
+  readonly isTransaction: boolean;
   prepare(sql: string): SqlStatement;
 }
 
@@ -134,12 +134,17 @@ export function saveSyntheticHire(
 ): SyntheticHirePersistenceResult {
   validateSyntheticHire(input);
 
-  const transactionMode = db.isTransaction ? "savepoint" : "transaction";
+  const transactionMode = resolveTransactionMode(db);
+  let transactionStarted = false;
+  let savepointStarted = false;
+
   try {
     if (transactionMode === "savepoint") {
       db.exec("SAVEPOINT synthetic_hire_persistence");
+      savepointStarted = true;
     } else {
       db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
     }
 
     db.prepare(
@@ -231,14 +236,47 @@ export function saveSyntheticHire(
       ...(input.contactPoint ? { contactPointId: input.contactPoint.id } : {}),
     };
   } catch (error) {
-    if (transactionMode === "savepoint") {
-      db.exec("ROLLBACK TO SAVEPOINT synthetic_hire_persistence");
-      db.exec("RELEASE SAVEPOINT synthetic_hire_persistence");
-    } else if (db.isTransaction) {
-      db.exec("ROLLBACK");
+    if (savepointStarted) {
+      rollbackSavepoint(db);
+    } else if (transactionStarted) {
+      rollbackTransaction(db);
     }
 
     throw error;
+  }
+}
+
+function resolveTransactionMode(
+  db: SyntheticHireDatabase,
+): "savepoint" | "transaction" {
+  if (typeof db.isTransaction !== "boolean") {
+    throw new Error(
+      "Synthetic hire persistence requires an explicit transaction capability",
+    );
+  }
+
+  return db.isTransaction ? "savepoint" : "transaction";
+}
+
+function rollbackSavepoint(db: SyntheticHireDatabase): void {
+  try {
+    db.exec("ROLLBACK TO SAVEPOINT synthetic_hire_persistence");
+  } catch {
+    // Preserve the original write failure; rollback cleanup is best-effort.
+  }
+
+  try {
+    db.exec("RELEASE SAVEPOINT synthetic_hire_persistence");
+  } catch {
+    // Preserve the original write failure; rollback cleanup is best-effort.
+  }
+}
+
+function rollbackTransaction(db: SyntheticHireDatabase): void {
+  try {
+    db.exec("ROLLBACK");
+  } catch {
+    // Preserve the original write failure; rollback cleanup is best-effort.
   }
 }
 
@@ -301,7 +339,7 @@ function validateContactPoint(
     throw new Error("contactPoint.contactType must be work_email");
   }
   requireNonEmpty("contactPoint.value", contactPoint.value);
-  if (!contactPoint.value.includes("@")) {
+  if (contactPoint.value.indexOf("@") <= 0) {
     throw new Error("contactPoint.value must be a skeleton work email");
   }
   requireTimestamp("contactPoint.createdAt", contactPoint.createdAt);
