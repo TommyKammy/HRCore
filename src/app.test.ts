@@ -43,6 +43,17 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.ok(contract.paths["/health"]);
   assert.ok(contract.paths["/provisioning-runs"]);
   assert.ok(contract.paths["/writeback-events/work-email"]);
+
+  const writebackOperation =
+    contract.paths["/writeback-events/work-email"].post;
+  assert.equal(
+    writebackOperation.responses["400"].description,
+    "Synthetic writeback input was malformed or violated local synthetic constraints.",
+  );
+  assert.equal(
+    writebackOperation.responses["400"].content["application/json"].schema.$ref,
+    "#/components/schemas/ErrorResponse",
+  );
 });
 
 test("GET /provisioning-runs exposes minimal synthetic run evidence", async (t) => {
