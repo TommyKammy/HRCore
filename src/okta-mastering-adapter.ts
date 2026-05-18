@@ -296,6 +296,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
       !areProjectionKeyFieldsWellFormed([
         projection.employeeNumber,
         projection.effectiveAt,
+        ...normalizedGroupKeys,
       ])
     ) {
       return withMockGroupMetadata({

@@ -685,6 +685,37 @@ test("mock Okta projections reject malformed projection key fields without throw
   );
   assert.match(groupResult.metadata.projectionKey, /%EF%BF%BD$/);
 
+  const malformedGroupKeyResult = await adapter.projectGroups({
+    operation: "replace_user_groups",
+    employeeNumber: "EMP-MALFORMED-001",
+    groupKeys: [`GROUP-${malformedSurrogate}`],
+    effectiveAt: "2026-05-18T15:30:00.000Z",
+  });
+
+  assert.equal(malformedGroupKeyResult.outcome, "permanent_failure");
+  if (malformedGroupKeyResult.outcome !== "permanent_failure") {
+    assert.fail("malformed group keys should fail closed");
+  }
+  assert.equal(
+    malformedGroupKeyResult.errorCode,
+    "mock_invalid_projection_key",
+  );
+  assert.equal(
+    malformedGroupKeyResult.message,
+    "Synthetic projection key fields must be well-formed Unicode strings.",
+  );
+  assert.equal(
+    malformedGroupKeyResult.metadata.projectionKey,
+    [
+      "okta",
+      "mock",
+      encodeURIComponent("replace_user_groups"),
+      encodeURIComponent("EMP-MALFORMED-001"),
+      encodeURIComponent(JSON.stringify([`GROUP-${malformedSurrogate}`])),
+      encodeURIComponent("2026-05-18T15:30:00.000Z"),
+    ].join(":"),
+  );
+
   assert.deepEqual(await adapter.projectGroups(originalProjection), {
     outcome: "skipped",
     operation: "replace_user_groups",
