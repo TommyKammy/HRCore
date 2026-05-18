@@ -23,6 +23,25 @@
           }
         }
       }
+    },
+    "/provisioning-runs": {
+      "get": {
+        "operationId": "listProvisioningRuns",
+        "summary": "List synthetic provisioning run evidence",
+        "description": "Returns the PoC-depth synthetic Okta mastering run evidence needed for operator inspection. This is not a raw payload viewer, CSV export surface, production audit archive, or WORM log.",
+        "responses": {
+          "200": {
+            "description": "Synthetic provisioning run evidence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvisioningRunEvidenceResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -34,6 +53,60 @@
           "status": {
             "type": "string",
             "const": "ok"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProvisioningRunEvidenceResponse": {
+        "type": "object",
+        "required": ["runs"],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProvisioningRunEvidence"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProvisioningRunEvidence": {
+        "type": "object",
+        "required": [
+          "runId",
+          "status",
+          "targetOperation",
+          "result",
+          "correlationId",
+          "synthetic"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "needs_attention"]
+          },
+          "targetOperation": {
+            "type": "string",
+            "enum": ["create", "update", "disable", "replace_user_groups"]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "success",
+              "skipped",
+              "retryable_failure",
+              "permanent_failure"
+            ]
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "synthetic": {
+            "type": "boolean",
+            "const": true
           }
         },
         "additionalProperties": false
