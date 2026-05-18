@@ -5,6 +5,10 @@ import test from "node:test";
 
 import { buildApp } from "./app.js";
 import {
+  buildOktaMasteringAdapter,
+  createSyntheticOktaUserFixture,
+} from "./okta-mastering-adapter.js";
+import {
   createSyntheticWorkEmailWritebackFixture,
   ingestSyntheticWorkEmailWriteback,
 } from "./writeback-ingest.js";
@@ -142,6 +146,81 @@ test("synthetic work email writeback ingest persists event evidence and upserts 
         correlation_id: "correlation-writeback-work-email-001",
         received_at: "2026-05-18T01:00:00Z",
         poc_marker: "synthetic_poc",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("mock Okta emitted work email writeback payload can be ingested", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    const adapter = buildOktaMasteringAdapter({
+      mode: "mock",
+      initialUsers: [
+        createSyntheticOktaUserFixture({
+          externalId: "okta-user-writeback-001",
+          employeeNumber: "EMP-WRITEBACK-001",
+          email: "writeback.identity@example.invalid",
+          displayName: "Writeback Identity",
+          givenName: "Writeback",
+          familyName: "Identity",
+          status: "active",
+          departmentCode: "DEPT-SYN",
+          effectiveAt: "2026-05-18T08:00:00.000Z",
+        }),
+      ],
+    });
+
+    const projectionResult = await adapter.project({
+      operation: "update",
+      desiredUser: createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-001",
+        employeeNumber: "EMP-WRITEBACK-001",
+        email: "confirmed.writeback@example.invalid",
+        displayName: "Writeback Identity",
+        givenName: "Writeback",
+        familyName: "Identity",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T16:00:00.000Z",
+      }),
+    });
+    assert.equal(projectionResult.outcome, "success");
+
+    const emittedEvent = await adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      employeeNumber: "EMP-WRITEBACK-001",
+      workEmail: "confirmed.writeback@example.invalid",
+      emittedAt: "2026-05-18T16:00:00.000Z",
+      projectionEvidence: projectionResult.metadata,
+    });
+
+    assert.equal(
+      emittedEvent.metadata.projectionKey,
+      "okta:mock:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+    );
+    assert.deepEqual(
+      ingestSyntheticWorkEmailWriteback(db, emittedEvent.payload),
+      {
+        eventId:
+          "okta-work-email-writeback-EMP-WRITEBACK-001-2026-05-18T16%3A00%3A00.000Z",
+        personId: "person-writeback-001",
+        contactPointId: "contact-point-writeback-001",
+        providerName: "synthetic_okta",
+        providerSubjectId: "okta-user-writeback-001",
+        correlationId:
+          "okta:mock:work_email_writeback:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+        applied: true,
       },
     );
   } finally {

@@ -5,8 +5,10 @@ import {
   buildOktaMasteringAdapter,
   createSyntheticOktaUserFixture,
   resolveLocalOktaMasteringConfig,
+  type OktaEmittedWorkEmailWritebackEvent,
   type OktaGroupProjection,
   type OktaMasteringProjection,
+  type OktaMasteringProjectionMetadata,
 } from "./okta-mastering-adapter.js";
 
 test("mock Okta mastering adapter projects create, update, disable, and no-op results without credentials", async () => {
@@ -226,6 +228,119 @@ test("mock Okta mastering adapter records deterministic projection metadata for 
         "2026-05-18T07:00:00.000Z",
       ),
     },
+  );
+});
+
+test("mock Okta mastering adapter emits deterministic work email writeback events for ingest", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-001",
+        employeeNumber: "EMP-WRITEBACK-001",
+        email: "writeback.identity@example.invalid",
+        displayName: "Writeback Identity",
+        givenName: "Writeback",
+        familyName: "Identity",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const event: OktaEmittedWorkEmailWritebackEvent =
+    await adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      employeeNumber: "EMP-WRITEBACK-001",
+      workEmail: "confirmed.writeback@example.invalid",
+      emittedAt: "2026-05-18T16:00:00.000Z",
+      projectionEvidence: expectedMockMetadata(
+        "update",
+        "EMP-WRITEBACK-001",
+        "2026-05-18T16:00:00.000Z",
+      ),
+    });
+
+  assert.deepEqual(event, {
+    payload: {
+      eventId:
+        "okta-work-email-writeback-EMP-WRITEBACK-001-2026-05-18T16%3A00%3A00.000Z",
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "okta-user-writeback-001",
+      providerValue: "confirmed.writeback@example.invalid",
+      targetContactType: "work_email",
+      correlationId:
+        "okta:mock:work_email_writeback:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+      receivedAt: "2026-05-18T16:00:00.000Z",
+      pocMarker: "synthetic_poc",
+    },
+    metadata: {
+      provider: "okta",
+      adapterMode: "mock",
+      eventType: "work_email_writeback",
+      projectionKey:
+        "okta:mock:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+      synthetic: true,
+    },
+  });
+});
+
+test("mock Okta work email writeback emission fails closed when the provider user is missing", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-missing-provider-001",
+      contactPointId: "contact-point-writeback-missing-provider-001",
+      employeeNumber: "EMP-WRITEBACK-MISSING",
+      workEmail: "missing.provider@example.invalid",
+      emittedAt: "2026-05-18T16:30:00.000Z",
+      projectionEvidence: expectedMockMetadata(
+        "update",
+        "EMP-WRITEBACK-MISSING",
+        "2026-05-18T16:30:00.000Z",
+      ),
+    }),
+    /Synthetic writeback requires an existing mock Okta user/,
+  );
+});
+
+test("mock Okta work email writeback emission rejects mismatched projection evidence", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-001",
+        employeeNumber: "EMP-WRITEBACK-001",
+        email: "writeback.identity@example.invalid",
+        displayName: "Writeback Identity",
+        givenName: "Writeback",
+        familyName: "Identity",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      employeeNumber: "EMP-WRITEBACK-001",
+      workEmail: "confirmed.writeback@example.invalid",
+      emittedAt: "2026-05-18T16:00:00.000Z",
+      projectionEvidence: expectedMockMetadata(
+        "update",
+        "EMP-WRITEBACK-SIBLING",
+        "2026-05-18T16:00:00.000Z",
+      ),
+    }),
+    /Synthetic writeback projection evidence must match the emitted employee and timestamp/,
   );
 });
 
@@ -759,7 +874,7 @@ function expectedMockMetadata(
   operation: string,
   employeeNumber: string,
   effectiveAt: string,
-) {
+): OktaMasteringProjectionMetadata {
   return {
     adapterMode: "mock",
     provider: "okta",
