@@ -57,6 +57,36 @@ const openSchemaBackedDatabase = async (t: test.TestContext) => {
   return db;
 };
 
+const hideFirstFutureDateApplyFailureEvidenceRead = (
+  db: SyntheticHireDatabase,
+): SyntheticHireDatabase => {
+  let hideFirstFailureEvidenceRead = true;
+
+  return {
+    exec: db.exec.bind(db),
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        get(...values) {
+          if (
+            hideFirstFailureEvidenceRead &&
+            sql.includes("FROM synthetic_future_date_apply_failure_evidence") &&
+            sql.includes("WHERE job_id = ?")
+          ) {
+            hideFirstFailureEvidenceRead = false;
+            return undefined;
+          }
+
+          return statement.get(...values);
+        },
+        run(...values) {
+          return statement.run(...values);
+        },
+      };
+    },
+  };
+};
+
 test("synthetic hire use case persists person, employment, and assignment together", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -1872,32 +1902,7 @@ test("synthetic future-date apply stale duplicate job read remains fully idempot
       apply,
     });
 
-    let hideFirstFailureEvidenceRead = true;
-    const staleReadDb: SyntheticHireDatabase = {
-      exec: db.exec.bind(db),
-      prepare(sql) {
-        const statement = db.prepare(sql);
-        return {
-          get(...values) {
-            if (
-              hideFirstFailureEvidenceRead &&
-              sql.includes(
-                "FROM synthetic_future_date_apply_failure_evidence",
-              ) &&
-              sql.includes("WHERE job_id = ?")
-            ) {
-              hideFirstFailureEvidenceRead = false;
-              return undefined;
-            }
-
-            return statement.get(...values);
-          },
-          run(...values) {
-            return statement.run(...values);
-          },
-        };
-      },
-    };
+    const staleReadDb = hideFirstFutureDateApplyFailureEvidenceRead(db);
 
     const duplicateFailure = applySyntheticFutureDateHireJob(staleReadDb, {
       job: {
@@ -1938,6 +1943,190 @@ test("synthetic future-date apply stale duplicate job read remains fully idempot
         },
       ],
       "stale duplicate job reads must not duplicate failure audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply stale duplicate job read cannot apply lifecycle state", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstFailure = applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:00:00Z",
+        failAfterPreconditionsReason:
+          "synthetic_post_precondition_apply_failure",
+      },
+      apply,
+    });
+
+    const duplicateFailure = applySyntheticFutureDateHireJob(
+      hideFirstFutureDateApplyFailureEvidenceRead(db),
+      {
+        job: {
+          id: "future-date-apply-job-001",
+          correlationId: "correlation-syn-hire-001",
+          observedAt: "2026-05-19T00:10:00Z",
+        },
+        apply,
+      },
+    );
+
+    assert.deepEqual(
+      duplicateFailure,
+      firstFailure,
+      "stale duplicate job reads must re-check persisted failure evidence before applying",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, count(*) AS count
+              FROM audit_event
+              GROUP BY action
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.future_date_apply_failed",
+          count: 1,
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          count: 1,
+        },
+      ],
+      "stale duplicate job reads must not apply lifecycle or append audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply stale duplicate job read returns failure after completion", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstFailure = applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:00:00Z",
+        failAfterPreconditionsReason:
+          "synthetic_post_precondition_apply_failure",
+      },
+      apply,
+    });
+    applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001-retry",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:05:00Z",
+      },
+      apply,
+    });
+
+    const duplicateFailure = applySyntheticFutureDateHireJob(
+      hideFirstFutureDateApplyFailureEvidenceRead(db),
+      {
+        job: {
+          id: "future-date-apply-job-001",
+          correlationId: "correlation-syn-hire-001",
+          observedAt: "2026-05-19T00:10:00Z",
+        },
+        apply,
+      },
+    );
+
+    assert.deepEqual(
+      duplicateFailure,
+      firstFailure,
+      "stale duplicate job reads must re-check failure evidence before completed retry fallback",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, count(*) AS count
+              FROM audit_event
+              GROUP BY action
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.future_date_apply_failed",
+          count: 1,
+        },
+        {
+          action: "poc.synthetic_hire.lifecycle_applied",
+          count: 1,
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          count: 1,
+        },
+      ],
+      "completed stale duplicate reads must not append audit evidence",
     );
   } finally {
     db.close();

@@ -679,20 +679,10 @@ export function applySyntheticFutureDateHireJob(
 ): SyntheticFutureDateApplyJobResult {
   validateSyntheticFutureDateApplyJob(input);
 
-  const persistedFailureEvidence = readSyntheticFutureDateApplyFailureEvidence(
-    db,
-    input.job.id,
-  );
-  if (persistedFailureEvidence) {
-    assertSyntheticFutureDateApplyFailureEvidenceMatchesInput(
-      persistedFailureEvidence,
-      input,
-    );
-
-    return {
-      outcome: "retryable_failure",
-      failureEvidence: persistedFailureEvidence,
-    };
+  const persistedFailureEvidenceResult =
+    buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
+  if (persistedFailureEvidenceResult) {
+    return persistedFailureEvidenceResult;
   }
 
   const submittedRequest = readSubmittedSyntheticHireRequestForApply(
@@ -700,6 +690,12 @@ export function applySyntheticFutureDateHireJob(
     input.apply,
   );
   if (!submittedRequest) {
+    const rereadFailureEvidenceResult =
+      buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
+    if (rereadFailureEvidenceResult) {
+      return rereadFailureEvidenceResult;
+    }
+
     const completedRetryJobResult =
       buildCompletedSyntheticFutureDateApplyRetryJobResult(db, input);
     if (completedRetryJobResult) {
@@ -725,6 +721,12 @@ export function applySyntheticFutureDateHireJob(
     submittedRequest.requested_at,
   );
 
+  const rereadFailureEvidenceResult =
+    buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
+  if (rereadFailureEvidenceResult) {
+    return rereadFailureEvidenceResult;
+  }
+
   if (input.job.failAfterPreconditionsReason) {
     const failureEvidence = buildSyntheticFutureDateApplyFailureEvidence(
       db,
@@ -744,6 +746,29 @@ export function applySyntheticFutureDateHireJob(
   return {
     outcome: "applied",
     ...applySyntheticHireRequest(db, input.apply),
+  };
+}
+
+function buildPersistedSyntheticFutureDateApplyFailureJobResult(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+): SyntheticFutureDateApplyJobResult | undefined {
+  const persistedFailureEvidence = readSyntheticFutureDateApplyFailureEvidence(
+    db,
+    input.job.id,
+  );
+  if (!persistedFailureEvidence) {
+    return undefined;
+  }
+
+  assertSyntheticFutureDateApplyFailureEvidenceMatchesInput(
+    persistedFailureEvidence,
+    input,
+  );
+
+  return {
+    outcome: "retryable_failure",
+    failureEvidence: persistedFailureEvidence,
   };
 }
 
