@@ -279,6 +279,11 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
 
   private readonly successfulUserProjectionKeys = new Set<string>();
 
+  private readonly currentUserProjectionKeyByEmployeeNumber = new Map<
+    string,
+    string
+  >();
+
   constructor(config: MockOktaMasteringConfig) {
     for (const user of config.initialUsers ?? []) {
       this.usersByEmployeeNumber.set(user.employeeNumber, { ...user });
@@ -335,6 +340,10 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     const resultWithMetadata = withMockMetadata(result);
     if (resultWithMetadata.outcome === "success") {
       this.successfulUserProjectionKeys.add(
+        resultWithMetadata.metadata.projectionKey,
+      );
+      this.currentUserProjectionKeyByEmployeeNumber.set(
+        resultWithMetadata.employeeNumber,
         resultWithMetadata.metadata.projectionKey,
       );
     } else {
@@ -575,6 +584,17 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     }
 
     if (projectionEvidence.effectiveAt !== existingUser.effectiveAt) {
+      throw new Error(
+        "Synthetic writeback refresh projection evidence must match the current provider state.",
+      );
+    }
+
+    if (
+      projectionEvidence.projectionKey !==
+      this.currentUserProjectionKeyByEmployeeNumber.get(
+        existingUser.employeeNumber,
+      )
+    ) {
       throw new Error(
         "Synthetic writeback refresh projection evidence must match the current provider state.",
       );

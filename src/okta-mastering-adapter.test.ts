@@ -651,6 +651,73 @@ test("mock Okta work email refresh rejects projection evidence older than the cu
   );
 });
 
+test("mock Okta work email refresh rejects same-time superseded projection evidence", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+  const effectiveAt = "2026-05-18T16:05:00.000Z";
+
+  const createProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-refresh-same-time-001",
+      employeeNumber: "EMP-WRITEBACK-REFRESH-SAME-TIME-001",
+      email: "create.refresh.same.time@example.invalid",
+      displayName: "Writeback Refresh Same Time",
+      givenName: "Writeback",
+      familyName: "Same Time",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(createProjectionResult.outcome, "success");
+
+  const updateProjectionResult = await adapter.project({
+    operation: "update",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-refresh-same-time-001",
+      employeeNumber: "EMP-WRITEBACK-REFRESH-SAME-TIME-001",
+      email: "update.refresh.same.time@example.invalid",
+      displayName: "Writeback Refresh Same Time",
+      givenName: "Writeback",
+      familyName: "Same Time",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(updateProjectionResult.outcome, "success");
+
+  await assert.rejects(
+    adapter.refreshWorkEmailWriteback({
+      providerSubjectId: "okta-user-writeback-refresh-same-time-001",
+      refreshedAt: "2026-05-18T16:06:00.000Z",
+      projectionEvidence: createProjectionResult.metadata,
+    }),
+    /Synthetic writeback refresh projection evidence must match the current provider state/,
+  );
+
+  assert.deepEqual(
+    await adapter.refreshWorkEmailWriteback({
+      providerSubjectId: "okta-user-writeback-refresh-same-time-001",
+      refreshedAt: "2026-05-18T16:06:00.000Z",
+      projectionEvidence: updateProjectionResult.metadata,
+    }),
+    {
+      providerName: "synthetic_okta",
+      providerSubjectId: "okta-user-writeback-refresh-same-time-001",
+      providerValue: "update.refresh.same.time@example.invalid",
+      refreshedAt: "2026-05-18T16:06:00.000Z",
+      metadata: {
+        provider: "okta",
+        adapterMode: "mock",
+        eventType: "work_email_refresh",
+        projectionKey: updateProjectionResult.metadata.projectionKey,
+        synthetic: true,
+      },
+    },
+  );
+});
+
 test("mock Okta mastering adapter projects synthetic group memberships without RBAC semantics", async () => {
   const adapter = buildOktaMasteringAdapter({
     mode: "mock",

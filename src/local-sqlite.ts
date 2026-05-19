@@ -6,7 +6,12 @@ import type { SyntheticWritebackDatabase } from "./writeback-ingest.js";
 
 const DEFAULT_DATABASE_URL = "file:./.local/hrcore-dev.sqlite";
 const sqliteUriPattern = /^[a-z][a-z0-9+.-]*:/iu;
-const requiredWritebackTables = ["person", "contact_point", "writeback_event"];
+const requiredWritebackTables = [
+  "person",
+  "contact_point",
+  "writeback_event",
+  "writeback_provider_refresh",
+];
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
   close(): void;
