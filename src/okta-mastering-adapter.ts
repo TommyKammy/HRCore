@@ -320,6 +320,10 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
       this.successfulUserProjectionKeys.add(
         resultWithMetadata.metadata.projectionKey,
       );
+    } else {
+      this.successfulUserProjectionKeys.delete(
+        resultWithMetadata.metadata.projectionKey,
+      );
     }
     return resultWithMetadata;
   }
@@ -484,7 +488,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
         contactPointId: input.contactPointId,
         providerName: "synthetic_okta",
         providerSubjectId: existingUser.externalId,
-        providerValue: input.workEmail,
+        providerValue: existingUser.email,
         targetContactType: "work_email",
         correlationId: [
           "okta",

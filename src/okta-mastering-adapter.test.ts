@@ -348,6 +348,59 @@ test("mock Okta work email writeback emission requires successful projection evi
   );
 });
 
+test("mock Okta work email writeback emission rejects later non-success evidence for a reused projection key", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+  const effectiveAt = "2026-05-18T16:15:00.000Z";
+
+  const successfulProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-reused-key-001",
+      employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
+      email: "reused.key.writeback@example.invalid",
+      displayName: "Reused Key Writeback",
+      givenName: "Reused",
+      familyName: "Key",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(successfulProjectionResult.outcome, "success");
+
+  const skippedProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-reused-key-001",
+      employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
+      email: "reused.key.writeback@example.invalid",
+      displayName: "Reused Key Writeback",
+      givenName: "Reused",
+      familyName: "Key",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(skippedProjectionResult.outcome, "skipped");
+  assert.deepEqual(
+    skippedProjectionResult.metadata,
+    successfulProjectionResult.metadata,
+  );
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-reused-key-001",
+      contactPointId: "contact-point-writeback-reused-key-001",
+      employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
+      workEmail: "reused.key.writeback@example.invalid",
+      emittedAt: effectiveAt,
+      projectionEvidence: skippedProjectionResult.metadata,
+    }),
+    /Synthetic writeback requires successful mock Okta projection evidence/,
+  );
+});
+
 test("mock Okta work email writeback emission rejects workEmail drift from projected user", async () => {
   const adapter = buildOktaMasteringAdapter({
     mode: "mock",
