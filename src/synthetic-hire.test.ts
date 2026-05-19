@@ -87,6 +87,38 @@ const hideFirstFutureDateApplyFailureEvidenceRead = (
   };
 };
 
+const completeBeforeFutureDateFailureEvidenceRead = (
+  db: SyntheticHireDatabase,
+  apply: Parameters<typeof applySyntheticHireRequest>[1],
+): SyntheticHireDatabase => {
+  let completeBeforeObservedStateRead = true;
+
+  return {
+    exec: db.exec.bind(db),
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        get(...values) {
+          if (
+            completeBeforeObservedStateRead &&
+            sql.includes("FROM transaction_request") &&
+            sql.includes("lifecycle_event_count") &&
+            sql.includes("status_code = 'submitted'")
+          ) {
+            completeBeforeObservedStateRead = false;
+            applySyntheticHireRequest(db, apply);
+          }
+
+          return statement.get(...values);
+        },
+        run(...values) {
+          return statement.run(...values);
+        },
+      };
+    },
+  };
+};
+
 test("synthetic hire use case persists person, employment, and assignment together", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -2127,6 +2159,103 @@ test("synthetic future-date apply stale duplicate job read returns failure after
         },
       ],
       "completed stale duplicate reads must not append audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply failure evidence capture tolerates completion races", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+
+    const result = applySyntheticFutureDateHireJob(
+      completeBeforeFutureDateFailureEvidenceRead(db, apply),
+      {
+        job: {
+          id: "future-date-apply-job-completion-race",
+          correlationId: "correlation-syn-hire-001",
+          observedAt: "2026-05-19T00:00:00Z",
+          failAfterPreconditionsReason:
+            "synthetic_post_precondition_apply_failure",
+        },
+        apply,
+      },
+    );
+
+    assert.deepEqual(result, {
+      outcome: "applied",
+      transactionRequestId: "transaction-request-syn-hire-001",
+      lifecycleEventId: "lifecycle-event-syn-hire-future-001",
+      personId: "person-syn-hire-001",
+      statusCode: "completed",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.equal(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT name
+              FROM sqlite_master
+              WHERE type = 'table'
+                AND name = 'synthetic_future_date_apply_failure_evidence'
+            `,
+          )
+          .get(),
+      ),
+      undefined,
+      "completion races must not persist failed-job evidence after another worker completed the request",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, count(*) AS count
+              FROM audit_event
+              GROUP BY action
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.lifecycle_applied",
+          count: 1,
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          count: 1,
+        },
+      ],
+      "completion races must return the completed retry result without extra failure audit evidence",
     );
   } finally {
     db.close();

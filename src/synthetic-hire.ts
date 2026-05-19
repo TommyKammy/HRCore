@@ -723,6 +723,12 @@ export function applySyntheticFutureDateHireJob(
       input.job.failAfterPreconditionsReason,
       persistedCorrelationId,
     );
+    if (!failureEvidence) {
+      return requireCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
+        db,
+        input,
+      );
+    }
     const persistedFailureEvidence =
       persistSyntheticFutureDateApplyFailureEvidence(db, failureEvidence);
 
@@ -1535,7 +1541,15 @@ function buildSyntheticFutureDateApplyFailureEvidence(
   input: ApplySyntheticFutureDateHireJobInput,
   failureReason: string,
   correlationId: string,
-): SyntheticFutureDateApplyFailureEvidence {
+): SyntheticFutureDateApplyFailureEvidence | undefined {
+  const observedState = readSyntheticFutureDateApplyObservedState(
+    db,
+    input.apply,
+  );
+  if (!observedState) {
+    return undefined;
+  }
+
   return {
     id: `future-date-apply-failure-${input.job.id}`,
     jobId: input.job.id,
@@ -1546,14 +1560,14 @@ function buildSyntheticFutureDateApplyFailureEvidence(
     failureReason,
     retryable: true,
     observedAt: input.job.observedAt,
-    observedState: readSyntheticFutureDateApplyObservedState(db, input.apply),
+    observedState,
   };
 }
 
 function readSyntheticFutureDateApplyObservedState(
   db: SyntheticHireDatabase,
   input: ApplySyntheticHireRequestInput,
-): SyntheticFutureDateApplyObservedState {
+): SyntheticFutureDateApplyObservedState | undefined {
   const row = db
     .prepare(
       `
@@ -1604,11 +1618,7 @@ function readSyntheticFutureDateApplyObservedState(
       }
     | undefined;
 
-  if (!row) {
-    throw new Error(
-      "synthetic future-date apply failure evidence requires a submitted hire request",
-    );
-  }
+  if (!row) return undefined;
 
   return {
     transactionRequestStatusCode: row.transaction_request_status_code,
