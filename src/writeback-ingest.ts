@@ -342,17 +342,35 @@ export function refreshSyntheticWorkEmailFromProvider(
             ) AS last_provider_refresh_attempt_at
             ,
             (
-              SELECT applied_refresh.provider_value
-              FROM writeback_provider_refresh AS applied_refresh
-              WHERE applied_refresh.writeback_event_id = current_event.id
-                AND applied_refresh.person_id = current_event.person_id
-                AND applied_refresh.contact_point_id = current_event.contact_point_id
-                AND applied_refresh.provider_name = current_event.provider_name
-                AND applied_refresh.provider_subject_id = current_event.provider_subject_id
-              ORDER BY julianday(applied_refresh.refreshed_at) DESC,
-                applied_refresh.rowid DESC
+              SELECT observed_refresh.provider_value
+              FROM (
+                SELECT
+                  applied_refresh.provider_value,
+                  applied_refresh.refreshed_at AS observed_at,
+                  applied_refresh.rowid AS observed_order
+                FROM writeback_provider_refresh AS applied_refresh
+                WHERE applied_refresh.writeback_event_id = current_event.id
+                  AND applied_refresh.person_id = current_event.person_id
+                  AND applied_refresh.contact_point_id = current_event.contact_point_id
+                  AND applied_refresh.provider_name = current_event.provider_name
+                  AND applied_refresh.provider_subject_id = current_event.provider_subject_id
+                UNION ALL
+                SELECT
+                  refresh_conflict.attempted_provider_value AS provider_value,
+                  refresh_conflict.detected_at AS observed_at,
+                  refresh_conflict.rowid AS observed_order
+                FROM writeback_work_email_conflict AS refresh_conflict
+                WHERE refresh_conflict.writeback_event_id = current_event.id
+                  AND refresh_conflict.person_id = current_event.person_id
+                  AND refresh_conflict.contact_point_id = current_event.contact_point_id
+                  AND refresh_conflict.provider_name = current_event.provider_name
+                  AND refresh_conflict.provider_subject_id = current_event.provider_subject_id
+                  AND refresh_conflict.conflict_type = 'provider_refresh_conflict'
+              ) AS observed_refresh
+              ORDER BY julianday(observed_refresh.observed_at) DESC,
+                observed_refresh.observed_order DESC
               LIMIT 1
-            ) AS last_refreshed_provider_value
+            ) AS last_provider_refresh_attempted_value
           FROM writeback_event AS current_event
           WHERE current_event.id = ?
         `,
@@ -425,8 +443,11 @@ export function refreshSyntheticWorkEmailFromProvider(
     }
 
     const expectedCurrentContactValue =
-      event.last_refreshed_provider_value ?? event.provider_value;
-    if (currentContactPoint.value !== expectedCurrentContactValue) {
+      event.last_provider_refresh_attempted_value ?? event.provider_value;
+    if (
+      currentContactPoint.value !== expectedCurrentContactValue &&
+      currentContactPoint.value !== validatedInput.providerValue
+    ) {
       const conflict = createSyntheticWorkEmailConflictEvidence(
         event.id,
         event.correlation_id,
@@ -745,17 +766,40 @@ function getLatestSyntheticProviderValueForContactPoint(
   const latestRefresh = db
     .prepare(
       `
-        SELECT provider_value
-        FROM writeback_provider_refresh
-        WHERE writeback_event_id = ?
-          AND person_id = ?
-          AND contact_point_id = ?
-        ORDER BY julianday(refreshed_at) DESC,
-          rowid DESC
+        SELECT observed_provider.provider_value
+        FROM (
+          SELECT
+            provider_value,
+            refreshed_at AS observed_at,
+            rowid AS observed_order
+          FROM writeback_provider_refresh
+          WHERE writeback_event_id = ?
+            AND person_id = ?
+            AND contact_point_id = ?
+          UNION ALL
+          SELECT
+            attempted_provider_value AS provider_value,
+            detected_at AS observed_at,
+            rowid AS observed_order
+          FROM writeback_work_email_conflict
+          WHERE writeback_event_id = ?
+            AND person_id = ?
+            AND contact_point_id = ?
+            AND conflict_type = 'provider_refresh_conflict'
+        ) AS observed_provider
+        ORDER BY julianday(observed_provider.observed_at) DESC,
+          observed_provider.observed_order DESC
         LIMIT 1
       `,
     )
-    .get(latestEvent.id, personId, contactPointId);
+    .get(
+      latestEvent.id,
+      personId,
+      contactPointId,
+      latestEvent.id,
+      personId,
+      contactPointId,
+    );
 
   return isLatestProviderRefreshValueRow(latestRefresh)
     ? latestRefresh.provider_value
@@ -823,7 +867,7 @@ function isWritebackEventRefreshRow(input: unknown): input is {
   has_inbound_value_conflict: number;
   is_latest_for_contact_point: number;
   last_provider_refresh_attempt_at: string | null;
-  last_refreshed_provider_value: string | null;
+  last_provider_refresh_attempted_value: string | null;
 } {
   return (
     isRecord(input) &&
@@ -841,8 +885,8 @@ function isWritebackEventRefreshRow(input: unknown): input is {
     typeof input.is_latest_for_contact_point === "number" &&
     (typeof input.last_provider_refresh_attempt_at === "string" ||
       input.last_provider_refresh_attempt_at === null) &&
-    (typeof input.last_refreshed_provider_value === "string" ||
-      input.last_refreshed_provider_value === null)
+    (typeof input.last_provider_refresh_attempted_value === "string" ||
+      input.last_provider_refresh_attempted_value === null)
   );
 }
 
