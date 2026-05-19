@@ -718,10 +718,11 @@ export function applySyntheticFutureDateHireJob(
         input.apply,
       );
       if (retryResult) {
-        return {
-          outcome: "applied",
+        const completedRetryJobResult = {
+          outcome: "applied" as const,
           ...retryResult,
         };
+        return completedRetryJobResult;
       }
     }
 
