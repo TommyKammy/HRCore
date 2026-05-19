@@ -460,7 +460,7 @@ test("synthetic hire request submit fails closed on retry correlation drift", as
   }
 });
 
-test("synthetic hire request submit remains idempotent after apply completes the request", async (t) => {
+test("synthetic hire request submit remains idempotent by correlation after apply completes the request", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
 
@@ -482,7 +482,15 @@ test("synthetic hire request submit remains idempotent after apply completes the
       hire,
       lifecycleEvent,
     });
-    const retryResult = saveSyntheticHireRequest(db, request);
+    const retryResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture({
+        person: hire.person,
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
 
     assert.deepEqual(retryResult, submitResult);
     assert.deepEqual(
