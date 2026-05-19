@@ -574,6 +574,12 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
       );
     }
 
+    if (projectionEvidence.effectiveAt !== existingUser.effectiveAt) {
+      throw new Error(
+        "Synthetic writeback refresh projection evidence must match the current provider state.",
+      );
+    }
+
     if (
       !this.successfulUserProjectionKeys.has(projectionEvidence.projectionKey)
     ) {
@@ -752,6 +758,7 @@ function withMockGroupMetadata(
 type WritebackProjectionEvidence = {
   operation: "create" | "update";
   projectionKey: string;
+  effectiveAt: string;
 };
 
 function readMatchingWritebackProjectionEvidence(
@@ -779,6 +786,7 @@ function readMatchingWritebackProjectionEvidence(
     return {
       operation,
       projectionKey: input.projectionEvidence.projectionKey,
+      effectiveAt,
     };
   } catch {
     return undefined;
@@ -795,8 +803,13 @@ function readUserProjectionEvidenceForEmployee(
   }
 
   try {
-    const [provider, adapterMode, operation, evidenceEmployeeNumber] =
-      projectionKeyParts.map(decodeURIComponent);
+    const [
+      provider,
+      adapterMode,
+      operation,
+      evidenceEmployeeNumber,
+      effectiveAt,
+    ] = projectionKeyParts.map(decodeURIComponent);
 
     if (
       provider !== "okta" ||
@@ -810,6 +823,7 @@ function readUserProjectionEvidenceForEmployee(
     return {
       operation,
       projectionKey: metadata.projectionKey,
+      effectiveAt,
     };
   } catch {
     return undefined;

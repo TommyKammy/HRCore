@@ -466,6 +466,118 @@ test("synthetic work email provider refresh rejects provider subject drift witho
   }
 });
 
+test("synthetic work email provider refresh rejects values older than the writeback event", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    assert.throws(
+      () =>
+        refreshSyntheticWorkEmailFromProvider(db, {
+          eventId: "writeback-event-work-email-001",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-001",
+          providerValue: "stale.provider@example.invalid",
+          refreshedAt: "2026-05-18T00:59:00Z",
+        }),
+      /provider refresh must not be older than the original writeback event/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "confirmed.writeback@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email provider refresh rejects superseded writeback events", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-001",
+        providerValue: "first.writeback@example.invalid",
+        correlationId: "correlation-writeback-work-email-001",
+        receivedAt: "2026-05-18T01:00:00Z",
+      }),
+    );
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-002",
+        providerValue: "second.writeback@example.invalid",
+        correlationId: "correlation-writeback-work-email-002",
+        receivedAt: "2026-05-18T01:10:00Z",
+      }),
+    );
+
+    assert.throws(
+      () =>
+        refreshSyntheticWorkEmailFromProvider(db, {
+          eventId: "writeback-event-work-email-001",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-001",
+          providerValue: "delayed.refresh@example.invalid",
+          refreshedAt: "2026-05-18T01:11:00Z",
+        }),
+      /provider refresh requires the latest writeback event for the contact point/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "second.writeback@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("mock Okta emitted create and update writebacks with the same timestamp both ingest", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
