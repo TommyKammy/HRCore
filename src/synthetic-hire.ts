@@ -425,6 +425,12 @@ export function applySyntheticHireRequest(
   const existingApply = readCompletedSyntheticHireApply(db, input);
   if (existingApply) {
     if (matchesCompletedSyntheticHireApplyRetry(existingApply, input)) {
+      if (!isNonEmptyString(existingApply.correlation_id)) {
+        throw new Error(
+          "synthetic hire apply requires a persisted request correlation",
+        );
+      }
+
       return {
         transactionRequestId: input.request.transactionRequest.id,
         lifecycleEventId: input.lifecycleEvent.id,
@@ -442,6 +448,11 @@ export function applySyntheticHireRequest(
   const submittedRequest = readSubmittedSyntheticHireRequestForApply(db, input);
   if (!submittedRequest) {
     throw new Error("synthetic hire apply requires a submitted hire request");
+  }
+  if (!isNonEmptyString(submittedRequest.correlation_id)) {
+    throw new Error(
+      "synthetic hire apply requires a persisted request correlation",
+    );
   }
 
   let savepointStarted = false;
@@ -629,17 +640,14 @@ type ExistingSyntheticHireRequestRow = {
 };
 
 type ExistingSubmittedSyntheticHireApplyRequestRow = {
-  correlation_id: string;
+  correlation_id: string | null;
 };
 
 type ExistingCompletedSyntheticHireApplyRow = {
   transaction_status_code: string;
   request_type: string;
-  requested_at: string;
-  correlation_id: string;
+  correlation_id: string | null;
   person_id: string;
-  display_name: string;
-  person_created_at: string;
   lifecycle_event_id: string;
   lifecycle_event_type: string;
   effective_date: string;
@@ -657,8 +665,6 @@ type ExistingCompletedSyntheticHireApplyRow = {
   assignment_end_date: string | null;
   contact_point_id: string | null;
   contact_type: string | null;
-  contact_value: string | null;
-  is_primary: number | null;
   contact_created_at: string | null;
 };
 
@@ -745,11 +751,8 @@ function readCompletedSyntheticHireApply(
       SELECT
         transaction_request.status_code AS transaction_status_code,
         transaction_request.request_type,
-        transaction_request.requested_at,
         transaction_request.correlation_id,
         person.id AS person_id,
-        person.display_name,
-        person.created_at AS person_created_at,
         lifecycle_event.id AS lifecycle_event_id,
         lifecycle_event.event_type AS lifecycle_event_type,
         lifecycle_event.effective_date,
@@ -767,8 +770,6 @@ function readCompletedSyntheticHireApply(
         assignment.end_date AS assignment_end_date,
         contact_point.id AS contact_point_id,
         contact_point.contact_type,
-        contact_point.value AS contact_value,
-        contact_point.is_primary,
         contact_point.created_at AS contact_created_at
       FROM transaction_request
       JOIN person
@@ -806,11 +807,9 @@ function matchesCompletedSyntheticHireApplyRetry(
 ): boolean {
   if (
     existing.transaction_status_code !== "completed" ||
+    !isNonEmptyString(existing.correlation_id) ||
     existing.request_type !== input.request.transactionRequest.requestType ||
-    existing.requested_at !== input.request.transactionRequest.requestedAt ||
     existing.person_id !== input.request.person.id ||
-    existing.display_name !== input.request.person.displayName ||
-    existing.person_created_at !== input.request.person.createdAt ||
     existing.lifecycle_event_id !== input.lifecycleEvent.id ||
     existing.lifecycle_event_type !== input.lifecycleEvent.eventType ||
     existing.effective_date !== input.lifecycleEvent.effectiveDate ||
@@ -837,14 +836,12 @@ function matchesCompletedSyntheticHireApplyRetry(
   return (
     existing.contact_point_id === input.hire.contactPoint.id &&
     existing.contact_type === input.hire.contactPoint.contactType &&
-    existing.contact_value === input.hire.contactPoint.value &&
-    existing.is_primary ===
-      toSqliteBoolean(
-        "contactPoint.isPrimary",
-        input.hire.contactPoint.isPrimary,
-      ) &&
     existing.contact_created_at === input.hire.contactPoint.createdAt
   );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function insertSyntheticAuditEvent(
