@@ -690,17 +690,9 @@ export function applySyntheticFutureDateHireJob(
     input.apply,
   );
   if (!submittedRequest) {
-    const completedRetryJobResult =
-      buildCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
-        db,
-        input,
-      );
-    if (completedRetryJobResult) {
-      return completedRetryJobResult;
-    }
-
-    throw new Error(
-      "synthetic future-date apply requires a submitted or completed hire request",
+    return requireCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
+      db,
+      input,
     );
   }
 
@@ -812,6 +804,24 @@ function buildCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenc
   }
 
   return buildCompletedSyntheticFutureDateApplyRetryJobResult(db, input);
+}
+
+function requireCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+): SyntheticFutureDateApplyJobResult {
+  const result =
+    buildCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
+      db,
+      input,
+    );
+  if (!result) {
+    throw new Error(
+      "synthetic future-date apply requires a submitted or completed hire request",
+    );
+  }
+
+  return result;
 }
 
 function applySyntheticFutureDateHireJobAfterFailureEvidenceReread(
