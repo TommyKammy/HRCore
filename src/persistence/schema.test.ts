@@ -552,7 +552,8 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         ('person-legacy-contact', 'Legacy Contact Hire', '2026-05-18T00:00:00Z'),
         ('person-legacy-no-contact', 'Legacy No Contact Hire', '2026-05-18T00:00:00Z'),
         ('person-legacy-later-contact', 'Legacy Later Contact Hire', '2026-05-18T00:00:00Z'),
-        ('person-legacy-writeback-drift', 'Legacy Writeback Timestamp Drift', '2026-05-18T00:00:00Z');
+        ('person-legacy-writeback-drift', 'Legacy Writeback Timestamp Drift', '2026-05-18T00:00:00Z'),
+        ('person-legacy-writeback-created', 'Legacy Writeback Created Contact', '2026-05-18T00:00:00Z');
 
       INSERT INTO transaction_request (
         id,
@@ -594,6 +595,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'completed',
           '2026-05-18T00:00:00Z',
           'correlation-legacy-writeback-drift'
+        ),
+        (
+          'transaction-request-legacy-writeback-created',
+          'person-legacy-writeback-created',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-writeback-created'
         );
 
       INSERT INTO lifecycle_event (
@@ -636,6 +645,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'hire',
           '2026-05-18',
           '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-writeback-created',
+          'person-legacy-writeback-created',
+          'transaction-request-legacy-writeback-created',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
         );
 
       INSERT INTO contact_point (
@@ -670,6 +687,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'legacy.writeback.drift@example.invalid',
           1,
           '2026-05-18T00:10:00Z'
+        ),
+        (
+          'contact-point-legacy-writeback-created',
+          'person-legacy-writeback-created',
+          'work_email',
+          'legacy.writeback.created@example.invalid',
+          1,
+          '2026-05-18T00:11:00Z'
         );
 
       INSERT INTO writeback_event (
@@ -692,7 +717,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         'synthetic-okta-user-later-contact',
         'legacy.later@example.invalid',
         'work_email',
-        'correlation-legacy-later-writeback',
+        'okta:mock:work_email_writeback:update:EMP-LEGACY-LATER:2026-05-18T00%3A10%3A00Z',
         '2026-05-18T00:10:00Z',
         'synthetic_poc'
       ),
@@ -705,6 +730,18 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         'legacy.writeback.drift@example.invalid',
         'work_email',
         'okta:mock:work_email_writeback:create:EMP-LEGACY-DRIFT:2026-05-18T00%3A11%3A00Z',
+        '2026-05-18T00:11:00Z',
+        'synthetic_poc'
+      ),
+      (
+        'writeback-event-legacy-writeback-created',
+        'person-legacy-writeback-created',
+        'contact-point-legacy-writeback-created',
+        'synthetic_okta',
+        'synthetic-okta-user-writeback-created',
+        'legacy.writeback.created@example.invalid',
+        'work_email',
+        'okta:mock:work_email_writeback:create:EMP-LEGACY-CREATED:2026-05-18T00%3A11%3A00Z',
         '2026-05-18T00:11:00Z',
         'synthetic_poc'
       );
@@ -738,11 +775,15 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           contact_point_id: null,
         },
         {
-          id: "lifecycle-event-legacy-writeback-drift",
+          id: "lifecycle-event-legacy-writeback-created",
           contact_point_id: null,
         },
+        {
+          id: "lifecycle-event-legacy-writeback-drift",
+          contact_point_id: "contact-point-legacy-writeback-drift",
+        },
       ],
-      "migration must preserve completed apply retry identity for legacy contact-bearing hires without inventing contact linkage from later writeback contacts",
+      "migration must preserve completed apply retry identity for legacy contact-bearing hires without inventing contact linkage from same-time writeback-created contacts",
     );
   } finally {
     db.close();
