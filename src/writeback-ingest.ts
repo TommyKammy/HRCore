@@ -650,6 +650,7 @@ export function resolveSyntheticWorkEmailConflict(
             contact_point_id,
             provider_name,
             provider_subject_id,
+            conflict_type,
             current_contact_value,
             attempted_provider_value
           FROM writeback_work_email_conflict
@@ -661,6 +662,12 @@ export function resolveSyntheticWorkEmailConflict(
     if (!isWorkEmailConflictResolutionRow(conflict)) {
       throw new SyntheticWorkEmailWritebackValidationError(
         "conflict resolution requires an existing conflict",
+      );
+    }
+
+    if (conflict.conflict_type !== "provider_refresh_conflict") {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution requires a provider refresh conflict",
       );
     }
 
@@ -1207,6 +1214,7 @@ function isWorkEmailConflictResolutionRow(input: unknown): input is {
   contact_point_id: string;
   provider_name: "synthetic_okta";
   provider_subject_id: string;
+  conflict_type: "inbound_value_conflict" | "provider_refresh_conflict";
   current_contact_value: string;
   attempted_provider_value: string;
 } {
@@ -1218,6 +1226,8 @@ function isWorkEmailConflictResolutionRow(input: unknown): input is {
     typeof input.contact_point_id === "string" &&
     input.provider_name === "synthetic_okta" &&
     typeof input.provider_subject_id === "string" &&
+    (input.conflict_type === "inbound_value_conflict" ||
+      input.conflict_type === "provider_refresh_conflict") &&
     typeof input.current_contact_value === "string" &&
     typeof input.attempted_provider_value === "string"
   );
