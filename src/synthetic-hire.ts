@@ -700,30 +700,10 @@ export function applySyntheticFutureDateHireJob(
     input.apply,
   );
   if (!submittedRequest) {
-    const retryApply = readCompletedSyntheticHireApply(db, input.apply);
-    if (retryApply) {
-      const completedRetryCorrelationId =
-        requirePersistedSyntheticHireCorrelation(retryApply.correlation_id);
-      assertSyntheticFutureDateApplyJobCorrelation(
-        input.job.correlationId,
-        completedRetryCorrelationId,
-      );
-      assertSyntheticFutureDateApplyIsFuture(
-        retryApply.effective_date,
-        retryApply.requested_at,
-      );
-
-      const retryResult = buildCompletedSyntheticHireApplyRetryResult(
-        retryApply,
-        input.apply,
-      );
-      if (retryResult) {
-        const completedRetryJobResult = {
-          outcome: "applied" as const,
-          ...retryResult,
-        };
-        return completedRetryJobResult;
-      }
+    const completedRetryJobResult =
+      buildCompletedSyntheticFutureDateApplyRetryJobResult(db, input);
+    if (completedRetryJobResult) {
+      return completedRetryJobResult;
     }
 
     throw new Error(
@@ -764,6 +744,41 @@ export function applySyntheticFutureDateHireJob(
   return {
     outcome: "applied",
     ...applySyntheticHireRequest(db, input.apply),
+  };
+}
+
+function buildCompletedSyntheticFutureDateApplyRetryJobResult(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+): SyntheticFutureDateApplyJobResult | undefined {
+  const retryApply = readCompletedSyntheticHireApply(db, input.apply);
+  if (!retryApply) {
+    return undefined;
+  }
+
+  const completedRetryCorrelationId = requirePersistedSyntheticHireCorrelation(
+    retryApply.correlation_id,
+  );
+  assertSyntheticFutureDateApplyJobCorrelation(
+    input.job.correlationId,
+    completedRetryCorrelationId,
+  );
+  assertSyntheticFutureDateApplyIsFuture(
+    retryApply.effective_date,
+    retryApply.requested_at,
+  );
+
+  const retryResult = buildCompletedSyntheticHireApplyRetryResult(
+    retryApply,
+    input.apply,
+  );
+  if (!retryResult) {
+    return undefined;
+  }
+
+  return {
+    outcome: "applied",
+    ...retryResult,
   };
 }
 
