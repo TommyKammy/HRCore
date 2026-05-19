@@ -702,12 +702,11 @@ export function applySyntheticFutureDateHireJob(
   if (!submittedRequest) {
     const retryApply = readCompletedSyntheticHireApply(db, input.apply);
     if (retryApply) {
-      const persistedCorrelationId = requirePersistedSyntheticHireCorrelation(
-        retryApply.correlation_id,
-      );
+      const completedRetryCorrelationId =
+        requirePersistedSyntheticHireCorrelation(retryApply.correlation_id);
       assertSyntheticFutureDateApplyJobCorrelation(
         input.job.correlationId,
-        persistedCorrelationId,
+        completedRetryCorrelationId,
       );
       assertSyntheticFutureDateApplyIsFuture(
         retryApply.effective_date,
