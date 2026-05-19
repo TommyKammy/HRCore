@@ -712,8 +712,8 @@ function readSyntheticHireRequest(
         transaction_request.correlation_id
       FROM transaction_request
       JOIN person ON person.id = transaction_request.person_id
-      WHERE transaction_request.id = ?
-         OR transaction_request.correlation_id = ?
+      WHERE transaction_request.correlation_id = ?
+         OR transaction_request.id = ?
       ORDER BY
         CASE
           WHEN transaction_request.correlation_id = ? THEN 0
@@ -726,8 +726,8 @@ function readSyntheticHireRequest(
   );
 
   return statement.get(
-    input.transactionRequest.id,
     input.transactionRequest.correlationId,
+    input.transactionRequest.id,
     input.transactionRequest.correlationId,
     input.transactionRequest.id,
   ) as ExistingSyntheticHireRequestRow | undefined;
@@ -818,7 +818,7 @@ function readCompletedSyntheticHireApply(
        AND assignment.person_id = transaction_request.person_id
        AND assignment.employment_id = employment.id
       LEFT JOIN contact_point
-        ON contact_point.id = ?
+        ON contact_point.id = lifecycle_event.contact_point_id
        AND contact_point.person_id = transaction_request.person_id
        AND contact_point.contact_type = 'work_email'
       WHERE transaction_request.id = ?
@@ -830,7 +830,6 @@ function readCompletedSyntheticHireApply(
   return statement.get(
     input.hire.employment.id,
     input.hire.assignment.id,
-    input.hire.contactPoint?.id ?? null,
     input.request.transactionRequest.id,
     input.request.person.id,
   ) as ExistingCompletedSyntheticHireApplyRow | undefined;
