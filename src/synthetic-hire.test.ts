@@ -504,6 +504,88 @@ test("synthetic hire request submit recovers an idempotent result after a stale 
   }
 });
 
+test("synthetic hire request submit recovers a regenerated id after a stale retry read collides", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+    const firstResult = saveSyntheticHireRequest(db, request);
+    let hideFirstRetryRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstRetryRead &&
+              sql.includes(
+                "JOIN person ON person.id = transaction_request.person_id",
+              ) &&
+              sql.includes("transaction_request.correlation_id = ?")
+            ) {
+              hideFirstRetryRead = false;
+              return undefined;
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = saveSyntheticHireRequest(
+      staleReadDb,
+      createSyntheticHireRequestFixture({
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "stale regenerated submit retry must recover the authoritative correlated request",
+    );
+    assert.deepEqual(
+      normalizeRow(db.prepare("SELECT count(*) AS count FROM person").get()),
+      { count: 1 },
+      "stale regenerated submit retry must roll back the failed insert attempt",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "stale regenerated submit retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire request submit fails closed on retry correlation drift", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -865,6 +947,99 @@ test("synthetic hire apply retry recovers when stale retry state misses a comple
       ),
       { count: 1 },
       "stale apply retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry recovers when stale submitted state enters the write path", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    let hideFirstCompletedRead = true;
+    let returnStaleSubmittedRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstCompletedRead &&
+              sql.includes(
+                "transaction_request.status_code AS transaction_status_code",
+              )
+            ) {
+              hideFirstCompletedRead = false;
+              return undefined;
+            }
+
+            if (
+              returnStaleSubmittedRead &&
+              sql.includes("SELECT\n        correlation_id") &&
+              sql.includes("status_code = 'submitted'")
+            ) {
+              returnStaleSubmittedRead = false;
+              return { correlation_id: "correlation-syn-hire-001" };
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = applySyntheticHireRequest(staleReadDb, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
+      "stale submitted apply retry must roll back the failed write path",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "stale submitted apply retry must not duplicate audit evidence",
     );
   } finally {
     db.close();
