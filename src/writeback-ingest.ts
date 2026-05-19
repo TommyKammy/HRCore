@@ -655,11 +655,31 @@ export function resolveSyntheticWorkEmailConflict(
             attempted_provider_value
           FROM writeback_work_email_conflict
           WHERE id = ?
+            AND conflict_type = 'provider_refresh_conflict'
         `,
       )
       .get(validatedInput.conflictId);
 
     if (!isWorkEmailConflictResolutionRow(conflict)) {
+      const recordedConflictType = db
+        .prepare(
+          `
+            SELECT conflict_type
+            FROM writeback_work_email_conflict
+            WHERE id = ?
+          `,
+        )
+        .get(validatedInput.conflictId);
+
+      if (
+        isWorkEmailConflictTypeRow(recordedConflictType) &&
+        recordedConflictType.conflict_type !== "provider_refresh_conflict"
+      ) {
+        throw new SyntheticWorkEmailWritebackValidationError(
+          "conflict resolution requires a provider refresh conflict",
+        );
+      }
+
       throw new SyntheticWorkEmailWritebackValidationError(
         "conflict resolution requires an existing conflict",
       );
@@ -1224,6 +1244,16 @@ function isLatestProviderRefreshValueRow(input: unknown): input is {
   provider_value: string;
 } {
   return isRecord(input) && typeof input.provider_value === "string";
+}
+
+function isWorkEmailConflictTypeRow(input: unknown): input is {
+  conflict_type: "inbound_value_conflict" | "provider_refresh_conflict";
+} {
+  return (
+    isRecord(input) &&
+    (input.conflict_type === "inbound_value_conflict" ||
+      input.conflict_type === "provider_refresh_conflict")
+  );
 }
 
 function isRefreshedContactPointRow(input: unknown): input is {

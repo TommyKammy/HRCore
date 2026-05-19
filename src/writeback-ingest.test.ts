@@ -1537,6 +1537,28 @@ test("synthetic work email conflict resolution rejects inbound conflicts without
       ),
       { count: 0 },
     );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT
+                writeback_event_id,
+                conflict_type,
+                correlation_id
+              FROM writeback_work_email_conflict
+              WHERE id = ?
+            `,
+          )
+          .get(conflictResult.conflict.conflictId),
+      ),
+      {
+        writeback_event_id: "writeback-event-work-email-conflict-001",
+        conflict_type: "inbound_value_conflict",
+        correlation_id:
+          "correlation-writeback-work-email-conflict-001:conflict:inbound_value_conflict",
+      },
+    );
   } finally {
     db.close();
   }
