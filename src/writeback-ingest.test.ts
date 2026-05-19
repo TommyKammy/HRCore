@@ -32,6 +32,10 @@ const normalizeRow = <TRow extends Record<string, unknown>>(
   row: TRow | undefined,
 ): Record<string, unknown> | undefined => (row ? { ...row } : row);
 
+const normalizeRows = <TRow extends Record<string, unknown>>(
+  rows: TRow[],
+): Record<string, unknown>[] => rows.map((row) => ({ ...row }));
+
 const openSchemaBackedDatabase = async (t: test.TestContext) => {
   let sqlite: typeof import("node:sqlite");
   try {
@@ -221,6 +225,127 @@ test("mock Okta emitted work email writeback payload can be ingested", async (t)
         correlationId:
           "okta:mock:work_email_writeback:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
         applied: true,
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("mock Okta emitted create and update writebacks with the same timestamp both ingest", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-operation-001', 'Synthetic Writeback Operation Person', '2026-05-18T00:00:00Z');
+    `);
+
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const effectiveAt = "2026-05-18T16:40:00.000Z";
+
+    const createProjectionResult = await adapter.project({
+      operation: "create",
+      desiredUser: createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-operation-001",
+        employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+        email: "created.operation@example.invalid",
+        displayName: "Writeback Operation",
+        givenName: "Writeback",
+        familyName: "Operation",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt,
+      }),
+    });
+    assert.equal(createProjectionResult.outcome, "success");
+
+    const createEvent = await adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-operation-001",
+      contactPointId: "contact-point-writeback-operation-001",
+      employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+      workEmail: "created.operation@example.invalid",
+      emittedAt: effectiveAt,
+      projectionEvidence: createProjectionResult.metadata,
+    });
+
+    const updateProjectionResult = await adapter.project({
+      operation: "update",
+      desiredUser: createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-operation-001",
+        employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+        email: "updated.operation@example.invalid",
+        displayName: "Writeback Operation",
+        givenName: "Writeback",
+        familyName: "Operation",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt,
+      }),
+    });
+    assert.equal(updateProjectionResult.outcome, "success");
+
+    const updateEvent = await adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-operation-001",
+      contactPointId: "contact-point-writeback-operation-001",
+      employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+      workEmail: "updated.operation@example.invalid",
+      emittedAt: effectiveAt,
+      projectionEvidence: updateProjectionResult.metadata,
+    });
+
+    assert.notEqual(createEvent.payload.eventId, updateEvent.payload.eventId);
+    assert.notEqual(
+      createEvent.payload.correlationId,
+      updateEvent.payload.correlationId,
+    );
+
+    ingestSyntheticWorkEmailWriteback(db, createEvent.payload);
+    ingestSyntheticWorkEmailWriteback(db, updateEvent.payload);
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, correlation_id, provider_value
+              FROM writeback_event
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "okta-work-email-writeback-create-EMP-WRITEBACK-OPERATION-001-2026-05-18T16%3A40%3A00.000Z",
+          correlation_id:
+            "okta:mock:work_email_writeback:create:EMP-WRITEBACK-OPERATION-001:2026-05-18T16%3A40%3A00.000Z",
+          provider_value: "created.operation@example.invalid",
+        },
+        {
+          id: "okta-work-email-writeback-update-EMP-WRITEBACK-OPERATION-001-2026-05-18T16%3A40%3A00.000Z",
+          correlation_id:
+            "okta:mock:work_email_writeback:update:EMP-WRITEBACK-OPERATION-001:2026-05-18T16%3A40%3A00.000Z",
+          provider_value: "updated.operation@example.invalid",
+        },
+      ],
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT id, value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-operation-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        id: "contact-point-writeback-operation-001",
+        value: "updated.operation@example.invalid",
       },
     );
   } finally {

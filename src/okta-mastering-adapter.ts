@@ -476,11 +476,15 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
       );
     }
 
+    const operationIdentity = encodeProjectionKeyPart(
+      projectionEvidence.operation,
+    );
+
     return {
       payload: {
         eventId: [
           "okta-work-email-writeback",
-          encodeProjectionKeyPart(projectionEvidence.operation),
+          operationIdentity,
           encodeProjectionKeyPart(input.employeeNumber),
           encodeProjectionKeyPart(input.emittedAt),
         ].join("-"),
@@ -494,7 +498,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
           "okta",
           "mock",
           "work_email_writeback",
-          encodeProjectionKeyPart(projectionEvidence.operation),
+          operationIdentity,
           encodeProjectionKeyPart(input.employeeNumber),
           encodeProjectionKeyPart(input.emittedAt),
         ].join(":"),
