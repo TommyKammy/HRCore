@@ -199,6 +199,10 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   );
   assert.match(
     migrationSql,
+    /CREATE TABLE `__new_lifecycle_event`[\s\S]*FOREIGN KEY \(`contact_point_id`,`person_id`\) REFERENCES `contact_point`\(`id`,`person_id`\)/,
+  );
+  assert.match(
+    migrationSql,
     /FOREIGN KEY \(`writeback_event_id`\) REFERENCES `writeback_event`\(`id`\)/,
   );
   assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
@@ -324,7 +328,47 @@ test("DDL constraints reject cross-person lifecycle links", async (t) => {
         1,
         '2026-05-18T00:00:00Z'
       );
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at
+      )
+      VALUES (
+        'transaction-request-2',
+        'person-2',
+        'hire',
+        'submitted',
+        '2026-05-18T00:00:00Z'
+      );
     `);
+
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO lifecycle_event (
+            id,
+            person_id,
+            transaction_request_id,
+            contact_point_id,
+            event_type,
+            effective_date,
+            occurred_at
+          )
+          VALUES (
+            'lifecycle-event-cross-contact',
+            'person-2',
+            'transaction-request-2',
+            'contact-point-1',
+            'hire',
+            '2026-05-18',
+            '2026-05-18T00:00:00Z'
+          );
+        `),
+      /FOREIGN KEY constraint failed/,
+    );
 
     assert.throws(
       () =>
@@ -508,7 +552,8 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
       INSERT INTO person (id, display_name, created_at)
       VALUES
         ('person-legacy-contact', 'Legacy Contact Hire', '2026-05-18T00:00:00Z'),
-        ('person-legacy-no-contact', 'Legacy No Contact Hire', '2026-05-18T00:00:00Z');
+        ('person-legacy-no-contact', 'Legacy No Contact Hire', '2026-05-18T00:00:00Z'),
+        ('person-legacy-later-contact', 'Legacy Later Contact Hire', '2026-05-18T00:00:00Z');
 
       INSERT INTO transaction_request (
         id,
@@ -534,6 +579,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'completed',
           '2026-05-18T00:00:00Z',
           'correlation-legacy-no-contact'
+        ),
+        (
+          'transaction-request-legacy-later-contact',
+          'person-legacy-later-contact',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-later-contact'
         );
 
       INSERT INTO lifecycle_event (
@@ -560,6 +613,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'hire',
           '2026-05-18',
           '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-later-contact',
+          'person-legacy-later-contact',
+          'transaction-request-legacy-later-contact',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
         );
 
       INSERT INTO contact_point (
@@ -570,13 +631,47 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         is_primary,
         created_at
       )
+      VALUES
+        (
+          'contact-point-legacy-contact',
+          'person-legacy-contact',
+          'work_email',
+          'legacy.contact@example.invalid',
+          1,
+          '2026-05-18T00:00:00Z'
+        ),
+        (
+          'contact-point-legacy-later-writeback',
+          'person-legacy-later-contact',
+          'work_email',
+          'legacy.later@example.invalid',
+          1,
+          '2026-05-18T00:10:00Z'
+        );
+
+      INSERT INTO writeback_event (
+        id,
+        person_id,
+        contact_point_id,
+        provider_name,
+        provider_subject_id,
+        provider_value,
+        target_contact_type,
+        correlation_id,
+        received_at,
+        poc_marker
+      )
       VALUES (
-        'contact-point-legacy-contact',
-        'person-legacy-contact',
+        'writeback-event-legacy-later-contact',
+        'person-legacy-later-contact',
+        'contact-point-legacy-later-writeback',
+        'synthetic_okta',
+        'synthetic-okta-user-later-contact',
+        'legacy.later@example.invalid',
         'work_email',
-        'legacy.contact@example.invalid',
-        1,
-        '2026-05-18T00:10:00Z'
+        'correlation-legacy-later-writeback',
+        '2026-05-18T00:10:00Z',
+        'synthetic_poc'
       );
     `);
 
@@ -600,11 +695,15 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           contact_point_id: "contact-point-legacy-contact",
         },
         {
+          id: "lifecycle-event-legacy-later-contact",
+          contact_point_id: null,
+        },
+        {
           id: "lifecycle-event-legacy-no-contact",
           contact_point_id: null,
         },
       ],
-      "migration must preserve completed apply retry identity for legacy contact-bearing hires without inventing contact linkage where no contact row exists",
+      "migration must preserve completed apply retry identity for legacy contact-bearing hires without inventing contact linkage from later writeback contacts",
     );
   } finally {
     db.close();

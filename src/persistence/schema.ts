@@ -423,6 +423,11 @@ export const lifecycle_event = sqliteTable(
       columns: [table.transactionRequestId, table.personId],
       foreignColumns: [transaction_request.id, transaction_request.personId],
     }),
+    foreignKey({
+      name: "lifecycle_event_contact_point_person_match_fk",
+      columns: [table.contactPointId, table.personId],
+      foreignColumns: [contact_point.id, contact_point.personId],
+    }),
     check("lifecycle_event_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "lifecycle_event_type_allowed",

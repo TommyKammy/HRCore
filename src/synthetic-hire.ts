@@ -474,6 +474,32 @@ export function applySyntheticHireRequest(
     db.exec("SAVEPOINT synthetic_hire_request_apply");
     savepointStarted = true;
 
+    if (input.hire.contactPoint) {
+      db.prepare(
+        `
+          INSERT INTO contact_point (
+            id,
+            person_id,
+            contact_type,
+            value,
+            is_primary,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+      ).run(
+        input.hire.contactPoint.id,
+        input.hire.contactPoint.personId,
+        input.hire.contactPoint.contactType,
+        input.hire.contactPoint.value,
+        toSqliteBoolean(
+          "contactPoint.isPrimary",
+          input.hire.contactPoint.isPrimary,
+        ),
+        input.hire.contactPoint.createdAt,
+      );
+    }
+
     // Fail closed on missing or non-hire requests without relying on adapter row-count metadata.
     db.prepare(
       `
@@ -570,32 +596,6 @@ export function applySyntheticHireRequest(
       input.hire.assignment.startDate,
       input.hire.assignment.endDate ?? null,
     );
-
-    if (input.hire.contactPoint) {
-      db.prepare(
-        `
-          INSERT INTO contact_point (
-            id,
-            person_id,
-            contact_type,
-            value,
-            is_primary,
-            created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `,
-      ).run(
-        input.hire.contactPoint.id,
-        input.hire.contactPoint.personId,
-        input.hire.contactPoint.contactType,
-        input.hire.contactPoint.value,
-        toSqliteBoolean(
-          "contactPoint.isPrimary",
-          input.hire.contactPoint.isPrimary,
-        ),
-        input.hire.contactPoint.createdAt,
-      );
-    }
 
     insertSyntheticLifecycleAppliedAuditEvent(db, {
       id: `audit-event-${input.lifecycleEvent.id}-applied`,
