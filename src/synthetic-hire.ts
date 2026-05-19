@@ -690,14 +690,11 @@ export function applySyntheticFutureDateHireJob(
     input.apply,
   );
   if (!submittedRequest) {
-    const rereadFailureEvidenceResult =
-      buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
-    if (rereadFailureEvidenceResult) {
-      return rereadFailureEvidenceResult;
-    }
-
     const completedRetryJobResult =
-      buildCompletedSyntheticFutureDateApplyRetryJobResult(db, input);
+      buildCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
+        db,
+        input,
+      );
     if (completedRetryJobResult) {
       return completedRetryJobResult;
     }
@@ -721,10 +718,10 @@ export function applySyntheticFutureDateHireJob(
     submittedRequest.requested_at,
   );
 
-  const rereadFailureEvidenceResult =
+  const failureEvidenceBeforeApplyResult =
     buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
-  if (rereadFailureEvidenceResult) {
-    return rereadFailureEvidenceResult;
+  if (failureEvidenceBeforeApplyResult) {
+    return failureEvidenceBeforeApplyResult;
   }
 
   if (input.job.failAfterPreconditionsReason) {
@@ -743,10 +740,7 @@ export function applySyntheticFutureDateHireJob(
     };
   }
 
-  return {
-    outcome: "applied",
-    ...applySyntheticHireRequest(db, input.apply),
-  };
+  return applySyntheticFutureDateHireJobAfterFailureEvidenceReread(db, input);
 }
 
 function buildPersistedSyntheticFutureDateApplyFailureJobResult(
@@ -804,6 +798,35 @@ function buildCompletedSyntheticFutureDateApplyRetryJobResult(
   return {
     outcome: "applied",
     ...retryResult,
+  };
+}
+
+function buildCompletedSyntheticFutureDateApplyRetryJobResultAfterFailureEvidenceReread(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+): SyntheticFutureDateApplyJobResult | undefined {
+  const persistedFailureEvidenceResult =
+    buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
+  if (persistedFailureEvidenceResult) {
+    return persistedFailureEvidenceResult;
+  }
+
+  return buildCompletedSyntheticFutureDateApplyRetryJobResult(db, input);
+}
+
+function applySyntheticFutureDateHireJobAfterFailureEvidenceReread(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+): SyntheticFutureDateApplyJobResult {
+  const persistedFailureEvidenceResult =
+    buildPersistedSyntheticFutureDateApplyFailureJobResult(db, input);
+  if (persistedFailureEvidenceResult) {
+    return persistedFailureEvidenceResult;
+  }
+
+  return {
+    outcome: "applied",
+    ...applySyntheticHireRequest(db, input.apply),
   };
 }
 
