@@ -15,6 +15,7 @@ SET `contact_point_id` = (
       FROM `writeback_event`
       WHERE `writeback_event`.`contact_point_id` = `contact_point`.`id`
         AND `writeback_event`.`person_id` = `contact_point`.`person_id`
+        AND `writeback_event`.`correlation_id` NOT LIKE 'okta:mock:work_email_writeback:update:%'
     )
   ORDER BY `contact_point`.`created_at`, `contact_point`.`id`
   LIMIT 1
@@ -37,5 +38,6 @@ WHERE `lifecycle_event`.`contact_point_id` IS NULL
         FROM `writeback_event`
         WHERE `writeback_event`.`contact_point_id` = `contact_point`.`id`
           AND `writeback_event`.`person_id` = `contact_point`.`person_id`
+          AND `writeback_event`.`correlation_id` NOT LIKE 'okta:mock:work_email_writeback:update:%'
       )
   );

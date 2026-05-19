@@ -692,7 +692,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         'synthetic-okta-user-later-contact',
         'legacy.later@example.invalid',
         'work_email',
-        'correlation-legacy-later-writeback',
+        'okta:mock:work_email_writeback:update:EMP-LEGACY-LATER:2026-05-18T00%3A10%3A00Z',
         '2026-05-18T00:10:00Z',
         'synthetic_poc'
       ),
@@ -704,7 +704,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         'synthetic-okta-user-writeback-drift',
         'legacy.writeback.drift@example.invalid',
         'work_email',
-        'correlation-legacy-writeback-drift-writeback',
+        'okta:mock:work_email_writeback:create:EMP-LEGACY-DRIFT:2026-05-18T00%3A11%3A00Z',
         '2026-05-18T00:11:00Z',
         'synthetic_poc'
       );
@@ -731,7 +731,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         },
         {
           id: "lifecycle-event-legacy-later-contact",
-          contact_point_id: null,
+          contact_point_id: "contact-point-legacy-later-writeback",
         },
         {
           id: "lifecycle-event-legacy-no-contact",

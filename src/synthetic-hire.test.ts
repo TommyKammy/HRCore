@@ -497,6 +497,92 @@ test("synthetic hire request submit prefers correlation over a colliding regener
   }
 });
 
+test("synthetic hire request submit does not classify a cross-person request id collision as a retry", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const firstResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture(),
+    );
+
+    assert.throws(
+      () =>
+        saveSyntheticHireRequest(
+          db,
+          createSyntheticHireRequestFixture({
+            person: {
+              id: "person-syn-hire-same-request-id",
+              displayName: "Synthetic Hire Same Request Id",
+            },
+            transactionRequest: {
+              correlationId: "correlation-syn-hire-same-request-id",
+            },
+          }),
+        ),
+      /UNIQUE constraint failed: transaction_request\.id/,
+    );
+
+    assert.deepEqual(firstResult, {
+      personId: "person-syn-hire-001",
+      transactionRequestId: "transaction-request-syn-hire-001",
+      statusCode: "submitted",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY person_id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "cross-person request id collisions must fail at the authoritative schema boundary instead of the retry pre-read",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, display_name
+              FROM person
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "person-syn-hire-001",
+          display_name: "Synthetic Hire One",
+        },
+      ],
+      "failed cross-person collision must roll back the attempted person insert",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "failed cross-person collision must not write extra audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire request submit fails closed when regenerated correlated retry changes person", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
