@@ -1350,49 +1350,72 @@ function insertSyntheticFutureDateApplyFailureEvidence(
   db: SyntheticHireDatabase,
   input: SyntheticFutureDateApplyFailureEvidence,
 ): boolean {
-  db.prepare(
-    `
-      INSERT OR IGNORE INTO synthetic_future_date_apply_failure_evidence (
-        id,
-        job_id,
-        transaction_request_id,
-        lifecycle_event_id,
-        person_id,
-        correlation_id,
-        failure_reason,
-        retryable,
-        observed_at,
-        transaction_request_status_code,
-        lifecycle_event_count,
-        employment_count,
-        assignment_count,
-        lifecycle_applied_audit_count,
-        poc_marker
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-  ).run(
-    input.id,
-    input.jobId,
-    input.transactionRequestId,
-    input.lifecycleEventId,
-    input.personId,
-    input.correlationId,
-    input.failureReason,
-    1,
-    input.observedAt,
-    input.observedState.transactionRequestStatusCode,
-    input.observedState.lifecycleEventCount,
-    input.observedState.employmentCount,
-    input.observedState.assignmentCount,
-    input.observedState.lifecycleAppliedAuditCount,
-    syntheticAuditPocMarker,
-  );
+  try {
+    db.prepare(
+      `
+        INSERT INTO synthetic_future_date_apply_failure_evidence (
+          id,
+          job_id,
+          transaction_request_id,
+          lifecycle_event_id,
+          person_id,
+          correlation_id,
+          failure_reason,
+          retryable,
+          observed_at,
+          transaction_request_status_code,
+          lifecycle_event_count,
+          employment_count,
+          assignment_count,
+          lifecycle_applied_audit_count,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+    ).run(
+      input.id,
+      input.jobId,
+      input.transactionRequestId,
+      input.lifecycleEventId,
+      input.personId,
+      input.correlationId,
+      input.failureReason,
+      1,
+      input.observedAt,
+      input.observedState.transactionRequestStatusCode,
+      input.observedState.lifecycleEventCount,
+      input.observedState.employmentCount,
+      input.observedState.assignmentCount,
+      input.observedState.lifecycleAppliedAuditCount,
+      syntheticAuditPocMarker,
+    );
+  } catch (error) {
+    if (isDuplicateSyntheticFutureDateApplyFailureEvidenceError(error)) {
+      return false;
+    }
 
-  const changes = db.prepare("SELECT changes() AS changes").get() as
-    | { changes: number }
-    | undefined;
-  return changes?.changes === 1;
+    throw error;
+  }
+
+  return true;
+}
+
+function isDuplicateSyntheticFutureDateApplyFailureEvidenceError(
+  error: unknown,
+): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes(
+      "unique constraint failed: synthetic_future_date_apply_failure_evidence.id",
+    ) ||
+    message.includes(
+      "unique constraint failed: synthetic_future_date_apply_failure_evidence.job_id",
+    )
+  );
 }
 
 function readSyntheticFutureDateApplyFailureEvidence(
