@@ -483,6 +483,134 @@ test("transaction request correlation migration backfills duplicates before uniq
   }
 });
 
+test("lifecycle contact linkage migration backfills completed hire applies", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
+
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec(await readMigrationSqlThrough("0006_dizzy_true_believers.sql"));
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES
+        ('person-legacy-contact', 'Legacy Contact Hire', '2026-05-18T00:00:00Z'),
+        ('person-legacy-no-contact', 'Legacy No Contact Hire', '2026-05-18T00:00:00Z');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES
+        (
+          'transaction-request-legacy-contact',
+          'person-legacy-contact',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-contact'
+        ),
+        (
+          'transaction-request-legacy-no-contact',
+          'person-legacy-no-contact',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-no-contact'
+        );
+
+      INSERT INTO lifecycle_event (
+        id,
+        person_id,
+        transaction_request_id,
+        event_type,
+        effective_date,
+        occurred_at
+      )
+      VALUES
+        (
+          'lifecycle-event-legacy-contact',
+          'person-legacy-contact',
+          'transaction-request-legacy-contact',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-no-contact',
+          'person-legacy-no-contact',
+          'transaction-request-legacy-no-contact',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        );
+
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-legacy-contact',
+        'person-legacy-contact',
+        'work_email',
+        'legacy.contact@example.invalid',
+        1,
+        '2026-05-18T00:10:00Z'
+      );
+    `);
+
+    db.exec(await readMigrationSql("0007_careless_misty_knight.sql"));
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, contact_point_id
+              FROM lifecycle_event
+              ORDER BY id
+            `,
+          )
+          .all() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "lifecycle-event-legacy-contact",
+          contact_point_id: "contact-point-legacy-contact",
+        },
+        {
+          id: "lifecycle-event-legacy-no-contact",
+          contact_point_id: null,
+        },
+      ],
+      "migration must preserve completed apply retry identity for legacy contact-bearing hires without inventing contact linkage where no contact row exists",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("DDL work does not promote proposed ADRs or introduce protected samples", async () => {
   const [readme, migrationSql, adr0005, adr0010, adr0011, adr0012, adr0013] =
     await Promise.all([
