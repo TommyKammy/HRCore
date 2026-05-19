@@ -213,13 +213,13 @@ test("mock Okta emitted work email writeback payload can be ingested", async (t)
       ingestSyntheticWorkEmailWriteback(db, emittedEvent.payload),
       {
         eventId:
-          "okta-work-email-writeback-EMP-WRITEBACK-001-2026-05-18T16%3A00%3A00.000Z",
+          "okta-work-email-writeback-update-EMP-WRITEBACK-001-2026-05-18T16%3A00%3A00.000Z",
         personId: "person-writeback-001",
         contactPointId: "contact-point-writeback-001",
         providerName: "synthetic_okta",
         providerSubjectId: "okta-user-writeback-001",
         correlationId:
-          "okta:mock:work_email_writeback:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+          "okta:mock:work_email_writeback:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
         applied: true,
       },
     );
