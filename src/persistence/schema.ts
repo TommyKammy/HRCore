@@ -383,6 +383,9 @@ export const transaction_request = sqliteTable(
       table.id,
       table.personId,
     ),
+    uniqueIndex("transaction_request_correlation_unique").on(
+      table.correlationId,
+    ),
     check("transaction_request_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "transaction_request_type_allowed",
