@@ -2,7 +2,7 @@ type SqlValue = string | number | bigint | null;
 
 export interface SqlStatement {
   run(...values: SqlValue[]): unknown;
-  get?(...values: SqlValue[]): unknown;
+  get(...values: SqlValue[]): unknown;
 }
 
 export interface SyntheticHireDatabase {
@@ -227,9 +227,9 @@ export function saveSyntheticHireRequest(
     if (matchesSyntheticHireRequestRetry(existingRequest, input)) {
       return {
         personId: input.person.id,
-        transactionRequestId: input.transactionRequest.id,
+        transactionRequestId: existingRequest.transaction_request_id,
         statusCode: input.transactionRequest.statusCode,
-        correlationId: input.transactionRequest.correlationId,
+        correlationId: existingRequest.correlation_id,
       };
     }
 
@@ -439,6 +439,11 @@ export function applySyntheticHireRequest(
     );
   }
 
+  const submittedRequest = readSubmittedSyntheticHireRequestForApply(db, input);
+  if (!submittedRequest) {
+    throw new Error("synthetic hire apply requires a submitted hire request");
+  }
+
   let savepointStarted = false;
 
   try {
@@ -580,7 +585,7 @@ export function applySyntheticHireRequest(
       lifecycleEventId: input.lifecycleEvent.id,
       personId: input.request.person.id,
       statusCode: "completed",
-      correlationId: input.request.transactionRequest.correlationId,
+      correlationId: submittedRequest.correlation_id,
     };
   } catch (error) {
     if (savepointStarted) {
@@ -613,13 +618,18 @@ type SyntheticLifecycleAppliedAuditEventInput = {
 };
 
 type ExistingSyntheticHireRequestRow = {
+  transaction_request_id: string;
   person_id: string;
   display_name: string;
   created_at: string;
   request_type: string;
   status_code: string;
   requested_at: string;
-  correlation_id: string | null;
+  correlation_id: string;
+};
+
+type ExistingSubmittedSyntheticHireApplyRequestRow = {
+  correlation_id: string;
 };
 
 type ExistingCompletedSyntheticHireApplyRow = {
@@ -660,6 +670,7 @@ function readSyntheticHireRequest(
     `
       SELECT
         person.id AS person_id,
+        transaction_request.id AS transaction_request_id,
         person.display_name,
         person.created_at,
         transaction_request.request_type,
@@ -669,12 +680,19 @@ function readSyntheticHireRequest(
       FROM transaction_request
       JOIN person ON person.id = transaction_request.person_id
       WHERE transaction_request.id = ?
+         OR transaction_request.correlation_id = ?
+      ORDER BY
+        CASE WHEN transaction_request.id = ? THEN 0 ELSE 1 END,
+        transaction_request.id
+      LIMIT 1
     `,
   );
 
-  return statement.get?.(input.transactionRequest.id) as
-    | ExistingSyntheticHireRequestRow
-    | undefined;
+  return statement.get(
+    input.transactionRequest.id,
+    input.transactionRequest.correlationId,
+    input.transactionRequest.id,
+  ) as ExistingSyntheticHireRequestRow | undefined;
 }
 
 function matchesSyntheticHireRequestRetry(
@@ -690,6 +708,28 @@ function matchesSyntheticHireRequestRetry(
     existing.requested_at === input.transactionRequest.requestedAt &&
     existing.correlation_id === input.transactionRequest.correlationId
   );
+}
+
+function readSubmittedSyntheticHireRequestForApply(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticHireRequestInput,
+): ExistingSubmittedSyntheticHireApplyRequestRow | undefined {
+  const statement = db.prepare(
+    `
+      SELECT
+        correlation_id
+      FROM transaction_request
+      WHERE id = ?
+        AND person_id = ?
+        AND request_type = 'hire'
+        AND status_code = 'submitted'
+    `,
+  );
+
+  return statement.get(
+    input.request.transactionRequest.id,
+    input.request.person.id,
+  ) as ExistingSubmittedSyntheticHireApplyRequestRow | undefined;
 }
 
 function readCompletedSyntheticHireApply(
@@ -740,18 +780,17 @@ function readCompletedSyntheticHireApply(
        AND assignment.person_id = transaction_request.person_id
        AND assignment.employment_id = employment.id
       LEFT JOIN contact_point
-        ON contact_point.id = ?
-       AND contact_point.person_id = transaction_request.person_id
+        ON contact_point.person_id = transaction_request.person_id
+       AND contact_point.contact_type = 'work_email'
       WHERE transaction_request.id = ?
         AND transaction_request.person_id = ?
         AND transaction_request.status_code = 'completed'
     `,
   );
 
-  return statement.get?.(
+  return statement.get(
     input.hire.employment.id,
     input.hire.assignment.id,
-    input.hire.contactPoint?.id ?? "",
     input.request.transactionRequest.id,
     input.request.person.id,
   ) as ExistingCompletedSyntheticHireApplyRow | undefined;
@@ -765,8 +804,6 @@ function matchesCompletedSyntheticHireApplyRetry(
     existing.transaction_status_code !== "completed" ||
     existing.request_type !== input.request.transactionRequest.requestType ||
     existing.requested_at !== input.request.transactionRequest.requestedAt ||
-    existing.correlation_id !==
-      input.request.transactionRequest.correlationId ||
     existing.person_id !== input.request.person.id ||
     existing.display_name !== input.request.person.displayName ||
     existing.person_created_at !== input.request.person.createdAt ||

@@ -355,6 +355,56 @@ test("synthetic hire request submit is idempotent for the same correlation", asy
   }
 });
 
+test("synthetic hire request submit uses correlation for regenerated request ids", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+
+    const firstResult = saveSyntheticHireRequest(db, request);
+    const retryResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture({
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "correlated retry must return the original request without writing a new one",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire request submit fails closed on retry correlation drift", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -428,7 +478,7 @@ test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => 
         correlationId: "correlation-input-drift-ignored",
       },
     };
-    applySyntheticHireRequest(db, {
+    const appliedResult = applySyntheticHireRequest(db, {
       request: applyRequest,
       hire,
       lifecycleEvent: {
@@ -439,6 +489,7 @@ test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => 
       },
     });
 
+    assert.equal(appliedResult.correlationId, "correlation-syn-hire-001");
     assert.deepEqual(
       normalizeRows(
         db
@@ -562,6 +613,121 @@ test("synthetic hire apply retry is idempotent without duplicate durable effects
   }
 });
 
+test("synthetic hire apply retry keeps authoritative correlation when caller input drifts", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const driftedRequest = createSyntheticHireRequestFixture({
+      person: hire.person,
+      transactionRequest: {
+        correlationId: "correlation-input-drift-ignored",
+      },
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+
+    const firstResult = applySyntheticHireRequest(db, {
+      request: driftedRequest,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = applySyntheticHireRequest(db, {
+      request: driftedRequest,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.equal(firstResult.correlationId, "correlation-syn-hire-001");
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry fails closed when contact point is omitted", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    const { contactPoint: _omitted, ...hireWithoutContactPoint } = hire;
+    assert.throws(
+      () =>
+        applySyntheticHireRequest(db, {
+          request,
+          hire: hireWithoutContactPoint,
+          lifecycleEvent,
+        }),
+      /synthetic hire apply retry conflicts with the completed request/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+      ),
+      { count: 1 },
+      "omitted contact point retry must not alter stored contact evidence",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 2 },
+      "omitted contact point retry must not write extra audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire apply retry fails closed on lifecycle id drift", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -669,7 +835,7 @@ test("synthetic hire apply rejects submitted non-hire transaction requests", asy
             occurredAt: "2026-05-18T00:00:00Z",
           },
         }),
-      /NOT NULL constraint failed: lifecycle_event\.person_id/,
+      /synthetic hire apply requires a submitted hire request/,
     );
 
     assert.deepEqual(
@@ -722,6 +888,9 @@ test("synthetic hire apply does not require run changes metadata", async (t) => 
       prepare(sql) {
         const statement = db.prepare(sql);
         return {
+          get(...values) {
+            return statement.get(...values);
+          },
           run(...values) {
             statement.run(...values);
             return undefined;
