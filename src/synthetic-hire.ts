@@ -2,6 +2,7 @@ type SqlValue = string | number | bigint | null;
 
 export interface SqlStatement {
   run(...values: SqlValue[]): unknown;
+  get?(...values: SqlValue[]): unknown;
 }
 
 export interface SyntheticHireDatabase {
@@ -221,6 +222,22 @@ export function saveSyntheticHireRequest(
 ): SyntheticHireRequestPersistenceResult {
   validateSyntheticHireRequest(input);
 
+  const existingRequest = readSyntheticHireRequest(db, input);
+  if (existingRequest) {
+    if (matchesSyntheticHireRequestRetry(existingRequest, input)) {
+      return {
+        personId: input.person.id,
+        transactionRequestId: input.transactionRequest.id,
+        statusCode: input.transactionRequest.statusCode,
+        correlationId: input.transactionRequest.correlationId,
+      };
+    }
+
+    throw new Error(
+      "synthetic hire request retry conflicts with the existing request",
+    );
+  }
+
   let savepointStarted = false;
 
   try {
@@ -405,6 +422,23 @@ export function applySyntheticHireRequest(
 ): AppliedSyntheticHireRequestResult {
   validateApplySyntheticHireRequest(input);
 
+  const existingApply = readCompletedSyntheticHireApply(db, input);
+  if (existingApply) {
+    if (matchesCompletedSyntheticHireApplyRetry(existingApply, input)) {
+      return {
+        transactionRequestId: input.request.transactionRequest.id,
+        lifecycleEventId: input.lifecycleEvent.id,
+        personId: input.request.person.id,
+        statusCode: "completed",
+        correlationId: existingApply.correlation_id,
+      };
+    }
+
+    throw new Error(
+      "synthetic hire apply retry conflicts with the completed request",
+    );
+  }
+
   let savepointStarted = false;
 
   try {
@@ -577,6 +611,200 @@ type SyntheticLifecycleAppliedAuditEventInput = {
   transactionRequestId: string;
   personId: string;
 };
+
+type ExistingSyntheticHireRequestRow = {
+  person_id: string;
+  display_name: string;
+  created_at: string;
+  request_type: string;
+  status_code: string;
+  requested_at: string;
+  correlation_id: string | null;
+};
+
+type ExistingCompletedSyntheticHireApplyRow = {
+  transaction_status_code: string;
+  request_type: string;
+  requested_at: string;
+  correlation_id: string;
+  person_id: string;
+  display_name: string;
+  person_created_at: string;
+  lifecycle_event_id: string;
+  lifecycle_event_type: string;
+  effective_date: string;
+  lifecycle_occurred_at: string;
+  employment_id: string;
+  employment_code: string;
+  employment_status_code: string;
+  employment_start_date: string;
+  employment_end_date: string | null;
+  assignment_id: string;
+  assignment_code: string;
+  organization_code: string;
+  position_code: string | null;
+  assignment_start_date: string;
+  assignment_end_date: string | null;
+  contact_point_id: string | null;
+  contact_type: string | null;
+  contact_value: string | null;
+  is_primary: number | null;
+  contact_created_at: string | null;
+};
+
+function readSyntheticHireRequest(
+  db: SyntheticHireDatabase,
+  input: SyntheticHireRequestInput,
+): ExistingSyntheticHireRequestRow | undefined {
+  const statement = db.prepare(
+    `
+      SELECT
+        person.id AS person_id,
+        person.display_name,
+        person.created_at,
+        transaction_request.request_type,
+        transaction_request.status_code,
+        transaction_request.requested_at,
+        transaction_request.correlation_id
+      FROM transaction_request
+      JOIN person ON person.id = transaction_request.person_id
+      WHERE transaction_request.id = ?
+    `,
+  );
+
+  return statement.get?.(input.transactionRequest.id) as
+    | ExistingSyntheticHireRequestRow
+    | undefined;
+}
+
+function matchesSyntheticHireRequestRetry(
+  existing: ExistingSyntheticHireRequestRow,
+  input: SyntheticHireRequestInput,
+): boolean {
+  return (
+    existing.person_id === input.person.id &&
+    existing.display_name === input.person.displayName &&
+    existing.created_at === input.person.createdAt &&
+    existing.request_type === input.transactionRequest.requestType &&
+    existing.status_code === input.transactionRequest.statusCode &&
+    existing.requested_at === input.transactionRequest.requestedAt &&
+    existing.correlation_id === input.transactionRequest.correlationId
+  );
+}
+
+function readCompletedSyntheticHireApply(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticHireRequestInput,
+): ExistingCompletedSyntheticHireApplyRow | undefined {
+  const statement = db.prepare(
+    `
+      SELECT
+        transaction_request.status_code AS transaction_status_code,
+        transaction_request.request_type,
+        transaction_request.requested_at,
+        transaction_request.correlation_id,
+        person.id AS person_id,
+        person.display_name,
+        person.created_at AS person_created_at,
+        lifecycle_event.id AS lifecycle_event_id,
+        lifecycle_event.event_type AS lifecycle_event_type,
+        lifecycle_event.effective_date,
+        lifecycle_event.occurred_at AS lifecycle_occurred_at,
+        employment.id AS employment_id,
+        employment.employment_code,
+        employment.status_code AS employment_status_code,
+        employment.start_date AS employment_start_date,
+        employment.end_date AS employment_end_date,
+        assignment.id AS assignment_id,
+        assignment.assignment_code,
+        assignment.organization_code,
+        assignment.position_code,
+        assignment.start_date AS assignment_start_date,
+        assignment.end_date AS assignment_end_date,
+        contact_point.id AS contact_point_id,
+        contact_point.contact_type,
+        contact_point.value AS contact_value,
+        contact_point.is_primary,
+        contact_point.created_at AS contact_created_at
+      FROM transaction_request
+      JOIN person
+        ON person.id = transaction_request.person_id
+      LEFT JOIN lifecycle_event
+        ON lifecycle_event.transaction_request_id = transaction_request.id
+       AND lifecycle_event.person_id = transaction_request.person_id
+      LEFT JOIN employment
+        ON employment.id = ?
+       AND employment.person_id = transaction_request.person_id
+      LEFT JOIN assignment
+        ON assignment.id = ?
+       AND assignment.person_id = transaction_request.person_id
+       AND assignment.employment_id = employment.id
+      LEFT JOIN contact_point
+        ON contact_point.id = ?
+       AND contact_point.person_id = transaction_request.person_id
+      WHERE transaction_request.id = ?
+        AND transaction_request.person_id = ?
+        AND transaction_request.status_code = 'completed'
+    `,
+  );
+
+  return statement.get?.(
+    input.hire.employment.id,
+    input.hire.assignment.id,
+    input.hire.contactPoint?.id ?? "",
+    input.request.transactionRequest.id,
+    input.request.person.id,
+  ) as ExistingCompletedSyntheticHireApplyRow | undefined;
+}
+
+function matchesCompletedSyntheticHireApplyRetry(
+  existing: ExistingCompletedSyntheticHireApplyRow,
+  input: ApplySyntheticHireRequestInput,
+): boolean {
+  if (
+    existing.transaction_status_code !== "completed" ||
+    existing.request_type !== input.request.transactionRequest.requestType ||
+    existing.requested_at !== input.request.transactionRequest.requestedAt ||
+    existing.correlation_id !==
+      input.request.transactionRequest.correlationId ||
+    existing.person_id !== input.request.person.id ||
+    existing.display_name !== input.request.person.displayName ||
+    existing.person_created_at !== input.request.person.createdAt ||
+    existing.lifecycle_event_id !== input.lifecycleEvent.id ||
+    existing.lifecycle_event_type !== input.lifecycleEvent.eventType ||
+    existing.effective_date !== input.lifecycleEvent.effectiveDate ||
+    existing.lifecycle_occurred_at !== input.lifecycleEvent.occurredAt ||
+    existing.employment_id !== input.hire.employment.id ||
+    existing.employment_code !== input.hire.employment.employmentCode ||
+    existing.employment_status_code !== input.hire.employment.statusCode ||
+    existing.employment_start_date !== input.hire.employment.startDate ||
+    existing.employment_end_date !== (input.hire.employment.endDate ?? null) ||
+    existing.assignment_id !== input.hire.assignment.id ||
+    existing.assignment_code !== input.hire.assignment.assignmentCode ||
+    existing.organization_code !== input.hire.assignment.organizationCode ||
+    existing.position_code !== (input.hire.assignment.positionCode ?? null) ||
+    existing.assignment_start_date !== input.hire.assignment.startDate ||
+    existing.assignment_end_date !== (input.hire.assignment.endDate ?? null)
+  ) {
+    return false;
+  }
+
+  if (!input.hire.contactPoint) {
+    return existing.contact_point_id === null;
+  }
+
+  return (
+    existing.contact_point_id === input.hire.contactPoint.id &&
+    existing.contact_type === input.hire.contactPoint.contactType &&
+    existing.contact_value === input.hire.contactPoint.value &&
+    existing.is_primary ===
+      toSqliteBoolean(
+        "contactPoint.isPrimary",
+        input.hire.contactPoint.isPrimary,
+      ) &&
+    existing.contact_created_at === input.hire.contactPoint.createdAt
+  );
+}
 
 function insertSyntheticAuditEvent(
   db: SyntheticHireDatabase,
