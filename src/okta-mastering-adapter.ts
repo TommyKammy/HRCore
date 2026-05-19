@@ -81,16 +81,30 @@ export interface OktaWorkEmailWritebackEmissionInput {
   projectionEvidence: OktaMasteringProjectionMetadata;
 }
 
+export interface OktaWorkEmailWritebackRefreshInput {
+  providerSubjectId: string;
+  refreshedAt: string;
+  projectionEvidence: OktaMasteringProjectionMetadata;
+}
+
 export interface OktaWorkEmailWritebackEventMetadata {
   provider: "okta";
   adapterMode: "mock";
-  eventType: "work_email_writeback";
+  eventType: "work_email_writeback" | "work_email_refresh";
   projectionKey: string;
   synthetic: true;
 }
 
 export interface OktaEmittedWorkEmailWritebackEvent {
   payload: SyntheticWorkEmailWritebackInput;
+  metadata: OktaWorkEmailWritebackEventMetadata;
+}
+
+export interface OktaRefreshedWorkEmailWritebackValue {
+  providerName: "synthetic_okta";
+  providerSubjectId: string;
+  providerValue: string;
+  refreshedAt: string;
   metadata: OktaWorkEmailWritebackEventMetadata;
 }
 
@@ -168,6 +182,9 @@ export interface OktaMasteringAdapter {
   emitWorkEmailWriteback(
     input: OktaWorkEmailWritebackEmissionInput,
   ): Promise<OktaEmittedWorkEmailWritebackEvent>;
+  refreshWorkEmailWriteback(
+    input: OktaWorkEmailWritebackRefreshInput,
+  ): Promise<OktaRefreshedWorkEmailWritebackValue>;
 }
 
 export interface MockOktaMasteringConfig {
@@ -262,6 +279,11 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
 
   private readonly successfulUserProjectionKeys = new Set<string>();
 
+  private readonly currentUserProjectionKeyByEmployeeNumber = new Map<
+    string,
+    string
+  >();
+
   constructor(config: MockOktaMasteringConfig) {
     for (const user of config.initialUsers ?? []) {
       this.usersByEmployeeNumber.set(user.employeeNumber, { ...user });
@@ -318,6 +340,10 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     const resultWithMetadata = withMockMetadata(result);
     if (resultWithMetadata.outcome === "success") {
       this.successfulUserProjectionKeys.add(
+        resultWithMetadata.metadata.projectionKey,
+      );
+      this.currentUserProjectionKeyByEmployeeNumber.set(
+        resultWithMetadata.employeeNumber,
         resultWithMetadata.metadata.projectionKey,
       );
     } else {
@@ -515,6 +541,103 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     };
   }
 
+  async refreshWorkEmailWriteback(
+    input: OktaWorkEmailWritebackRefreshInput,
+  ): Promise<OktaRefreshedWorkEmailWritebackValue> {
+    if (
+      !areProjectionKeyFieldsWellFormed([
+        input.providerSubjectId,
+        input.refreshedAt,
+        input.projectionEvidence.projectionKey,
+      ])
+    ) {
+      throw new Error(
+        "Synthetic writeback refresh fields must be well-formed Unicode strings.",
+      );
+    }
+
+    if (
+      input.projectionEvidence.provider !== "okta" ||
+      input.projectionEvidence.adapterMode !== "mock" ||
+      input.projectionEvidence.synthetic !== true
+    ) {
+      throw new Error(
+        "Synthetic writeback refresh requires mock Okta projection evidence.",
+      );
+    }
+
+    const existingUser = this.findUserByExternalId(input.providerSubjectId);
+    if (existingUser === undefined) {
+      throw new Error(
+        "Synthetic writeback refresh requires an existing mock Okta user.",
+      );
+    }
+
+    const projectionEvidence = readUserProjectionEvidenceForEmployee(
+      input.projectionEvidence,
+      existingUser.employeeNumber,
+    );
+    if (projectionEvidence === undefined) {
+      throw new Error(
+        "Synthetic writeback refresh projection evidence must match the provider subject.",
+      );
+    }
+
+    if (projectionEvidence.effectiveAt !== existingUser.effectiveAt) {
+      throw new Error(
+        "Synthetic writeback refresh projection evidence must match the current provider state.",
+      );
+    }
+
+    if (
+      projectionEvidence.projectionKey !==
+      this.currentUserProjectionKeyByEmployeeNumber.get(
+        existingUser.employeeNumber,
+      )
+    ) {
+      throw new Error(
+        "Synthetic writeback refresh projection evidence must match the current provider state.",
+      );
+    }
+
+    if (
+      toTimestampMillis(input.refreshedAt) <
+      toTimestampMillis(projectionEvidence.effectiveAt)
+    ) {
+      throw new Error(
+        "Synthetic writeback refresh timestamp must not be earlier than the current provider state.",
+      );
+    }
+
+    if (
+      !this.successfulUserProjectionKeys.has(projectionEvidence.projectionKey)
+    ) {
+      throw new Error(
+        "Synthetic writeback refresh requires successful mock Okta projection evidence.",
+      );
+    }
+
+    if (existingUser.email.indexOf("@") <= 0) {
+      throw new Error(
+        "Synthetic writeback refresh provider email must be a skeleton email.",
+      );
+    }
+
+    return {
+      providerName: "synthetic_okta",
+      providerSubjectId: existingUser.externalId,
+      providerValue: existingUser.email,
+      refreshedAt: input.refreshedAt,
+      metadata: {
+        provider: "okta",
+        adapterMode: "mock",
+        eventType: "work_email_refresh",
+        projectionKey: projectionEvidence.projectionKey,
+        synthetic: true,
+      },
+    };
+  }
+
   private create(
     desiredUser: SyntheticOktaUserFixture,
   ): OktaMasteringProjectionResultCore {
@@ -590,6 +713,18 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
 
     return successResult("disable", disabledUser);
   }
+
+  private findUserByExternalId(
+    externalId: string,
+  ): SyntheticOktaUserFixture | undefined {
+    for (const user of this.usersByEmployeeNumber.values()) {
+      if (user.externalId === externalId) {
+        return user;
+      }
+    }
+
+    return undefined;
+  }
 }
 
 function successResult(
@@ -652,6 +787,7 @@ function withMockGroupMetadata(
 type WritebackProjectionEvidence = {
   operation: "create" | "update";
   projectionKey: string;
+  effectiveAt: string;
 };
 
 function readMatchingWritebackProjectionEvidence(
@@ -679,6 +815,44 @@ function readMatchingWritebackProjectionEvidence(
     return {
       operation,
       projectionKey: input.projectionEvidence.projectionKey,
+      effectiveAt,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function readUserProjectionEvidenceForEmployee(
+  metadata: OktaMasteringProjectionMetadata,
+  employeeNumber: string,
+): WritebackProjectionEvidence | undefined {
+  const projectionKeyParts = metadata.projectionKey.split(":");
+  if (projectionKeyParts.length !== 5) {
+    return undefined;
+  }
+
+  try {
+    const [
+      provider,
+      adapterMode,
+      operation,
+      evidenceEmployeeNumber,
+      effectiveAt,
+    ] = projectionKeyParts.map(decodeURIComponent);
+
+    if (
+      provider !== "okta" ||
+      adapterMode !== "mock" ||
+      (operation !== "create" && operation !== "update") ||
+      evidenceEmployeeNumber !== employeeNumber
+    ) {
+      return undefined;
+    }
+
+    return {
+      operation,
+      projectionKey: metadata.projectionKey,
+      effectiveAt,
     };
   } catch {
     return undefined;
@@ -781,6 +955,15 @@ function getProjectionEffectiveAt(projection: OktaMasteringProjection) {
   return projection.operation === "disable"
     ? projection.effectiveAt
     : projection.desiredUser.effectiveAt;
+}
+
+function toTimestampMillis(timestamp: string): number {
+  const millis = Date.parse(timestamp);
+  if (!Number.isFinite(millis)) {
+    throw new Error("Synthetic Okta timestamp must be parseable.");
+  }
+
+  return millis;
 }
 
 function isMissingOrPlaceholder(value: string | undefined): boolean {

@@ -18,6 +18,7 @@ const expectedTables = [
   "lifecycle_event",
   "audit_event",
   "writeback_event",
+  "writeback_provider_refresh",
 ] as const;
 
 const requiredColumnsByTable = {
@@ -70,6 +71,18 @@ const requiredColumnsByTable = {
     "target_contact_type",
     "correlation_id",
     "received_at",
+    "poc_marker",
+  ],
+  writeback_provider_refresh: [
+    "id",
+    "writeback_event_id",
+    "person_id",
+    "contact_point_id",
+    "provider_name",
+    "provider_subject_id",
+    "provider_value",
+    "refreshed_at",
+    "correlation_id",
     "poc_marker",
   ],
 } as const;
@@ -137,6 +150,7 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
 
   assert.match(migrationSql, /contact_type.*work_email/s);
   assert.match(migrationSql, /writeback_event/);
+  assert.match(migrationSql, /writeback_provider_refresh/);
   assert.match(migrationSql, /provider_name.*synthetic_okta/s);
   assert.match(migrationSql, /transaction_request/);
   assert.match(migrationSql, /lifecycle_event/);
@@ -159,6 +173,10 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.match(
     migrationSql,
     /FOREIGN KEY \(`contact_point_id`,`person_id`\) REFERENCES `contact_point`\(`id`,`person_id`\)/,
+  );
+  assert.match(
+    migrationSql,
+    /FOREIGN KEY \(`writeback_event_id`\) REFERENCES `writeback_event`\(`id`\)/,
   );
   assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
   assert.doesNotMatch(
