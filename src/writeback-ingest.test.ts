@@ -158,6 +158,87 @@ test("synthetic work email writeback ingest persists event evidence and upserts 
   }
 });
 
+test("synthetic work email writeback promotes a matching existing value to primary", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-writeback-001',
+        'person-writeback-001',
+        'work_email',
+        'confirmed.writeback@example.invalid',
+        0,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    assert.deepEqual(
+      ingestSyntheticWorkEmailWriteback(
+        db,
+        createSyntheticWorkEmailWritebackFixture(),
+      ),
+      {
+        eventId: "writeback-event-work-email-001",
+        personId: "person-writeback-001",
+        contactPointId: "contact-point-writeback-001",
+        providerName: "synthetic_okta",
+        providerSubjectId: "synthetic-okta-user-001",
+        correlationId: "correlation-writeback-work-email-001",
+        applied: true,
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value, is_primary
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "confirmed.writeback@example.invalid",
+        is_primary: 1,
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_work_email_conflict
+              WHERE writeback_event_id = 'writeback-event-work-email-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        count: 0,
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic work email writeback records existing HRCore value conflicts without overwrite", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

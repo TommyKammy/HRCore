@@ -51,12 +51,39 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   const writebackOperation =
     contract.paths["/writeback-events/work-email"].post;
   assert.equal(
+    writebackOperation.responses["201"].description,
+    "Synthetic writeback event was persisted and either applied or recorded as PoC conflict evidence.",
+  );
+  assert.equal(
+    writebackOperation.responses["201"].content["application/json"].schema.$ref,
+    "#/components/schemas/SyntheticWorkEmailWritebackResult",
+  );
+  assert.equal(
     writebackOperation.responses["400"].description,
     "Synthetic writeback input was malformed or violated local synthetic constraints.",
   );
   assert.equal(
     writebackOperation.responses["400"].content["application/json"].schema.$ref,
     "#/components/schemas/ErrorResponse",
+  );
+
+  const writebackResult =
+    contract.components.schemas.SyntheticWorkEmailWritebackResult;
+  assert.equal(writebackResult.properties.applied.type, "boolean");
+  assert.equal(writebackResult.properties.applied.const, undefined);
+  assert.equal(
+    writebackResult.properties.conflict.$ref,
+    "#/components/schemas/SyntheticWorkEmailConflictEvidence",
+  );
+  assert.deepEqual(
+    contract.components.schemas.SyntheticWorkEmailConflictEvidence.required,
+    [
+      "conflictId",
+      "conflictType",
+      "currentContactValue",
+      "attemptedProviderValue",
+      "correlationId",
+    ],
   );
 });
 

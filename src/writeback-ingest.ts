@@ -230,22 +230,20 @@ export function ingestSyntheticWorkEmailWriteback(
       };
     }
 
-    if (contactPoint.value !== validatedInput.providerValue) {
-      db.prepare(
-        `
-          UPDATE contact_point
-          SET value = ?,
-            is_primary = 1
-          WHERE id = ?
-            AND person_id = ?
-            AND contact_type = 'work_email'
-        `,
-      ).run(
-        validatedInput.providerValue,
-        contactPoint.id,
-        validatedInput.personId,
-      );
-    }
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = ?,
+          is_primary = 1
+        WHERE id = ?
+          AND person_id = ?
+          AND contact_type = 'work_email'
+      `,
+    ).run(
+      validatedInput.providerValue,
+      contactPoint.id,
+      validatedInput.personId,
+    );
 
     db.exec("RELEASE SAVEPOINT synthetic_work_email_writeback_ingest");
 
