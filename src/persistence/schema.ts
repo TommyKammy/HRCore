@@ -210,6 +210,78 @@ export const writeback_event = sqliteTable(
   ],
 );
 
+export const writeback_provider_refresh = sqliteTable(
+  "writeback_provider_refresh",
+  {
+    id: syntheticId(),
+    writebackEventId: text("writeback_event_id")
+      .notNull()
+      .references(() => writeback_event.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => person.id),
+    contactPointId: text("contact_point_id").notNull(),
+    providerName: text("provider_name", { enum: ["synthetic_okta"] }).notNull(),
+    providerSubjectId: text("provider_subject_id").notNull(),
+    providerValue: text("provider_value").notNull(),
+    refreshedAt: text("refreshed_at").notNull(),
+    correlationId: text("correlation_id").notNull(),
+    pocMarker: text("poc_marker", { enum: ["synthetic_poc"] })
+      .notNull()
+      .default("synthetic_poc"),
+  },
+  (table) => [
+    uniqueIndex("writeback_provider_refresh_correlation_unique").on(
+      table.correlationId,
+    ),
+    foreignKey({
+      name: "writeback_provider_refresh_contact_point_person_match_fk",
+      columns: [table.contactPointId, table.personId],
+      foreignColumns: [contact_point.id, contact_point.personId],
+    }),
+    check(
+      "writeback_provider_refresh_id_non_empty",
+      sql`length(${table.id}) > 0`,
+    ),
+    check(
+      "writeback_provider_refresh_event_id_non_empty",
+      sql`length(${table.writebackEventId}) > 0`,
+    ),
+    check(
+      "writeback_provider_refresh_contact_point_id_non_empty",
+      sql`length(${table.contactPointId}) > 0`,
+    ),
+    check(
+      "writeback_provider_refresh_provider_name_allowed",
+      sql`${table.providerName} in ('synthetic_okta')`,
+    ),
+    check(
+      "writeback_provider_refresh_provider_subject_id_non_empty",
+      sql`length(${table.providerSubjectId}) > 0`,
+    ),
+    check(
+      "writeback_provider_refresh_provider_value_non_empty",
+      sql`length(${table.providerValue}) > 0`,
+    ),
+    check(
+      "writeback_provider_refresh_provider_work_email_shape",
+      sql`instr(${table.providerValue}, '@') > 1`,
+    ),
+    check(
+      "writeback_provider_refresh_refreshed_at_date",
+      sql`${table.refreshedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "writeback_provider_refresh_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "writeback_provider_refresh_poc_marker_allowed",
+      sql`${table.pocMarker} in ('synthetic_poc')`,
+    ),
+  ],
+);
+
 export const transaction_request = sqliteTable(
   "transaction_request",
   {
@@ -334,6 +406,8 @@ export const schema = {
   employment,
   assignment,
   contact_point,
+  writeback_event,
+  writeback_provider_refresh,
   transaction_request,
   lifecycle_event,
   audit_event,

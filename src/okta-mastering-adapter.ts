@@ -581,6 +581,15 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     }
 
     if (
+      toTimestampMillis(input.refreshedAt) <
+      toTimestampMillis(projectionEvidence.effectiveAt)
+    ) {
+      throw new Error(
+        "Synthetic writeback refresh timestamp must not be earlier than the current provider state.",
+      );
+    }
+
+    if (
       !this.successfulUserProjectionKeys.has(projectionEvidence.projectionKey)
     ) {
       throw new Error(
@@ -926,6 +935,15 @@ function getProjectionEffectiveAt(projection: OktaMasteringProjection) {
   return projection.operation === "disable"
     ? projection.effectiveAt
     : projection.desiredUser.effectiveAt;
+}
+
+function toTimestampMillis(timestamp: string): number {
+  const millis = Date.parse(timestamp);
+  if (!Number.isFinite(millis)) {
+    throw new Error("Synthetic Okta timestamp must be parseable.");
+  }
+
+  return millis;
 }
 
 function isMissingOrPlaceholder(value: string | undefined): boolean {

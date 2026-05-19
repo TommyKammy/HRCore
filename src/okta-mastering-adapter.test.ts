@@ -620,6 +620,15 @@ test("mock Okta work email refresh rejects projection evidence older than the cu
     /Synthetic writeback refresh projection evidence must match the current provider state/,
   );
 
+  await assert.rejects(
+    adapter.refreshWorkEmailWriteback({
+      providerSubjectId: "okta-user-writeback-refresh-evidence-001",
+      refreshedAt: "2026-05-18T16:04:00.000Z",
+      projectionEvidence: currentProjectionResult.metadata,
+    }),
+    /Synthetic writeback refresh timestamp must not be earlier than the current provider state/,
+  );
+
   assert.deepEqual(
     await adapter.refreshWorkEmailWriteback({
       providerSubjectId: "okta-user-writeback-refresh-evidence-001",

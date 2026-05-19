@@ -365,6 +365,29 @@ test("synthetic work email writeback can refresh a changed mock provider value",
         provider_value: "event.refresh@example.invalid",
       },
     );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT
+                writeback_event_id,
+                provider_value,
+                refreshed_at,
+                poc_marker
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = ?
+            `,
+          )
+          .get(emittedEvent.payload.eventId),
+      ),
+      {
+        writeback_event_id: emittedEvent.payload.eventId,
+        provider_value: "provider.refresh@example.invalid",
+        refreshed_at: "2026-05-18T16:06:00.000Z",
+        poc_marker: "synthetic_poc",
+      },
+    );
   } finally {
     db.close();
   }
@@ -571,6 +594,142 @@ test("synthetic work email provider refresh rejects superseded writeback events"
       ),
       {
         value: "second.writeback@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email provider refresh rejects same-time superseded writeback events by ingest order", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-z",
+        providerValue: "same-time-first@example.invalid",
+        correlationId: "correlation-writeback-work-email-z",
+        receivedAt: "2026-05-18T01:00:00Z",
+      }),
+    );
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-a",
+        providerValue: "same-time-second@example.invalid",
+        correlationId: "correlation-writeback-work-email-a",
+        receivedAt: "2026-05-18T01:00:00Z",
+      }),
+    );
+
+    assert.throws(
+      () =>
+        refreshSyntheticWorkEmailFromProvider(db, {
+          eventId: "writeback-event-work-email-z",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-001",
+          providerValue: "same-time-delayed-refresh@example.invalid",
+          refreshedAt: "2026-05-18T01:01:00Z",
+        }),
+      /provider refresh requires the latest writeback event for the contact point/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "same-time-second@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email provider refresh preserves newer provider refreshes", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "newer.provider@example.invalid",
+      refreshedAt: "2026-05-18T01:10:00Z",
+    });
+
+    assert.throws(
+      () =>
+        refreshSyntheticWorkEmailFromProvider(db, {
+          eventId: "writeback-event-work-email-001",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-001",
+          providerValue: "delayed.provider@example.invalid",
+          refreshedAt: "2026-05-18T01:05:00Z",
+        }),
+      /provider refresh must be newer than the latest applied provider refresh/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "newer.provider@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = 'writeback-event-work-email-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        count: 1,
       },
     );
   } finally {

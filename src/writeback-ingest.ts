@@ -238,6 +238,7 @@ export function refreshSyntheticWorkEmailFromProvider(
         `
           SELECT
             id,
+            rowid AS ingest_order,
             person_id,
             contact_point_id,
             provider_name,
@@ -256,10 +257,22 @@ export function refreshSyntheticWorkEmailFromProvider(
                   julianday(newer_event.received_at) > julianday(current_event.received_at)
                   OR (
                     julianday(newer_event.received_at) = julianday(current_event.received_at)
-                    AND newer_event.id > current_event.id
+                    AND newer_event.rowid > current_event.rowid
                   )
                 )
-            ) AS is_latest_for_contact_point
+            ) AS is_latest_for_contact_point,
+            (
+              SELECT applied_refresh.refreshed_at
+              FROM writeback_provider_refresh AS applied_refresh
+              WHERE applied_refresh.writeback_event_id = current_event.id
+                AND applied_refresh.person_id = current_event.person_id
+                AND applied_refresh.contact_point_id = current_event.contact_point_id
+                AND applied_refresh.provider_name = current_event.provider_name
+                AND applied_refresh.provider_subject_id = current_event.provider_subject_id
+              ORDER BY julianday(applied_refresh.refreshed_at) DESC,
+                applied_refresh.rowid DESC
+              LIMIT 1
+            ) AS last_refreshed_at
           FROM writeback_event AS current_event
           WHERE current_event.id = ?
         `,
@@ -294,6 +307,16 @@ export function refreshSyntheticWorkEmailFromProvider(
     if (event.is_latest_for_contact_point !== 1) {
       throw new SyntheticWorkEmailWritebackValidationError(
         "provider refresh requires the latest writeback event for the contact point",
+      );
+    }
+
+    if (
+      event.last_refreshed_at !== null &&
+      toTimestampMillis(validatedInput.refreshedAt) <=
+        toTimestampMillis(event.last_refreshed_at)
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "provider refresh must be newer than the latest applied provider refresh",
       );
     }
 
@@ -332,6 +355,37 @@ export function refreshSyntheticWorkEmailFromProvider(
     if (refreshedContactPoint.value !== validatedInput.providerValue) {
       throw new Error("contactPoint must match refreshed provider value");
     }
+
+    db.prepare(
+      `
+        INSERT INTO writeback_provider_refresh (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          refreshed_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      createSyntheticWorkEmailProviderRefreshId(event.id, validatedInput),
+      event.id,
+      event.person_id,
+      event.contact_point_id,
+      event.provider_name,
+      event.provider_subject_id,
+      validatedInput.providerValue,
+      validatedInput.refreshedAt,
+      createSyntheticWorkEmailProviderRefreshCorrelationId(
+        event.correlation_id,
+        validatedInput,
+      ),
+    );
 
     db.exec("RELEASE SAVEPOINT synthetic_work_email_provider_refresh");
 
@@ -474,6 +528,7 @@ export function parseSyntheticWorkEmailProviderRefreshInput(
 
 function isWritebackEventRefreshRow(input: unknown): input is {
   id: string;
+  ingest_order: number;
   person_id: string;
   contact_point_id: string;
   provider_name: "synthetic_okta";
@@ -483,10 +538,12 @@ function isWritebackEventRefreshRow(input: unknown): input is {
   correlation_id: string;
   received_at: string;
   is_latest_for_contact_point: number;
+  last_refreshed_at: string | null;
 } {
   return (
     isRecord(input) &&
     typeof input.id === "string" &&
+    typeof input.ingest_order === "number" &&
     typeof input.person_id === "string" &&
     typeof input.contact_point_id === "string" &&
     input.provider_name === "synthetic_okta" &&
@@ -495,7 +552,9 @@ function isWritebackEventRefreshRow(input: unknown): input is {
     input.target_contact_type === "work_email" &&
     typeof input.correlation_id === "string" &&
     typeof input.received_at === "string" &&
-    typeof input.is_latest_for_contact_point === "number"
+    typeof input.is_latest_for_contact_point === "number" &&
+    (typeof input.last_refreshed_at === "string" ||
+      input.last_refreshed_at === null)
   );
 }
 
@@ -545,6 +604,28 @@ function toTimestampMillis(timestamp: string): number {
   }
 
   return millis;
+}
+
+function createSyntheticWorkEmailProviderRefreshId(
+  eventId: string,
+  input: SyntheticWorkEmailProviderRefreshInput,
+): string {
+  return [
+    "synthetic-work-email-provider-refresh",
+    encodeURIComponent(eventId),
+    encodeURIComponent(input.refreshedAt),
+  ].join(":");
+}
+
+function createSyntheticWorkEmailProviderRefreshCorrelationId(
+  eventCorrelationId: string,
+  input: SyntheticWorkEmailProviderRefreshInput,
+): string {
+  return [
+    eventCorrelationId,
+    "provider_refresh",
+    encodeURIComponent(input.refreshedAt),
+  ].join(":");
 }
 
 function isValidIsoDateParts(
