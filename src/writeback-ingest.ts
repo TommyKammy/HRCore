@@ -291,12 +291,24 @@ export function refreshSyntheticWorkEmailFromProvider(
             target_contact_type,
             correlation_id,
             received_at,
+            EXISTS (
+              SELECT 1
+              FROM writeback_work_email_conflict AS inbound_conflict
+              WHERE inbound_conflict.writeback_event_id = current_event.id
+                AND inbound_conflict.conflict_type = 'inbound_value_conflict'
+            ) AS has_inbound_value_conflict,
             NOT EXISTS (
               SELECT 1
               FROM writeback_event AS newer_event
               WHERE newer_event.person_id = current_event.person_id
                 AND newer_event.contact_point_id = current_event.contact_point_id
                 AND newer_event.target_contact_type = current_event.target_contact_type
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM writeback_work_email_conflict AS newer_inbound_conflict
+                  WHERE newer_inbound_conflict.writeback_event_id = newer_event.id
+                    AND newer_inbound_conflict.conflict_type = 'inbound_value_conflict'
+                )
                 AND (
                   julianday(newer_event.received_at) > julianday(current_event.received_at)
                   OR (
@@ -306,17 +318,28 @@ export function refreshSyntheticWorkEmailFromProvider(
                 )
             ) AS is_latest_for_contact_point,
             (
-              SELECT applied_refresh.refreshed_at
-              FROM writeback_provider_refresh AS applied_refresh
-              WHERE applied_refresh.writeback_event_id = current_event.id
-                AND applied_refresh.person_id = current_event.person_id
-                AND applied_refresh.contact_point_id = current_event.contact_point_id
-                AND applied_refresh.provider_name = current_event.provider_name
-                AND applied_refresh.provider_subject_id = current_event.provider_subject_id
-              ORDER BY julianday(applied_refresh.refreshed_at) DESC,
-                applied_refresh.rowid DESC
+              SELECT observed_refresh.observed_at
+              FROM (
+                SELECT applied_refresh.refreshed_at AS observed_at
+                FROM writeback_provider_refresh AS applied_refresh
+                WHERE applied_refresh.writeback_event_id = current_event.id
+                  AND applied_refresh.person_id = current_event.person_id
+                  AND applied_refresh.contact_point_id = current_event.contact_point_id
+                  AND applied_refresh.provider_name = current_event.provider_name
+                  AND applied_refresh.provider_subject_id = current_event.provider_subject_id
+                UNION ALL
+                SELECT refresh_conflict.detected_at AS observed_at
+                FROM writeback_work_email_conflict AS refresh_conflict
+                WHERE refresh_conflict.writeback_event_id = current_event.id
+                  AND refresh_conflict.person_id = current_event.person_id
+                  AND refresh_conflict.contact_point_id = current_event.contact_point_id
+                  AND refresh_conflict.provider_name = current_event.provider_name
+                  AND refresh_conflict.provider_subject_id = current_event.provider_subject_id
+                  AND refresh_conflict.conflict_type = 'provider_refresh_conflict'
+              ) AS observed_refresh
+              ORDER BY julianday(observed_refresh.observed_at) DESC
               LIMIT 1
-            ) AS last_refreshed_at
+            ) AS last_provider_refresh_attempt_at
             ,
             (
               SELECT applied_refresh.provider_value
@@ -352,6 +375,12 @@ export function refreshSyntheticWorkEmailFromProvider(
       );
     }
 
+    if (event.has_inbound_value_conflict !== 0) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "provider refresh requires an accepted writeback event",
+      );
+    }
+
     if (
       toTimestampMillis(validatedInput.refreshedAt) <
       toTimestampMillis(event.received_at)
@@ -368,12 +397,12 @@ export function refreshSyntheticWorkEmailFromProvider(
     }
 
     if (
-      event.last_refreshed_at !== null &&
+      event.last_provider_refresh_attempt_at !== null &&
       toTimestampMillis(validatedInput.refreshedAt) <=
-        toTimestampMillis(event.last_refreshed_at)
+        toTimestampMillis(event.last_provider_refresh_attempt_at)
     ) {
       throw new SyntheticWorkEmailWritebackValidationError(
-        "provider refresh must be newer than the latest applied provider refresh",
+        "provider refresh must be newer than the latest provider refresh attempt",
       );
     }
 
@@ -696,6 +725,12 @@ function getLatestSyntheticProviderValueForContactPoint(
         WHERE person_id = ?
           AND contact_point_id = ?
           AND target_contact_type = 'work_email'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM writeback_work_email_conflict AS inbound_conflict
+            WHERE inbound_conflict.writeback_event_id = writeback_event.id
+              AND inbound_conflict.conflict_type = 'inbound_value_conflict'
+          )
         ORDER BY julianday(received_at) DESC,
           rowid DESC
         LIMIT 1
@@ -785,8 +820,9 @@ function isWritebackEventRefreshRow(input: unknown): input is {
   target_contact_type: "work_email";
   correlation_id: string;
   received_at: string;
+  has_inbound_value_conflict: number;
   is_latest_for_contact_point: number;
-  last_refreshed_at: string | null;
+  last_provider_refresh_attempt_at: string | null;
   last_refreshed_provider_value: string | null;
 } {
   return (
@@ -801,9 +837,10 @@ function isWritebackEventRefreshRow(input: unknown): input is {
     input.target_contact_type === "work_email" &&
     typeof input.correlation_id === "string" &&
     typeof input.received_at === "string" &&
+    typeof input.has_inbound_value_conflict === "number" &&
     typeof input.is_latest_for_contact_point === "number" &&
-    (typeof input.last_refreshed_at === "string" ||
-      input.last_refreshed_at === null) &&
+    (typeof input.last_provider_refresh_attempt_at === "string" ||
+      input.last_provider_refresh_attempt_at === null) &&
     (typeof input.last_refreshed_provider_value === "string" ||
       input.last_refreshed_provider_value === null)
   );
