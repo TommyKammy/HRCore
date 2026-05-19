@@ -43,6 +43,27 @@
       "when": 1779156729790,
       "tag": "0005_white_imperial_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1779203037490,
+      "tag": "0006_dizzy_true_believers",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1779205591631,
+      "tag": "0007_careless_misty_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1779208419441,
+      "tag": "0008_yellow_hulk",
+      "breakpoints": true
     }
   ]
 }

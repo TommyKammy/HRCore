@@ -291,7 +291,7 @@ test("synthetic hire request remains separate from the applied lifecycle event",
         db
           .prepare(
             `
-              SELECT id, person_id, transaction_request_id, event_type, effective_date, occurred_at
+              SELECT id, person_id, transaction_request_id, contact_point_id, event_type, effective_date, occurred_at
               FROM lifecycle_event
               ORDER BY id
             `,
@@ -303,11 +303,592 @@ test("synthetic hire request remains separate from the applied lifecycle event",
           id: "lifecycle-event-syn-hire-001",
           person_id: "person-syn-hire-001",
           transaction_request_id: "transaction-request-syn-hire-001",
+          contact_point_id: "contact-point-syn-hire-001",
           event_type: "hire",
           effective_date: "2026-05-18",
           occurred_at: "2026-05-18T00:00:00Z",
         },
       ],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit is idempotent for the same correlation", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+
+    const firstResult = saveSyntheticHireRequest(db, request);
+    const retryResult = saveSyntheticHireRequest(db, request);
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(db.prepare("SELECT count(*) AS count FROM person").get()),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM transaction_request").get(),
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.request_submitted'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "retrying the same submit must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit uses correlation for regenerated request ids", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+
+    const firstResult = saveSyntheticHireRequest(db, request);
+    const retryResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture({
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "correlated retry must return the original request without writing a new one",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit prefers correlation over a colliding regenerated request id", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+
+    const firstResult = saveSyntheticHireRequest(db, request);
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES (
+        'person-syn-hire-colliding-request',
+        'Synthetic Hire Colliding Request',
+        '2026-05-18T00:00:00Z'
+      );
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES (
+        'transaction-request-syn-hire-regenerated',
+        'person-syn-hire-colliding-request',
+        'hire',
+        'submitted',
+        '2026-05-18T00:00:00Z',
+        'correlation-syn-hire-colliding-request'
+      );
+    `);
+
+    const retryResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture({
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+        {
+          id: "transaction-request-syn-hire-regenerated",
+          person_id: "person-syn-hire-colliding-request",
+          correlation_id: "correlation-syn-hire-colliding-request",
+        },
+      ],
+      "a cross-person request id collision must not hide the authoritative correlation match",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.request_submitted'
+                AND correlation_id = 'correlation-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "correlated retry must not write duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit does not classify a cross-person request id collision as a retry", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const firstResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture(),
+    );
+
+    assert.throws(
+      () =>
+        saveSyntheticHireRequest(
+          db,
+          createSyntheticHireRequestFixture({
+            person: {
+              id: "person-syn-hire-same-request-id",
+              displayName: "Synthetic Hire Same Request Id",
+            },
+            transactionRequest: {
+              correlationId: "correlation-syn-hire-same-request-id",
+            },
+          }),
+        ),
+      /UNIQUE constraint failed: transaction_request\.id/,
+    );
+
+    assert.deepEqual(firstResult, {
+      personId: "person-syn-hire-001",
+      transactionRequestId: "transaction-request-syn-hire-001",
+      statusCode: "submitted",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY person_id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "cross-person request id collisions must fail at the authoritative schema boundary instead of the retry pre-read",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, display_name
+              FROM person
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "person-syn-hire-001",
+          display_name: "Synthetic Hire One",
+        },
+      ],
+      "failed cross-person collision must roll back the attempted person insert",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "failed cross-person collision must not write extra audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit fails closed when regenerated correlated retry changes person", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveSyntheticHireRequest(db, createSyntheticHireRequestFixture());
+
+    assert.throws(
+      () =>
+        saveSyntheticHireRequest(
+          db,
+          createSyntheticHireRequestFixture({
+            person: {
+              id: "person-syn-hire-retry",
+              displayName: "Synthetic Hire Retry",
+            },
+            transactionRequest: {
+              id: "transaction-request-syn-hire-regenerated",
+              personId: "person-syn-hire-retry",
+            },
+          }),
+        ),
+      /synthetic hire request retry conflicts with the existing request/,
+    );
+
+    for (const tableName of ["person", "transaction_request", "audit_event"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate rows after correlated person drift`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit recovers an idempotent result after a stale retry read collides", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+    const firstResult = saveSyntheticHireRequest(db, request);
+    let hideFirstRetryRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstRetryRead &&
+              sql.includes(
+                "JOIN person ON person.id = transaction_request.person_id",
+              ) &&
+              sql.includes("transaction_request.correlation_id = ?")
+            ) {
+              hideFirstRetryRead = false;
+              return undefined;
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = saveSyntheticHireRequest(staleReadDb, request);
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(db.prepare("SELECT count(*) AS count FROM person").get()),
+      { count: 1 },
+      "stale submit retry must roll back the failed write collision",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM transaction_request").get(),
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "stale submit retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit recovers a regenerated id after a stale retry read collides", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+    const firstResult = saveSyntheticHireRequest(db, request);
+    let hideFirstRetryRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstRetryRead &&
+              sql.includes(
+                "JOIN person ON person.id = transaction_request.person_id",
+              ) &&
+              sql.includes("transaction_request.correlation_id = ?")
+            ) {
+              hideFirstRetryRead = false;
+              return undefined;
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = saveSyntheticHireRequest(
+      staleReadDb,
+      createSyntheticHireRequestFixture({
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "stale regenerated submit retry must recover the authoritative correlated request",
+    );
+    assert.deepEqual(
+      normalizeRow(db.prepare("SELECT count(*) AS count FROM person").get()),
+      { count: 1 },
+      "stale regenerated submit retry must roll back the failed insert attempt",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "stale regenerated submit retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit fails closed on retry correlation drift", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+
+    saveSyntheticHireRequest(db, request);
+
+    assert.throws(
+      () =>
+        saveSyntheticHireRequest(
+          db,
+          createSyntheticHireRequestFixture({
+            transactionRequest: {
+              correlationId: "correlation-syn-hire-drift",
+            },
+          }),
+        ),
+      /synthetic hire request retry conflicts with the existing request/,
+    );
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, status_code, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          status_code: "submitted",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "drifted retry must leave the authoritative request unchanged",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "drifted retry must not write extra audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire request submit remains idempotent by correlation after apply completes the request", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    const submitResult = saveSyntheticHireRequest(db, request);
+    applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture({
+        person: hire.person,
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, submitResult);
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      { status_code: "completed" },
+      "submit retry must not roll back or rewrite the completed lifecycle state",
+    );
+    for (const tableName of [
+      "person",
+      "transaction_request",
+      "lifecycle_event",
+      "employment",
+      "assignment",
+      "contact_point",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate rows after out-of-order submit retry`,
+      );
+    }
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 2 },
+      "out-of-order submit retry must not write duplicate audit evidence",
     );
   } finally {
     db.close();
@@ -332,7 +913,7 @@ test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => 
         correlationId: "correlation-input-drift-ignored",
       },
     };
-    applySyntheticHireRequest(db, {
+    const appliedResult = applySyntheticHireRequest(db, {
       request: applyRequest,
       hire,
       lifecycleEvent: {
@@ -343,6 +924,7 @@ test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => 
       },
     });
 
+    assert.equal(appliedResult.correlationId, "correlation-syn-hire-001");
     assert.deepEqual(
       normalizeRows(
         db
@@ -381,6 +963,837 @@ test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => 
           poc_marker: "synthetic_poc",
         },
       ],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry is idempotent without duplicate durable effects", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    for (const tableName of [
+      "person",
+      "transaction_request",
+      "lifecycle_event",
+      "employment",
+      "assignment",
+      "contact_point",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate rows after retry`,
+      );
+    }
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, subject_table, subject_id, correlation_id
+              FROM audit_event
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.lifecycle_applied",
+          subject_table: "lifecycle_event",
+          subject_id: "lifecycle-event-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          subject_table: "transaction_request",
+          subject_id: "transaction-request-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "retrying apply must not duplicate lifecycle or submit audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry recovers when stale retry state misses a completed apply", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    let hideFirstCompletedRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstCompletedRead &&
+              sql.includes(
+                "transaction_request.status_code AS transaction_status_code",
+              )
+            ) {
+              hideFirstCompletedRead = false;
+              return undefined;
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = applySyntheticHireRequest(staleReadDb, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
+      "stale apply retry must not duplicate lifecycle evidence",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "stale apply retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry recovers when stale submitted state enters the write path", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    let hideFirstCompletedRead = true;
+    let returnStaleSubmittedRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstCompletedRead &&
+              sql.includes(
+                "transaction_request.status_code AS transaction_status_code",
+              )
+            ) {
+              hideFirstCompletedRead = false;
+              return undefined;
+            }
+
+            if (
+              returnStaleSubmittedRead &&
+              sql.includes("SELECT\n        correlation_id") &&
+              sql.includes("status_code = 'submitted'")
+            ) {
+              returnStaleSubmittedRead = false;
+              return { correlation_id: "correlation-syn-hire-001" };
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = applySyntheticHireRequest(staleReadDb, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
+      "stale submitted apply retry must roll back the failed write path",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "stale submitted apply retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry keeps authoritative correlation when caller input drifts", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const driftedRequest = createSyntheticHireRequestFixture({
+      person: hire.person,
+      transactionRequest: {
+        correlationId: "correlation-input-drift-ignored",
+      },
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+
+    const firstResult = applySyntheticHireRequest(db, {
+      request: driftedRequest,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = applySyntheticHireRequest(db, {
+      request: driftedRequest,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.equal(firstResult.correlationId, "correlation-syn-hire-001");
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry ignores non-authoritative request metadata accepted by first apply", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const driftedRequest = createSyntheticHireRequestFixture({
+      person: {
+        id: hire.person.id,
+        displayName: "Synthetic Hire Display Drift",
+        createdAt: "2026-05-18T00:10:00Z",
+      },
+      transactionRequest: {
+        requestedAt: "2026-05-18T00:10:00Z",
+      },
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+
+    const firstResult = applySyntheticHireRequest(db, {
+      request: driftedRequest,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = applySyntheticHireRequest(db, {
+      request: driftedRequest,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.equal(firstResult.correlationId, "correlation-syn-hire-001");
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT display_name, created_at
+              FROM person
+              WHERE id = 'person-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        display_name: "Synthetic Hire One",
+        created_at: "2026-05-18T00:00:00Z",
+      },
+      "retry must keep the authoritative person row from submit",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply fails closed when persisted request correlation is missing", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-syn-hire-001', 'Synthetic Hire One', '2026-05-18T00:00:00Z');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES (
+        'transaction-request-syn-hire-001',
+        'person-syn-hire-001',
+        'hire',
+        'submitted',
+        '2026-05-18T00:00:00Z',
+        NULL
+      );
+    `);
+
+    assert.throws(
+      () =>
+        applySyntheticHireRequest(db, {
+          request,
+          hire,
+          lifecycleEvent: {
+            id: "lifecycle-event-syn-hire-001",
+            eventType: "hire",
+            effectiveDate: "2026-05-18",
+            occurredAt: "2026-05-18T00:00:00Z",
+          },
+        }),
+      /synthetic hire apply requires a persisted request correlation/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code, correlation_id
+              FROM transaction_request
+              WHERE id = 'transaction-request-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        status_code: "submitted",
+        correlation_id: null,
+      },
+    );
+    for (const tableName of [
+      "employment",
+      "assignment",
+      "contact_point",
+      "lifecycle_event",
+      "audit_event",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must remain empty after missing correlation rejection`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry tolerates later mutable contact value changes", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'synthetic.hire.updated@example.invalid',
+          is_primary = 0
+        WHERE id = 'contact-point-syn-hire-001'
+          AND person_id = 'person-syn-hire-001'
+      `,
+    ).run();
+
+    const retryResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value, is_primary
+              FROM contact_point
+              WHERE id = 'contact-point-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "synthetic.hire.updated@example.invalid",
+        is_primary: 0,
+      },
+      "retry must not overwrite later mutable contact value changes",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 2 },
+      "retry after contact mutation must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry fails closed when contact point is omitted", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      contactPoint: {
+        createdAt: "2026-05-18T01:00:00Z",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    const { contactPoint: _omitted, ...hireWithoutContactPoint } = hire;
+    assert.throws(
+      () =>
+        applySyntheticHireRequest(db, {
+          request,
+          hire: hireWithoutContactPoint,
+          lifecycleEvent,
+        }),
+      /synthetic hire apply retry conflicts with the completed request/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+      ),
+      { count: 1 },
+      "omitted contact point retry must not alter stored contact evidence",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 2 },
+      "omitted contact point retry must not write extra audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry ignores later work email contacts when original apply omitted contact", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      contactPoint: null,
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    db.exec(`
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-later-writeback',
+        'person-syn-hire-001',
+        'work_email',
+        'synthetic.hire.later@example.invalid',
+        1,
+        '2026-05-19T00:00:00Z'
+      );
+    `);
+
+    const retryResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+      ),
+      { count: 1 },
+      "later contact evidence must remain untouched by a no-contact apply retry",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "no-contact apply retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry ignores preexisting work email contacts when original apply omitted contact", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      contactPoint: null,
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    db.exec(`
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-preexisting-writeback',
+        'person-syn-hire-001',
+        'work_email',
+        'synthetic.hire.preexisting@example.invalid',
+        1,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT contact_point_id FROM lifecycle_event").get(),
+      ),
+      { contact_point_id: null },
+      "no-contact apply must keep contact linkage empty even when a prior contact exists",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+      ),
+      { count: 1 },
+      "preexisting contact evidence must remain untouched by a no-contact apply retry",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "no-contact apply retry with a preexisting contact must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry fails closed on lifecycle id drift", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    saveSyntheticHireRequest(db, request);
+    applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-001",
+        eventType: "hire",
+        effectiveDate: "2026-05-18",
+        occurredAt: "2026-05-18T00:00:00Z",
+      },
+    });
+
+    assert.throws(
+      () =>
+        applySyntheticHireRequest(db, {
+          request,
+          hire,
+          lifecycleEvent: {
+            id: "lifecycle-event-syn-hire-drift",
+            eventType: "hire",
+            effectiveDate: "2026-05-18",
+            occurredAt: "2026-05-18T00:00:00Z",
+          },
+        }),
+      /synthetic hire apply retry conflicts with the completed request/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "drifted apply retry must not write duplicate audit evidence",
     );
   } finally {
     db.close();
@@ -431,7 +1844,7 @@ test("synthetic hire apply rejects submitted non-hire transaction requests", asy
             occurredAt: "2026-05-18T00:00:00Z",
           },
         }),
-      /NOT NULL constraint failed: lifecycle_event\.person_id/,
+      /synthetic hire apply requires a submitted hire request/,
     );
 
     assert.deepEqual(
@@ -484,6 +1897,9 @@ test("synthetic hire apply does not require run changes metadata", async (t) => 
       prepare(sql) {
         const statement = db.prepare(sql);
         return {
+          get(...values) {
+            return statement.get(...values);
+          },
           run(...values) {
             statement.run(...values);
             return undefined;

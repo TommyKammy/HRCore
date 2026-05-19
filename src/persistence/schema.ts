@@ -383,6 +383,9 @@ export const transaction_request = sqliteTable(
       table.id,
       table.personId,
     ),
+    uniqueIndex("transaction_request_correlation_unique").on(
+      table.correlationId,
+    ),
     check("transaction_request_id_non_empty", sql`length(${table.id}) > 0`),
     check(
       "transaction_request_type_allowed",
@@ -407,6 +410,7 @@ export const lifecycle_event = sqliteTable(
       .notNull()
       .references(() => person.id),
     transactionRequestId: text("transaction_request_id"),
+    contactPointId: text("contact_point_id"),
     eventType: text("event_type", {
       enum: ["hire", "assignment_change", "termination"],
     }).notNull(),
@@ -418,6 +422,11 @@ export const lifecycle_event = sqliteTable(
       name: "lifecycle_event_request_person_match_fk",
       columns: [table.transactionRequestId, table.personId],
       foreignColumns: [transaction_request.id, transaction_request.personId],
+    }),
+    foreignKey({
+      name: "lifecycle_event_contact_point_person_match_fk",
+      columns: [table.contactPointId, table.personId],
+      foreignColumns: [contact_point.id, contact_point.personId],
     }),
     check("lifecycle_event_id_non_empty", sql`length(${table.id}) > 0`),
     check(

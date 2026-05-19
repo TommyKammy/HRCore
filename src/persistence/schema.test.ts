@@ -7,6 +7,10 @@ import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
 
 import * as schema from "./schema.js";
 
+const normalizeRows = <TRow extends Record<string, unknown>>(
+  rows: TRow[],
+): Record<string, unknown>[] => rows.map((row) => ({ ...row }));
+
 const schemaExports = schema as Record<string, unknown>;
 
 const expectedTables = [
@@ -49,6 +53,7 @@ const requiredColumnsByTable = {
     "id",
     "person_id",
     "transaction_request_id",
+    "contact_point_id",
     "event_type",
     "effective_date",
   ],
@@ -106,6 +111,24 @@ const readCommittedMigrationSql = async (): Promise<string> => {
 
   return migrationSqlFiles.join("\n");
 };
+
+const readMigrationSqlThrough = async (
+  lastMigrationFile: string,
+): Promise<string> => {
+  const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .filter((file) => file <= lastMigrationFile);
+
+  const migrationSqlFiles = await Promise.all(
+    migrationFiles.map((file) => readRepoFile(join("drizzle", file))),
+  );
+
+  return migrationSqlFiles.join("\n");
+};
+
+const readMigrationSql = (migrationFile: string): Promise<string> =>
+  readRepoFile(join("drizzle", migrationFile));
 
 const forbiddenSamplePattern = new RegExp(
   [
@@ -173,6 +196,10 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.match(
     migrationSql,
     /FOREIGN KEY \(`contact_point_id`,`person_id`\) REFERENCES `contact_point`\(`id`,`person_id`\)/,
+  );
+  assert.match(
+    migrationSql,
+    /CREATE TABLE `__new_lifecycle_event`[\s\S]*FOREIGN KEY \(`contact_point_id`,`person_id`\) REFERENCES `contact_point`\(`id`,`person_id`\)/,
   );
   assert.match(
     migrationSql,
@@ -301,7 +328,47 @@ test("DDL constraints reject cross-person lifecycle links", async (t) => {
         1,
         '2026-05-18T00:00:00Z'
       );
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at
+      )
+      VALUES (
+        'transaction-request-2',
+        'person-2',
+        'hire',
+        'submitted',
+        '2026-05-18T00:00:00Z'
+      );
     `);
+
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO lifecycle_event (
+            id,
+            person_id,
+            transaction_request_id,
+            contact_point_id,
+            event_type,
+            effective_date,
+            occurred_at
+          )
+          VALUES (
+            'lifecycle-event-cross-contact',
+            'person-2',
+            'transaction-request-2',
+            'contact-point-1',
+            'hire',
+            '2026-05-18',
+            '2026-05-18T00:00:00Z'
+          );
+        `),
+      /FOREIGN KEY constraint failed/,
+    );
 
     assert.throws(
       () =>
@@ -332,6 +399,391 @@ test("DDL constraints reject cross-person lifecycle links", async (t) => {
           );
         `),
       /FOREIGN KEY constraint failed/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("transaction request correlation migration backfills duplicates before unique index", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
+
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec(await readMigrationSqlThrough("0005_white_imperial_guard.sql"));
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES
+        ('person-correlation-1', 'Synthetic Correlation One', '2026-05-18T00:00:00Z'),
+        ('person-correlation-2', 'Synthetic Correlation Two', '2026-05-18T00:00:00Z'),
+        ('person-correlation-3', 'Synthetic Correlation Three', '2026-05-18T00:00:00Z');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES
+        (
+          'transaction-request-correlation-1',
+          'person-correlation-1',
+          'hire',
+          'submitted',
+          '2026-05-18T00:00:00Z',
+          'correlation-duplicate'
+        ),
+        (
+          'transaction-request-correlation-2',
+          'person-correlation-2',
+          'hire',
+          'submitted',
+          '2026-05-18T00:00:00Z',
+          'correlation-duplicate'
+        ),
+        (
+          'transaction-request-correlation-existing',
+          'person-correlation-3',
+          'hire',
+          'submitted',
+          '2026-05-18T00:00:00Z',
+          'correlation-duplicate#dedupe-rowid-2'
+        );
+    `);
+
+    db.exec(await readMigrationSql("0006_dizzy_true_believers.sql"));
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "transaction-request-correlation-1",
+          correlation_id: "correlation-duplicate",
+        },
+        {
+          id: "transaction-request-correlation-2",
+          correlation_id: "correlation-duplicate#dedupe-rowid-2-1",
+        },
+        {
+          id: "transaction-request-correlation-existing",
+          correlation_id: "correlation-duplicate#dedupe-rowid-2",
+        },
+      ],
+      "duplicate correlation backfill must keep the first authoritative value and deterministically rewrite later duplicates without colliding with existing suffix-shaped values",
+    );
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO transaction_request (
+            id,
+            person_id,
+            request_type,
+            status_code,
+            requested_at,
+            correlation_id
+          )
+          VALUES (
+            'transaction-request-correlation-duplicate',
+            'person-correlation-1',
+            'hire',
+            'submitted',
+            '2026-05-18T00:00:00Z',
+            'correlation-duplicate'
+          );
+        `),
+      /UNIQUE constraint failed: transaction_request.correlation_id/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("lifecycle contact linkage migration backfills completed hire applies", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
+
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec(await readMigrationSqlThrough("0006_dizzy_true_believers.sql"));
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES
+        ('person-legacy-contact', 'Legacy Contact Hire', '2026-05-18T00:00:00Z'),
+        ('person-legacy-no-contact', 'Legacy No Contact Hire', '2026-05-18T00:00:00Z'),
+        ('person-legacy-later-contact', 'Legacy Later Contact Hire', '2026-05-18T00:00:00Z'),
+        ('person-legacy-writeback-drift', 'Legacy Writeback Timestamp Drift', '2026-05-18T00:00:00Z'),
+        ('person-legacy-writeback-created', 'Legacy Writeback Created Contact', '2026-05-18T00:00:00Z');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES
+        (
+          'transaction-request-legacy-contact',
+          'person-legacy-contact',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-contact'
+        ),
+        (
+          'transaction-request-legacy-no-contact',
+          'person-legacy-no-contact',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-no-contact'
+        ),
+        (
+          'transaction-request-legacy-later-contact',
+          'person-legacy-later-contact',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-later-contact'
+        ),
+        (
+          'transaction-request-legacy-writeback-drift',
+          'person-legacy-writeback-drift',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-writeback-drift'
+        ),
+        (
+          'transaction-request-legacy-writeback-created',
+          'person-legacy-writeback-created',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-writeback-created'
+        );
+
+      INSERT INTO lifecycle_event (
+        id,
+        person_id,
+        transaction_request_id,
+        event_type,
+        effective_date,
+        occurred_at
+      )
+      VALUES
+        (
+          'lifecycle-event-legacy-contact',
+          'person-legacy-contact',
+          'transaction-request-legacy-contact',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-no-contact',
+          'person-legacy-no-contact',
+          'transaction-request-legacy-no-contact',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-later-contact',
+          'person-legacy-later-contact',
+          'transaction-request-legacy-later-contact',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-writeback-drift',
+          'person-legacy-writeback-drift',
+          'transaction-request-legacy-writeback-drift',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-writeback-created',
+          'person-legacy-writeback-created',
+          'transaction-request-legacy-writeback-created',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
+        );
+
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES
+        (
+          'contact-point-legacy-contact',
+          'person-legacy-contact',
+          'work_email',
+          'legacy.contact@example.invalid',
+          1,
+          '2026-05-18T00:10:00Z'
+        ),
+        (
+          'contact-point-legacy-later-writeback',
+          'person-legacy-later-contact',
+          'work_email',
+          'legacy.later@example.invalid',
+          1,
+          '2026-05-18T00:05:00Z'
+        ),
+        (
+          'contact-point-legacy-writeback-drift',
+          'person-legacy-writeback-drift',
+          'work_email',
+          'legacy.writeback.drift@example.invalid',
+          1,
+          '2026-05-18T00:10:00Z'
+        ),
+        (
+          'contact-point-legacy-writeback-created',
+          'person-legacy-writeback-created',
+          'work_email',
+          'legacy.writeback.created@example.invalid',
+          1,
+          '2026-05-18T00:11:00Z'
+        );
+
+      INSERT INTO writeback_event (
+        id,
+        person_id,
+        contact_point_id,
+        provider_name,
+        provider_subject_id,
+        provider_value,
+        target_contact_type,
+        correlation_id,
+        received_at,
+        poc_marker
+      )
+      VALUES (
+        'writeback-event-legacy-later-contact',
+        'person-legacy-later-contact',
+        'contact-point-legacy-later-writeback',
+        'synthetic_okta',
+        'synthetic-okta-user-later-contact',
+        'legacy.later@example.invalid',
+        'work_email',
+        'okta:mock:work_email_writeback:update:EMP-LEGACY-LATER:2026-05-18T00%3A10%3A00Z',
+        '2026-05-18T00:10:00Z',
+        'synthetic_poc'
+      ),
+      (
+        'writeback-event-legacy-writeback-drift',
+        'person-legacy-writeback-drift',
+        'contact-point-legacy-writeback-drift',
+        'synthetic_okta',
+        'synthetic-okta-user-writeback-drift',
+        'legacy.writeback.drift@example.invalid',
+        'work_email',
+        'okta:mock:work_email_writeback:create:EMP-LEGACY-DRIFT:2026-05-18T00%3A11%3A00Z',
+        '2026-05-18T00:11:00Z',
+        'synthetic_poc'
+      ),
+      (
+        'writeback-event-legacy-writeback-created',
+        'person-legacy-writeback-created',
+        'contact-point-legacy-writeback-created',
+        'synthetic_okta',
+        'synthetic-okta-user-writeback-created',
+        'legacy.writeback.created@example.invalid',
+        'work_email',
+        'okta:mock:work_email_writeback:create:EMP-LEGACY-CREATED:2026-05-18T00%3A11%3A00Z',
+        '2026-05-18T00:11:00Z',
+        'synthetic_poc'
+      );
+    `);
+
+    db.exec(await readMigrationSql("0007_careless_misty_knight.sql"));
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, contact_point_id
+              FROM lifecycle_event
+              ORDER BY id
+            `,
+          )
+          .all() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "lifecycle-event-legacy-contact",
+          contact_point_id: "contact-point-legacy-contact",
+        },
+        {
+          id: "lifecycle-event-legacy-later-contact",
+          contact_point_id: "contact-point-legacy-later-writeback",
+        },
+        {
+          id: "lifecycle-event-legacy-no-contact",
+          contact_point_id: null,
+        },
+        {
+          id: "lifecycle-event-legacy-writeback-created",
+          contact_point_id: null,
+        },
+        {
+          id: "lifecycle-event-legacy-writeback-drift",
+          contact_point_id: "contact-point-legacy-writeback-drift",
+        },
+      ],
+      "migration must preserve completed apply retry identity for legacy contact-bearing hires without inventing contact linkage from same-time writeback-created contacts",
     );
   } finally {
     db.close();
