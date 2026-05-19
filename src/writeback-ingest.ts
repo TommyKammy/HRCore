@@ -65,6 +65,34 @@ export interface SyntheticWorkEmailConflictEvidence {
   correlationId: string;
 }
 
+export interface SyntheticWorkEmailConflictResolutionInput {
+  resolutionId: string;
+  conflictId: string;
+  writebackEventId: string;
+  providerName: "synthetic_okta";
+  providerSubjectId: string;
+  decision: "accept_provider_value";
+  currentContactValue: string;
+  resolvedProviderValue: string;
+  decidedAt: string;
+  decidedBy: string;
+  correlationId: string;
+}
+
+export interface SyntheticWorkEmailConflictResolutionResult {
+  resolutionId: string;
+  conflictId: string;
+  writebackEventId: string;
+  personId: string;
+  contactPointId: string;
+  providerName: "synthetic_okta";
+  providerSubjectId: string;
+  decision: "accept_provider_value";
+  resolvedProviderValue: string;
+  correlationId: string;
+  applied: true;
+}
+
 type SyntheticWorkEmailWritebackFixtureOverrides =
   Partial<SyntheticWorkEmailWritebackInput>;
 
@@ -89,6 +117,19 @@ const syntheticWorkEmailProviderRefreshFields = [
   "providerSubjectId",
   "providerValue",
   "refreshedAt",
+];
+const syntheticWorkEmailConflictResolutionFields = [
+  "resolutionId",
+  "conflictId",
+  "writebackEventId",
+  "providerName",
+  "providerSubjectId",
+  "decision",
+  "currentContactValue",
+  "resolvedProviderValue",
+  "decidedAt",
+  "decidedBy",
+  "correlationId",
 ];
 
 export class SyntheticWorkEmailWritebackValidationError extends Error {
@@ -587,6 +628,159 @@ export function refreshSyntheticWorkEmailFromProvider(
   }
 }
 
+export function resolveSyntheticWorkEmailConflict(
+  db: SyntheticWritebackDatabase,
+  input: SyntheticWorkEmailConflictResolutionInput,
+): SyntheticWorkEmailConflictResolutionResult {
+  const validatedInput = parseSyntheticWorkEmailConflictResolutionInput(input);
+
+  let savepointStarted = false;
+
+  try {
+    db.exec("SAVEPOINT synthetic_work_email_conflict_resolution");
+    savepointStarted = true;
+
+    const conflict = db
+      .prepare(
+        `
+          SELECT
+            id,
+            writeback_event_id,
+            person_id,
+            contact_point_id,
+            provider_name,
+            provider_subject_id,
+            current_contact_value,
+            attempted_provider_value
+          FROM writeback_work_email_conflict
+          WHERE id = ?
+        `,
+      )
+      .get(validatedInput.conflictId);
+
+    if (!isWorkEmailConflictResolutionRow(conflict)) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution requires an existing conflict",
+      );
+    }
+
+    if (
+      conflict.writeback_event_id !== validatedInput.writebackEventId ||
+      conflict.provider_name !== validatedInput.providerName ||
+      conflict.provider_subject_id !== validatedInput.providerSubjectId
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution must match the recorded conflict identity",
+      );
+    }
+
+    if (
+      conflict.current_contact_value !== validatedInput.currentContactValue ||
+      conflict.attempted_provider_value !== validatedInput.resolvedProviderValue
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution must match the recorded conflict values",
+      );
+    }
+
+    const currentContactPoint = db
+      .prepare(
+        `
+          SELECT id, value
+          FROM contact_point
+          WHERE id = ?
+            AND person_id = ?
+            AND contact_type = 'work_email'
+        `,
+      )
+      .get(conflict.contact_point_id, conflict.person_id);
+
+    if (!isExistingWorkEmailContactPointRow(currentContactPoint)) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution requires the original work_email contact point",
+      );
+    }
+
+    if (currentContactPoint.value !== conflict.current_contact_value) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution requires current HRCore value to match the recorded conflict",
+      );
+    }
+
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict_resolution (
+          id,
+          conflict_id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          decision,
+          current_contact_value,
+          resolved_provider_value,
+          decided_at,
+          decided_by,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      validatedInput.resolutionId,
+      conflict.id,
+      conflict.writeback_event_id,
+      conflict.person_id,
+      conflict.contact_point_id,
+      conflict.provider_name,
+      conflict.provider_subject_id,
+      validatedInput.decision,
+      validatedInput.currentContactValue,
+      validatedInput.resolvedProviderValue,
+      validatedInput.decidedAt,
+      validatedInput.decidedBy,
+      validatedInput.correlationId,
+    );
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = ?
+        WHERE id = ?
+          AND person_id = ?
+          AND contact_type = 'work_email'
+      `,
+    ).run(
+      validatedInput.resolvedProviderValue,
+      conflict.contact_point_id,
+      conflict.person_id,
+    );
+
+    db.exec("RELEASE SAVEPOINT synthetic_work_email_conflict_resolution");
+
+    return {
+      resolutionId: validatedInput.resolutionId,
+      conflictId: conflict.id,
+      writebackEventId: conflict.writeback_event_id,
+      personId: conflict.person_id,
+      contactPointId: conflict.contact_point_id,
+      providerName: conflict.provider_name,
+      providerSubjectId: conflict.provider_subject_id,
+      decision: validatedInput.decision,
+      resolvedProviderValue: validatedInput.resolvedProviderValue,
+      correlationId: validatedInput.correlationId,
+      applied: true,
+    };
+  } catch (error) {
+    if (savepointStarted) {
+      rollbackNamedSavepoint(db, "synthetic_work_email_conflict_resolution");
+    }
+
+    throw error;
+  }
+}
+
 export function parseSyntheticWorkEmailWritebackInput(
   input: unknown,
 ): SyntheticWorkEmailWritebackInput {
@@ -652,6 +846,83 @@ export function parseSyntheticWorkEmailWritebackInput(
     correlationId,
     receivedAt,
     pocMarker: input.pocMarker,
+  };
+}
+
+export function parseSyntheticWorkEmailConflictResolutionInput(
+  input: unknown,
+): SyntheticWorkEmailConflictResolutionInput {
+  if (!isRecord(input)) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "conflict resolution input must be an object",
+    );
+  }
+
+  const unsupportedFields = Object.keys(input).filter(
+    (field) => !syntheticWorkEmailConflictResolutionFields.includes(field),
+  );
+  if (unsupportedFields.length > 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      `conflict resolution input contains unsupported fields: ${unsupportedFields.join(
+        ", ",
+      )}`,
+    );
+  }
+
+  const resolutionId = requireNonEmpty("resolutionId", input.resolutionId);
+  const conflictId = requireNonEmpty("conflictId", input.conflictId);
+  const writebackEventId = requireNonEmpty(
+    "writebackEventId",
+    input.writebackEventId,
+  );
+  if (input.providerName !== "synthetic_okta") {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "providerName must be synthetic_okta",
+    );
+  }
+  const providerSubjectId = requireNonEmpty(
+    "providerSubjectId",
+    input.providerSubjectId,
+  );
+  if (input.decision !== "accept_provider_value") {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "decision must be accept_provider_value",
+    );
+  }
+  const currentContactValue = requireNonEmpty(
+    "currentContactValue",
+    input.currentContactValue,
+  );
+  if (currentContactValue.indexOf("@") <= 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "currentContactValue must be a skeleton work email",
+    );
+  }
+  const resolvedProviderValue = requireNonEmpty(
+    "resolvedProviderValue",
+    input.resolvedProviderValue,
+  );
+  if (resolvedProviderValue.indexOf("@") <= 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "resolvedProviderValue must be a skeleton work email",
+    );
+  }
+  const decidedAt = requireTimestamp("decidedAt", input.decidedAt);
+  const decidedBy = requireNonEmpty("decidedBy", input.decidedBy);
+  const correlationId = requireNonEmpty("correlationId", input.correlationId);
+
+  return {
+    resolutionId,
+    conflictId,
+    writebackEventId,
+    providerName: input.providerName,
+    providerSubjectId,
+    decision: input.decision,
+    currentContactValue,
+    resolvedProviderValue,
+    decidedAt,
+    decidedBy,
+    correlationId,
   };
 }
 
@@ -926,6 +1197,29 @@ function isRefreshedContactPointRow(input: unknown): input is {
     isRecord(input) &&
     typeof input.id === "string" &&
     typeof input.value === "string"
+  );
+}
+
+function isWorkEmailConflictResolutionRow(input: unknown): input is {
+  id: string;
+  writeback_event_id: string;
+  person_id: string;
+  contact_point_id: string;
+  provider_name: "synthetic_okta";
+  provider_subject_id: string;
+  current_contact_value: string;
+  attempted_provider_value: string;
+} {
+  return (
+    isRecord(input) &&
+    typeof input.id === "string" &&
+    typeof input.writeback_event_id === "string" &&
+    typeof input.person_id === "string" &&
+    typeof input.contact_point_id === "string" &&
+    input.provider_name === "synthetic_okta" &&
+    typeof input.provider_subject_id === "string" &&
+    typeof input.current_contact_value === "string" &&
+    typeof input.attempted_provider_value === "string"
   );
 }
 
