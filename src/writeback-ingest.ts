@@ -744,19 +744,54 @@ export function resolveSyntheticWorkEmailConflict(
       );
     }
 
-    const latestProviderRefreshConflict = db
+    const latestProviderRefreshAttempt = db
       .prepare(
         `
-          SELECT id
-          FROM writeback_work_email_conflict
-          WHERE writeback_event_id = ?
-            AND person_id = ?
-            AND contact_point_id = ?
-            AND provider_name = ?
-            AND provider_subject_id = ?
-            AND conflict_type = 'provider_refresh_conflict'
-          ORDER BY julianday(detected_at) DESC,
-            rowid DESC
+          SELECT latest_attempt.attempt_type, latest_attempt.id
+          FROM (
+            SELECT
+              'provider_refresh' AS attempt_type,
+              applied_refresh.id AS id,
+              applied_refresh.refreshed_at AS observed_at,
+              applied_refresh.rowid AS observed_order,
+              1 AS observed_precedence
+            FROM writeback_provider_refresh AS applied_refresh
+            WHERE applied_refresh.writeback_event_id = ?
+              AND applied_refresh.person_id = ?
+              AND applied_refresh.contact_point_id = ?
+              AND applied_refresh.provider_name = ?
+              AND applied_refresh.provider_subject_id = ?
+            UNION ALL
+            SELECT
+              'provider_refresh_conflict' AS attempt_type,
+              refresh_conflict.id AS id,
+              refresh_conflict.detected_at AS observed_at,
+              refresh_conflict.rowid AS observed_order,
+              2 AS observed_precedence
+            FROM writeback_work_email_conflict AS refresh_conflict
+            WHERE refresh_conflict.writeback_event_id = ?
+              AND refresh_conflict.person_id = ?
+              AND refresh_conflict.contact_point_id = ?
+              AND refresh_conflict.provider_name = ?
+              AND refresh_conflict.provider_subject_id = ?
+              AND refresh_conflict.conflict_type = 'provider_refresh_conflict'
+            UNION ALL
+            SELECT
+              'conflict_resolution' AS attempt_type,
+              conflict_resolution.id AS id,
+              conflict_resolution.decided_at AS observed_at,
+              conflict_resolution.rowid AS observed_order,
+              3 AS observed_precedence
+            FROM writeback_work_email_conflict_resolution AS conflict_resolution
+            WHERE conflict_resolution.writeback_event_id = ?
+              AND conflict_resolution.person_id = ?
+              AND conflict_resolution.contact_point_id = ?
+              AND conflict_resolution.provider_name = ?
+              AND conflict_resolution.provider_subject_id = ?
+          ) AS latest_attempt
+          ORDER BY julianday(latest_attempt.observed_at) DESC,
+            latest_attempt.observed_precedence DESC,
+            latest_attempt.observed_order DESC
           LIMIT 1
         `,
       )
@@ -766,12 +801,28 @@ export function resolveSyntheticWorkEmailConflict(
         conflict.contact_point_id,
         conflict.provider_name,
         conflict.provider_subject_id,
+        conflict.writeback_event_id,
+        conflict.person_id,
+        conflict.contact_point_id,
+        conflict.provider_name,
+        conflict.provider_subject_id,
+        conflict.writeback_event_id,
+        conflict.person_id,
+        conflict.contact_point_id,
+        conflict.provider_name,
+        conflict.provider_subject_id,
       );
 
     if (
-      !isConflictIdRow(latestProviderRefreshConflict) ||
-      latestProviderRefreshConflict.id !== conflict.id
+      !isLatestProviderRefreshAttemptRow(latestProviderRefreshAttempt) ||
+      latestProviderRefreshAttempt.attempt_type !== "provider_refresh_conflict"
     ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution requires the latest provider refresh attempt",
+      );
+    }
+
+    if (latestProviderRefreshAttempt.id !== conflict.id) {
       throw new SyntheticWorkEmailWritebackValidationError(
         "conflict resolution requires the latest provider refresh conflict",
       );
@@ -1307,10 +1358,20 @@ function isLatestProviderValueEventRow(input: unknown): input is {
   );
 }
 
-function isConflictIdRow(input: unknown): input is {
+function isLatestProviderRefreshAttemptRow(input: unknown): input is {
+  attempt_type:
+    | "provider_refresh"
+    | "provider_refresh_conflict"
+    | "conflict_resolution";
   id: string;
 } {
-  return isRecord(input) && typeof input.id === "string";
+  return (
+    isRecord(input) &&
+    (input.attempt_type === "provider_refresh" ||
+      input.attempt_type === "provider_refresh_conflict" ||
+      input.attempt_type === "conflict_resolution") &&
+    typeof input.id === "string"
+  );
 }
 
 function isLatestProviderRefreshValueRow(input: unknown): input is {

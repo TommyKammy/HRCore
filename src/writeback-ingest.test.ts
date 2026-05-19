@@ -1544,6 +1544,138 @@ test("synthetic work email conflict resolution rejects non-latest provider refre
   }
 });
 
+test("synthetic work email conflict resolution rejects conflicts superseded by provider refreshes without partial writes", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'hrcore.changed@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    const conflictResult = refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "provider.older-conflict@example.invalid",
+      refreshedAt: "2026-05-18T01:05:00Z",
+    });
+
+    assert.equal(conflictResult.applied, false);
+    assert.ok(conflictResult.conflict);
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'provider.newer-refresh@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    const refreshResult = refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "provider.newer-refresh@example.invalid",
+      refreshedAt: "2026-05-18T01:10:00Z",
+    });
+
+    assert.equal(refreshResult.applied, true);
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'hrcore.changed@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        resolveSyntheticWorkEmailConflict(db, {
+          resolutionId:
+            "resolution-provider-refresh-conflict-superseded-refresh-001",
+          conflictId: conflictResult.conflict!.conflictId,
+          writebackEventId: "writeback-event-work-email-001",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-001",
+          decision: "accept_provider_value",
+          currentContactValue: "hrcore.changed@example.invalid",
+          resolvedProviderValue: "provider.older-conflict@example.invalid",
+          decidedAt: "2026-05-18T01:11:00Z",
+          decidedBy: "synthetic-operator",
+          correlationId:
+            "correlation-resolution-provider-refresh-conflict-superseded-refresh-001",
+        }),
+      /conflict resolution requires the latest provider refresh attempt/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "hrcore.changed@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_work_email_conflict_resolution
+            `,
+          )
+          .get(),
+      ),
+      { count: 0 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = 'writeback-event-work-email-001'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic work email conflict resolution rejects inbound conflicts without partial writes", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
