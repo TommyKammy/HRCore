@@ -1,0 +1,1 @@
+ALTER TABLE `lifecycle_event` ADD `contact_point_id` text;

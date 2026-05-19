@@ -1,0 +1,1121 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "34afd41a-a171-483f-be1f-ea5bf443cfad",
+  "prevId": "4e7f75a0-94d7-49e3-a55e-f7bc8ab02dbf",
+  "tables": {
+    "assignment": {
+      "name": "assignment",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "employment_id": {
+          "name": "employment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assignment_code": {
+          "name": "assignment_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_code": {
+          "name": "organization_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position_code": {
+          "name": "position_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "assignment_assignment_code_unique": {
+          "name": "assignment_assignment_code_unique",
+          "columns": ["assignment_code"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "assignment_person_id_person_id_fk": {
+          "name": "assignment_person_id_person_id_fk",
+          "tableFrom": "assignment",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "assignment_employment_person_match_fk": {
+          "name": "assignment_employment_person_match_fk",
+          "tableFrom": "assignment",
+          "tableTo": "employment",
+          "columnsFrom": ["employment_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "assignment_id_non_empty": {
+          "name": "assignment_id_non_empty",
+          "value": "length(\"assignment\".\"id\") > 0"
+        },
+        "assignment_code_non_empty": {
+          "name": "assignment_code_non_empty",
+          "value": "length(\"assignment\".\"assignment_code\") > 0"
+        },
+        "assignment_organization_code_non_empty": {
+          "name": "assignment_organization_code_non_empty",
+          "value": "length(\"assignment\".\"organization_code\") > 0"
+        },
+        "assignment_start_date_shape": {
+          "name": "assignment_start_date_shape",
+          "value": "\"assignment\".\"start_date\" glob '????-??-??'"
+        },
+        "assignment_end_date_shape": {
+          "name": "assignment_end_date_shape",
+          "value": "\"assignment\".\"end_date\" is null or \"assignment\".\"end_date\" glob '????-??-??'"
+        }
+      }
+    },
+    "audit_event": {
+      "name": "audit_event",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_table": {
+          "name": "subject_table",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "poc_marker": {
+          "name": "poc_marker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'synthetic_poc'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audit_event_id_non_empty": {
+          "name": "audit_event_id_non_empty",
+          "value": "length(\"audit_event\".\"id\") > 0"
+        },
+        "audit_event_actor_id_non_empty": {
+          "name": "audit_event_actor_id_non_empty",
+          "value": "length(\"audit_event\".\"actor_id\") > 0"
+        },
+        "audit_event_action_non_empty": {
+          "name": "audit_event_action_non_empty",
+          "value": "length(\"audit_event\".\"action\") > 0"
+        },
+        "audit_event_subject_table_allowed": {
+          "name": "audit_event_subject_table_allowed",
+          "value": "\"audit_event\".\"subject_table\" in ('person', 'employment', 'assignment', 'contact_point', 'transaction_request', 'lifecycle_event')"
+        },
+        "audit_event_subject_id_non_empty": {
+          "name": "audit_event_subject_id_non_empty",
+          "value": "length(\"audit_event\".\"subject_id\") > 0"
+        },
+        "audit_event_occurred_at_date": {
+          "name": "audit_event_occurred_at_date",
+          "value": "\"audit_event\".\"occurred_at\" glob '????-??-??*'"
+        },
+        "audit_event_poc_marker_allowed": {
+          "name": "audit_event_poc_marker_allowed",
+          "value": "\"audit_event\".\"poc_marker\" in ('synthetic_poc')"
+        }
+      }
+    },
+    "contact_point": {
+      "name": "contact_point",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_type": {
+          "name": "contact_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_primary": {
+          "name": "is_primary",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "contact_point_id_person_unique": {
+          "name": "contact_point_id_person_unique",
+          "columns": ["id", "person_id"],
+          "isUnique": true
+        },
+        "contact_point_person_type_unique": {
+          "name": "contact_point_person_type_unique",
+          "columns": ["person_id", "contact_type"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "contact_point_person_id_person_id_fk": {
+          "name": "contact_point_person_id_person_id_fk",
+          "tableFrom": "contact_point",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "contact_point_id_non_empty": {
+          "name": "contact_point_id_non_empty",
+          "value": "length(\"contact_point\".\"id\") > 0"
+        },
+        "contact_point_type_allowed": {
+          "name": "contact_point_type_allowed",
+          "value": "\"contact_point\".\"contact_type\" in ('work_email')"
+        },
+        "contact_point_value_non_empty": {
+          "name": "contact_point_value_non_empty",
+          "value": "length(\"contact_point\".\"value\") > 0"
+        },
+        "contact_point_work_email_shape": {
+          "name": "contact_point_work_email_shape",
+          "value": "\"contact_point\".\"contact_type\" != 'work_email' or instr(\"contact_point\".\"value\", '@') > 1"
+        },
+        "contact_point_created_at_date": {
+          "name": "contact_point_created_at_date",
+          "value": "\"contact_point\".\"created_at\" glob '????-??-??*'"
+        }
+      }
+    },
+    "employment": {
+      "name": "employment",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "employment_code": {
+          "name": "employment_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status_code": {
+          "name": "status_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "employment_employment_code_unique": {
+          "name": "employment_employment_code_unique",
+          "columns": ["employment_code"],
+          "isUnique": true
+        },
+        "employment_id_person_unique": {
+          "name": "employment_id_person_unique",
+          "columns": ["id", "person_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "employment_person_id_person_id_fk": {
+          "name": "employment_person_id_person_id_fk",
+          "tableFrom": "employment",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "employment_id_non_empty": {
+          "name": "employment_id_non_empty",
+          "value": "length(\"employment\".\"id\") > 0"
+        },
+        "employment_code_non_empty": {
+          "name": "employment_code_non_empty",
+          "value": "length(\"employment\".\"employment_code\") > 0"
+        },
+        "employment_status_code_allowed": {
+          "name": "employment_status_code_allowed",
+          "value": "\"employment\".\"status_code\" in ('active', 'inactive', 'terminated')"
+        },
+        "employment_start_date_shape": {
+          "name": "employment_start_date_shape",
+          "value": "\"employment\".\"start_date\" glob '????-??-??'"
+        },
+        "employment_end_date_shape": {
+          "name": "employment_end_date_shape",
+          "value": "\"employment\".\"end_date\" is null or \"employment\".\"end_date\" glob '????-??-??'"
+        }
+      }
+    },
+    "lifecycle_event": {
+      "name": "lifecycle_event",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transaction_request_id": {
+          "name": "transaction_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "contact_point_id": {
+          "name": "contact_point_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "lifecycle_event_person_id_person_id_fk": {
+          "name": "lifecycle_event_person_id_person_id_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lifecycle_event_request_person_match_fk": {
+          "name": "lifecycle_event_request_person_match_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "transaction_request",
+          "columnsFrom": ["transaction_request_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lifecycle_event_id_non_empty": {
+          "name": "lifecycle_event_id_non_empty",
+          "value": "length(\"lifecycle_event\".\"id\") > 0"
+        },
+        "lifecycle_event_type_allowed": {
+          "name": "lifecycle_event_type_allowed",
+          "value": "\"lifecycle_event\".\"event_type\" in ('hire', 'assignment_change', 'termination')"
+        },
+        "lifecycle_event_effective_date_shape": {
+          "name": "lifecycle_event_effective_date_shape",
+          "value": "\"lifecycle_event\".\"effective_date\" glob '????-??-??'"
+        },
+        "lifecycle_event_occurred_at_date": {
+          "name": "lifecycle_event_occurred_at_date",
+          "value": "\"lifecycle_event\".\"occurred_at\" glob '????-??-??*'"
+        }
+      }
+    },
+    "person": {
+      "name": "person",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "person_id_non_empty": {
+          "name": "person_id_non_empty",
+          "value": "length(\"person\".\"id\") > 0"
+        },
+        "person_display_name_non_empty": {
+          "name": "person_display_name_non_empty",
+          "value": "length(\"person\".\"display_name\") > 0"
+        },
+        "person_created_at_date": {
+          "name": "person_created_at_date",
+          "value": "\"person\".\"created_at\" glob '????-??-??*'"
+        }
+      }
+    },
+    "transaction_request": {
+      "name": "transaction_request",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_type": {
+          "name": "request_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status_code": {
+          "name": "status_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "transaction_request_id_person_unique": {
+          "name": "transaction_request_id_person_unique",
+          "columns": ["id", "person_id"],
+          "isUnique": true
+        },
+        "transaction_request_correlation_unique": {
+          "name": "transaction_request_correlation_unique",
+          "columns": ["correlation_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "transaction_request_person_id_person_id_fk": {
+          "name": "transaction_request_person_id_person_id_fk",
+          "tableFrom": "transaction_request",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "transaction_request_id_non_empty": {
+          "name": "transaction_request_id_non_empty",
+          "value": "length(\"transaction_request\".\"id\") > 0"
+        },
+        "transaction_request_type_allowed": {
+          "name": "transaction_request_type_allowed",
+          "value": "\"transaction_request\".\"request_type\" in ('hire', 'change', 'terminate')"
+        },
+        "transaction_request_status_allowed": {
+          "name": "transaction_request_status_allowed",
+          "value": "\"transaction_request\".\"status_code\" in ('draft', 'submitted', 'completed', 'cancelled')"
+        },
+        "transaction_request_requested_at_date": {
+          "name": "transaction_request_requested_at_date",
+          "value": "\"transaction_request\".\"requested_at\" glob '????-??-??*'"
+        }
+      }
+    },
+    "writeback_event": {
+      "name": "writeback_event",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_point_id": {
+          "name": "contact_point_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_name": {
+          "name": "provider_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_subject_id": {
+          "name": "provider_subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_value": {
+          "name": "provider_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_contact_type": {
+          "name": "target_contact_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "poc_marker": {
+          "name": "poc_marker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'synthetic_poc'"
+        }
+      },
+      "indexes": {
+        "writeback_event_correlation_unique": {
+          "name": "writeback_event_correlation_unique",
+          "columns": ["correlation_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "writeback_event_person_id_person_id_fk": {
+          "name": "writeback_event_person_id_person_id_fk",
+          "tableFrom": "writeback_event",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "writeback_event_contact_point_person_match_fk": {
+          "name": "writeback_event_contact_point_person_match_fk",
+          "tableFrom": "writeback_event",
+          "tableTo": "contact_point",
+          "columnsFrom": ["contact_point_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "writeback_event_id_non_empty": {
+          "name": "writeback_event_id_non_empty",
+          "value": "length(\"writeback_event\".\"id\") > 0"
+        },
+        "writeback_event_contact_point_id_non_empty": {
+          "name": "writeback_event_contact_point_id_non_empty",
+          "value": "length(\"writeback_event\".\"contact_point_id\") > 0"
+        },
+        "writeback_event_provider_name_allowed": {
+          "name": "writeback_event_provider_name_allowed",
+          "value": "\"writeback_event\".\"provider_name\" in ('synthetic_okta')"
+        },
+        "writeback_event_provider_subject_id_non_empty": {
+          "name": "writeback_event_provider_subject_id_non_empty",
+          "value": "length(\"writeback_event\".\"provider_subject_id\") > 0"
+        },
+        "writeback_event_provider_value_non_empty": {
+          "name": "writeback_event_provider_value_non_empty",
+          "value": "length(\"writeback_event\".\"provider_value\") > 0"
+        },
+        "writeback_event_provider_work_email_shape": {
+          "name": "writeback_event_provider_work_email_shape",
+          "value": "\"writeback_event\".\"target_contact_type\" != 'work_email' or instr(\"writeback_event\".\"provider_value\", '@') > 1"
+        },
+        "writeback_event_target_contact_type_allowed": {
+          "name": "writeback_event_target_contact_type_allowed",
+          "value": "\"writeback_event\".\"target_contact_type\" in ('work_email')"
+        },
+        "writeback_event_correlation_id_non_empty": {
+          "name": "writeback_event_correlation_id_non_empty",
+          "value": "length(\"writeback_event\".\"correlation_id\") > 0"
+        },
+        "writeback_event_received_at_date": {
+          "name": "writeback_event_received_at_date",
+          "value": "\"writeback_event\".\"received_at\" glob '????-??-??*'"
+        },
+        "writeback_event_poc_marker_allowed": {
+          "name": "writeback_event_poc_marker_allowed",
+          "value": "\"writeback_event\".\"poc_marker\" in ('synthetic_poc')"
+        }
+      }
+    },
+    "writeback_provider_refresh": {
+      "name": "writeback_provider_refresh",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "writeback_event_id": {
+          "name": "writeback_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_point_id": {
+          "name": "contact_point_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_name": {
+          "name": "provider_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_subject_id": {
+          "name": "provider_subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_value": {
+          "name": "provider_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "refreshed_at": {
+          "name": "refreshed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "poc_marker": {
+          "name": "poc_marker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'synthetic_poc'"
+        }
+      },
+      "indexes": {
+        "writeback_provider_refresh_correlation_unique": {
+          "name": "writeback_provider_refresh_correlation_unique",
+          "columns": ["correlation_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "writeback_provider_refresh_writeback_event_id_writeback_event_id_fk": {
+          "name": "writeback_provider_refresh_writeback_event_id_writeback_event_id_fk",
+          "tableFrom": "writeback_provider_refresh",
+          "tableTo": "writeback_event",
+          "columnsFrom": ["writeback_event_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "writeback_provider_refresh_person_id_person_id_fk": {
+          "name": "writeback_provider_refresh_person_id_person_id_fk",
+          "tableFrom": "writeback_provider_refresh",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "writeback_provider_refresh_contact_point_person_match_fk": {
+          "name": "writeback_provider_refresh_contact_point_person_match_fk",
+          "tableFrom": "writeback_provider_refresh",
+          "tableTo": "contact_point",
+          "columnsFrom": ["contact_point_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "writeback_provider_refresh_id_non_empty": {
+          "name": "writeback_provider_refresh_id_non_empty",
+          "value": "length(\"writeback_provider_refresh\".\"id\") > 0"
+        },
+        "writeback_provider_refresh_event_id_non_empty": {
+          "name": "writeback_provider_refresh_event_id_non_empty",
+          "value": "length(\"writeback_provider_refresh\".\"writeback_event_id\") > 0"
+        },
+        "writeback_provider_refresh_contact_point_id_non_empty": {
+          "name": "writeback_provider_refresh_contact_point_id_non_empty",
+          "value": "length(\"writeback_provider_refresh\".\"contact_point_id\") > 0"
+        },
+        "writeback_provider_refresh_provider_name_allowed": {
+          "name": "writeback_provider_refresh_provider_name_allowed",
+          "value": "\"writeback_provider_refresh\".\"provider_name\" in ('synthetic_okta')"
+        },
+        "writeback_provider_refresh_provider_subject_id_non_empty": {
+          "name": "writeback_provider_refresh_provider_subject_id_non_empty",
+          "value": "length(\"writeback_provider_refresh\".\"provider_subject_id\") > 0"
+        },
+        "writeback_provider_refresh_provider_value_non_empty": {
+          "name": "writeback_provider_refresh_provider_value_non_empty",
+          "value": "length(\"writeback_provider_refresh\".\"provider_value\") > 0"
+        },
+        "writeback_provider_refresh_provider_work_email_shape": {
+          "name": "writeback_provider_refresh_provider_work_email_shape",
+          "value": "instr(\"writeback_provider_refresh\".\"provider_value\", '@') > 1"
+        },
+        "writeback_provider_refresh_refreshed_at_date": {
+          "name": "writeback_provider_refresh_refreshed_at_date",
+          "value": "\"writeback_provider_refresh\".\"refreshed_at\" glob '????-??-??*'"
+        },
+        "writeback_provider_refresh_correlation_id_non_empty": {
+          "name": "writeback_provider_refresh_correlation_id_non_empty",
+          "value": "length(\"writeback_provider_refresh\".\"correlation_id\") > 0"
+        },
+        "writeback_provider_refresh_poc_marker_allowed": {
+          "name": "writeback_provider_refresh_poc_marker_allowed",
+          "value": "\"writeback_provider_refresh\".\"poc_marker\" in ('synthetic_poc')"
+        }
+      }
+    },
+    "writeback_work_email_conflict": {
+      "name": "writeback_work_email_conflict",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "writeback_event_id": {
+          "name": "writeback_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "contact_point_id": {
+          "name": "contact_point_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_name": {
+          "name": "provider_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_subject_id": {
+          "name": "provider_subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conflict_type": {
+          "name": "conflict_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "current_contact_value": {
+          "name": "current_contact_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempted_provider_value": {
+          "name": "attempted_provider_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "detected_at": {
+          "name": "detected_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "poc_marker": {
+          "name": "poc_marker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'synthetic_poc'"
+        }
+      },
+      "indexes": {
+        "writeback_work_email_conflict_correlation_unique": {
+          "name": "writeback_work_email_conflict_correlation_unique",
+          "columns": ["correlation_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "writeback_work_email_conflict_writeback_event_id_writeback_event_id_fk": {
+          "name": "writeback_work_email_conflict_writeback_event_id_writeback_event_id_fk",
+          "tableFrom": "writeback_work_email_conflict",
+          "tableTo": "writeback_event",
+          "columnsFrom": ["writeback_event_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "writeback_work_email_conflict_person_id_person_id_fk": {
+          "name": "writeback_work_email_conflict_person_id_person_id_fk",
+          "tableFrom": "writeback_work_email_conflict",
+          "tableTo": "person",
+          "columnsFrom": ["person_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "writeback_work_email_conflict_contact_point_person_match_fk": {
+          "name": "writeback_work_email_conflict_contact_point_person_match_fk",
+          "tableFrom": "writeback_work_email_conflict",
+          "tableTo": "contact_point",
+          "columnsFrom": ["contact_point_id", "person_id"],
+          "columnsTo": ["id", "person_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "writeback_work_email_conflict_id_non_empty": {
+          "name": "writeback_work_email_conflict_id_non_empty",
+          "value": "length(\"writeback_work_email_conflict\".\"id\") > 0"
+        },
+        "writeback_work_email_conflict_event_id_non_empty": {
+          "name": "writeback_work_email_conflict_event_id_non_empty",
+          "value": "length(\"writeback_work_email_conflict\".\"writeback_event_id\") > 0"
+        },
+        "writeback_work_email_conflict_contact_point_id_non_empty": {
+          "name": "writeback_work_email_conflict_contact_point_id_non_empty",
+          "value": "length(\"writeback_work_email_conflict\".\"contact_point_id\") > 0"
+        },
+        "writeback_work_email_conflict_provider_name_allowed": {
+          "name": "writeback_work_email_conflict_provider_name_allowed",
+          "value": "\"writeback_work_email_conflict\".\"provider_name\" in ('synthetic_okta')"
+        },
+        "writeback_work_email_conflict_provider_subject_id_non_empty": {
+          "name": "writeback_work_email_conflict_provider_subject_id_non_empty",
+          "value": "length(\"writeback_work_email_conflict\".\"provider_subject_id\") > 0"
+        },
+        "writeback_work_email_conflict_type_allowed": {
+          "name": "writeback_work_email_conflict_type_allowed",
+          "value": "\"writeback_work_email_conflict\".\"conflict_type\" in ('inbound_value_conflict', 'provider_refresh_conflict')"
+        },
+        "writeback_work_email_conflict_current_value_shape": {
+          "name": "writeback_work_email_conflict_current_value_shape",
+          "value": "instr(\"writeback_work_email_conflict\".\"current_contact_value\", '@') > 1"
+        },
+        "writeback_work_email_conflict_attempted_value_shape": {
+          "name": "writeback_work_email_conflict_attempted_value_shape",
+          "value": "instr(\"writeback_work_email_conflict\".\"attempted_provider_value\", '@') > 1"
+        },
+        "writeback_work_email_conflict_detected_at_date": {
+          "name": "writeback_work_email_conflict_detected_at_date",
+          "value": "\"writeback_work_email_conflict\".\"detected_at\" glob '????-??-??*'"
+        },
+        "writeback_work_email_conflict_correlation_id_non_empty": {
+          "name": "writeback_work_email_conflict_correlation_id_non_empty",
+          "value": "length(\"writeback_work_email_conflict\".\"correlation_id\") > 0"
+        },
+        "writeback_work_email_conflict_poc_marker_allowed": {
+          "name": "writeback_work_email_conflict_poc_marker_allowed",
+          "value": "\"writeback_work_email_conflict\".\"poc_marker\" in ('synthetic_poc')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

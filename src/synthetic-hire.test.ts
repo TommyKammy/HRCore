@@ -291,7 +291,7 @@ test("synthetic hire request remains separate from the applied lifecycle event",
         db
           .prepare(
             `
-              SELECT id, person_id, transaction_request_id, event_type, effective_date, occurred_at
+              SELECT id, person_id, transaction_request_id, contact_point_id, event_type, effective_date, occurred_at
               FROM lifecycle_event
               ORDER BY id
             `,
@@ -303,6 +303,7 @@ test("synthetic hire request remains separate from the applied lifecycle event",
           id: "lifecycle-event-syn-hire-001",
           person_id: "person-syn-hire-001",
           transaction_request_id: "transaction-request-syn-hire-001",
+          contact_point_id: "contact-point-syn-hire-001",
           event_type: "hire",
           effective_date: "2026-05-18",
           occurred_at: "2026-05-18T00:00:00Z",
@@ -1345,7 +1346,11 @@ test("synthetic hire apply retry fails closed when contact point is omitted", as
   if (!db) return;
 
   try {
-    const hire = createSyntheticHireFixture();
+    const hire = createSyntheticHireFixture({
+      contactPoint: {
+        createdAt: "2026-05-18T01:00:00Z",
+      },
+    });
     const request = createSyntheticHireRequestFixture({
       person: hire.person,
     });
@@ -1465,6 +1470,90 @@ test("synthetic hire apply retry ignores later work email contacts when original
       ),
       { count: 1 },
       "no-contact apply retry must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic hire apply retry ignores preexisting work email contacts when original apply omitted contact", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      contactPoint: null,
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    saveSyntheticHireRequest(db, request);
+    db.exec(`
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-preexisting-writeback',
+        'person-syn-hire-001',
+        'work_email',
+        'synthetic.hire.preexisting@example.invalid',
+        1,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    const firstResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT contact_point_id FROM lifecycle_event").get(),
+      ),
+      { contact_point_id: null },
+      "no-contact apply must keep contact linkage empty even when a prior contact exists",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM contact_point").get(),
+      ),
+      { count: 1 },
+      "preexisting contact evidence must remain untouched by a no-contact apply retry",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "no-contact apply retry with a preexisting contact must not duplicate audit evidence",
     );
   } finally {
     db.close();

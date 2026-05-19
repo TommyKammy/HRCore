@@ -481,6 +481,7 @@ export function applySyntheticHireRequest(
           id,
           person_id,
           transaction_request_id,
+          contact_point_id,
           event_type,
           effective_date,
           occurred_at
@@ -498,6 +499,7 @@ export function applySyntheticHireRequest(
           ?,
           ?,
           ?,
+          ?,
           ?
         )
       `,
@@ -506,6 +508,7 @@ export function applySyntheticHireRequest(
       input.request.transactionRequest.id,
       input.request.person.id,
       input.request.transactionRequest.id,
+      input.hire.contactPoint?.id ?? null,
       input.lifecycleEvent.eventType,
       input.lifecycleEvent.effectiveDate,
       input.lifecycleEvent.occurredAt,
@@ -673,6 +676,7 @@ type ExistingCompletedSyntheticHireApplyRow = {
   person_id: string;
   lifecycle_event_id: string;
   lifecycle_event_type: string;
+  lifecycle_contact_point_id: string | null;
   effective_date: string;
   lifecycle_occurred_at: string;
   employment_id: string;
@@ -689,7 +693,6 @@ type ExistingCompletedSyntheticHireApplyRow = {
   contact_point_id: string | null;
   contact_type: string | null;
   contact_created_at: string | null;
-  original_contact_point_count: number;
 };
 
 function readSyntheticHireRequest(
@@ -779,6 +782,7 @@ function readCompletedSyntheticHireApply(
         person.id AS person_id,
         lifecycle_event.id AS lifecycle_event_id,
         lifecycle_event.event_type AS lifecycle_event_type,
+        lifecycle_event.contact_point_id AS lifecycle_contact_point_id,
         lifecycle_event.effective_date,
         lifecycle_event.occurred_at AS lifecycle_occurred_at,
         employment.id AS employment_id,
@@ -794,14 +798,7 @@ function readCompletedSyntheticHireApply(
         assignment.end_date AS assignment_end_date,
         contact_point.id AS contact_point_id,
         contact_point.contact_type,
-        contact_point.created_at AS contact_created_at,
-        (
-          SELECT count(*)
-          FROM contact_point original_contact_point
-          WHERE original_contact_point.person_id = transaction_request.person_id
-            AND original_contact_point.contact_type = 'work_email'
-            AND original_contact_point.created_at = lifecycle_event.occurred_at
-        ) AS original_contact_point_count
+        contact_point.created_at AS contact_created_at
       FROM transaction_request
       JOIN person
         ON person.id = transaction_request.person_id
@@ -881,10 +878,11 @@ function matchesCompletedSyntheticHireApplyRetry(
   }
 
   if (!input.hire.contactPoint) {
-    return existing.original_contact_point_count === 0;
+    return existing.lifecycle_contact_point_id === null;
   }
 
   return (
+    existing.lifecycle_contact_point_id === input.hire.contactPoint.id &&
     existing.contact_point_id === input.hire.contactPoint.id &&
     existing.contact_type === input.hire.contactPoint.contactType &&
     existing.contact_created_at === input.hire.contactPoint.createdAt

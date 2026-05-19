@@ -53,6 +53,7 @@ const requiredColumnsByTable = {
     "id",
     "person_id",
     "transaction_request_id",
+    "contact_point_id",
     "event_type",
     "effective_date",
   ],
@@ -385,7 +386,8 @@ test("transaction request correlation migration backfills duplicates before uniq
       INSERT INTO person (id, display_name, created_at)
       VALUES
         ('person-correlation-1', 'Synthetic Correlation One', '2026-05-18T00:00:00Z'),
-        ('person-correlation-2', 'Synthetic Correlation Two', '2026-05-18T00:00:00Z');
+        ('person-correlation-2', 'Synthetic Correlation Two', '2026-05-18T00:00:00Z'),
+        ('person-correlation-3', 'Synthetic Correlation Three', '2026-05-18T00:00:00Z');
 
       INSERT INTO transaction_request (
         id,
@@ -411,6 +413,14 @@ test("transaction request correlation migration backfills duplicates before uniq
           'submitted',
           '2026-05-18T00:00:00Z',
           'correlation-duplicate'
+        ),
+        (
+          'transaction-request-correlation-existing',
+          'person-correlation-3',
+          'hire',
+          'submitted',
+          '2026-05-18T00:00:00Z',
+          'correlation-duplicate#dedupe-transaction-request-correlation-2'
         );
     `);
 
@@ -436,10 +446,15 @@ test("transaction request correlation migration backfills duplicates before uniq
         {
           id: "transaction-request-correlation-2",
           correlation_id:
+            "correlation-duplicate#dedupe-transaction-request-correlation-2-1",
+        },
+        {
+          id: "transaction-request-correlation-existing",
+          correlation_id:
             "correlation-duplicate#dedupe-transaction-request-correlation-2",
         },
       ],
-      "duplicate correlation backfill must keep the first authoritative value and deterministically rewrite later duplicates",
+      "duplicate correlation backfill must keep the first authoritative value and deterministically rewrite later duplicates without colliding with existing suffix-shaped values",
     );
     assert.throws(
       () =>

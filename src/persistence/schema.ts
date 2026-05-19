@@ -410,6 +410,7 @@ export const lifecycle_event = sqliteTable(
       .notNull()
       .references(() => person.id),
     transactionRequestId: text("transaction_request_id"),
+    contactPointId: text("contact_point_id"),
     eventType: text("event_type", {
       enum: ["hire", "assignment_change", "termination"],
     }).notNull(),
