@@ -1191,7 +1191,7 @@ function insertSyntheticFutureDateApplyFailureAuditEvent(
 ): void {
   db.prepare(
     `
-      INSERT OR IGNORE INTO audit_event (
+      INSERT INTO audit_event (
         id,
         actor_id,
         action,

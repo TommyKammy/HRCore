@@ -1175,6 +1175,115 @@ test("synthetic future-date apply records retryable failure evidence after preco
   }
 });
 
+test("synthetic future-date apply failure audit collision rolls back evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+    db.prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      "future-date-apply-failure-future-date-apply-job-audit-collision",
+      "synthetic-hr-operator",
+      "poc.synthetic_hire.preexisting_audit_collision",
+      "transaction_request",
+      "transaction-request-syn-hire-001",
+      "2026-05-19T00:00:00Z",
+      "correlation-syn-hire-001",
+      "synthetic_poc",
+    );
+
+    assert.throws(
+      () =>
+        applySyntheticFutureDateHireJob(db, {
+          job: {
+            id: "future-date-apply-job-audit-collision",
+            correlationId: "correlation-syn-hire-001",
+            observedAt: "2026-05-19T00:00:00Z",
+            failAfterPreconditionsReason:
+              "synthetic_post_precondition_apply_failure",
+          },
+          apply,
+        }),
+      /UNIQUE constraint failed: audit_event\.id/,
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT name
+              FROM sqlite_master
+              WHERE type = 'table'
+                AND name = 'synthetic_future_date_apply_failure_evidence'
+            `,
+          )
+          .get(),
+      ),
+      undefined,
+      "audit collision must roll back synthetic failure evidence table creation",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 2 },
+      "audit collision must not append retry failure audit evidence",
+    );
+    for (const tableName of [
+      "employment",
+      "assignment",
+      "contact_point",
+      "lifecycle_event",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must stay clean after failure-evidence rollback`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic future-date apply retry succeeds without duplicate lifecycle effects", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
