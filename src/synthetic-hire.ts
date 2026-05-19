@@ -89,6 +89,18 @@ export interface ApplySyntheticHireRequestInput {
   lifecycleEvent: SyntheticHireLifecycleEventInput;
 }
 
+export interface SyntheticFutureDateApplyJobInput {
+  id: string;
+  correlationId: string;
+  observedAt: string;
+  failAfterPreconditionsReason?: string;
+}
+
+export interface ApplySyntheticFutureDateHireJobInput {
+  job: SyntheticFutureDateApplyJobInput;
+  apply: ApplySyntheticHireRequestInput;
+}
+
 export interface SyntheticHirePersistenceResult {
   personId: string;
   employmentId: string;
@@ -110,6 +122,34 @@ export interface AppliedSyntheticHireRequestResult {
   statusCode: "completed";
   correlationId: string;
 }
+
+export interface SyntheticFutureDateApplyObservedState {
+  transactionRequestStatusCode: "submitted";
+  lifecycleEventCount: number;
+  employmentCount: number;
+  assignmentCount: number;
+  lifecycleAppliedAuditCount: number;
+}
+
+export interface SyntheticFutureDateApplyFailureEvidence {
+  id: string;
+  jobId: string;
+  transactionRequestId: string;
+  lifecycleEventId: string;
+  personId: string;
+  correlationId: string;
+  failureReason: string;
+  retryable: true;
+  observedAt: string;
+  observedState: SyntheticFutureDateApplyObservedState;
+}
+
+export type SyntheticFutureDateApplyJobResult =
+  | ({ outcome: "applied" } & AppliedSyntheticHireRequestResult)
+  | {
+      outcome: "retryable_failure";
+      failureEvidence: SyntheticFutureDateApplyFailureEvidence;
+    };
 
 type SyntheticHireFixtureOverrides = {
   person?: Partial<SyntheticHirePersonInput>;
@@ -633,6 +673,66 @@ export function applySyntheticHireRequest(
   }
 }
 
+export function applySyntheticFutureDateHireJob(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+): SyntheticFutureDateApplyJobResult {
+  validateSyntheticFutureDateApplyJob(input);
+
+  const submittedRequest = readSubmittedSyntheticHireRequestForApply(
+    db,
+    input.apply,
+  );
+  if (!submittedRequest) {
+    const retryApply = readCompletedSyntheticHireApply(db, input.apply);
+    if (retryApply) {
+      const retryResult = buildCompletedSyntheticHireApplyRetryResult(
+        retryApply,
+        input.apply,
+      );
+      if (retryResult) {
+        return {
+          outcome: "applied",
+          ...retryResult,
+        };
+      }
+    }
+
+    throw new Error(
+      "synthetic future-date apply requires a submitted or completed hire request",
+    );
+  }
+
+  const persistedCorrelationId = requirePersistedSyntheticHireCorrelation(
+    submittedRequest.correlation_id,
+  );
+  if (input.job.correlationId !== persistedCorrelationId) {
+    throw new Error(
+      "synthetic future-date apply job correlation must match the persisted request",
+    );
+  }
+
+  if (input.job.failAfterPreconditionsReason) {
+    const failureEvidence = buildSyntheticFutureDateApplyFailureEvidence(
+      db,
+      input,
+      input.job.failAfterPreconditionsReason,
+      persistedCorrelationId,
+    );
+    insertSyntheticFutureDateApplyFailureAuditEvent(db, failureEvidence);
+
+    return {
+      outcome: "retryable_failure",
+      failureEvidence,
+    };
+  }
+
+  return {
+    outcome: "applied",
+    ...applySyntheticHireRequest(db, input.apply),
+  };
+}
+
 type AuditSubjectTable = "person" | "transaction_request" | "lifecycle_event";
 
 type SyntheticAuditEventInput = {
@@ -989,6 +1089,125 @@ function insertSyntheticLifecycleAppliedAuditEvent(
   );
 }
 
+function insertSyntheticFutureDateApplyFailureAuditEvent(
+  db: SyntheticHireDatabase,
+  input: SyntheticFutureDateApplyFailureEvidence,
+): void {
+  db.prepare(
+    `
+      INSERT OR IGNORE INTO audit_event (
+        id,
+        actor_id,
+        action,
+        subject_table,
+        subject_id,
+        occurred_at,
+        correlation_id,
+        poc_marker
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    input.id,
+    syntheticAuditActorId,
+    "poc.synthetic_hire.future_date_apply_failed",
+    "transaction_request",
+    input.transactionRequestId,
+    input.observedAt,
+    input.correlationId,
+    syntheticAuditPocMarker,
+  );
+}
+
+function buildSyntheticFutureDateApplyFailureEvidence(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticFutureDateHireJobInput,
+  failureReason: string,
+  correlationId: string,
+): SyntheticFutureDateApplyFailureEvidence {
+  return {
+    id: `future-date-apply-failure-${input.job.id}`,
+    jobId: input.job.id,
+    transactionRequestId: input.apply.request.transactionRequest.id,
+    lifecycleEventId: input.apply.lifecycleEvent.id,
+    personId: input.apply.request.person.id,
+    correlationId,
+    failureReason,
+    retryable: true,
+    observedAt: input.job.observedAt,
+    observedState: readSyntheticFutureDateApplyObservedState(db, input.apply),
+  };
+}
+
+function readSyntheticFutureDateApplyObservedState(
+  db: SyntheticHireDatabase,
+  input: ApplySyntheticHireRequestInput,
+): SyntheticFutureDateApplyObservedState {
+  const row = db
+    .prepare(
+      `
+        SELECT
+          transaction_request.status_code AS transaction_request_status_code,
+          (
+            SELECT count(*)
+            FROM lifecycle_event
+            WHERE id = ?
+          ) AS lifecycle_event_count,
+          (
+            SELECT count(*)
+            FROM employment
+            WHERE id = ?
+          ) AS employment_count,
+          (
+            SELECT count(*)
+            FROM assignment
+            WHERE id = ?
+          ) AS assignment_count,
+          (
+            SELECT count(*)
+            FROM audit_event
+            WHERE action = 'poc.synthetic_hire.lifecycle_applied'
+              AND subject_id = ?
+          ) AS lifecycle_applied_audit_count
+        FROM transaction_request
+        WHERE id = ?
+          AND person_id = ?
+          AND request_type = 'hire'
+          AND status_code = 'submitted'
+      `,
+    )
+    .get(
+      input.lifecycleEvent.id,
+      input.hire.employment.id,
+      input.hire.assignment.id,
+      input.lifecycleEvent.id,
+      input.request.transactionRequest.id,
+      input.request.person.id,
+    ) as
+    | {
+        transaction_request_status_code: "submitted";
+        lifecycle_event_count: number;
+        employment_count: number;
+        assignment_count: number;
+        lifecycle_applied_audit_count: number;
+      }
+    | undefined;
+
+  if (!row) {
+    throw new Error(
+      "synthetic future-date apply failure evidence requires a submitted hire request",
+    );
+  }
+
+  return {
+    transactionRequestStatusCode: row.transaction_request_status_code,
+    lifecycleEventCount: row.lifecycle_event_count,
+    employmentCount: row.employment_count,
+    assignmentCount: row.assignment_count,
+    lifecycleAppliedAuditCount: row.lifecycle_applied_audit_count,
+  };
+}
+
 function rollbackSavepoint(db: SyntheticHireDatabase): void {
   rollbackNamedSavepoint(db, "synthetic_hire_persistence");
 }
@@ -1059,6 +1278,35 @@ function validateApplySyntheticHireRequest(
   }
   if (input.lifecycleEvent.eventType !== "hire") {
     throw new Error("lifecycleEvent.eventType must be hire");
+  }
+}
+
+function validateSyntheticFutureDateApplyJob(
+  input: ApplySyntheticFutureDateHireJobInput,
+): void {
+  requireNonEmpty("job.id", input.job.id);
+  requireNonEmpty("job.correlationId", input.job.correlationId);
+  requireTimestamp("job.observedAt", input.job.observedAt);
+  validateApplySyntheticHireRequest(input.apply);
+
+  if (
+    !isDateStrictlyAfterTimestampDate(
+      input.apply.lifecycleEvent.effectiveDate,
+      input.apply.request.transactionRequest.requestedAt,
+    )
+  ) {
+    throw new Error(
+      "synthetic future-date apply job requires a future effective date",
+    );
+  }
+
+  if (
+    input.job.failAfterPreconditionsReason !== undefined &&
+    !isNonEmptyString(input.job.failAfterPreconditionsReason)
+  ) {
+    throw new Error(
+      "job.failAfterPreconditionsReason must be a non-empty string when provided",
+    );
   }
 }
 
@@ -1211,4 +1459,11 @@ function isValidIsoDateParts(
     candidate.getUTCMonth() === month - 1 &&
     candidate.getUTCDate() === day
   );
+}
+
+function isDateStrictlyAfterTimestampDate(
+  dateValue: string,
+  timestampValue: string,
+): boolean {
+  return dateValue > timestampValue.slice(0, "YYYY-MM-DD".length);
 }

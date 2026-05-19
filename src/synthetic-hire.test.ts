@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   createSyntheticHireFixture,
   createSyntheticHireRequestFixture,
+  applySyntheticFutureDateHireJob,
   applySyntheticHireRequest,
   saveSyntheticHire,
   saveSyntheticHireRequest,
@@ -1043,6 +1044,322 @@ test("synthetic hire apply retry is idempotent without duplicate durable effects
       ],
       "retrying apply must not duplicate lifecycle or submit audit evidence",
     );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply records retryable failure evidence after preconditions", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+      contactPoint: {
+        createdAt: "2026-06-01T00:00:00Z",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+
+    const result = applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:00:00Z",
+        failAfterPreconditionsReason:
+          "synthetic_post_precondition_apply_failure",
+      },
+      apply,
+    });
+
+    assert.deepEqual(result, {
+      outcome: "retryable_failure",
+      failureEvidence: {
+        id: "future-date-apply-failure-future-date-apply-job-001",
+        jobId: "future-date-apply-job-001",
+        transactionRequestId: "transaction-request-syn-hire-001",
+        lifecycleEventId: "lifecycle-event-syn-hire-future-001",
+        personId: "person-syn-hire-001",
+        correlationId: "correlation-syn-hire-001",
+        failureReason: "synthetic_post_precondition_apply_failure",
+        retryable: true,
+        observedAt: "2026-05-19T00:00:00Z",
+        observedState: {
+          transactionRequestStatusCode: "submitted",
+          lifecycleEventCount: 0,
+          employmentCount: 0,
+          assignmentCount: 0,
+          lifecycleAppliedAuditCount: 0,
+        },
+      },
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      { status_code: "submitted" },
+      "synthetic failure must leave the submitted request retryable",
+    );
+    for (const tableName of [
+      "employment",
+      "assignment",
+      "contact_point",
+      "lifecycle_event",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must stay clean after synthetic future-date failure`,
+      );
+    }
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, subject_table, subject_id, correlation_id
+              FROM audit_event
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.future_date_apply_failed",
+          subject_table: "transaction_request",
+          subject_id: "transaction-request-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          subject_table: "transaction_request",
+          subject_id: "transaction-request-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "operator-facing retry evidence must be correlated without applying lifecycle state",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply retry succeeds without duplicate lifecycle effects", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+      contactPoint: {
+        createdAt: "2026-06-01T00:00:00Z",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+    applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:00:00Z",
+        failAfterPreconditionsReason:
+          "synthetic_post_precondition_apply_failure",
+      },
+      apply,
+    });
+
+    const retryResult = applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001-retry",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:05:00Z",
+      },
+      apply,
+    });
+    const idempotentRetryResult = applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001-retry",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:05:00Z",
+      },
+      apply,
+    });
+
+    assert.deepEqual(retryResult, {
+      outcome: "applied",
+      transactionRequestId: "transaction-request-syn-hire-001",
+      lifecycleEventId: "lifecycle-event-syn-hire-future-001",
+      personId: "person-syn-hire-001",
+      statusCode: "completed",
+      correlationId: "correlation-syn-hire-001",
+    });
+    assert.deepEqual(idempotentRetryResult, retryResult);
+    for (const tableName of [
+      "person",
+      "transaction_request",
+      "employment",
+      "assignment",
+      "contact_point",
+      "lifecycle_event",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate after future-date retry`,
+      );
+    }
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, subject_table, subject_id, correlation_id
+              FROM audit_event
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.future_date_apply_failed",
+          subject_table: "transaction_request",
+          subject_id: "transaction-request-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+        {
+          action: "poc.synthetic_hire.lifecycle_applied",
+          subject_table: "lifecycle_event",
+          subject_id: "lifecycle-event-syn-hire-future-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          subject_table: "transaction_request",
+          subject_id: "transaction-request-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+      ],
+      "retry must add only the apply audit and retain the single failure evidence row",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply retry fails closed on stale job correlation", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+
+    saveSyntheticHireRequest(db, request);
+
+    assert.throws(
+      () =>
+        applySyntheticFutureDateHireJob(db, {
+          job: {
+            id: "future-date-apply-job-stale",
+            correlationId: "correlation-syn-hire-stale",
+            observedAt: "2026-05-19T00:00:00Z",
+          },
+          apply: {
+            request,
+            hire,
+            lifecycleEvent: {
+              id: "lifecycle-event-syn-hire-future-001",
+              eventType: "hire",
+              effectiveDate: "2026-06-01",
+              occurredAt: "2026-05-19T00:00:00Z",
+            },
+          },
+        }),
+      /synthetic future-date apply job correlation must match the persisted request/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 1 },
+      "stale retry must not write failure or apply audit evidence",
+    );
+    for (const tableName of [
+      "employment",
+      "assignment",
+      "contact_point",
+      "lifecycle_event",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 0 },
+        `${tableName} must stay clean after stale retry rejection`,
+      );
+    }
   } finally {
     db.close();
   }
