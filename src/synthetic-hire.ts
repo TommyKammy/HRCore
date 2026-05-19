@@ -1238,8 +1238,10 @@ function persistSyntheticFutureDateApplyFailureEvidence(
 
   try {
     ensureSyntheticFutureDateApplyFailureEvidenceTable(db);
-    insertSyntheticFutureDateApplyFailureEvidence(db, input);
-    insertSyntheticFutureDateApplyFailureAuditEvent(db, input);
+    const inserted = insertSyntheticFutureDateApplyFailureEvidence(db, input);
+    if (inserted) {
+      insertSyntheticFutureDateApplyFailureAuditEvent(db, input);
+    }
     db.exec("RELEASE SAVEPOINT synthetic_future_date_apply_failure_evidence");
   } catch (error) {
     rollbackNamedSavepoint(db, "synthetic_future_date_apply_failure_evidence");
@@ -1322,7 +1324,7 @@ function ensureSyntheticFutureDateApplyFailureEvidenceTable(
 function insertSyntheticFutureDateApplyFailureEvidence(
   db: SyntheticHireDatabase,
   input: SyntheticFutureDateApplyFailureEvidence,
-): void {
+): boolean {
   db.prepare(
     `
       INSERT OR IGNORE INTO synthetic_future_date_apply_failure_evidence (
@@ -1343,7 +1345,7 @@ function insertSyntheticFutureDateApplyFailureEvidence(
         poc_marker
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
+      `,
   ).run(
     input.id,
     input.jobId,
@@ -1361,6 +1363,11 @@ function insertSyntheticFutureDateApplyFailureEvidence(
     input.observedState.lifecycleAppliedAuditCount,
     syntheticAuditPocMarker,
   );
+
+  const changes = db.prepare("SELECT changes() AS changes").get() as
+    | { changes: number }
+    | undefined;
+  return changes?.changes === 1;
 }
 
 function readSyntheticFutureDateApplyFailureEvidence(
@@ -1777,5 +1784,19 @@ function isDateStrictlyAfterTimestampDate(
   dateValue: string,
   timestampValue: string,
 ): boolean {
-  return dateValue > timestampValue.slice(0, "YYYY-MM-DD".length);
+  return dateValue > normalizeTimestampToUtcDate(timestampValue);
+}
+
+function normalizeTimestampToUtcDate(timestampValue: string): string {
+  const match = timestampPattern.exec(timestampValue);
+  if (!match || !isValidIsoDateParts(match[1], match[2], match[3])) {
+    throw new Error("timestamp must be an ISO timestamp");
+  }
+
+  const parsed = new Date(timestampValue);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("timestamp must be an ISO timestamp");
+  }
+
+  return parsed.toISOString().slice(0, "YYYY-MM-DD".length);
 }

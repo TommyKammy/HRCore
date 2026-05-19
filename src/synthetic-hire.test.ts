@@ -1645,6 +1645,72 @@ test("synthetic future-date apply validates future gate from persisted request d
   }
 });
 
+test("synthetic future-date apply normalizes persisted request timezone before future gate", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-05-20",
+      },
+      assignment: {
+        startDate: "2026-05-20",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+      transactionRequest: {
+        requestedAt: "2026-05-19T23:30:00-02:00",
+      },
+    });
+
+    saveSyntheticHireRequest(db, request);
+
+    assert.throws(
+      () =>
+        applySyntheticFutureDateHireJob(db, {
+          job: {
+            id: "future-date-apply-job-offset-boundary",
+            correlationId: "correlation-syn-hire-001",
+            observedAt: "2026-05-20T02:00:00Z",
+            failAfterPreconditionsReason:
+              "synthetic_post_precondition_apply_failure",
+          },
+          apply: {
+            request,
+            hire,
+            lifecycleEvent: {
+              id: "lifecycle-event-syn-hire-offset-boundary",
+              eventType: "hire",
+              effectiveDate: "2026-05-20",
+              occurredAt: "2026-05-20T02:00:00Z",
+            },
+          },
+        }),
+      /synthetic future-date apply job requires a future effective date/,
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT name
+              FROM sqlite_master
+              WHERE type = 'table'
+                AND name = 'synthetic_future_date_apply_failure_evidence'
+            `,
+          )
+          .get(),
+      ),
+      undefined,
+      "offset-boundary rejection must not create synthetic failure evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic future-date apply duplicate job returns persisted failure evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -1761,6 +1827,117 @@ test("synthetic future-date apply duplicate job returns persisted failure eviden
         },
       ],
       "duplicate failure job ids must not duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic future-date apply stale duplicate job read remains fully idempotent", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture({
+      employment: {
+        startDate: "2026-06-01",
+      },
+      assignment: {
+        startDate: "2026-06-01",
+      },
+    });
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const apply = {
+      request,
+      hire,
+      lifecycleEvent: {
+        id: "lifecycle-event-syn-hire-future-001",
+        eventType: "hire" as const,
+        effectiveDate: "2026-06-01",
+        occurredAt: "2026-05-19T00:00:00Z",
+      },
+    };
+
+    saveSyntheticHireRequest(db, request);
+    const firstFailure = applySyntheticFutureDateHireJob(db, {
+      job: {
+        id: "future-date-apply-job-001",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:00:00Z",
+        failAfterPreconditionsReason:
+          "synthetic_post_precondition_apply_failure",
+      },
+      apply,
+    });
+
+    let hideFirstFailureEvidenceRead = true;
+    const staleReadDb: SyntheticHireDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstFailureEvidenceRead &&
+              sql.includes(
+                "FROM synthetic_future_date_apply_failure_evidence",
+              ) &&
+              sql.includes("WHERE job_id = ?")
+            ) {
+              hideFirstFailureEvidenceRead = false;
+              return undefined;
+            }
+
+            return statement.get(...values);
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const duplicateFailure = applySyntheticFutureDateHireJob(staleReadDb, {
+      job: {
+        id: "future-date-apply-job-001",
+        correlationId: "correlation-syn-hire-001",
+        observedAt: "2026-05-19T00:10:00Z",
+        failAfterPreconditionsReason: "changed_later_input_must_not_win",
+      },
+      apply,
+    });
+
+    assert.deepEqual(
+      duplicateFailure,
+      firstFailure,
+      "stale duplicate job reads must return the persisted failure snapshot",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT action, count(*) AS count
+              FROM audit_event
+              GROUP BY action
+              ORDER BY action
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          action: "poc.synthetic_hire.future_date_apply_failed",
+          count: 1,
+        },
+        {
+          action: "poc.synthetic_hire.request_submitted",
+          count: 1,
+        },
+      ],
+      "stale duplicate job reads must not duplicate failure audit evidence",
     );
   } finally {
     db.close();
