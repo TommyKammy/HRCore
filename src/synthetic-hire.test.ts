@@ -406,6 +406,97 @@ test("synthetic hire request submit uses correlation for regenerated request ids
   }
 });
 
+test("synthetic hire request submit prefers correlation over a colliding regenerated request id", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+
+    const firstResult = saveSyntheticHireRequest(db, request);
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES (
+        'person-syn-hire-colliding-request',
+        'Synthetic Hire Colliding Request',
+        '2026-05-18T00:00:00Z'
+      );
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES (
+        'transaction-request-syn-hire-regenerated',
+        'person-syn-hire-colliding-request',
+        'hire',
+        'submitted',
+        '2026-05-18T00:00:00Z',
+        'correlation-syn-hire-colliding-request'
+      );
+    `);
+
+    const retryResult = saveSyntheticHireRequest(
+      db,
+      createSyntheticHireRequestFixture({
+        transactionRequest: {
+          id: "transaction-request-syn-hire-regenerated",
+        },
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ),
+      [
+        {
+          id: "transaction-request-syn-hire-001",
+          person_id: "person-syn-hire-001",
+          correlation_id: "correlation-syn-hire-001",
+        },
+        {
+          id: "transaction-request-syn-hire-regenerated",
+          person_id: "person-syn-hire-colliding-request",
+          correlation_id: "correlation-syn-hire-colliding-request",
+        },
+      ],
+      "a cross-person request id collision must not hide the authoritative correlation match",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM audit_event
+              WHERE action = 'poc.synthetic_hire.request_submitted'
+                AND correlation_id = 'correlation-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+      "correlated retry must not write duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire request submit fails closed when regenerated correlated retry changes person", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

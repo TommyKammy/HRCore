@@ -6,7 +6,6 @@ SET `contact_point_id` = (
   JOIN `contact_point`
     ON `contact_point`.`person_id` = `lifecycle_event`.`person_id`
    AND `contact_point`.`contact_type` = 'work_email'
-   AND `contact_point`.`created_at` <= `lifecycle_event`.`occurred_at`
   WHERE `transaction_request`.`id` = `lifecycle_event`.`transaction_request_id`
     AND `transaction_request`.`person_id` = `lifecycle_event`.`person_id`
     AND `transaction_request`.`request_type` = 'hire'
@@ -30,7 +29,6 @@ WHERE `lifecycle_event`.`contact_point_id` IS NULL
     JOIN `contact_point`
       ON `contact_point`.`person_id` = `lifecycle_event`.`person_id`
      AND `contact_point`.`contact_type` = 'work_email'
-     AND `contact_point`.`created_at` <= `lifecycle_event`.`occurred_at`
     WHERE `transaction_request`.`id` = `lifecycle_event`.`transaction_request_id`
       AND `transaction_request`.`person_id` = `lifecycle_event`.`person_id`
       AND `transaction_request`.`request_type` = 'hire'

@@ -715,7 +715,11 @@ function readSyntheticHireRequest(
       WHERE transaction_request.id = ?
          OR transaction_request.correlation_id = ?
       ORDER BY
-        CASE WHEN transaction_request.id = ? THEN 0 ELSE 1 END,
+        CASE
+          WHEN transaction_request.correlation_id = ? THEN 0
+          WHEN transaction_request.id = ? THEN 1
+          ELSE 2
+        END,
         transaction_request.id
       LIMIT 1
     `,
@@ -723,6 +727,7 @@ function readSyntheticHireRequest(
 
   return statement.get(
     input.transactionRequest.id,
+    input.transactionRequest.correlationId,
     input.transactionRequest.correlationId,
     input.transactionRequest.id,
   ) as ExistingSyntheticHireRequestRow | undefined;

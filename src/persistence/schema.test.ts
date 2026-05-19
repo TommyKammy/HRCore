@@ -464,7 +464,7 @@ test("transaction request correlation migration backfills duplicates before uniq
           'hire',
           'submitted',
           '2026-05-18T00:00:00Z',
-          'correlation-duplicate#dedupe-transaction-request-correlation-2'
+          'correlation-duplicate#dedupe-rowid-2'
         );
     `);
 
@@ -489,13 +489,11 @@ test("transaction request correlation migration backfills duplicates before uniq
         },
         {
           id: "transaction-request-correlation-2",
-          correlation_id:
-            "correlation-duplicate#dedupe-transaction-request-correlation-2-1",
+          correlation_id: "correlation-duplicate#dedupe-rowid-2-1",
         },
         {
           id: "transaction-request-correlation-existing",
-          correlation_id:
-            "correlation-duplicate#dedupe-transaction-request-correlation-2",
+          correlation_id: "correlation-duplicate#dedupe-rowid-2",
         },
       ],
       "duplicate correlation backfill must keep the first authoritative value and deterministically rewrite later duplicates without colliding with existing suffix-shaped values",
@@ -638,7 +636,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'work_email',
           'legacy.contact@example.invalid',
           1,
-          '2026-05-18T00:00:00Z'
+          '2026-05-18T00:10:00Z'
         ),
         (
           'contact-point-legacy-later-writeback',
