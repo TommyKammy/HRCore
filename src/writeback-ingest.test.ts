@@ -79,7 +79,7 @@ test("synthetic work email writeback ingest persists event evidence and upserts 
         'contact-point-writeback-001',
         'person-writeback-001',
         'work_email',
-        'old.writeback@example.invalid',
+        'confirmed.writeback@example.invalid',
         1,
         '2026-05-18T00:00:00Z'
       );
@@ -150,6 +150,112 @@ test("synthetic work email writeback ingest persists event evidence and upserts 
         target_contact_type: "work_email",
         correlation_id: "correlation-writeback-work-email-001",
         received_at: "2026-05-18T01:00:00Z",
+        poc_marker: "synthetic_poc",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email writeback records existing HRCore value conflicts without overwrite", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-conflict-001', 'Synthetic Writeback Conflict Person', '2026-05-18T00:00:00Z');
+
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-writeback-conflict-001',
+        'person-writeback-conflict-001',
+        'work_email',
+        'hrcore.authoritative@example.invalid',
+        1,
+        '2026-05-18T00:00:00Z'
+      );
+    `);
+
+    const result = ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-conflict-001",
+        personId: "person-writeback-conflict-001",
+        contactPointId: "contact-point-writeback-conflict-001",
+        providerValue: "provider.inbound@example.invalid",
+        correlationId: "correlation-writeback-work-email-conflict-001",
+      }),
+    );
+
+    assert.deepEqual(result, {
+      eventId: "writeback-event-work-email-conflict-001",
+      personId: "person-writeback-conflict-001",
+      contactPointId: "contact-point-writeback-conflict-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      correlationId: "correlation-writeback-work-email-conflict-001",
+      applied: false,
+      conflict: {
+        conflictId:
+          "synthetic-work-email-conflict:writeback-event-work-email-conflict-001:inbound_value_conflict",
+        conflictType: "inbound_value_conflict",
+        currentContactValue: "hrcore.authoritative@example.invalid",
+        attemptedProviderValue: "provider.inbound@example.invalid",
+        correlationId:
+          "correlation-writeback-work-email-conflict-001:conflict:inbound_value_conflict",
+      },
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-conflict-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "hrcore.authoritative@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT
+                writeback_event_id,
+                conflict_type,
+                current_contact_value,
+                attempted_provider_value,
+                correlation_id,
+                poc_marker
+              FROM writeback_work_email_conflict
+              WHERE writeback_event_id = 'writeback-event-work-email-conflict-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        writeback_event_id: "writeback-event-work-email-conflict-001",
+        conflict_type: "inbound_value_conflict",
+        current_contact_value: "hrcore.authoritative@example.invalid",
+        attempted_provider_value: "provider.inbound@example.invalid",
+        correlation_id:
+          "correlation-writeback-work-email-conflict-001:conflict:inbound_value_conflict",
         poc_marker: "synthetic_poc",
       },
     );
@@ -433,6 +539,124 @@ test("synthetic work email provider refresh can confirm the event value", async 
       ),
       {
         value: "confirmed.writeback@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email provider refresh records HRCore drift conflicts without overwrite", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'hrcore.changed@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    const result = refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "provider.changed@example.invalid",
+      refreshedAt: "2026-05-18T01:05:00Z",
+    });
+
+    assert.deepEqual(result, {
+      eventId: "writeback-event-work-email-001",
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      eventProviderValue: "confirmed.writeback@example.invalid",
+      refreshedProviderValue: "provider.changed@example.invalid",
+      correlationId: "correlation-writeback-work-email-001",
+      refreshedAt: "2026-05-18T01:05:00Z",
+      applied: false,
+      mismatch: true,
+      conflict: {
+        conflictId:
+          "synthetic-work-email-conflict:writeback-event-work-email-001:provider_refresh_conflict",
+        conflictType: "provider_refresh_conflict",
+        currentContactValue: "hrcore.changed@example.invalid",
+        attemptedProviderValue: "provider.changed@example.invalid",
+        correlationId:
+          "correlation-writeback-work-email-001:conflict:provider_refresh_conflict",
+      },
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "hrcore.changed@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT
+                conflict_type,
+                current_contact_value,
+                attempted_provider_value,
+                detected_at,
+                correlation_id
+              FROM writeback_work_email_conflict
+              WHERE writeback_event_id = 'writeback-event-work-email-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        conflict_type: "provider_refresh_conflict",
+        current_contact_value: "hrcore.changed@example.invalid",
+        attempted_provider_value: "provider.changed@example.invalid",
+        detected_at: "2026-05-18T01:05:00Z",
+        correlation_id:
+          "correlation-writeback-work-email-001:conflict:provider_refresh_conflict",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = 'writeback-event-work-email-001'
+            `,
+          )
+          .get(),
+      ),
+      {
+        count: 0,
       },
     );
   } finally {

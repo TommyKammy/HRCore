@@ -11,6 +11,7 @@ const requiredWritebackTables = [
   "contact_point",
   "writeback_event",
   "writeback_provider_refresh",
+  "writeback_work_email_conflict",
 ];
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
