@@ -5,8 +5,10 @@ import {
   buildOktaMasteringAdapter,
   createSyntheticOktaUserFixture,
   resolveLocalOktaMasteringConfig,
+  type OktaEmittedWorkEmailWritebackEvent,
   type OktaGroupProjection,
   type OktaMasteringProjection,
+  type OktaMasteringProjectionMetadata,
 } from "./okta-mastering-adapter.js";
 
 test("mock Okta mastering adapter projects create, update, disable, and no-op results without credentials", async () => {
@@ -226,6 +228,351 @@ test("mock Okta mastering adapter records deterministic projection metadata for 
         "2026-05-18T07:00:00.000Z",
       ),
     },
+  );
+});
+
+test("mock Okta mastering adapter emits deterministic work email writeback events for ingest", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-001",
+        employeeNumber: "EMP-WRITEBACK-001",
+        email: "writeback.identity@example.invalid",
+        displayName: "Writeback Identity",
+        givenName: "Writeback",
+        familyName: "Identity",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const projectionResult = await adapter.project({
+    operation: "update",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-001",
+      employeeNumber: "EMP-WRITEBACK-001",
+      email: "confirmed.writeback@example.invalid",
+      displayName: "Writeback Identity",
+      givenName: "Writeback",
+      familyName: "Identity",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt: "2026-05-18T16:00:00.000Z",
+    }),
+  });
+  assert.equal(projectionResult.outcome, "success");
+
+  const event: OktaEmittedWorkEmailWritebackEvent =
+    await adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      employeeNumber: "EMP-WRITEBACK-001",
+      workEmail: "confirmed.writeback@example.invalid",
+      emittedAt: "2026-05-18T16:00:00.000Z",
+      projectionEvidence: projectionResult.metadata,
+    });
+
+  assert.deepEqual(event, {
+    payload: {
+      eventId:
+        "okta-work-email-writeback-update-EMP-WRITEBACK-001-2026-05-18T16%3A00%3A00.000Z",
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "okta-user-writeback-001",
+      providerValue: "confirmed.writeback@example.invalid",
+      targetContactType: "work_email",
+      correlationId:
+        "okta:mock:work_email_writeback:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+      receivedAt: "2026-05-18T16:00:00.000Z",
+      pocMarker: "synthetic_poc",
+    },
+    metadata: {
+      provider: "okta",
+      adapterMode: "mock",
+      eventType: "work_email_writeback",
+      projectionKey:
+        "okta:mock:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
+      synthetic: true,
+    },
+  });
+});
+
+test("mock Okta work email writeback emission requires successful projection evidence", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-skipped-001",
+        employeeNumber: "EMP-WRITEBACK-SKIPPED-001",
+        email: "skipped.writeback@example.invalid",
+        displayName: "Skipped Writeback",
+        givenName: "Skipped",
+        familyName: "Writeback",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const skippedProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-skipped-001",
+      employeeNumber: "EMP-WRITEBACK-SKIPPED-001",
+      email: "skipped.writeback@example.invalid",
+      displayName: "Skipped Writeback",
+      givenName: "Skipped",
+      familyName: "Writeback",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt: "2026-05-18T16:10:00.000Z",
+    }),
+  });
+  assert.equal(skippedProjectionResult.outcome, "skipped");
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-skipped-001",
+      contactPointId: "contact-point-writeback-skipped-001",
+      employeeNumber: "EMP-WRITEBACK-SKIPPED-001",
+      workEmail: "skipped.writeback@example.invalid",
+      emittedAt: "2026-05-18T16:10:00.000Z",
+      projectionEvidence: skippedProjectionResult.metadata,
+    }),
+    /Synthetic writeback requires successful mock Okta projection evidence/,
+  );
+});
+
+test("mock Okta work email writeback emission rejects later non-success evidence for a reused projection key", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+  const effectiveAt = "2026-05-18T16:15:00.000Z";
+
+  const successfulProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-reused-key-001",
+      employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
+      email: "reused.key.writeback@example.invalid",
+      displayName: "Reused Key Writeback",
+      givenName: "Reused",
+      familyName: "Key",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(successfulProjectionResult.outcome, "success");
+
+  const skippedProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-reused-key-001",
+      employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
+      email: "reused.key.writeback@example.invalid",
+      displayName: "Reused Key Writeback",
+      givenName: "Reused",
+      familyName: "Key",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(skippedProjectionResult.outcome, "skipped");
+  assert.deepEqual(
+    skippedProjectionResult.metadata,
+    successfulProjectionResult.metadata,
+  );
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-reused-key-001",
+      contactPointId: "contact-point-writeback-reused-key-001",
+      employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
+      workEmail: "reused.key.writeback@example.invalid",
+      emittedAt: effectiveAt,
+      projectionEvidence: skippedProjectionResult.metadata,
+    }),
+    /Synthetic writeback requires successful mock Okta projection evidence/,
+  );
+});
+
+test("mock Okta work email writeback emission rejects workEmail drift from projected user", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-drift-001",
+        employeeNumber: "EMP-WRITEBACK-DRIFT-001",
+        email: "old.writeback.drift@example.invalid",
+        displayName: "Writeback Drift",
+        givenName: "Writeback",
+        familyName: "Drift",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  const projectionResult = await adapter.project({
+    operation: "update",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-drift-001",
+      employeeNumber: "EMP-WRITEBACK-DRIFT-001",
+      email: "projected.writeback.drift@example.invalid",
+      displayName: "Writeback Drift",
+      givenName: "Writeback",
+      familyName: "Drift",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt: "2026-05-18T16:20:00.000Z",
+    }),
+  });
+  assert.equal(projectionResult.outcome, "success");
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-drift-001",
+      contactPointId: "contact-point-writeback-drift-001",
+      employeeNumber: "EMP-WRITEBACK-DRIFT-001",
+      workEmail: "caller.supplied.drift@example.invalid",
+      emittedAt: "2026-05-18T16:20:00.000Z",
+      projectionEvidence: projectionResult.metadata,
+    }),
+    /Synthetic writeback workEmail must match the projected mock Okta user/,
+  );
+});
+
+test("mock Okta work email writeback identifiers include projection operation", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+  const effectiveAt = "2026-05-18T16:40:00.000Z";
+
+  const createProjectionResult = await adapter.project({
+    operation: "create",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-operation-001",
+      employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+      email: "created.operation@example.invalid",
+      displayName: "Writeback Operation",
+      givenName: "Writeback",
+      familyName: "Operation",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(createProjectionResult.outcome, "success");
+
+  const createEvent = await adapter.emitWorkEmailWriteback({
+    personId: "person-writeback-operation-001",
+    contactPointId: "contact-point-writeback-operation-001",
+    employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+    workEmail: "created.operation@example.invalid",
+    emittedAt: effectiveAt,
+    projectionEvidence: createProjectionResult.metadata,
+  });
+
+  const updateProjectionResult = await adapter.project({
+    operation: "update",
+    desiredUser: createSyntheticOktaUserFixture({
+      externalId: "okta-user-writeback-operation-001",
+      employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+      email: "updated.operation@example.invalid",
+      displayName: "Writeback Operation",
+      givenName: "Writeback",
+      familyName: "Operation",
+      status: "active",
+      departmentCode: "DEPT-SYN",
+      effectiveAt,
+    }),
+  });
+  assert.equal(updateProjectionResult.outcome, "success");
+
+  const updateEvent = await adapter.emitWorkEmailWriteback({
+    personId: "person-writeback-operation-001",
+    contactPointId: "contact-point-writeback-operation-001",
+    employeeNumber: "EMP-WRITEBACK-OPERATION-001",
+    workEmail: "updated.operation@example.invalid",
+    emittedAt: effectiveAt,
+    projectionEvidence: updateProjectionResult.metadata,
+  });
+
+  assert.equal(
+    createEvent.payload.eventId,
+    "okta-work-email-writeback-create-EMP-WRITEBACK-OPERATION-001-2026-05-18T16%3A40%3A00.000Z",
+  );
+  assert.equal(
+    updateEvent.payload.eventId,
+    "okta-work-email-writeback-update-EMP-WRITEBACK-OPERATION-001-2026-05-18T16%3A40%3A00.000Z",
+  );
+  assert.notEqual(createEvent.payload.eventId, updateEvent.payload.eventId);
+  assert.equal(
+    createEvent.payload.correlationId,
+    "okta:mock:work_email_writeback:create:EMP-WRITEBACK-OPERATION-001:2026-05-18T16%3A40%3A00.000Z",
+  );
+  assert.equal(
+    updateEvent.payload.correlationId,
+    "okta:mock:work_email_writeback:update:EMP-WRITEBACK-OPERATION-001:2026-05-18T16%3A40%3A00.000Z",
+  );
+});
+
+test("mock Okta work email writeback emission fails closed when the provider user is missing", async () => {
+  const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-missing-provider-001",
+      contactPointId: "contact-point-writeback-missing-provider-001",
+      employeeNumber: "EMP-WRITEBACK-MISSING",
+      workEmail: "missing.provider@example.invalid",
+      emittedAt: "2026-05-18T16:30:00.000Z",
+      projectionEvidence: expectedMockMetadata(
+        "update",
+        "EMP-WRITEBACK-MISSING",
+        "2026-05-18T16:30:00.000Z",
+      ),
+    }),
+    /Synthetic writeback requires an existing mock Okta user/,
+  );
+});
+
+test("mock Okta work email writeback emission rejects mismatched projection evidence", async () => {
+  const adapter = buildOktaMasteringAdapter({
+    mode: "mock",
+    initialUsers: [
+      createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-001",
+        employeeNumber: "EMP-WRITEBACK-001",
+        email: "writeback.identity@example.invalid",
+        displayName: "Writeback Identity",
+        givenName: "Writeback",
+        familyName: "Identity",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T08:00:00.000Z",
+      }),
+    ],
+  });
+
+  await assert.rejects(
+    adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      employeeNumber: "EMP-WRITEBACK-001",
+      workEmail: "confirmed.writeback@example.invalid",
+      emittedAt: "2026-05-18T16:00:00.000Z",
+      projectionEvidence: expectedMockMetadata(
+        "update",
+        "EMP-WRITEBACK-SIBLING",
+        "2026-05-18T16:00:00.000Z",
+      ),
+    }),
+    /Synthetic writeback projection evidence must match the emitted employee and timestamp/,
   );
 });
 
@@ -759,7 +1106,7 @@ function expectedMockMetadata(
   operation: string,
   employeeNumber: string,
   effectiveAt: string,
-) {
+): OktaMasteringProjectionMetadata {
   return {
     adapterMode: "mock",
     provider: "okta",
