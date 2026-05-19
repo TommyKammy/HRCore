@@ -551,7 +551,8 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
       VALUES
         ('person-legacy-contact', 'Legacy Contact Hire', '2026-05-18T00:00:00Z'),
         ('person-legacy-no-contact', 'Legacy No Contact Hire', '2026-05-18T00:00:00Z'),
-        ('person-legacy-later-contact', 'Legacy Later Contact Hire', '2026-05-18T00:00:00Z');
+        ('person-legacy-later-contact', 'Legacy Later Contact Hire', '2026-05-18T00:00:00Z'),
+        ('person-legacy-writeback-drift', 'Legacy Writeback Timestamp Drift', '2026-05-18T00:00:00Z');
 
       INSERT INTO transaction_request (
         id,
@@ -585,6 +586,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'completed',
           '2026-05-18T00:00:00Z',
           'correlation-legacy-later-contact'
+        ),
+        (
+          'transaction-request-legacy-writeback-drift',
+          'person-legacy-writeback-drift',
+          'hire',
+          'completed',
+          '2026-05-18T00:00:00Z',
+          'correlation-legacy-writeback-drift'
         );
 
       INSERT INTO lifecycle_event (
@@ -619,6 +628,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'hire',
           '2026-05-18',
           '2026-05-18T00:00:00Z'
+        ),
+        (
+          'lifecycle-event-legacy-writeback-drift',
+          'person-legacy-writeback-drift',
+          'transaction-request-legacy-writeback-drift',
+          'hire',
+          '2026-05-18',
+          '2026-05-18T00:00:00Z'
         );
 
       INSERT INTO contact_point (
@@ -645,6 +662,14 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'legacy.later@example.invalid',
           1,
           '2026-05-18T00:10:00Z'
+        ),
+        (
+          'contact-point-legacy-writeback-drift',
+          'person-legacy-writeback-drift',
+          'work_email',
+          'legacy.writeback.drift@example.invalid',
+          1,
+          '2026-05-18T00:10:00Z'
         );
 
       INSERT INTO writeback_event (
@@ -669,6 +694,18 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         'work_email',
         'correlation-legacy-later-writeback',
         '2026-05-18T00:10:00Z',
+        'synthetic_poc'
+      ),
+      (
+        'writeback-event-legacy-writeback-drift',
+        'person-legacy-writeback-drift',
+        'contact-point-legacy-writeback-drift',
+        'synthetic_okta',
+        'synthetic-okta-user-writeback-drift',
+        'legacy.writeback.drift@example.invalid',
+        'work_email',
+        'correlation-legacy-writeback-drift-writeback',
+        '2026-05-18T00:11:00Z',
         'synthetic_poc'
       );
     `);
@@ -698,6 +735,10 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         },
         {
           id: "lifecycle-event-legacy-no-contact",
+          contact_point_id: null,
+        },
+        {
+          id: "lifecycle-event-legacy-writeback-drift",
           contact_point_id: null,
         },
       ],
