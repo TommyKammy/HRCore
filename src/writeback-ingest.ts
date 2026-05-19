@@ -33,6 +33,28 @@ export interface SyntheticWorkEmailWritebackResult {
   applied: true;
 }
 
+export interface SyntheticWorkEmailProviderRefreshInput {
+  eventId: string;
+  providerName: "synthetic_okta";
+  providerSubjectId: string;
+  providerValue: string;
+  refreshedAt: string;
+}
+
+export interface SyntheticWorkEmailProviderRefreshResult {
+  eventId: string;
+  personId: string;
+  contactPointId: string;
+  providerName: "synthetic_okta";
+  providerSubjectId: string;
+  eventProviderValue: string;
+  refreshedProviderValue: string;
+  correlationId: string;
+  refreshedAt: string;
+  applied: true;
+  mismatch: boolean;
+}
+
 type SyntheticWorkEmailWritebackFixtureOverrides =
   Partial<SyntheticWorkEmailWritebackInput>;
 
@@ -50,6 +72,13 @@ const syntheticWorkEmailWritebackFields = [
   "correlationId",
   "receivedAt",
   "pocMarker",
+];
+const syntheticWorkEmailProviderRefreshFields = [
+  "eventId",
+  "providerName",
+  "providerSubjectId",
+  "providerValue",
+  "refreshedAt",
 ];
 
 export class SyntheticWorkEmailWritebackValidationError extends Error {
@@ -192,6 +221,112 @@ export function ingestSyntheticWorkEmailWriteback(
   }
 }
 
+export function refreshSyntheticWorkEmailFromProvider(
+  db: SyntheticWritebackDatabase,
+  input: SyntheticWorkEmailProviderRefreshInput,
+): SyntheticWorkEmailProviderRefreshResult {
+  const validatedInput = parseSyntheticWorkEmailProviderRefreshInput(input);
+
+  let savepointStarted = false;
+
+  try {
+    db.exec("SAVEPOINT synthetic_work_email_provider_refresh");
+    savepointStarted = true;
+
+    const event = db
+      .prepare(
+        `
+          SELECT
+            id,
+            person_id,
+            contact_point_id,
+            provider_name,
+            provider_subject_id,
+            provider_value,
+            target_contact_type,
+            correlation_id
+          FROM writeback_event
+          WHERE id = ?
+        `,
+      )
+      .get(validatedInput.eventId);
+
+    if (!isWritebackEventRefreshRow(event)) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "writeback event must exist before provider refresh",
+      );
+    }
+
+    if (
+      event.provider_name !== validatedInput.providerName ||
+      event.provider_subject_id !== validatedInput.providerSubjectId ||
+      event.target_contact_type !== "work_email"
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "provider refresh must match the original writeback event identity",
+      );
+    }
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = ?
+        WHERE id = ?
+          AND person_id = ?
+          AND contact_type = 'work_email'
+      `,
+    ).run(
+      validatedInput.providerValue,
+      event.contact_point_id,
+      event.person_id,
+    );
+
+    const refreshedContactPoint = db
+      .prepare(
+        `
+          SELECT id, value
+          FROM contact_point
+          WHERE id = ?
+            AND person_id = ?
+            AND contact_type = 'work_email'
+        `,
+      )
+      .get(event.contact_point_id, event.person_id);
+
+    if (!isRefreshedContactPointRow(refreshedContactPoint)) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "provider refresh requires the original work_email contact point",
+      );
+    }
+
+    if (refreshedContactPoint.value !== validatedInput.providerValue) {
+      throw new Error("contactPoint must match refreshed provider value");
+    }
+
+    db.exec("RELEASE SAVEPOINT synthetic_work_email_provider_refresh");
+
+    return {
+      eventId: event.id,
+      personId: event.person_id,
+      contactPointId: event.contact_point_id,
+      providerName: event.provider_name,
+      providerSubjectId: event.provider_subject_id,
+      eventProviderValue: event.provider_value,
+      refreshedProviderValue: validatedInput.providerValue,
+      correlationId: event.correlation_id,
+      refreshedAt: validatedInput.refreshedAt,
+      applied: true,
+      mismatch: event.provider_value !== validatedInput.providerValue,
+    };
+  } catch (error) {
+    if (savepointStarted) {
+      rollbackNamedSavepoint(db, "synthetic_work_email_provider_refresh");
+    }
+
+    throw error;
+  }
+}
+
 export function parseSyntheticWorkEmailWritebackInput(
   input: unknown,
 ): SyntheticWorkEmailWritebackInput {
@@ -258,6 +393,87 @@ export function parseSyntheticWorkEmailWritebackInput(
     receivedAt,
     pocMarker: input.pocMarker,
   };
+}
+
+export function parseSyntheticWorkEmailProviderRefreshInput(
+  input: unknown,
+): SyntheticWorkEmailProviderRefreshInput {
+  if (!isRecord(input)) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "provider refresh input must be an object",
+    );
+  }
+
+  const unsupportedFields = Object.keys(input).filter(
+    (field) => !syntheticWorkEmailProviderRefreshFields.includes(field),
+  );
+  if (unsupportedFields.length > 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      `provider refresh input contains unsupported fields: ${unsupportedFields.join(
+        ", ",
+      )}`,
+    );
+  }
+
+  const eventId = requireNonEmpty("eventId", input.eventId);
+  if (input.providerName !== "synthetic_okta") {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "providerName must be synthetic_okta",
+    );
+  }
+  const providerSubjectId = requireNonEmpty(
+    "providerSubjectId",
+    input.providerSubjectId,
+  );
+  const providerValue = requireNonEmpty("providerValue", input.providerValue);
+  if (providerValue.indexOf("@") <= 0) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "providerValue must be a skeleton work email",
+    );
+  }
+  const refreshedAt = requireTimestamp("refreshedAt", input.refreshedAt);
+
+  return {
+    eventId,
+    providerName: input.providerName,
+    providerSubjectId,
+    providerValue,
+    refreshedAt,
+  };
+}
+
+function isWritebackEventRefreshRow(input: unknown): input is {
+  id: string;
+  person_id: string;
+  contact_point_id: string;
+  provider_name: "synthetic_okta";
+  provider_subject_id: string;
+  provider_value: string;
+  target_contact_type: "work_email";
+  correlation_id: string;
+} {
+  return (
+    isRecord(input) &&
+    typeof input.id === "string" &&
+    typeof input.person_id === "string" &&
+    typeof input.contact_point_id === "string" &&
+    input.provider_name === "synthetic_okta" &&
+    typeof input.provider_subject_id === "string" &&
+    typeof input.provider_value === "string" &&
+    input.target_contact_type === "work_email" &&
+    typeof input.correlation_id === "string"
+  );
+}
+
+function isRefreshedContactPointRow(input: unknown): input is {
+  id: string;
+  value: string;
+} {
+  return (
+    isRecord(input) &&
+    typeof input.id === "string" &&
+    typeof input.value === "string"
+  );
 }
 
 function isRecord(input: unknown): input is Record<string, unknown> {

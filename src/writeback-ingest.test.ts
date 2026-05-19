@@ -10,6 +10,7 @@ import {
 } from "./okta-mastering-adapter.js";
 import {
   createSyntheticWorkEmailWritebackFixture,
+  refreshSyntheticWorkEmailFromProvider,
   ingestSyntheticWorkEmailWriteback,
 } from "./writeback-ingest.js";
 
@@ -225,6 +226,239 @@ test("mock Okta emitted work email writeback payload can be ingested", async (t)
         correlationId:
           "okta:mock:work_email_writeback:update:EMP-WRITEBACK-001:2026-05-18T16%3A00%3A00.000Z",
         applied: true,
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email writeback can refresh a changed mock provider value", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-refresh-001', 'Synthetic Writeback Refresh Person', '2026-05-18T00:00:00Z');
+    `);
+
+    const adapter = buildOktaMasteringAdapter({
+      mode: "mock",
+      initialUsers: [
+        createSyntheticOktaUserFixture({
+          externalId: "okta-user-writeback-refresh-001",
+          employeeNumber: "EMP-WRITEBACK-REFRESH-001",
+          email: "event.refresh@example.invalid",
+          displayName: "Writeback Refresh",
+          givenName: "Writeback",
+          familyName: "Refresh",
+          status: "active",
+          departmentCode: "DEPT-SYN",
+          effectiveAt: "2026-05-18T08:00:00.000Z",
+        }),
+      ],
+    });
+
+    const eventProjectionResult = await adapter.project({
+      operation: "update",
+      desiredUser: createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-refresh-001",
+        employeeNumber: "EMP-WRITEBACK-REFRESH-001",
+        email: "event.refresh@example.invalid",
+        displayName: "Writeback Refresh",
+        givenName: "Writeback",
+        familyName: "Refresh",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T16:00:00.000Z",
+      }),
+    });
+    assert.equal(eventProjectionResult.outcome, "success");
+
+    const emittedEvent = await adapter.emitWorkEmailWriteback({
+      personId: "person-writeback-refresh-001",
+      contactPointId: "contact-point-writeback-refresh-001",
+      employeeNumber: "EMP-WRITEBACK-REFRESH-001",
+      workEmail: "event.refresh@example.invalid",
+      emittedAt: "2026-05-18T16:00:00.000Z",
+      projectionEvidence: eventProjectionResult.metadata,
+    });
+
+    ingestSyntheticWorkEmailWriteback(db, emittedEvent.payload);
+
+    const refreshProjectionResult = await adapter.project({
+      operation: "update",
+      desiredUser: createSyntheticOktaUserFixture({
+        externalId: "okta-user-writeback-refresh-001",
+        employeeNumber: "EMP-WRITEBACK-REFRESH-001",
+        email: "provider.refresh@example.invalid",
+        displayName: "Writeback Refresh",
+        givenName: "Writeback",
+        familyName: "Refresh",
+        status: "active",
+        departmentCode: "DEPT-SYN",
+        effectiveAt: "2026-05-18T16:05:00.000Z",
+      }),
+    });
+    assert.equal(refreshProjectionResult.outcome, "success");
+
+    const refreshedProviderValue = await adapter.refreshWorkEmailWriteback({
+      providerSubjectId: emittedEvent.payload.providerSubjectId,
+      refreshedAt: "2026-05-18T16:06:00.000Z",
+      projectionEvidence: refreshProjectionResult.metadata,
+    });
+
+    assert.deepEqual(
+      refreshSyntheticWorkEmailFromProvider(db, {
+        eventId: emittedEvent.payload.eventId,
+        providerName: "synthetic_okta",
+        providerSubjectId: emittedEvent.payload.providerSubjectId,
+        providerValue: refreshedProviderValue.providerValue,
+        refreshedAt: refreshedProviderValue.refreshedAt,
+      }),
+      {
+        eventId: emittedEvent.payload.eventId,
+        personId: "person-writeback-refresh-001",
+        contactPointId: "contact-point-writeback-refresh-001",
+        providerName: "synthetic_okta",
+        providerSubjectId: "okta-user-writeback-refresh-001",
+        eventProviderValue: "event.refresh@example.invalid",
+        refreshedProviderValue: "provider.refresh@example.invalid",
+        correlationId:
+          "okta:mock:work_email_writeback:update:EMP-WRITEBACK-REFRESH-001:2026-05-18T16%3A00%3A00.000Z",
+        refreshedAt: "2026-05-18T16:06:00.000Z",
+        applied: true,
+        mismatch: true,
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-refresh-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "provider.refresh@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT provider_value
+              FROM writeback_event
+              WHERE id = ?
+            `,
+          )
+          .get(emittedEvent.payload.eventId),
+      ),
+      {
+        provider_value: "event.refresh@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email provider refresh can confirm the event value", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    const result = refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "confirmed.writeback@example.invalid",
+      refreshedAt: "2026-05-18T01:05:00Z",
+    });
+
+    assert.equal(result.eventProviderValue, result.refreshedProviderValue);
+    assert.equal(result.mismatch, false);
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "confirmed.writeback@example.invalid",
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("synthetic work email provider refresh rejects provider subject drift without partial updates", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    assert.throws(
+      () =>
+        refreshSyntheticWorkEmailFromProvider(db, {
+          eventId: "writeback-event-work-email-001",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-drift-001",
+          providerValue: "drifted.provider@example.invalid",
+          refreshedAt: "2026-05-18T01:05:00Z",
+        }),
+      /provider refresh must match the original writeback event identity/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "confirmed.writeback@example.invalid",
       },
     );
   } finally {
