@@ -61,7 +61,7 @@ test("local SQLite bootstrap rejects pre-refresh writeback schemas", async (t) =
   );
 });
 
-test("local SQLite bootstrap applies the additive work email conflict migration", async (t) => {
+test("local SQLite bootstrap applies additive work email conflict migrations", async (t) => {
   let sqlite: typeof import("node:sqlite");
   try {
     sqlite = await import("node:sqlite");
@@ -93,7 +93,7 @@ test("local SQLite bootstrap applies the additive work email conflict migration"
     `file:${databasePath}`,
   );
   try {
-    const migratedTable = migratedDb
+    const conflictTable = migratedDb
       .prepare(
         `
           SELECT name
@@ -103,8 +103,74 @@ test("local SQLite bootstrap applies the additive work email conflict migration"
         `,
       )
       .get();
+    const resolutionTable = migratedDb
+      .prepare(
+        `
+          SELECT name
+          FROM sqlite_master
+          WHERE type = 'table'
+            AND name = 'writeback_work_email_conflict_resolution'
+        `,
+      )
+      .get();
 
-    assert.equal(migratedTable?.name, "writeback_work_email_conflict");
+    assert.equal(conflictTable?.name, "writeback_work_email_conflict");
+    assert.equal(
+      resolutionTable?.name,
+      "writeback_work_email_conflict_resolution",
+    );
+  } finally {
+    migratedDb.close();
+  }
+});
+
+test("local SQLite bootstrap upgrades existing conflict schemas with resolution table", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const tempDirectory = await mkdtemp(join(tmpdir(), "hrcore-local-db-"));
+  t.after(async () => {
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const databasePath = join(tempDirectory, "hrcore.sqlite");
+  const db = new sqlite.DatabaseSync(databasePath);
+  try {
+    db.exec(await readMigrationSqlBefore("0009_conflict_resolution.sql"));
+  } finally {
+    db.close();
+  }
+
+  const migratedDb = await openLocalSyntheticWritebackDatabase(
+    `file:${databasePath}`,
+  );
+  try {
+    const migratedTable = migratedDb
+      .prepare(
+        `
+          SELECT name
+          FROM sqlite_master
+          WHERE type = 'table'
+            AND name = 'writeback_work_email_conflict_resolution'
+        `,
+      )
+      .get();
+
+    assert.equal(
+      migratedTable?.name,
+      "writeback_work_email_conflict_resolution",
+    );
   } finally {
     migratedDb.close();
   }

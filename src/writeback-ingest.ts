@@ -690,6 +690,36 @@ export function resolveSyntheticWorkEmailConflict(
       );
     }
 
+    const latestEvent = db
+      .prepare(
+        `
+          SELECT id, provider_value
+          FROM writeback_event
+          WHERE person_id = ?
+            AND contact_point_id = ?
+            AND target_contact_type = 'work_email'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM writeback_work_email_conflict AS inbound_conflict
+              WHERE inbound_conflict.writeback_event_id = writeback_event.id
+                AND inbound_conflict.conflict_type = 'inbound_value_conflict'
+            )
+          ORDER BY julianday(received_at) DESC,
+            rowid DESC
+          LIMIT 1
+        `,
+      )
+      .get(conflict.person_id, conflict.contact_point_id);
+
+    if (
+      !isLatestProviderValueEventRow(latestEvent) ||
+      latestEvent.id !== conflict.writeback_event_id
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "conflict resolution requires the latest writeback event for the contact point",
+      );
+    }
+
     const currentContactPoint = db
       .prepare(
         `

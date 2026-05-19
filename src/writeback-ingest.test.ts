@@ -1328,6 +1328,122 @@ test("synthetic work email conflict resolution rejects stale HRCore state withou
   }
 });
 
+test("synthetic work email conflict resolution rejects stale writeback events without partial writes", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture(),
+    );
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'hrcore.changed@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    const conflictResult = refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "provider.resolved@example.invalid",
+      refreshedAt: "2026-05-18T01:05:00Z",
+    });
+
+    assert.ok(conflictResult.conflict);
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'provider.resolved@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-002",
+        providerValue: "newer.provider@example.invalid",
+        correlationId: "correlation-writeback-work-email-002",
+        receivedAt: "2026-05-18T01:10:00Z",
+      }),
+    );
+
+    db.prepare(
+      `
+        UPDATE contact_point
+        SET value = 'hrcore.changed@example.invalid'
+        WHERE person_id = 'person-writeback-001'
+          AND contact_type = 'work_email'
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        resolveSyntheticWorkEmailConflict(db, {
+          resolutionId: "resolution-provider-refresh-conflict-stale-event-001",
+          conflictId: conflictResult.conflict!.conflictId,
+          writebackEventId: "writeback-event-work-email-001",
+          providerName: "synthetic_okta",
+          providerSubjectId: "synthetic-okta-user-001",
+          decision: "accept_provider_value",
+          currentContactValue: "hrcore.changed@example.invalid",
+          resolvedProviderValue: "provider.resolved@example.invalid",
+          decidedAt: "2026-05-18T01:11:00Z",
+          decidedBy: "synthetic-operator",
+          correlationId:
+            "correlation-resolution-provider-refresh-conflict-stale-event-001",
+        }),
+      /conflict resolution requires the latest writeback event for the contact point/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      {
+        value: "hrcore.changed@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_work_email_conflict_resolution
+            `,
+          )
+          .get(),
+      ),
+      { count: 0 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic work email conflict resolution rejects inbound conflicts without partial writes", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

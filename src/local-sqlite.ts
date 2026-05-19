@@ -12,8 +12,12 @@ const requiredWritebackTables = [
   "writeback_event",
   "writeback_provider_refresh",
   "writeback_work_email_conflict",
+  "writeback_work_email_conflict_resolution",
 ];
-const additiveConflictMigration = "0005_white_imperial_guard.sql";
+const additiveWritebackMigrationByTable = new Map([
+  ["writeback_work_email_conflict", "0005_white_imperial_guard.sql"],
+  ["writeback_work_email_conflict_resolution", "0009_conflict_resolution.sql"],
+]);
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
   close(): void;
@@ -91,8 +95,10 @@ async function ensureSyntheticWritebackSchema(
     return;
   }
 
-  if (isOnlyMissingConflictTable(missingTables)) {
-    db.exec(await readCommittedMigrationSql([additiveConflictMigration]));
+  const additiveMigrationFiles =
+    getAdditiveWritebackMigrationFiles(missingTables);
+  if (additiveMigrationFiles) {
+    db.exec(await readCommittedMigrationSql(additiveMigrationFiles));
     return;
   }
 
@@ -103,11 +109,18 @@ async function ensureSyntheticWritebackSchema(
   );
 }
 
-function isOnlyMissingConflictTable(missingTables: string[]): boolean {
-  return (
-    missingTables.length === 1 &&
-    missingTables[0] === "writeback_work_email_conflict"
+function getAdditiveWritebackMigrationFiles(
+  missingTables: string[],
+): string[] | undefined {
+  const migrationFiles = missingTables.map((tableName) =>
+    additiveWritebackMigrationByTable.get(tableName),
   );
+
+  return migrationFiles.every(
+    (file): file is string => typeof file === "string",
+  )
+    ? migrationFiles
+    : undefined;
 }
 
 function tableExists(
