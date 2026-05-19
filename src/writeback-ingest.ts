@@ -30,7 +30,8 @@ export interface SyntheticWorkEmailWritebackResult {
   providerName: "synthetic_okta";
   providerSubjectId: string;
   correlationId: string;
-  applied: true;
+  applied: boolean;
+  conflict?: SyntheticWorkEmailConflictEvidence;
 }
 
 export interface SyntheticWorkEmailProviderRefreshInput {
@@ -51,8 +52,17 @@ export interface SyntheticWorkEmailProviderRefreshResult {
   refreshedProviderValue: string;
   correlationId: string;
   refreshedAt: string;
-  applied: true;
+  applied: boolean;
   mismatch: boolean;
+  conflict?: SyntheticWorkEmailConflictEvidence;
+}
+
+export interface SyntheticWorkEmailConflictEvidence {
+  conflictId: string;
+  conflictType: "inbound_value_conflict" | "provider_refresh_conflict";
+  currentContactValue: string;
+  attemptedProviderValue: string;
+  correlationId: string;
 }
 
 type SyntheticWorkEmailWritebackFixtureOverrides =
@@ -118,7 +128,7 @@ export function ingestSyntheticWorkEmailWriteback(
     const existingContactPoint = db
       .prepare(
         `
-          SELECT id
+          SELECT id, value
           FROM contact_point
           WHERE person_id = ?
             AND contact_type = 'work_email'
@@ -127,7 +137,7 @@ export function ingestSyntheticWorkEmailWriteback(
       .get(validatedInput.personId);
 
     if (
-      existingContactPoint &&
+      isExistingWorkEmailContactPointRow(existingContactPoint) &&
       existingContactPoint.id !== validatedInput.contactPointId
     ) {
       throw new SyntheticWorkEmailWritebackValidationError(
@@ -135,32 +145,35 @@ export function ingestSyntheticWorkEmailWriteback(
       );
     }
 
-    db.prepare(
-      `
-        INSERT INTO contact_point (
-          id,
-          person_id,
-          contact_type,
-          value,
-          is_primary,
-          created_at
-        )
-        VALUES (?, ?, 'work_email', ?, 1, ?)
-        ON CONFLICT(person_id, contact_type) DO UPDATE SET
-          value = excluded.value,
-          is_primary = excluded.is_primary
-      `,
-    ).run(
-      validatedInput.contactPointId,
-      validatedInput.personId,
-      validatedInput.providerValue,
-      validatedInput.receivedAt,
-    );
+    if (!existingContactPoint) {
+      db.prepare(
+        `
+          INSERT INTO contact_point (
+            id,
+            person_id,
+            contact_type,
+            value,
+            is_primary,
+            created_at
+          )
+          VALUES (?, ?, 'work_email', ?, 1, ?)
+        `,
+      ).run(
+        validatedInput.contactPointId,
+        validatedInput.personId,
+        validatedInput.providerValue,
+        validatedInput.receivedAt,
+      );
+    } else if (!isExistingWorkEmailContactPointRow(existingContactPoint)) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "existing work_email contact point must expose id and value",
+      );
+    }
 
     const contactPoint = db
       .prepare(
         `
-          SELECT id
+          SELECT id, value
           FROM contact_point
           WHERE person_id = ?
             AND contact_type = 'work_email'
@@ -168,37 +181,68 @@ export function ingestSyntheticWorkEmailWriteback(
       )
       .get(validatedInput.personId);
 
-    if (!contactPoint || typeof contactPoint.id !== "string") {
+    if (!isExistingWorkEmailContactPointRow(contactPoint)) {
       throw new Error("contactPoint must exist after work email upsert");
+    }
+
+    const expectedCurrentContactValue =
+      getLatestSyntheticProviderValueForContactPoint(
+        db,
+        validatedInput.personId,
+        contactPoint.id,
+      );
+
+    insertSyntheticWorkEmailWritebackEvent(db, validatedInput, contactPoint.id);
+    if (
+      contactPoint.value !== validatedInput.providerValue &&
+      contactPoint.value !== expectedCurrentContactValue
+    ) {
+      const conflict = createSyntheticWorkEmailConflictEvidence(
+        validatedInput.eventId,
+        validatedInput.correlationId,
+        "inbound_value_conflict",
+        contactPoint.value,
+        validatedInput.providerValue,
+      );
+
+      insertSyntheticWorkEmailConflict(
+        db,
+        validatedInput.eventId,
+        validatedInput.personId,
+        contactPoint.id,
+        validatedInput.providerName,
+        validatedInput.providerSubjectId,
+        conflict,
+        validatedInput.receivedAt,
+      );
+
+      db.exec("RELEASE SAVEPOINT synthetic_work_email_writeback_ingest");
+
+      return {
+        eventId: validatedInput.eventId,
+        personId: validatedInput.personId,
+        contactPointId: contactPoint.id,
+        providerName: validatedInput.providerName,
+        providerSubjectId: validatedInput.providerSubjectId,
+        correlationId: validatedInput.correlationId,
+        applied: false,
+        conflict,
+      };
     }
 
     db.prepare(
       `
-        INSERT INTO writeback_event (
-          id,
-          person_id,
-          contact_point_id,
-          provider_name,
-          provider_subject_id,
-          provider_value,
-          target_contact_type,
-          correlation_id,
-          received_at,
-          poc_marker
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        UPDATE contact_point
+        SET value = ?,
+          is_primary = 1
+        WHERE id = ?
+          AND person_id = ?
+          AND contact_type = 'work_email'
       `,
     ).run(
-      validatedInput.eventId,
-      validatedInput.personId,
-      contactPoint.id,
-      validatedInput.providerName,
-      validatedInput.providerSubjectId,
       validatedInput.providerValue,
-      validatedInput.targetContactType,
-      validatedInput.correlationId,
-      validatedInput.receivedAt,
-      validatedInput.pocMarker,
+      contactPoint.id,
+      validatedInput.personId,
     );
 
     db.exec("RELEASE SAVEPOINT synthetic_work_email_writeback_ingest");
@@ -247,12 +291,24 @@ export function refreshSyntheticWorkEmailFromProvider(
             target_contact_type,
             correlation_id,
             received_at,
+            EXISTS (
+              SELECT 1
+              FROM writeback_work_email_conflict AS inbound_conflict
+              WHERE inbound_conflict.writeback_event_id = current_event.id
+                AND inbound_conflict.conflict_type = 'inbound_value_conflict'
+            ) AS has_inbound_value_conflict,
             NOT EXISTS (
               SELECT 1
               FROM writeback_event AS newer_event
               WHERE newer_event.person_id = current_event.person_id
                 AND newer_event.contact_point_id = current_event.contact_point_id
                 AND newer_event.target_contact_type = current_event.target_contact_type
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM writeback_work_email_conflict AS newer_inbound_conflict
+                  WHERE newer_inbound_conflict.writeback_event_id = newer_event.id
+                    AND newer_inbound_conflict.conflict_type = 'inbound_value_conflict'
+                )
                 AND (
                   julianday(newer_event.received_at) > julianday(current_event.received_at)
                   OR (
@@ -262,17 +318,59 @@ export function refreshSyntheticWorkEmailFromProvider(
                 )
             ) AS is_latest_for_contact_point,
             (
-              SELECT applied_refresh.refreshed_at
-              FROM writeback_provider_refresh AS applied_refresh
-              WHERE applied_refresh.writeback_event_id = current_event.id
-                AND applied_refresh.person_id = current_event.person_id
-                AND applied_refresh.contact_point_id = current_event.contact_point_id
-                AND applied_refresh.provider_name = current_event.provider_name
-                AND applied_refresh.provider_subject_id = current_event.provider_subject_id
-              ORDER BY julianday(applied_refresh.refreshed_at) DESC,
-                applied_refresh.rowid DESC
+              SELECT observed_refresh.observed_at
+              FROM (
+                SELECT applied_refresh.refreshed_at AS observed_at
+                FROM writeback_provider_refresh AS applied_refresh
+                WHERE applied_refresh.writeback_event_id = current_event.id
+                  AND applied_refresh.person_id = current_event.person_id
+                  AND applied_refresh.contact_point_id = current_event.contact_point_id
+                  AND applied_refresh.provider_name = current_event.provider_name
+                  AND applied_refresh.provider_subject_id = current_event.provider_subject_id
+                UNION ALL
+                SELECT refresh_conflict.detected_at AS observed_at
+                FROM writeback_work_email_conflict AS refresh_conflict
+                WHERE refresh_conflict.writeback_event_id = current_event.id
+                  AND refresh_conflict.person_id = current_event.person_id
+                  AND refresh_conflict.contact_point_id = current_event.contact_point_id
+                  AND refresh_conflict.provider_name = current_event.provider_name
+                  AND refresh_conflict.provider_subject_id = current_event.provider_subject_id
+                  AND refresh_conflict.conflict_type = 'provider_refresh_conflict'
+              ) AS observed_refresh
+              ORDER BY julianday(observed_refresh.observed_at) DESC
               LIMIT 1
-            ) AS last_refreshed_at
+            ) AS last_provider_refresh_attempt_at
+            ,
+            (
+              SELECT observed_refresh.provider_value
+              FROM (
+                SELECT
+                  applied_refresh.provider_value,
+                  applied_refresh.refreshed_at AS observed_at,
+                  applied_refresh.rowid AS observed_order
+                FROM writeback_provider_refresh AS applied_refresh
+                WHERE applied_refresh.writeback_event_id = current_event.id
+                  AND applied_refresh.person_id = current_event.person_id
+                  AND applied_refresh.contact_point_id = current_event.contact_point_id
+                  AND applied_refresh.provider_name = current_event.provider_name
+                  AND applied_refresh.provider_subject_id = current_event.provider_subject_id
+                UNION ALL
+                SELECT
+                  refresh_conflict.attempted_provider_value AS provider_value,
+                  refresh_conflict.detected_at AS observed_at,
+                  refresh_conflict.rowid AS observed_order
+                FROM writeback_work_email_conflict AS refresh_conflict
+                WHERE refresh_conflict.writeback_event_id = current_event.id
+                  AND refresh_conflict.person_id = current_event.person_id
+                  AND refresh_conflict.contact_point_id = current_event.contact_point_id
+                  AND refresh_conflict.provider_name = current_event.provider_name
+                  AND refresh_conflict.provider_subject_id = current_event.provider_subject_id
+                  AND refresh_conflict.conflict_type = 'provider_refresh_conflict'
+              ) AS observed_refresh
+              ORDER BY julianday(observed_refresh.observed_at) DESC,
+                observed_refresh.observed_order DESC
+              LIMIT 1
+            ) AS last_provider_refresh_attempted_value
           FROM writeback_event AS current_event
           WHERE current_event.id = ?
         `,
@@ -295,6 +393,12 @@ export function refreshSyntheticWorkEmailFromProvider(
       );
     }
 
+    if (event.has_inbound_value_conflict !== 0) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "provider refresh requires an accepted writeback event",
+      );
+    }
+
     if (
       toTimestampMillis(validatedInput.refreshedAt) <
       toTimestampMillis(event.received_at)
@@ -311,13 +415,85 @@ export function refreshSyntheticWorkEmailFromProvider(
     }
 
     if (
-      event.last_refreshed_at !== null &&
+      event.last_provider_refresh_attempt_at !== null &&
       toTimestampMillis(validatedInput.refreshedAt) <=
-        toTimestampMillis(event.last_refreshed_at)
+        toTimestampMillis(event.last_provider_refresh_attempt_at)
     ) {
       throw new SyntheticWorkEmailWritebackValidationError(
-        "provider refresh must be newer than the latest applied provider refresh",
+        "provider refresh must be newer than the latest provider refresh attempt",
       );
+    }
+
+    const currentContactPoint = db
+      .prepare(
+        `
+          SELECT id, value
+          FROM contact_point
+          WHERE id = ?
+            AND person_id = ?
+            AND contact_type = 'work_email'
+        `,
+      )
+      .get(event.contact_point_id, event.person_id);
+
+    if (!isExistingWorkEmailContactPointRow(currentContactPoint)) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "provider refresh requires the original work_email contact point",
+      );
+    }
+
+    const expectedCurrentContactValue =
+      event.last_provider_refresh_attempted_value ?? event.provider_value;
+    if (
+      currentContactPoint.value !== expectedCurrentContactValue &&
+      currentContactPoint.value !== validatedInput.providerValue
+    ) {
+      const conflict = createSyntheticWorkEmailConflictEvidence(
+        event.id,
+        event.correlation_id,
+        "provider_refresh_conflict",
+        currentContactPoint.value,
+        validatedInput.providerValue,
+        {
+          attemptId: createSyntheticWorkEmailProviderRefreshId(
+            event.id,
+            validatedInput,
+          ),
+          attemptCorrelationId:
+            createSyntheticWorkEmailProviderRefreshCorrelationId(
+              event.correlation_id,
+              validatedInput,
+            ),
+        },
+      );
+
+      insertSyntheticWorkEmailConflict(
+        db,
+        event.id,
+        event.person_id,
+        event.contact_point_id,
+        event.provider_name,
+        event.provider_subject_id,
+        conflict,
+        validatedInput.refreshedAt,
+      );
+
+      db.exec("RELEASE SAVEPOINT synthetic_work_email_provider_refresh");
+
+      return {
+        eventId: event.id,
+        personId: event.person_id,
+        contactPointId: event.contact_point_id,
+        providerName: event.provider_name,
+        providerSubjectId: event.provider_subject_id,
+        eventProviderValue: event.provider_value,
+        refreshedProviderValue: validatedInput.providerValue,
+        correlationId: event.correlation_id,
+        refreshedAt: validatedInput.refreshedAt,
+        applied: false,
+        mismatch: event.provider_value !== validatedInput.providerValue,
+        conflict,
+      };
     }
 
     db.prepare(
@@ -479,6 +655,157 @@ export function parseSyntheticWorkEmailWritebackInput(
   };
 }
 
+function insertSyntheticWorkEmailWritebackEvent(
+  db: SyntheticWritebackDatabase,
+  input: SyntheticWorkEmailWritebackInput,
+  contactPointId: string,
+): void {
+  db.prepare(
+    `
+      INSERT INTO writeback_event (
+        id,
+        person_id,
+        contact_point_id,
+        provider_name,
+        provider_subject_id,
+        provider_value,
+        target_contact_type,
+        correlation_id,
+        received_at,
+        poc_marker
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    input.eventId,
+    input.personId,
+    contactPointId,
+    input.providerName,
+    input.providerSubjectId,
+    input.providerValue,
+    input.targetContactType,
+    input.correlationId,
+    input.receivedAt,
+    input.pocMarker,
+  );
+}
+
+function insertSyntheticWorkEmailConflict(
+  db: SyntheticWritebackDatabase,
+  eventId: string,
+  personId: string,
+  contactPointId: string,
+  providerName: "synthetic_okta",
+  providerSubjectId: string,
+  conflict: SyntheticWorkEmailConflictEvidence,
+  detectedAt: string,
+): void {
+  db.prepare(
+    `
+      INSERT INTO writeback_work_email_conflict (
+        id,
+        writeback_event_id,
+        person_id,
+        contact_point_id,
+        provider_name,
+        provider_subject_id,
+        conflict_type,
+        current_contact_value,
+        attempted_provider_value,
+        detected_at,
+        correlation_id,
+        poc_marker
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+    `,
+  ).run(
+    conflict.conflictId,
+    eventId,
+    personId,
+    contactPointId,
+    providerName,
+    providerSubjectId,
+    conflict.conflictType,
+    conflict.currentContactValue,
+    conflict.attemptedProviderValue,
+    detectedAt,
+    conflict.correlationId,
+  );
+}
+
+function getLatestSyntheticProviderValueForContactPoint(
+  db: SyntheticWritebackDatabase,
+  personId: string,
+  contactPointId: string,
+): string | undefined {
+  const latestEvent = db
+    .prepare(
+      `
+        SELECT id, provider_value
+        FROM writeback_event
+        WHERE person_id = ?
+          AND contact_point_id = ?
+          AND target_contact_type = 'work_email'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM writeback_work_email_conflict AS inbound_conflict
+            WHERE inbound_conflict.writeback_event_id = writeback_event.id
+              AND inbound_conflict.conflict_type = 'inbound_value_conflict'
+          )
+        ORDER BY julianday(received_at) DESC,
+          rowid DESC
+        LIMIT 1
+      `,
+    )
+    .get(personId, contactPointId);
+
+  if (!isLatestProviderValueEventRow(latestEvent)) {
+    return undefined;
+  }
+
+  const latestRefresh = db
+    .prepare(
+      `
+        SELECT observed_provider.provider_value
+        FROM (
+          SELECT
+            provider_value,
+            refreshed_at AS observed_at,
+            rowid AS observed_order
+          FROM writeback_provider_refresh
+          WHERE writeback_event_id = ?
+            AND person_id = ?
+            AND contact_point_id = ?
+          UNION ALL
+          SELECT
+            attempted_provider_value AS provider_value,
+            detected_at AS observed_at,
+            rowid AS observed_order
+          FROM writeback_work_email_conflict
+          WHERE writeback_event_id = ?
+            AND person_id = ?
+            AND contact_point_id = ?
+            AND conflict_type = 'provider_refresh_conflict'
+        ) AS observed_provider
+        ORDER BY julianday(observed_provider.observed_at) DESC,
+          observed_provider.observed_order DESC
+        LIMIT 1
+      `,
+    )
+    .get(
+      latestEvent.id,
+      personId,
+      contactPointId,
+      latestEvent.id,
+      personId,
+      contactPointId,
+    );
+
+  return isLatestProviderRefreshValueRow(latestRefresh)
+    ? latestRefresh.provider_value
+    : latestEvent.provider_value;
+}
+
 export function parseSyntheticWorkEmailProviderRefreshInput(
   input: unknown,
 ): SyntheticWorkEmailProviderRefreshInput {
@@ -537,8 +864,10 @@ function isWritebackEventRefreshRow(input: unknown): input is {
   target_contact_type: "work_email";
   correlation_id: string;
   received_at: string;
+  has_inbound_value_conflict: number;
   is_latest_for_contact_point: number;
-  last_refreshed_at: string | null;
+  last_provider_refresh_attempt_at: string | null;
+  last_provider_refresh_attempted_value: string | null;
 } {
   return (
     isRecord(input) &&
@@ -552,10 +881,41 @@ function isWritebackEventRefreshRow(input: unknown): input is {
     input.target_contact_type === "work_email" &&
     typeof input.correlation_id === "string" &&
     typeof input.received_at === "string" &&
+    typeof input.has_inbound_value_conflict === "number" &&
     typeof input.is_latest_for_contact_point === "number" &&
-    (typeof input.last_refreshed_at === "string" ||
-      input.last_refreshed_at === null)
+    (typeof input.last_provider_refresh_attempt_at === "string" ||
+      input.last_provider_refresh_attempt_at === null) &&
+    (typeof input.last_provider_refresh_attempted_value === "string" ||
+      input.last_provider_refresh_attempted_value === null)
   );
+}
+
+function isExistingWorkEmailContactPointRow(input: unknown): input is {
+  id: string;
+  value: string;
+} {
+  return (
+    isRecord(input) &&
+    typeof input.id === "string" &&
+    typeof input.value === "string"
+  );
+}
+
+function isLatestProviderValueEventRow(input: unknown): input is {
+  id: string;
+  provider_value: string;
+} {
+  return (
+    isRecord(input) &&
+    typeof input.id === "string" &&
+    typeof input.provider_value === "string"
+  );
+}
+
+function isLatestProviderRefreshValueRow(input: unknown): input is {
+  provider_value: string;
+} {
+  return isRecord(input) && typeof input.provider_value === "string";
 }
 
 function isRefreshedContactPointRow(input: unknown): input is {
@@ -626,6 +986,36 @@ function createSyntheticWorkEmailProviderRefreshCorrelationId(
     "provider_refresh",
     encodeURIComponent(input.refreshedAt),
   ].join(":");
+}
+
+function createSyntheticWorkEmailConflictEvidence(
+  eventId: string,
+  eventCorrelationId: string,
+  conflictType: SyntheticWorkEmailConflictEvidence["conflictType"],
+  currentContactValue: string,
+  attemptedProviderValue: string,
+  attempt?: {
+    attemptId: string;
+    attemptCorrelationId: string;
+  },
+): SyntheticWorkEmailConflictEvidence {
+  const conflictIdParts = ["synthetic-work-email-conflict", eventId];
+  const correlationIdParts = [
+    attempt ? attempt.attemptCorrelationId : eventCorrelationId,
+  ];
+  if (attempt) {
+    conflictIdParts.push(attempt.attemptId);
+  }
+  conflictIdParts.push(conflictType);
+  correlationIdParts.push("conflict", conflictType);
+
+  return {
+    conflictId: conflictIdParts.join(":"),
+    conflictType,
+    currentContactValue,
+    attemptedProviderValue,
+    correlationId: correlationIdParts.join(":"),
+  };
 }
 
 function isValidIsoDateParts(

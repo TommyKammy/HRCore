@@ -11,7 +11,9 @@ const requiredWritebackTables = [
   "contact_point",
   "writeback_event",
   "writeback_provider_refresh",
+  "writeback_work_email_conflict",
 ];
+const additiveConflictMigration = "0005_white_imperial_guard.sql";
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
   close(): void;
@@ -84,15 +86,28 @@ async function ensureSyntheticWritebackSchema(
     return;
   }
 
-  if (countUserTables(db) > 0) {
-    throw new Error(
-      `DATABASE_URL is missing required writeback tables: ${missingTables.join(
-        ", ",
-      )}`,
-    );
+  if (countUserTables(db) === 0) {
+    db.exec(await readCommittedMigrationSql());
+    return;
   }
 
-  db.exec(await readCommittedMigrationSql());
+  if (isOnlyMissingConflictTable(missingTables)) {
+    db.exec(await readCommittedMigrationSql([additiveConflictMigration]));
+    return;
+  }
+
+  throw new Error(
+    `DATABASE_URL is missing required writeback tables: ${missingTables.join(
+      ", ",
+    )}`,
+  );
+}
+
+function isOnlyMissingConflictTable(missingTables: string[]): boolean {
+  return (
+    missingTables.length === 1 &&
+    missingTables[0] === "writeback_work_email_conflict"
+  );
 }
 
 function tableExists(
@@ -128,11 +143,16 @@ function countUserTables(db: SyntheticWritebackDatabase): number {
   return typeof row?.count === "number" ? row.count : 0;
 }
 
-async function readCommittedMigrationSql(): Promise<string> {
+async function readCommittedMigrationSql(
+  targetMigrationFiles?: string[],
+): Promise<string> {
   const moduleDirectory = dirname(fileURLToPath(import.meta.url));
   const migrationDirectory = resolve(moduleDirectory, "..", "drizzle");
   const migrationFiles = (await readdir(migrationDirectory))
     .filter((file) => file.endsWith(".sql"))
+    .filter(
+      (file) => !targetMigrationFiles || targetMigrationFiles.includes(file),
+    )
     .sort();
 
   const migrationSqlFiles = await Promise.all(

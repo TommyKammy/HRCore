@@ -1,0 +1,30 @@
+CREATE TABLE `writeback_work_email_conflict` (
+	`id` text PRIMARY KEY NOT NULL,
+	`writeback_event_id` text NOT NULL,
+	`person_id` text NOT NULL,
+	`contact_point_id` text NOT NULL,
+	`provider_name` text NOT NULL,
+	`provider_subject_id` text NOT NULL,
+	`conflict_type` text NOT NULL,
+	`current_contact_value` text NOT NULL,
+	`attempted_provider_value` text NOT NULL,
+	`detected_at` text NOT NULL,
+	`correlation_id` text NOT NULL,
+	`poc_marker` text DEFAULT 'synthetic_poc' NOT NULL,
+	FOREIGN KEY (`writeback_event_id`) REFERENCES `writeback_event`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`person_id`) REFERENCES `person`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`contact_point_id`,`person_id`) REFERENCES `contact_point`(`id`,`person_id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "writeback_work_email_conflict_id_non_empty" CHECK(length("writeback_work_email_conflict"."id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_event_id_non_empty" CHECK(length("writeback_work_email_conflict"."writeback_event_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_contact_point_id_non_empty" CHECK(length("writeback_work_email_conflict"."contact_point_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_provider_name_allowed" CHECK("writeback_work_email_conflict"."provider_name" in ('synthetic_okta')),
+	CONSTRAINT "writeback_work_email_conflict_provider_subject_id_non_empty" CHECK(length("writeback_work_email_conflict"."provider_subject_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_type_allowed" CHECK("writeback_work_email_conflict"."conflict_type" in ('inbound_value_conflict', 'provider_refresh_conflict')),
+	CONSTRAINT "writeback_work_email_conflict_current_value_shape" CHECK(instr("writeback_work_email_conflict"."current_contact_value", '@') > 1),
+	CONSTRAINT "writeback_work_email_conflict_attempted_value_shape" CHECK(instr("writeback_work_email_conflict"."attempted_provider_value", '@') > 1),
+	CONSTRAINT "writeback_work_email_conflict_detected_at_date" CHECK("writeback_work_email_conflict"."detected_at" glob '????-??-??*'),
+	CONSTRAINT "writeback_work_email_conflict_correlation_id_non_empty" CHECK(length("writeback_work_email_conflict"."correlation_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_poc_marker_allowed" CHECK("writeback_work_email_conflict"."poc_marker" in ('synthetic_poc'))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `writeback_work_email_conflict_correlation_unique` ON `writeback_work_email_conflict` (`correlation_id`);

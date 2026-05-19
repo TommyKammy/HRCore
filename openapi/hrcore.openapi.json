@@ -70,7 +70,7 @@
             }
           },
           "201": {
-            "description": "Synthetic writeback event was persisted and applied.",
+            "description": "Synthetic writeback event was persisted and either applied or recorded as PoC conflict evidence.",
             "content": {
               "application/json": {
                 "schema": {
@@ -246,8 +246,39 @@
             "type": "string"
           },
           "applied": {
-            "type": "boolean",
-            "const": true
+            "type": "boolean"
+          },
+          "conflict": {
+            "$ref": "#/components/schemas/SyntheticWorkEmailConflictEvidence"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SyntheticWorkEmailConflictEvidence": {
+        "type": "object",
+        "required": [
+          "conflictId",
+          "conflictType",
+          "currentContactValue",
+          "attemptedProviderValue",
+          "correlationId"
+        ],
+        "properties": {
+          "conflictId": {
+            "type": "string"
+          },
+          "conflictType": {
+            "type": "string",
+            "enum": ["inbound_value_conflict", "provider_refresh_conflict"]
+          },
+          "currentContactValue": {
+            "type": "string"
+          },
+          "attemptedProviderValue": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
           }
         },
         "additionalProperties": false
