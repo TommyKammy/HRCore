@@ -405,6 +405,45 @@ test("synthetic hire request submit uses correlation for regenerated request ids
   }
 });
 
+test("synthetic hire request submit fails closed when regenerated correlated retry changes person", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveSyntheticHireRequest(db, createSyntheticHireRequestFixture());
+
+    assert.throws(
+      () =>
+        saveSyntheticHireRequest(
+          db,
+          createSyntheticHireRequestFixture({
+            person: {
+              id: "person-syn-hire-retry",
+              displayName: "Synthetic Hire Retry",
+            },
+            transactionRequest: {
+              id: "transaction-request-syn-hire-regenerated",
+              personId: "person-syn-hire-retry",
+            },
+          }),
+        ),
+      /synthetic hire request retry conflicts with the existing request/,
+    );
+
+    for (const tableName of ["person", "transaction_request", "audit_event"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate rows after correlated person drift`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire request submit fails closed on retry correlation drift", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

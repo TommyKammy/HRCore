@@ -424,19 +424,17 @@ export function applySyntheticHireRequest(
 
   const existingApply = readCompletedSyntheticHireApply(db, input);
   if (existingApply) {
-    if (matchesCompletedSyntheticHireApplyRetry(existingApply, input)) {
-      if (!isNonEmptyString(existingApply.correlation_id)) {
-        throw new Error(
-          "synthetic hire apply requires a persisted request correlation",
-        );
-      }
+    const completedCorrelationId = requirePersistedSyntheticHireCorrelation(
+      existingApply.correlation_id,
+    );
 
+    if (matchesCompletedSyntheticHireApplyRetry(existingApply, input)) {
       return {
         transactionRequestId: input.request.transactionRequest.id,
         lifecycleEventId: input.lifecycleEvent.id,
         personId: input.request.person.id,
         statusCode: "completed",
-        correlationId: existingApply.correlation_id,
+        correlationId: completedCorrelationId,
       };
     }
 
@@ -449,11 +447,9 @@ export function applySyntheticHireRequest(
   if (!submittedRequest) {
     throw new Error("synthetic hire apply requires a submitted hire request");
   }
-  if (!isNonEmptyString(submittedRequest.correlation_id)) {
-    throw new Error(
-      "synthetic hire apply requires a persisted request correlation",
-    );
-  }
+  const submittedCorrelationId = requirePersistedSyntheticHireCorrelation(
+    submittedRequest.correlation_id,
+  );
 
   let savepointStarted = false;
 
@@ -596,7 +592,7 @@ export function applySyntheticHireRequest(
       lifecycleEventId: input.lifecycleEvent.id,
       personId: input.request.person.id,
       statusCode: "completed",
-      correlationId: submittedRequest.correlation_id,
+      correlationId: submittedCorrelationId,
     };
   } catch (error) {
     if (savepointStarted) {
@@ -807,7 +803,6 @@ function matchesCompletedSyntheticHireApplyRetry(
 ): boolean {
   if (
     existing.transaction_status_code !== "completed" ||
-    !isNonEmptyString(existing.correlation_id) ||
     existing.request_type !== input.request.transactionRequest.requestType ||
     existing.person_id !== input.request.person.id ||
     existing.lifecycle_event_id !== input.lifecycleEvent.id ||
@@ -842,6 +837,18 @@ function matchesCompletedSyntheticHireApplyRetry(
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function requirePersistedSyntheticHireCorrelation(
+  value: string | null | undefined,
+): string {
+  if (!isNonEmptyString(value)) {
+    throw new Error(
+      "synthetic hire apply requires a persisted request correlation",
+    );
+  }
+
+  return value;
 }
 
 function insertSyntheticAuditEvent(
