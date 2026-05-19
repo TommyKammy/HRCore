@@ -7,6 +7,10 @@ import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
 
 import * as schema from "./schema.js";
 
+const normalizeRows = <TRow extends Record<string, unknown>>(
+  rows: TRow[],
+): Record<string, unknown>[] => rows.map((row) => ({ ...row }));
+
 const schemaExports = schema as Record<string, unknown>;
 
 const expectedTables = [
@@ -106,6 +110,24 @@ const readCommittedMigrationSql = async (): Promise<string> => {
 
   return migrationSqlFiles.join("\n");
 };
+
+const readMigrationSqlThrough = async (
+  lastMigrationFile: string,
+): Promise<string> => {
+  const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .filter((file) => file <= lastMigrationFile);
+
+  const migrationSqlFiles = await Promise.all(
+    migrationFiles.map((file) => readRepoFile(join("drizzle", file))),
+  );
+
+  return migrationSqlFiles.join("\n");
+};
+
+const readMigrationSql = (migrationFile: string): Promise<string> =>
+  readRepoFile(join("drizzle", migrationFile));
 
 const forbiddenSamplePattern = new RegExp(
   [
@@ -332,6 +354,114 @@ test("DDL constraints reject cross-person lifecycle links", async (t) => {
           );
         `),
       /FOREIGN KEY constraint failed/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("transaction request correlation migration backfills duplicates before unique index", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
+
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    db.exec(await readMigrationSqlThrough("0005_white_imperial_guard.sql"));
+
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES
+        ('person-correlation-1', 'Synthetic Correlation One', '2026-05-18T00:00:00Z'),
+        ('person-correlation-2', 'Synthetic Correlation Two', '2026-05-18T00:00:00Z');
+
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES
+        (
+          'transaction-request-correlation-1',
+          'person-correlation-1',
+          'hire',
+          'submitted',
+          '2026-05-18T00:00:00Z',
+          'correlation-duplicate'
+        ),
+        (
+          'transaction-request-correlation-2',
+          'person-correlation-2',
+          'hire',
+          'submitted',
+          '2026-05-18T00:00:00Z',
+          'correlation-duplicate'
+        );
+    `);
+
+    db.exec(await readMigrationSql("0006_dizzy_true_believers.sql"));
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "transaction-request-correlation-1",
+          correlation_id: "correlation-duplicate",
+        },
+        {
+          id: "transaction-request-correlation-2",
+          correlation_id:
+            "correlation-duplicate#dedupe-transaction-request-correlation-2",
+        },
+      ],
+      "duplicate correlation backfill must keep the first authoritative value and deterministically rewrite later duplicates",
+    );
+    assert.throws(
+      () =>
+        db.exec(`
+          INSERT INTO transaction_request (
+            id,
+            person_id,
+            request_type,
+            status_code,
+            requested_at,
+            correlation_id
+          )
+          VALUES (
+            'transaction-request-correlation-duplicate',
+            'person-correlation-1',
+            'hire',
+            'submitted',
+            '2026-05-18T00:00:00Z',
+            'correlation-duplicate'
+          );
+        `),
+      /UNIQUE constraint failed: transaction_request.correlation_id/,
     );
   } finally {
     db.close();
