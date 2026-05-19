@@ -661,7 +661,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
           'work_email',
           'legacy.later@example.invalid',
           1,
-          '2026-05-18T00:10:00Z'
+          '2026-05-18T00:05:00Z'
         ),
         (
           'contact-point-legacy-writeback-drift',
@@ -692,7 +692,7 @@ test("lifecycle contact linkage migration backfills completed hire applies", asy
         'synthetic-okta-user-later-contact',
         'legacy.later@example.invalid',
         'work_email',
-        'okta:mock:work_email_writeback:update:EMP-LEGACY-LATER:2026-05-18T00%3A10%3A00Z',
+        'correlation-legacy-later-writeback',
         '2026-05-18T00:10:00Z',
         'synthetic_poc'
       ),
