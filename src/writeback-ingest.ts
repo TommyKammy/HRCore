@@ -406,6 +406,17 @@ export function refreshSyntheticWorkEmailFromProvider(
         "provider_refresh_conflict",
         currentContactPoint.value,
         validatedInput.providerValue,
+        {
+          attemptId: createSyntheticWorkEmailProviderRefreshId(
+            event.id,
+            validatedInput,
+          ),
+          attemptCorrelationId:
+            createSyntheticWorkEmailProviderRefreshCorrelationId(
+              event.correlation_id,
+              validatedInput,
+            ),
+        },
       );
 
       insertSyntheticWorkEmailConflict(
@@ -904,15 +915,27 @@ function createSyntheticWorkEmailConflictEvidence(
   conflictType: SyntheticWorkEmailConflictEvidence["conflictType"],
   currentContactValue: string,
   attemptedProviderValue: string,
+  attempt?: {
+    attemptId: string;
+    attemptCorrelationId: string;
+  },
 ): SyntheticWorkEmailConflictEvidence {
+  const conflictIdParts = ["synthetic-work-email-conflict", eventId];
+  const correlationIdParts = [
+    attempt ? attempt.attemptCorrelationId : eventCorrelationId,
+  ];
+  if (attempt) {
+    conflictIdParts.push(attempt.attemptId);
+  }
+  conflictIdParts.push(conflictType);
+  correlationIdParts.push("conflict", conflictType);
+
   return {
-    conflictId: ["synthetic-work-email-conflict", eventId, conflictType].join(
-      ":",
-    ),
+    conflictId: conflictIdParts.join(":"),
     conflictType,
     currentContactValue,
     attemptedProviderValue,
-    correlationId: [eventCorrelationId, "conflict", conflictType].join(":"),
+    correlationId: correlationIdParts.join(":"),
   };
 }
 

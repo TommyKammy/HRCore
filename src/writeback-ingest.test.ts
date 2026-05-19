@@ -592,12 +592,42 @@ test("synthetic work email provider refresh records HRCore drift conflicts witho
       mismatch: true,
       conflict: {
         conflictId:
-          "synthetic-work-email-conflict:writeback-event-work-email-001:provider_refresh_conflict",
+          "synthetic-work-email-conflict:writeback-event-work-email-001:synthetic-work-email-provider-refresh:writeback-event-work-email-001:2026-05-18T01%3A05%3A00Z:provider_refresh_conflict",
         conflictType: "provider_refresh_conflict",
         currentContactValue: "hrcore.changed@example.invalid",
         attemptedProviderValue: "provider.changed@example.invalid",
         correlationId:
-          "correlation-writeback-work-email-001:conflict:provider_refresh_conflict",
+          "correlation-writeback-work-email-001:provider_refresh:2026-05-18T01%3A05%3A00Z:conflict:provider_refresh_conflict",
+      },
+    });
+    const secondResult = refreshSyntheticWorkEmailFromProvider(db, {
+      eventId: "writeback-event-work-email-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      providerValue: "provider.second@example.invalid",
+      refreshedAt: "2026-05-18T01:10:00Z",
+    });
+
+    assert.deepEqual(secondResult, {
+      eventId: "writeback-event-work-email-001",
+      personId: "person-writeback-001",
+      contactPointId: "contact-point-writeback-001",
+      providerName: "synthetic_okta",
+      providerSubjectId: "synthetic-okta-user-001",
+      eventProviderValue: "confirmed.writeback@example.invalid",
+      refreshedProviderValue: "provider.second@example.invalid",
+      correlationId: "correlation-writeback-work-email-001",
+      refreshedAt: "2026-05-18T01:10:00Z",
+      applied: false,
+      mismatch: true,
+      conflict: {
+        conflictId:
+          "synthetic-work-email-conflict:writeback-event-work-email-001:synthetic-work-email-provider-refresh:writeback-event-work-email-001:2026-05-18T01%3A10%3A00Z:provider_refresh_conflict",
+        conflictType: "provider_refresh_conflict",
+        currentContactValue: "hrcore.changed@example.invalid",
+        attemptedProviderValue: "provider.second@example.invalid",
+        correlationId:
+          "correlation-writeback-work-email-001:provider_refresh:2026-05-18T01%3A10%3A00Z:conflict:provider_refresh_conflict",
       },
     });
     assert.deepEqual(
@@ -618,11 +648,12 @@ test("synthetic work email provider refresh records HRCore drift conflicts witho
       },
     );
     assert.deepEqual(
-      normalizeRow(
+      normalizeRows(
         db
           .prepare(
             `
               SELECT
+                id,
                 conflict_type,
                 current_contact_value,
                 attempted_provider_value,
@@ -630,18 +661,31 @@ test("synthetic work email provider refresh records HRCore drift conflicts witho
                 correlation_id
               FROM writeback_work_email_conflict
               WHERE writeback_event_id = 'writeback-event-work-email-001'
+              ORDER BY detected_at ASC
             `,
           )
-          .get(),
+          .all(),
       ),
-      {
-        conflict_type: "provider_refresh_conflict",
-        current_contact_value: "hrcore.changed@example.invalid",
-        attempted_provider_value: "provider.changed@example.invalid",
-        detected_at: "2026-05-18T01:05:00Z",
-        correlation_id:
-          "correlation-writeback-work-email-001:conflict:provider_refresh_conflict",
-      },
+      [
+        {
+          id: "synthetic-work-email-conflict:writeback-event-work-email-001:synthetic-work-email-provider-refresh:writeback-event-work-email-001:2026-05-18T01%3A05%3A00Z:provider_refresh_conflict",
+          conflict_type: "provider_refresh_conflict",
+          current_contact_value: "hrcore.changed@example.invalid",
+          attempted_provider_value: "provider.changed@example.invalid",
+          detected_at: "2026-05-18T01:05:00Z",
+          correlation_id:
+            "correlation-writeback-work-email-001:provider_refresh:2026-05-18T01%3A05%3A00Z:conflict:provider_refresh_conflict",
+        },
+        {
+          id: "synthetic-work-email-conflict:writeback-event-work-email-001:synthetic-work-email-provider-refresh:writeback-event-work-email-001:2026-05-18T01%3A10%3A00Z:provider_refresh_conflict",
+          conflict_type: "provider_refresh_conflict",
+          current_contact_value: "hrcore.changed@example.invalid",
+          attempted_provider_value: "provider.second@example.invalid",
+          detected_at: "2026-05-18T01:10:00Z",
+          correlation_id:
+            "correlation-writeback-work-email-001:provider_refresh:2026-05-18T01%3A10%3A00Z:conflict:provider_refresh_conflict",
+        },
+      ],
     );
     assert.deepEqual(
       normalizeRow(
