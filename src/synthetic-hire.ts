@@ -699,12 +699,16 @@ function matchesSyntheticHireRequestRetry(
   existing: ExistingSyntheticHireRequestRow,
   input: SyntheticHireRequestInput,
 ): boolean {
+  const requestAlreadyAccepted =
+    existing.status_code === input.transactionRequest.statusCode ||
+    existing.status_code === "completed";
+
   return (
+    requestAlreadyAccepted &&
     existing.person_id === input.person.id &&
     existing.display_name === input.person.displayName &&
     existing.created_at === input.person.createdAt &&
     existing.request_type === input.transactionRequest.requestType &&
-    existing.status_code === input.transactionRequest.statusCode &&
     existing.requested_at === input.transactionRequest.requestedAt &&
     existing.correlation_id === input.transactionRequest.correlationId
   );

@@ -460,6 +460,74 @@ test("synthetic hire request submit fails closed on retry correlation drift", as
   }
 });
 
+test("synthetic hire request submit remains idempotent after apply completes the request", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const hire = createSyntheticHireFixture();
+    const request = createSyntheticHireRequestFixture({
+      person: hire.person,
+    });
+    const lifecycleEvent = {
+      id: "lifecycle-event-syn-hire-001",
+      eventType: "hire" as const,
+      effectiveDate: "2026-05-18",
+      occurredAt: "2026-05-18T00:00:00Z",
+    };
+
+    const submitResult = saveSyntheticHireRequest(db, request);
+    applySyntheticHireRequest(db, {
+      request,
+      hire,
+      lifecycleEvent,
+    });
+    const retryResult = saveSyntheticHireRequest(db, request);
+
+    assert.deepEqual(retryResult, submitResult);
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-syn-hire-001'
+            `,
+          )
+          .get(),
+      ),
+      { status_code: "completed" },
+      "submit retry must not roll back or rewrite the completed lifecycle state",
+    );
+    for (const tableName of [
+      "person",
+      "transaction_request",
+      "lifecycle_event",
+      "employment",
+      "assignment",
+      "contact_point",
+    ]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get(),
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate rows after out-of-order submit retry`,
+      );
+    }
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get(),
+      ),
+      { count: 2 },
+      "out-of-order submit retry must not write duplicate audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic hire paths emit minimal synthetic audit evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
