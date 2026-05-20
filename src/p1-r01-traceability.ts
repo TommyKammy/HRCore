@@ -101,6 +101,7 @@ export function verifySyntheticP1R01CorrelationTrace(
     db,
     correlationId,
     transactionRequest,
+    lifecycleEvents,
   );
   const writebackEvents = readWritebackEvents(
     db,
@@ -230,6 +231,7 @@ function readFutureDateApplyFailures(
   db: TraceabilityDatabase,
   correlationId: string,
   transactionRequest: SyntheticP1R01TransactionTrace,
+  lifecycleEvents: SyntheticP1R01LifecycleTrace[],
 ): SyntheticP1R01FutureDateApplyFailureTrace[] {
   if (!tableExists(db, "synthetic_future_date_apply_failure_evidence")) {
     return [];
@@ -256,10 +258,11 @@ function readFutureDateApplyFailures(
   for (const row of rows) {
     if (
       row.transactionRequestId !== transactionRequest.id ||
-      row.personId !== transactionRequest.personId
+      row.personId !== transactionRequest.personId ||
+      !lifecycleEvents.some((event) => event.id === row.lifecycleEventId)
     ) {
       throw new Error(
-        "EPIC-P1-R01 trace future-date job evidence must match the correlated transaction request",
+        "EPIC-P1-R01 trace future-date job evidence must match the correlated transaction request and lifecycle event",
       );
     }
   }
@@ -276,15 +279,18 @@ function readWritebackEvents(
     .prepare(
       `
         SELECT
-          id,
-          person_id,
-          contact_point_id,
-          provider_name,
-          provider_subject_id,
-          correlation_id
+          writeback_event.id,
+          writeback_event.person_id,
+          writeback_event.contact_point_id,
+          writeback_event.provider_name,
+          writeback_event.provider_subject_id,
+          writeback_event.correlation_id,
+          contact_point.person_id AS contact_point_person_id
         FROM writeback_event
-        WHERE correlation_id = ?
-        ORDER BY received_at, id
+        LEFT JOIN contact_point
+          ON contact_point.id = writeback_event.contact_point_id
+        WHERE writeback_event.correlation_id = ?
+        ORDER BY writeback_event.received_at, writeback_event.id
       `,
     )
     .all(correlationId)
@@ -299,6 +305,9 @@ function readProviderRefreshes(
   writebackEvents: SyntheticP1R01WritebackTrace[],
 ): SyntheticP1R01ProviderRefreshTrace[] {
   const writebackEventIds = writebackEvents.map((event) => event.eventId);
+  const writebackEventsById = new Map(
+    writebackEvents.map((event) => [event.eventId, event]),
+  );
   if (writebackEventIds.length === 0) {
     return [];
   }
@@ -306,7 +315,14 @@ function readProviderRefreshes(
   return db
     .prepare(
       `
-        SELECT id, writeback_event_id, correlation_id
+        SELECT
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          correlation_id
         FROM writeback_provider_refresh
         WHERE writeback_event_id IN (${sqlPlaceholders(writebackEventIds)})
           AND (
@@ -321,7 +337,9 @@ function readProviderRefreshes(
       correlationId,
       correlationPrefixPattern(correlationId),
     )
-    .map(assertProviderRefreshRow);
+    .map((row) =>
+      assertProviderRefreshRowForWriteback(row, writebackEventsById),
+    );
 }
 
 function readWritebackConflicts(
@@ -330,6 +348,9 @@ function readWritebackConflicts(
   writebackEvents: SyntheticP1R01WritebackTrace[],
 ): SyntheticP1R01WritebackConflictTrace[] {
   const writebackEventIds = writebackEvents.map((event) => event.eventId);
+  const writebackEventsById = new Map(
+    writebackEvents.map((event) => [event.eventId, event]),
+  );
   if (writebackEventIds.length === 0) {
     return [];
   }
@@ -337,7 +358,15 @@ function readWritebackConflicts(
   return db
     .prepare(
       `
-        SELECT id, writeback_event_id, conflict_type, correlation_id
+        SELECT
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          correlation_id
         FROM writeback_work_email_conflict
         WHERE writeback_event_id IN (${sqlPlaceholders(writebackEventIds)})
           AND (
@@ -352,7 +381,9 @@ function readWritebackConflicts(
       correlationId,
       correlationPrefixPattern(correlationId),
     )
-    .map(assertWritebackConflictRow);
+    .map((row) =>
+      assertWritebackConflictRowForWriteback(row, writebackEventsById),
+    );
 }
 
 function readWritebackResolutions(
@@ -389,10 +420,19 @@ function readWritebackResolutions(
   const conflictIds = new Set(
     writebackConflicts.map((conflict) => conflict.id),
   );
+  const conflictsById = new Map(
+    writebackConflicts.map((conflict) => [conflict.id, conflict]),
+  );
   for (const row of rows) {
-    if (!conflictIds.has(row.conflictId)) {
+    const conflict = conflictsById.get(row.conflictId);
+    if (!conflictIds.has(row.conflictId) || !conflict) {
       throw new Error(
         "EPIC-P1-R01 trace writeback resolution evidence must match a traced writeback conflict",
+      );
+    }
+    if (row.writebackEventId !== conflict.writebackEventId) {
+      throw new Error(
+        "EPIC-P1-R01 trace writeback resolution evidence must match the referenced conflict writeback event",
       );
     }
   }
@@ -606,9 +646,14 @@ function assertWritebackRowForTransaction(
   transactionRequest: SyntheticP1R01TransactionTrace,
 ): SyntheticP1R01WritebackTrace {
   const writebackRow = assertWritebackRow(row);
-  if (writebackRow.personId !== transactionRequest.personId) {
+  if (
+    !isRecord(row) ||
+    !isString(row.contact_point_person_id) ||
+    writebackRow.personId !== transactionRequest.personId ||
+    row.contact_point_person_id !== transactionRequest.personId
+  ) {
     throw new Error(
-      "EPIC-P1-R01 trace writeback evidence must match the correlated transaction person",
+      "EPIC-P1-R01 trace writeback evidence must match the correlated transaction person and contact point",
     );
   }
 
@@ -636,6 +681,30 @@ function assertProviderRefreshRow(
   };
 }
 
+function assertProviderRefreshRowForWriteback(
+  row: unknown,
+  writebackEventsById: ReadonlyMap<string, SyntheticP1R01WritebackTrace>,
+): SyntheticP1R01ProviderRefreshTrace {
+  const providerRefreshRow = assertProviderRefreshRow(row);
+  const writebackEvent = writebackEventsById.get(
+    providerRefreshRow.writebackEventId,
+  );
+  if (
+    !writebackEvent ||
+    !isRecord(row) ||
+    row.person_id !== writebackEvent.personId ||
+    row.contact_point_id !== writebackEvent.contactPointId ||
+    row.provider_name !== writebackEvent.providerName ||
+    row.provider_subject_id !== writebackEvent.providerSubjectId
+  ) {
+    throw new Error(
+      "EPIC-P1-R01 trace provider refresh evidence must match the traced writeback event identity",
+    );
+  }
+
+  return providerRefreshRow;
+}
+
 function assertWritebackConflictRow(
   row: unknown,
 ): SyntheticP1R01WritebackConflictTrace {
@@ -657,6 +726,28 @@ function assertWritebackConflictRow(
     conflictType: row.conflict_type,
     correlationId: row.correlation_id,
   };
+}
+
+function assertWritebackConflictRowForWriteback(
+  row: unknown,
+  writebackEventsById: ReadonlyMap<string, SyntheticP1R01WritebackTrace>,
+): SyntheticP1R01WritebackConflictTrace {
+  const conflictRow = assertWritebackConflictRow(row);
+  const writebackEvent = writebackEventsById.get(conflictRow.writebackEventId);
+  if (
+    !writebackEvent ||
+    !isRecord(row) ||
+    row.person_id !== writebackEvent.personId ||
+    row.contact_point_id !== writebackEvent.contactPointId ||
+    row.provider_name !== writebackEvent.providerName ||
+    row.provider_subject_id !== writebackEvent.providerSubjectId
+  ) {
+    throw new Error(
+      "EPIC-P1-R01 trace writeback conflict evidence must match the traced writeback event identity",
+    );
+  }
+
+  return conflictRow;
 }
 
 function assertWritebackResolutionRow(
