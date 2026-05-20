@@ -400,7 +400,15 @@ function readWritebackResolutions(
   const rows = db
     .prepare(
       `
-        SELECT id, conflict_id, writeback_event_id, correlation_id
+        SELECT
+          id,
+          conflict_id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          correlation_id
         FROM writeback_work_email_conflict_resolution
         WHERE writeback_event_id IN (${sqlPlaceholders(writebackEventIds)})
           AND (
@@ -414,30 +422,22 @@ function readWritebackResolutions(
       ...writebackEventIds,
       correlationId,
       correlationPrefixPattern(correlationId),
-    )
-    .map(assertWritebackResolutionRow);
+    );
 
-  const conflictIds = new Set(
-    writebackConflicts.map((conflict) => conflict.id),
-  );
   const conflictsById = new Map(
     writebackConflicts.map((conflict) => [conflict.id, conflict]),
   );
-  for (const row of rows) {
-    const conflict = conflictsById.get(row.conflictId);
-    if (!conflictIds.has(row.conflictId) || !conflict) {
-      throw new Error(
-        "EPIC-P1-R01 trace writeback resolution evidence must match a traced writeback conflict",
-      );
-    }
-    if (row.writebackEventId !== conflict.writebackEventId) {
-      throw new Error(
-        "EPIC-P1-R01 trace writeback resolution evidence must match the referenced conflict writeback event",
-      );
-    }
-  }
+  const writebackEventsById = new Map(
+    writebackEvents.map((event) => [event.eventId, event]),
+  );
 
-  return rows;
+  return rows.map((row) =>
+    assertWritebackResolutionRowForWriteback(
+      row,
+      conflictsById,
+      writebackEventsById,
+    ),
+  );
 }
 
 function readAuditEvents(
@@ -771,6 +771,43 @@ function assertWritebackResolutionRow(
     writebackEventId: row.writeback_event_id,
     correlationId: row.correlation_id,
   };
+}
+
+function assertWritebackResolutionRowForWriteback(
+  row: unknown,
+  conflictsById: ReadonlyMap<string, SyntheticP1R01WritebackConflictTrace>,
+  writebackEventsById: ReadonlyMap<string, SyntheticP1R01WritebackTrace>,
+): SyntheticP1R01WritebackResolutionTrace {
+  const resolutionRow = assertWritebackResolutionRow(row);
+  const conflict = conflictsById.get(resolutionRow.conflictId);
+  if (!conflict) {
+    throw new Error(
+      "EPIC-P1-R01 trace writeback resolution evidence must match a traced writeback conflict",
+    );
+  }
+  if (resolutionRow.writebackEventId !== conflict.writebackEventId) {
+    throw new Error(
+      "EPIC-P1-R01 trace writeback resolution evidence must match the referenced conflict writeback event",
+    );
+  }
+
+  const writebackEvent = writebackEventsById.get(
+    resolutionRow.writebackEventId,
+  );
+  if (
+    !writebackEvent ||
+    !isRecord(row) ||
+    row.person_id !== writebackEvent.personId ||
+    row.contact_point_id !== writebackEvent.contactPointId ||
+    row.provider_name !== writebackEvent.providerName ||
+    row.provider_subject_id !== writebackEvent.providerSubjectId
+  ) {
+    throw new Error(
+      "EPIC-P1-R01 trace writeback resolution evidence must match the traced writeback event identity",
+    );
+  }
+
+  return resolutionRow;
 }
 
 function assertAuditRow(row: unknown): SyntheticP1R01AuditTrace {

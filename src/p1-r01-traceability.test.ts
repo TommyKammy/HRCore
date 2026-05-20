@@ -990,6 +990,104 @@ test("EPIC-P1-R01 traceability verifier fails closed when resolution writeback e
   }
 });
 
+test("EPIC-P1-R01 traceability verifier fails closed when resolution identity mismatches traced writeback", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+    saveSyntheticHireRequest(db, request);
+    insertSyntheticWorkEmailContactPoint(db, {
+      id: "contact-point-syn-hire-001",
+    });
+    insertSyntheticWritebackEvent(db, {
+      eventId: "writeback-event-syn-hire-001",
+    });
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (
+          'writeback-conflict-syn-hire-001',
+          'writeback-event-syn-hire-001',
+          'person-syn-hire-001',
+          'contact-point-syn-hire-001',
+          'synthetic_okta',
+          'synthetic-okta-user-001',
+          'provider_refresh_conflict',
+          'synthetic.hire.001@example.invalid',
+          'provider.resolved@example.invalid',
+          '2026-05-19T00:08:00Z',
+          'correlation-syn-hire-001:provider_refresh:conflict',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict_resolution (
+          id,
+          conflict_id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          decision,
+          current_contact_value,
+          resolved_provider_value,
+          decided_at,
+          decided_by,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (
+          'writeback-resolution-syn-hire-mismatched-provider',
+          'writeback-conflict-syn-hire-001',
+          'writeback-event-syn-hire-001',
+          'person-syn-hire-001',
+          'contact-point-syn-hire-001',
+          'synthetic_okta',
+          'synthetic-okta-user-other',
+          'accept_provider_value',
+          'synthetic.hire.001@example.invalid',
+          'provider.resolved@example.invalid',
+          '2026-05-19T00:09:00Z',
+          'synthetic-operator',
+          'correlation-syn-hire-001:resolution:mismatched-provider',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        verifySyntheticP1R01CorrelationTrace(db, {
+          correlationId: "correlation-syn-hire-001",
+          requireLifecycle: false,
+          requireFutureDateJob: false,
+          requireWriteback: true,
+          requiredAuditActions: ["poc.synthetic_hire.request_submitted"],
+        }),
+      /EPIC-P1-R01 trace writeback resolution evidence must match the traced writeback event identity/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("EPIC-P1-R01 traceability verifier fails closed when required audit action is not linked to traced subjects", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
