@@ -274,3 +274,377 @@ test("EPIC-P1-R01 traceability verifier fails closed when required writeback evi
     db.close();
   }
 });
+
+test("EPIC-P1-R01 traceability verifier fails closed when writeback person mismatches the transaction", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+    saveSyntheticHireRequest(db, request);
+    db.prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES ('person-syn-hire-other', 'Synthetic Hire Other', '2026-05-18T00:00:00Z')
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO contact_point (
+          id,
+          person_id,
+          contact_type,
+          value,
+          is_primary,
+          created_at
+        )
+        VALUES (
+          'contact-point-syn-hire-other',
+          'person-syn-hire-other',
+          'work_email',
+          'other@example.invalid',
+          1,
+          '2026-05-18T00:00:00Z'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_event (
+          id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          target_contact_type,
+          correlation_id,
+          received_at,
+          poc_marker
+        )
+        VALUES (
+          'writeback-event-syn-hire-other',
+          'person-syn-hire-other',
+          'contact-point-syn-hire-other',
+          'synthetic_okta',
+          'synthetic-okta-user-other',
+          'other@example.invalid',
+          'work_email',
+          'correlation-syn-hire-001',
+          '2026-05-19T00:06:00Z',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        verifySyntheticP1R01CorrelationTrace(db, {
+          correlationId: "correlation-syn-hire-001",
+          requireLifecycle: false,
+          requireFutureDateJob: false,
+          requireWriteback: true,
+          requiredAuditActions: ["poc.synthetic_hire.request_submitted"],
+        }),
+      /EPIC-P1-R01 trace writeback evidence must match the correlated transaction person/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("EPIC-P1-R01 traceability verifier excludes wildcard-prefix derived writeback evidence from other events", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture({
+      transactionRequest: {
+        correlationId: "correlation_syn_hire_001",
+      },
+    });
+    saveSyntheticHireRequest(db, request);
+    db.prepare(
+      `
+        INSERT INTO contact_point (
+          id,
+          person_id,
+          contact_type,
+          value,
+          is_primary,
+          created_at
+        )
+        VALUES (
+          'contact-point-syn-hire-001',
+          'person-syn-hire-001',
+          'work_email',
+          'synthetic.hire.001@example.invalid',
+          1,
+          '2026-05-18T00:00:00Z'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_event (
+          id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          target_contact_type,
+          correlation_id,
+          received_at,
+          poc_marker
+        )
+        VALUES (
+          'writeback-event-syn-hire-001',
+          'person-syn-hire-001',
+          'contact-point-syn-hire-001',
+          'synthetic_okta',
+          'synthetic-okta-user-001',
+          'synthetic.hire.001@example.invalid',
+          'work_email',
+          'correlation_syn_hire_001',
+          '2026-05-19T00:06:00Z',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES ('person-syn-hire-other', 'Synthetic Hire Other', '2026-05-18T00:00:00Z')
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO contact_point (
+          id,
+          person_id,
+          contact_type,
+          value,
+          is_primary,
+          created_at
+        )
+        VALUES (
+          'contact-point-syn-hire-other',
+          'person-syn-hire-other',
+          'work_email',
+          'other@example.invalid',
+          1,
+          '2026-05-18T00:00:00Z'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_event (
+          id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          target_contact_type,
+          correlation_id,
+          received_at,
+          poc_marker
+        )
+        VALUES (
+          'writeback-event-syn-hire-other',
+          'person-syn-hire-other',
+          'contact-point-syn-hire-other',
+          'synthetic_okta',
+          'synthetic-okta-user-other',
+          'other@example.invalid',
+          'work_email',
+          'correlationXsynXhireX001',
+          '2026-05-19T00:07:00Z',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_provider_refresh (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          refreshed_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (
+          'provider-refresh-other',
+          'writeback-event-syn-hire-other',
+          'person-syn-hire-other',
+          'contact-point-syn-hire-other',
+          'synthetic_okta',
+          'synthetic-okta-user-other',
+          'other@example.invalid',
+          '2026-05-19T00:08:00Z',
+          'correlationXsynXhireX001:provider_refresh:other',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (
+          'writeback-conflict-other',
+          'writeback-event-syn-hire-other',
+          'person-syn-hire-other',
+          'contact-point-syn-hire-other',
+          'synthetic_okta',
+          'synthetic-okta-user-other',
+          'provider_refresh_conflict',
+          'other@example.invalid',
+          'other.updated@example.invalid',
+          '2026-05-19T00:09:00Z',
+          'correlationXsynXhireX001:provider_refresh:other:conflict',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict_resolution (
+          id,
+          conflict_id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          decision,
+          current_contact_value,
+          resolved_provider_value,
+          decided_at,
+          decided_by,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (
+          'writeback-resolution-other',
+          'writeback-conflict-other',
+          'writeback-event-syn-hire-other',
+          'person-syn-hire-other',
+          'contact-point-syn-hire-other',
+          'synthetic_okta',
+          'synthetic-okta-user-other',
+          'accept_provider_value',
+          'other@example.invalid',
+          'other.updated@example.invalid',
+          '2026-05-19T00:10:00Z',
+          'synthetic-operator',
+          'correlationXsynXhireX001:resolution:other',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+
+    const trace = verifySyntheticP1R01CorrelationTrace(db, {
+      correlationId: "correlation_syn_hire_001",
+      requireLifecycle: false,
+      requireFutureDateJob: false,
+      requireWriteback: true,
+      requiredAuditActions: ["poc.synthetic_hire.request_submitted"],
+    });
+
+    assert.deepEqual(trace.providerRefreshes, []);
+    assert.deepEqual(trace.writebackConflicts, []);
+    assert.deepEqual(trace.writebackResolutions, []);
+  } finally {
+    db.close();
+  }
+});
+
+test("EPIC-P1-R01 traceability verifier fails closed when required audit action is not linked to traced subjects", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createSyntheticHireRequestFixture();
+    saveSyntheticHireRequest(db, request);
+    db.prepare(
+      `
+        INSERT INTO lifecycle_event (
+          id,
+          person_id,
+          transaction_request_id,
+          contact_point_id,
+          event_type,
+          effective_date,
+          occurred_at
+        )
+        VALUES (
+          'lifecycle-event-syn-hire-linked',
+          'person-syn-hire-001',
+          'transaction-request-syn-hire-001',
+          NULL,
+          'hire',
+          '2026-06-01',
+          '2026-05-19T00:00:00Z'
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (
+          'audit-event-unlinked-lifecycle-applied',
+          'synthetic-system',
+          'poc.synthetic_hire.lifecycle_applied',
+          'lifecycle_event',
+          'lifecycle-event-syn-hire-unlinked',
+          '2026-05-19T00:01:00Z',
+          'correlation-syn-hire-001',
+          'synthetic_poc'
+        )
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        verifySyntheticP1R01CorrelationTrace(db, {
+          correlationId: "correlation-syn-hire-001",
+          requireLifecycle: true,
+          requireFutureDateJob: false,
+          requireWriteback: false,
+          requiredAuditActions: ["poc.synthetic_hire.lifecycle_applied"],
+        }),
+      /EPIC-P1-R01 trace requires audit action poc\.synthetic_hire\.lifecycle_applied linked to traced evidence/,
+    );
+  } finally {
+    db.close();
+  }
+});

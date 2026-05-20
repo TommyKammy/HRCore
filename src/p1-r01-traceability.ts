@@ -102,10 +102,27 @@ export function verifySyntheticP1R01CorrelationTrace(
     correlationId,
     transactionRequest,
   );
-  const writebackEvents = readWritebackEvents(db, correlationId);
-  const providerRefreshes = readProviderRefreshes(db, correlationId);
-  const writebackConflicts = readWritebackConflicts(db, correlationId);
-  const writebackResolutions = readWritebackResolutions(db, correlationId);
+  const writebackEvents = readWritebackEvents(
+    db,
+    correlationId,
+    transactionRequest,
+  );
+  const providerRefreshes = readProviderRefreshes(
+    db,
+    correlationId,
+    writebackEvents,
+  );
+  const writebackConflicts = readWritebackConflicts(
+    db,
+    correlationId,
+    writebackEvents,
+  );
+  const writebackResolutions = readWritebackResolutions(
+    db,
+    correlationId,
+    writebackEvents,
+    writebackConflicts,
+  );
   const auditEvents = readAuditEvents(db, correlationId);
 
   if (input.requireLifecycle && lifecycleEvents.length === 0) {
@@ -126,13 +143,13 @@ export function verifySyntheticP1R01CorrelationTrace(
     );
   }
 
-  for (const action of input.requiredAuditActions) {
-    if (!auditEvents.some((event) => event.action === action)) {
-      throw new Error(
-        `EPIC-P1-R01 trace requires audit action ${action} for the correlation id`,
-      );
-    }
-  }
+  validateRequiredAuditActions({
+    requiredAuditActions: input.requiredAuditActions,
+    auditEvents,
+    transactionRequest,
+    lifecycleEvents,
+    futureDateApplyFailures,
+  });
 
   return {
     transactionRequest,
@@ -253,8 +270,9 @@ function readFutureDateApplyFailures(
 function readWritebackEvents(
   db: TraceabilityDatabase,
   correlationId: string,
+  transactionRequest: SyntheticP1R01TransactionTrace,
 ): SyntheticP1R01WritebackTrace[] {
-  return db
+  const rows = db
     .prepare(
       `
         SELECT
@@ -271,60 +289,123 @@ function readWritebackEvents(
     )
     .all(correlationId)
     .map(assertWritebackRow);
+
+  for (const row of rows) {
+    if (row.personId !== transactionRequest.personId) {
+      throw new Error(
+        "EPIC-P1-R01 trace writeback evidence must match the correlated transaction person",
+      );
+    }
+  }
+
+  return rows;
 }
 
 function readProviderRefreshes(
   db: TraceabilityDatabase,
   correlationId: string,
+  writebackEvents: SyntheticP1R01WritebackTrace[],
 ): SyntheticP1R01ProviderRefreshTrace[] {
+  const writebackEventIds = writebackEvents.map((event) => event.eventId);
+  if (writebackEventIds.length === 0) {
+    return [];
+  }
+
   return db
     .prepare(
       `
         SELECT id, writeback_event_id, correlation_id
         FROM writeback_provider_refresh
-        WHERE correlation_id = ?
-           OR correlation_id LIKE ?
+        WHERE writeback_event_id IN (${sqlPlaceholders(writebackEventIds)})
+          AND (
+            correlation_id = ?
+            OR correlation_id LIKE ? ESCAPE '\\'
+          )
         ORDER BY refreshed_at, id
       `,
     )
-    .all(correlationId, `${correlationId}:%`)
+    .all(
+      ...writebackEventIds,
+      correlationId,
+      correlationPrefixPattern(correlationId),
+    )
     .map(assertProviderRefreshRow);
 }
 
 function readWritebackConflicts(
   db: TraceabilityDatabase,
   correlationId: string,
+  writebackEvents: SyntheticP1R01WritebackTrace[],
 ): SyntheticP1R01WritebackConflictTrace[] {
+  const writebackEventIds = writebackEvents.map((event) => event.eventId);
+  if (writebackEventIds.length === 0) {
+    return [];
+  }
+
   return db
     .prepare(
       `
         SELECT id, writeback_event_id, conflict_type, correlation_id
         FROM writeback_work_email_conflict
-        WHERE correlation_id = ?
-           OR correlation_id LIKE ?
+        WHERE writeback_event_id IN (${sqlPlaceholders(writebackEventIds)})
+          AND (
+            correlation_id = ?
+            OR correlation_id LIKE ? ESCAPE '\\'
+          )
         ORDER BY detected_at, id
       `,
     )
-    .all(correlationId, `${correlationId}:%`)
+    .all(
+      ...writebackEventIds,
+      correlationId,
+      correlationPrefixPattern(correlationId),
+    )
     .map(assertWritebackConflictRow);
 }
 
 function readWritebackResolutions(
   db: TraceabilityDatabase,
   correlationId: string,
+  writebackEvents: SyntheticP1R01WritebackTrace[],
+  writebackConflicts: SyntheticP1R01WritebackConflictTrace[],
 ): SyntheticP1R01WritebackResolutionTrace[] {
-  return db
+  const writebackEventIds = writebackEvents.map((event) => event.eventId);
+  if (writebackEventIds.length === 0) {
+    return [];
+  }
+
+  const rows = db
     .prepare(
       `
         SELECT id, conflict_id, writeback_event_id, correlation_id
         FROM writeback_work_email_conflict_resolution
-        WHERE correlation_id = ?
-           OR correlation_id LIKE ?
+        WHERE writeback_event_id IN (${sqlPlaceholders(writebackEventIds)})
+          AND (
+            correlation_id = ?
+            OR correlation_id LIKE ? ESCAPE '\\'
+          )
         ORDER BY decided_at, id
       `,
     )
-    .all(correlationId, `${correlationId}:%`)
+    .all(
+      ...writebackEventIds,
+      correlationId,
+      correlationPrefixPattern(correlationId),
+    )
     .map(assertWritebackResolutionRow);
+
+  const conflictIds = new Set(
+    writebackConflicts.map((conflict) => conflict.id),
+  );
+  for (const row of rows) {
+    if (!conflictIds.has(row.conflictId)) {
+      throw new Error(
+        "EPIC-P1-R01 trace writeback resolution evidence must match a traced writeback conflict",
+      );
+    }
+  }
+
+  return rows;
 }
 
 function readAuditEvents(
@@ -357,6 +438,85 @@ function tableExists(db: TraceabilityDatabase, tableName: string): boolean {
     .get(tableName);
 
   return isRecord(row) && row.name === tableName;
+}
+
+function sqlPlaceholders(values: readonly SqlValue[]): string {
+  return values.map(() => "?").join(", ");
+}
+
+function correlationPrefixPattern(correlationId: string): string {
+  return `${escapeSqlLikePattern(correlationId)}:%`;
+}
+
+function escapeSqlLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function validateRequiredAuditActions(input: {
+  requiredAuditActions: string[];
+  auditEvents: SyntheticP1R01AuditTrace[];
+  transactionRequest: SyntheticP1R01TransactionTrace;
+  lifecycleEvents: SyntheticP1R01LifecycleTrace[];
+  futureDateApplyFailures: SyntheticP1R01FutureDateApplyFailureTrace[];
+}): void {
+  for (const action of input.requiredAuditActions) {
+    const subjects = linkedAuditSubjectsForAction(action, input);
+    if (subjects.length === 0) {
+      throw new Error(
+        `EPIC-P1-R01 trace requires linked subject evidence for audit action ${action}`,
+      );
+    }
+
+    if (
+      !input.auditEvents.some(
+        (event) =>
+          event.action === action &&
+          subjects.some(
+            (subject) =>
+              event.subjectTable === subject.subjectTable &&
+              event.subjectId === subject.subjectId,
+          ),
+      )
+    ) {
+      throw new Error(
+        `EPIC-P1-R01 trace requires audit action ${action} linked to traced evidence`,
+      );
+    }
+  }
+}
+
+function linkedAuditSubjectsForAction(
+  action: string,
+  trace: {
+    transactionRequest: SyntheticP1R01TransactionTrace;
+    lifecycleEvents: SyntheticP1R01LifecycleTrace[];
+    futureDateApplyFailures: SyntheticP1R01FutureDateApplyFailureTrace[];
+  },
+): { subjectTable: string; subjectId: string }[] {
+  if (action === "poc.synthetic_hire.request_submitted") {
+    return [
+      {
+        subjectTable: "transaction_request",
+        subjectId: trace.transactionRequest.id,
+      },
+    ];
+  }
+
+  if (action === "poc.synthetic_hire.future_date_apply_failed") {
+    return trace.futureDateApplyFailures.map((failure) => ({
+      subjectTable: "transaction_request",
+      subjectId: failure.transactionRequestId,
+    }));
+  }
+
+  if (action === "poc.synthetic_hire.lifecycle_applied") {
+    return trace.lifecycleEvents.map((event) => ({
+      subjectTable: "lifecycle_event",
+      subjectId: event.id,
+    }));
+  }
+
+  return [];
 }
 
 function assertTransactionRow(row: unknown): SyntheticP1R01TransactionTrace {
