@@ -255,22 +255,39 @@ function readFutureDateApplyFailures(
     .all(correlationId)
     .map(assertFutureDateApplyFailureRow);
 
+  assertFutureDateApplyFailuresMatchTrace({
+    rows,
+    transactionRequest,
+    lifecycleEvents,
+  });
+
+  return rows;
+}
+
+function assertFutureDateApplyFailuresMatchTrace(input: {
+  rows: SyntheticP1R01FutureDateApplyFailureTrace[];
+  transactionRequest: SyntheticP1R01TransactionTrace;
+  lifecycleEvents: SyntheticP1R01LifecycleTrace[];
+}): void {
   const tracedLifecycleEventIds = new Set(
-    lifecycleEvents.map((event) => event.id),
+    input.lifecycleEvents.map((event) => event.id),
   );
-  for (const row of rows) {
+  for (const row of input.rows) {
+    const rowMatchesCorrelatedTransaction =
+      row.transactionRequestId === input.transactionRequest.id &&
+      row.personId === input.transactionRequest.personId;
+    const rowReferencesTracedLifecycleEvent = tracedLifecycleEventIds.has(
+      row.lifecycleEventId,
+    );
     if (
-      row.transactionRequestId !== transactionRequest.id ||
-      row.personId !== transactionRequest.personId ||
-      !tracedLifecycleEventIds.has(row.lifecycleEventId)
+      !rowMatchesCorrelatedTransaction ||
+      !rowReferencesTracedLifecycleEvent
     ) {
       throw new Error(
         "EPIC-P1-R01 trace future-date job evidence must match the correlated transaction request and lifecycle event",
       );
     }
   }
-
-  return rows;
 }
 
 function readWritebackEvents(
