@@ -1,0 +1,36 @@
+CREATE TABLE `writeback_work_email_conflict_resolution` (
+	`id` text PRIMARY KEY NOT NULL,
+	`conflict_id` text NOT NULL,
+	`writeback_event_id` text NOT NULL,
+	`person_id` text NOT NULL,
+	`contact_point_id` text NOT NULL,
+	`provider_name` text NOT NULL,
+	`provider_subject_id` text NOT NULL,
+	`decision` text NOT NULL,
+	`current_contact_value` text NOT NULL,
+	`resolved_provider_value` text NOT NULL,
+	`decided_at` text NOT NULL,
+	`decided_by` text NOT NULL,
+	`correlation_id` text NOT NULL,
+	`poc_marker` text DEFAULT 'synthetic_poc' NOT NULL,
+	FOREIGN KEY (`conflict_id`) REFERENCES `writeback_work_email_conflict`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`writeback_event_id`) REFERENCES `writeback_event`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`person_id`) REFERENCES `person`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`contact_point_id`,`person_id`) REFERENCES `contact_point`(`id`,`person_id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "writeback_work_email_conflict_resolution_id_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_conflict_id_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."conflict_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_event_id_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."writeback_event_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_contact_point_id_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."contact_point_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_provider_name_allowed" CHECK("writeback_work_email_conflict_resolution"."provider_name" in ('synthetic_okta')),
+	CONSTRAINT "writeback_work_email_conflict_resolution_provider_subject_id_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."provider_subject_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_decision_allowed" CHECK("writeback_work_email_conflict_resolution"."decision" in ('accept_provider_value')),
+	CONSTRAINT "writeback_work_email_conflict_resolution_current_value_shape" CHECK(instr("writeback_work_email_conflict_resolution"."current_contact_value", '@') > 1),
+	CONSTRAINT "writeback_work_email_conflict_resolution_resolved_value_shape" CHECK(instr("writeback_work_email_conflict_resolution"."resolved_provider_value", '@') > 1),
+	CONSTRAINT "writeback_work_email_conflict_resolution_decided_at_date" CHECK("writeback_work_email_conflict_resolution"."decided_at" glob '????-??-??*'),
+	CONSTRAINT "writeback_work_email_conflict_resolution_decided_by_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."decided_by") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_correlation_id_non_empty" CHECK(length("writeback_work_email_conflict_resolution"."correlation_id") > 0),
+	CONSTRAINT "writeback_work_email_conflict_resolution_poc_marker_allowed" CHECK("writeback_work_email_conflict_resolution"."poc_marker" in ('synthetic_poc'))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `writeback_work_email_conflict_resolution_unique` ON `writeback_work_email_conflict_resolution` (`conflict_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `writeback_work_email_conflict_resolution_correlation_unique` ON `writeback_work_email_conflict_resolution` (`correlation_id`);

@@ -362,6 +362,99 @@ export const writeback_work_email_conflict = sqliteTable(
   ],
 );
 
+export const writeback_work_email_conflict_resolution = sqliteTable(
+  "writeback_work_email_conflict_resolution",
+  {
+    id: syntheticId(),
+    conflictId: text("conflict_id")
+      .notNull()
+      .references(() => writeback_work_email_conflict.id),
+    writebackEventId: text("writeback_event_id")
+      .notNull()
+      .references(() => writeback_event.id),
+    personId: text("person_id")
+      .notNull()
+      .references(() => person.id),
+    contactPointId: text("contact_point_id").notNull(),
+    providerName: text("provider_name", { enum: ["synthetic_okta"] }).notNull(),
+    providerSubjectId: text("provider_subject_id").notNull(),
+    decision: text("decision", { enum: ["accept_provider_value"] }).notNull(),
+    currentContactValue: text("current_contact_value").notNull(),
+    resolvedProviderValue: text("resolved_provider_value").notNull(),
+    decidedAt: text("decided_at").notNull(),
+    decidedBy: text("decided_by").notNull(),
+    correlationId: text("correlation_id").notNull(),
+    pocMarker: text("poc_marker", { enum: ["synthetic_poc"] })
+      .notNull()
+      .default("synthetic_poc"),
+  },
+  (table) => [
+    uniqueIndex("writeback_work_email_conflict_resolution_unique").on(
+      table.conflictId,
+    ),
+    uniqueIndex(
+      "writeback_work_email_conflict_resolution_correlation_unique",
+    ).on(table.correlationId),
+    foreignKey({
+      name: "writeback_work_email_conflict_resolution_contact_point_person_match_fk",
+      columns: [table.contactPointId, table.personId],
+      foreignColumns: [contact_point.id, contact_point.personId],
+    }),
+    check(
+      "writeback_work_email_conflict_resolution_id_non_empty",
+      sql`length(${table.id}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_conflict_id_non_empty",
+      sql`length(${table.conflictId}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_event_id_non_empty",
+      sql`length(${table.writebackEventId}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_contact_point_id_non_empty",
+      sql`length(${table.contactPointId}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_provider_name_allowed",
+      sql`${table.providerName} in ('synthetic_okta')`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_provider_subject_id_non_empty",
+      sql`length(${table.providerSubjectId}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_decision_allowed",
+      sql`${table.decision} in ('accept_provider_value')`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_current_value_shape",
+      sql`instr(${table.currentContactValue}, '@') > 1`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_resolved_value_shape",
+      sql`instr(${table.resolvedProviderValue}, '@') > 1`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_decided_at_date",
+      sql`${table.decidedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_decided_by_non_empty",
+      sql`length(${table.decidedBy}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "writeback_work_email_conflict_resolution_poc_marker_allowed",
+      sql`${table.pocMarker} in ('synthetic_poc')`,
+    ),
+  ],
+);
+
 export const transaction_request = sqliteTable(
   "transaction_request",
   {
@@ -498,6 +591,7 @@ export const schema = {
   writeback_event,
   writeback_provider_refresh,
   writeback_work_email_conflict,
+  writeback_work_email_conflict_resolution,
   transaction_request,
   lifecycle_event,
   audit_event,
