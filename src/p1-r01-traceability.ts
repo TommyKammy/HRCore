@@ -288,15 +288,7 @@ function readWritebackEvents(
       `,
     )
     .all(correlationId)
-    .map(assertWritebackRow);
-
-  for (const row of rows) {
-    if (row.personId !== transactionRequest.personId) {
-      throw new Error(
-        "EPIC-P1-R01 trace writeback evidence must match the correlated transaction person",
-      );
-    }
-  }
+    .map((row) => assertWritebackRowForTransaction(row, transactionRequest));
 
   return rows;
 }
@@ -607,6 +599,20 @@ function assertWritebackRow(row: unknown): SyntheticP1R01WritebackTrace {
     providerSubjectId: row.provider_subject_id,
     correlationId: row.correlation_id,
   };
+}
+
+function assertWritebackRowForTransaction(
+  row: unknown,
+  transactionRequest: SyntheticP1R01TransactionTrace,
+): SyntheticP1R01WritebackTrace {
+  const writebackRow = assertWritebackRow(row);
+  if (writebackRow.personId !== transactionRequest.personId) {
+    throw new Error(
+      "EPIC-P1-R01 trace writeback evidence must match the correlated transaction person",
+    );
+  }
+
+  return writebackRow;
 }
 
 function assertProviderRefreshRow(
