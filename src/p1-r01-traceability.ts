@@ -255,11 +255,14 @@ function readFutureDateApplyFailures(
     .all(correlationId)
     .map(assertFutureDateApplyFailureRow);
 
+  const tracedLifecycleEventIds = new Set(
+    lifecycleEvents.map((event) => event.id),
+  );
   for (const row of rows) {
     if (
       row.transactionRequestId !== transactionRequest.id ||
       row.personId !== transactionRequest.personId ||
-      !lifecycleEvents.some((event) => event.id === row.lifecycleEventId)
+      !tracedLifecycleEventIds.has(row.lifecycleEventId)
     ) {
       throw new Error(
         "EPIC-P1-R01 trace future-date job evidence must match the correlated transaction request and lifecycle event",
