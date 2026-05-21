@@ -1832,6 +1832,53 @@ test("post-MVP-A future wave readiness gates MVP-B/C/D separately", async () => 
   );
 });
 
+test("MVP-A Go/No-Go final decision classifies residual risks and next wave", async () => {
+  const [decision, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-go-no-go.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedDecision = decision.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A Go/No-Go Decision",
+    "Final recommendation: Conditional Go",
+    "starting Phase 2A MVP-A onboarding issues",
+    "does not authorize production use",
+    "does not authorize real employee data",
+    "does not authorize live provider traffic",
+    "Blocker",
+    "Conditional-go follow-up",
+    "Backlog",
+    "No MVP-A onboarding blocker remains at PoC depth",
+    "P0-R05 / #11 authorization and data-scope enforcement",
+    "P0-R06 / #12 production audit immutability",
+    "P0-R08 / #14 raw payload, CSV export, prohibited payload, and extension controls",
+    "MVP-B transfer readiness",
+    "MVP-C termination readiness",
+    "MVP-D CSV/Ops/DLQ readiness",
+    "Next Issue Wave",
+    "EPIC-P2A-MVP-A Onboarding Materialization",
+    "P2A-01 Onboarding request intake and authoritative subject binding",
+    "P2A-02 Idempotent onboarding lifecycle application and retry evidence",
+    "P2A-03 Mock-first provider projection and work_email writeback integration",
+    "P2A-04 Onboarding conflict resolution and direct correlation trace",
+    "P2A-05 MVP-A onboarding closeout, gates, and non-production verification",
+    "Gates That Must Remain Closed",
+    "production-like runtime",
+    "real-data",
+  ]) {
+    assert.ok(
+      normalizedDecision.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing MVP-A final decision text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-A Go\/No-Go Decision\]\(docs\/mvp-a-go-no-go\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
