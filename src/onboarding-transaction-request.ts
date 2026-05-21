@@ -1,4 +1,7 @@
 type SqlValue = string | number | bigint | null;
+type SqlRunResult = {
+  changes?: number | bigint;
+};
 
 export interface SqlStatement {
   get(...values: SqlValue[]): Record<string, unknown> | undefined;
@@ -64,6 +67,10 @@ export interface OnboardingTransactionRequestPersistenceResult {
   transactionRequestId: string;
   statusCode: OnboardingTransactionRequestPersistedStatus;
   correlationId: string;
+}
+
+export interface EditableOnboardingTransactionRequestPersistenceResult extends OnboardingTransactionRequestPersistenceResult {
+  operation: "created" | "updated" | "idempotent";
 }
 
 type OnboardingTransactionRequestFixtureOverrides = {
@@ -304,6 +311,108 @@ export function saveOnboardingTransactionRequest(
   }
 }
 
+export function saveEditableOnboardingTransactionRequest(
+  db: OnboardingTransactionRequestDatabase,
+  input: unknown,
+): EditableOnboardingTransactionRequestPersistenceResult {
+  const parsed = parseOnboardingTransactionRequestInput(input);
+  const payloadJson = serializeOnboardingPayload(parsed.payload);
+  const existingRequest = readOnboardingTransactionRequest(db, parsed);
+
+  if (!existingRequest) {
+    return {
+      ...saveOnboardingTransactionRequest(db, parsed),
+      operation: "created",
+    };
+  }
+
+  if (
+    matchesOnboardingTransactionRequestRetry(
+      existingRequest,
+      parsed,
+      payloadJson,
+    )
+  ) {
+    return {
+      ...buildOnboardingTransactionRequestRetryResult(existingRequest),
+      operation: "idempotent",
+    };
+  }
+
+  assertEditableDraftBinding(existingRequest, parsed);
+
+  db.exec("SAVEPOINT onboarding_transaction_request_edit");
+  try {
+    db.prepare(
+      `
+        UPDATE person
+        SET display_name = ?,
+            created_at = ?
+        WHERE id = ?
+      `,
+    ).run(parsed.person.displayName, parsed.person.createdAt, parsed.person.id);
+
+    const transactionRequestUpdate = db
+      .prepare(
+        `
+        UPDATE transaction_request
+        SET status_code = ?,
+            requested_at = ?,
+            payload_version = ?,
+            payload_json = ?
+        WHERE id = ?
+          AND person_id = ?
+          AND correlation_id = ?
+          AND status_code = 'draft'
+      `,
+      )
+      .run(
+        parsed.statusCode,
+        parsed.requestedAt,
+        parsed.payloadVersion,
+        payloadJson,
+        parsed.id,
+        parsed.person.id,
+        parsed.correlationId,
+      );
+    assertSingleDraftUpdate(transactionRequestUpdate);
+
+    db.exec("RELEASE SAVEPOINT onboarding_transaction_request_edit");
+  } catch (error) {
+    rollbackNamedSavepoint(db, "onboarding_transaction_request_edit");
+    throw error;
+  }
+
+  return {
+    personId: parsed.person.id,
+    transactionRequestId: parsed.id,
+    statusCode: parsed.statusCode,
+    correlationId: parsed.correlationId,
+    operation: "updated",
+  };
+}
+
+function assertSingleDraftUpdate(result: unknown): void {
+  if (
+    !isSqlRunResult(result) ||
+    (result.changes !== 1 && result.changes !== 1n)
+  ) {
+    throw new Error(
+      "onboarding transaction request edit conflicts with the current draft state",
+    );
+  }
+}
+
+function isSqlRunResult(result: unknown): result is SqlRunResult {
+  if (!isRecord(result) || !("changes" in result)) {
+    return false;
+  }
+
+  return (
+    typeof result.changes === "number" || typeof result.changes === "bigint"
+  );
+}
+
 function parsePerson(input: unknown): OnboardingTransactionRequestPersonInput {
   const person = requireRecord("person", input);
   assertSupportedFields("person", person, onboardingPersonFields);
@@ -531,6 +640,27 @@ function buildOnboardingTransactionRequestRetryResult(
       existing.status_code as OnboardingTransactionRequestPersistedStatus,
     correlationId: existing.correlation_id,
   };
+}
+
+function assertEditableDraftBinding(
+  existing: ExistingOnboardingTransactionRequestRow,
+  input: OnboardingTransactionRequestInput,
+): void {
+  if (
+    existing.transaction_request_id !== input.id ||
+    existing.person_id !== input.person.id ||
+    existing.correlation_id !== input.correlationId
+  ) {
+    throw new Error(
+      "onboarding transaction request edit conflicts with the existing request binding",
+    );
+  }
+
+  if (existing.status_code !== "draft") {
+    throw new Error(
+      "onboarding transaction request can only be edited while draft",
+    );
+  }
 }
 
 function assertSupportedFields(
