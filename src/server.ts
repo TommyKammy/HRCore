@@ -28,7 +28,11 @@ export async function buildServerApp() {
   const writebackDb = await openLocalSyntheticWritebackDatabase();
 
   try {
-    const app = await buildApp({ logger: true, writebackDb });
+    const app = await buildApp({
+      logger: true,
+      onboardingDb: writebackDb,
+      writebackDb,
+    });
     app.addHook("onClose", async () => {
       writebackDb.close();
     });

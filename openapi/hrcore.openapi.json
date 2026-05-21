@@ -43,6 +43,126 @@
         }
       }
     },
+    "/onboarding/new-hire": {
+      "get": {
+        "operationId": "renderMvpAOnboardingWizard",
+        "summary": "Render MVP-A new hire onboarding wizard",
+        "description": "Returns the MVP-A-only new hire wizard surface for draft, validation, and submit. It does not expose transfer, termination, CSV, raw payload, regulated data, live-provider, or production control surfaces.",
+        "responses": {
+          "200": {
+            "description": "MVP-A onboarding wizard HTML.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/new-hire/transaction-requests/validate": {
+      "post": {
+        "operationId": "validateMvpAOnboardingTransactionRequest",
+        "summary": "Validate an MVP-A onboarding transaction request",
+        "description": "Validates the submitted body through the transaction_request contract without applying business rules in the UI layer.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingTransactionRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request is valid for the MVP-A onboarding contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingTransactionRequestValidationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request violated the MVP-A onboarding transaction_request contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/new-hire/transaction-requests": {
+      "post": {
+        "operationId": "saveMvpAOnboardingTransactionRequest",
+        "summary": "Save or submit an MVP-A onboarding transaction request",
+        "description": "Creates, edits draft, or submits an MVP-A onboarding transaction_request. Draft edits are accepted only for the same explicit request, person, and correlation binding.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingTransactionRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "An existing draft request was edited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingTransactionRequestPersistenceResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A new draft was created, a request was submitted, or an idempotent submit was accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingTransactionRequestPersistenceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was malformed or violated local synthetic constraints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with an existing authoritative transaction_request binding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local onboarding transaction_request database was not configured."
+          }
+        }
+      }
+    },
     "/writeback-events/work-email": {
       "post": {
         "operationId": "ingestSyntheticWorkEmailWriteback",
@@ -159,6 +279,223 @@
           "synthetic": {
             "type": "boolean",
             "const": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "required": ["error", "validationErrors"],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "validationErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorDetail"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidationErrorDetail": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingTransactionRequestValidationResult": {
+        "type": "object",
+        "required": ["valid", "requestType", "statusCode", "payloadVersion"],
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestType": {
+            "type": "string",
+            "const": "hire"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["draft", "submitted"]
+          },
+          "payloadVersion": {
+            "type": "string",
+            "const": "mvp_a_onboarding_v1"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingTransactionRequestPersistenceResult": {
+        "type": "object",
+        "required": [
+          "personId",
+          "transactionRequestId",
+          "statusCode",
+          "correlationId"
+        ],
+        "properties": {
+          "personId": {
+            "type": "string"
+          },
+          "transactionRequestId": {
+            "type": "string"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["draft", "submitted", "completed"]
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingTransactionRequestInput": {
+        "type": "object",
+        "required": [
+          "id",
+          "person",
+          "requestType",
+          "statusCode",
+          "requestedAt",
+          "correlationId",
+          "payloadVersion",
+          "payload"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/OnboardingPersonInput"
+          },
+          "requestType": {
+            "type": "string",
+            "const": "hire"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["draft", "submitted"]
+          },
+          "requestedAt": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "payloadVersion": {
+            "type": "string",
+            "const": "mvp_a_onboarding_v1"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/OnboardingPayload"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingPersonInput": {
+        "type": "object",
+        "required": ["id", "displayName", "createdAt"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingPayload": {
+        "type": "object",
+        "required": [
+          "effectiveDate",
+          "employment",
+          "assignment",
+          "workEmailExpectation"
+        ],
+        "properties": {
+          "effectiveDate": {
+            "type": "string"
+          },
+          "employment": {
+            "$ref": "#/components/schemas/OnboardingEmploymentPayload"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/OnboardingAssignmentPayload"
+          },
+          "workEmailExpectation": {
+            "$ref": "#/components/schemas/OnboardingWorkEmailExpectation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingEmploymentPayload": {
+        "type": "object",
+        "required": ["id", "employmentCode", "startDate"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employmentCode": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingAssignmentPayload": {
+        "type": "object",
+        "required": [
+          "id",
+          "assignmentCode",
+          "departmentReference",
+          "legalEntityReference",
+          "managerReference"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "assignmentCode": {
+            "type": "string"
+          },
+          "departmentReference": {
+            "type": "string"
+          },
+          "legalEntityReference": {
+            "type": "string"
+          },
+          "managerReference": {
+            "type": "string"
+          },
+          "positionCode": {
+            "type": ["string", "null"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "OnboardingWorkEmailExpectation": {
+        "type": "object",
+        "required": ["contactPointId", "value"],
+        "properties": {
+          "contactPointId": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
           }
         },
         "additionalProperties": false
