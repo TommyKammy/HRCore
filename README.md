@@ -22,6 +22,7 @@ Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](doc
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
 The Phase 1 Okta mastering PoC connection mode is defined in [Okta PoC Connection Contract](docs/okta-poc-connection-contract.md).
+The MVP-A Go/No-Go scope boundary is defined in [MVP-A Go/No-Go Scope Boundary](docs/mvp-a-go-no-go-scope.md).
 
 ## Baseline structure
 
@@ -58,6 +59,9 @@ The Phase 1 Okta mastering PoC connection mode is defined in [Okta PoC Connectio
 - `docs/okta-poc-connection-contract.md` records the mock-first Phase 1 Okta
   mastering PoC contract, local-only real tenant binding placeholders, and
   minimum synthetic user fixture shape.
+- `docs/mvp-a-go-no-go-scope.md` records the MVP-A onboarding scope,
+  exclusions, P0 gate classification, and real-data or production-like runtime
+  blockers for the Go/No-Go package.
 
 ## Local verification
 
