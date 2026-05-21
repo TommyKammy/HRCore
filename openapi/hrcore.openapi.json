@@ -217,6 +217,16 @@
               }
             }
           },
+          "404": {
+            "description": "The onboarding transaction request decision target was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "409": {
             "description": "The decision is illegal for the current authoritative transaction_request state.",
             "content": {
