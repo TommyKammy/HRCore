@@ -1793,6 +1793,45 @@ test("MVP-A Go/No-Go scope keeps onboarding boundary and deferred gates explicit
   );
 });
 
+test("post-MVP-A future wave readiness gates MVP-B/C/D separately", async () => {
+  const [readiness, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-go-no-go-future-wave-readiness.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedReadiness = readiness.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# Post-MVP-A Future Wave Readiness",
+    "Status: Proposed for future-wave readiness review.",
+    "Part of: #157.",
+    "Depends on: #159.",
+    "An MVP-A Go decision does not approve MVP-B, MVP-C, or MVP-D.",
+    "MVP-B Transfer Ready Conditions",
+    "transfer request, transfer approval, authoritative effective-date handling, assignment change, provider projection, writeback, conflict handling, and audit correlation",
+    "MVP-C Termination Ready Conditions",
+    "termination request, approval, effective-date handling, offboarding, deprovisioning, retention or legal-hold classification, post-termination access, and audit correlation",
+    "MVP-D CSV/Ops/DLQ Ready Conditions",
+    "raw-payload viewing, CSV export, export download, operational dead-letter queues, replay handling, support console behavior, watermark or manifest traceability, and download-log evidence",
+    "Reusable Phase 1 PoC Evidence",
+    "Wave-Specific Evidence That Must Be Newly Produced",
+    "legal, labor, privacy, retention, consent, DSAR, My Number, Specific Personal Information, and sensitive personal information scope",
+    "authorization, data-scope, audit immutability, raw-payload, CSV export, and prohibited-payload gates",
+    "extension architecture",
+    "operational evidence",
+    "Later implementation issues for Phase 2B, Phase 2C, or Phase 2D must remain unopened or not-ready from this child",
+  ]) {
+    assert.ok(
+      normalizedReadiness.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing future-wave readiness text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[Post-MVP-A Future Wave Readiness\]\(docs\/mvp-a-go-no-go-future-wave-readiness\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
