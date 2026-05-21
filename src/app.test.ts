@@ -94,6 +94,70 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     onboardingRequestInput.properties.requestedAt.pattern,
     "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$",
   );
+  assert.equal(onboardingRequestInput.properties.correlationId.minLength, 1);
+
+  const onboardingPersonInput =
+    contract.components.schemas.OnboardingPersonInput;
+  assert.equal(onboardingPersonInput.properties.id.minLength, 1);
+  assert.equal(onboardingPersonInput.properties.displayName.minLength, 1);
+  assert.equal(
+    onboardingPersonInput.properties.createdAt.pattern,
+    "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$",
+  );
+
+  const onboardingPayload = contract.components.schemas.OnboardingPayload;
+  assert.equal(
+    onboardingPayload.properties.effectiveDate.pattern,
+    "^\\d{4}-\\d{2}-\\d{2}$",
+  );
+
+  const onboardingEmploymentPayload =
+    contract.components.schemas.OnboardingEmploymentPayload;
+  assert.equal(onboardingEmploymentPayload.properties.id.minLength, 1);
+  assert.equal(
+    onboardingEmploymentPayload.properties.employmentCode.minLength,
+    1,
+  );
+  assert.equal(
+    onboardingEmploymentPayload.properties.startDate.pattern,
+    "^\\d{4}-\\d{2}-\\d{2}$",
+  );
+
+  const onboardingAssignmentPayload =
+    contract.components.schemas.OnboardingAssignmentPayload;
+  assert.equal(onboardingAssignmentPayload.properties.id.minLength, 1);
+  assert.equal(
+    onboardingAssignmentPayload.properties.assignmentCode.minLength,
+    1,
+  );
+  assert.equal(
+    onboardingAssignmentPayload.properties.departmentReference.minLength,
+    1,
+  );
+  assert.equal(
+    onboardingAssignmentPayload.properties.legalEntityReference.minLength,
+    1,
+  );
+  assert.equal(
+    onboardingAssignmentPayload.properties.managerReference.minLength,
+    1,
+  );
+  assert.equal(
+    onboardingAssignmentPayload.properties.positionCode.minLength,
+    1,
+  );
+
+  const onboardingWorkEmailExpectation =
+    contract.components.schemas.OnboardingWorkEmailExpectation;
+  assert.equal(
+    onboardingWorkEmailExpectation.properties.contactPointId.minLength,
+    1,
+  );
+  assert.equal(onboardingWorkEmailExpectation.properties.value.minLength, 1);
+  assert.equal(
+    onboardingWorkEmailExpectation.properties.value.pattern,
+    "^[^@]+@.+$",
+  );
 
   const writebackOperation =
     contract.paths["/writeback-events/work-email"].post;

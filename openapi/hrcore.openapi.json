@@ -397,7 +397,8 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
           },
           "correlationId": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "payloadVersion": {
             "type": "string",
@@ -414,13 +415,16 @@
         "required": ["id", "displayName", "createdAt"],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "displayName": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "createdAt": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
           }
         },
         "additionalProperties": false
@@ -435,7 +439,8 @@
         ],
         "properties": {
           "effectiveDate": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
           "employment": {
             "$ref": "#/components/schemas/OnboardingEmploymentPayload"
@@ -454,13 +459,16 @@
         "required": ["id", "employmentCode", "startDate"],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "employmentCode": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "startDate": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           }
         },
         "additionalProperties": false
@@ -476,22 +484,28 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "assignmentCode": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "departmentReference": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "legalEntityReference": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "managerReference": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "positionCode": {
-            "type": ["string", "null"]
+            "type": ["string", "null"],
+            "minLength": 1
           }
         },
         "additionalProperties": false
@@ -501,10 +515,13 @@
         "required": ["contactPointId", "value"],
         "properties": {
           "contactPointId": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "value": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^@]+@.+$"
           }
         },
         "additionalProperties": false
