@@ -23,6 +23,7 @@ The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
 The Phase 1 Okta mastering PoC connection mode is defined in [Okta PoC Connection Contract](docs/okta-poc-connection-contract.md).
 The MVP-A Go/No-Go scope boundary is defined in [MVP-A Go/No-Go Scope Boundary](docs/mvp-a-go-no-go-scope.md).
+The post-MVP-A later-wave Ready boundary is defined in [Post-MVP-A Future Wave Readiness](docs/mvp-a-go-no-go-future-wave-readiness.md).
 
 ## Baseline structure
 
@@ -62,6 +63,9 @@ The MVP-A Go/No-Go scope boundary is defined in [MVP-A Go/No-Go Scope Boundary](
 - `docs/mvp-a-go-no-go-scope.md` records the MVP-A onboarding scope,
   exclusions, P0 gate classification, and real-data or production-like runtime
   blockers for the Go/No-Go package.
+- `docs/mvp-a-go-no-go-future-wave-readiness.md` records the separate Ready
+  conditions for MVP-B transfer, MVP-C termination, and MVP-D CSV/Ops/DLQ so
+  later waves remain gated after MVP-A.
 
 ## Local verification
 
