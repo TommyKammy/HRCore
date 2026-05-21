@@ -1,4 +1,7 @@
 type SqlValue = string | number | bigint | null;
+type SqlRunResult = {
+  changes?: number | bigint;
+};
 
 export interface SqlStatement {
   get(...values: SqlValue[]): Record<string, unknown> | undefined;
@@ -349,8 +352,9 @@ export function saveEditableOnboardingTransactionRequest(
       `,
     ).run(parsed.person.displayName, parsed.person.createdAt, parsed.person.id);
 
-    db.prepare(
-      `
+    const transactionRequestUpdate = db
+      .prepare(
+        `
         UPDATE transaction_request
         SET status_code = ?,
             requested_at = ?,
@@ -361,15 +365,17 @@ export function saveEditableOnboardingTransactionRequest(
           AND correlation_id = ?
           AND status_code = 'draft'
       `,
-    ).run(
-      parsed.statusCode,
-      parsed.requestedAt,
-      parsed.payloadVersion,
-      payloadJson,
-      parsed.id,
-      parsed.person.id,
-      parsed.correlationId,
-    );
+      )
+      .run(
+        parsed.statusCode,
+        parsed.requestedAt,
+        parsed.payloadVersion,
+        payloadJson,
+        parsed.id,
+        parsed.person.id,
+        parsed.correlationId,
+      );
+    assertSingleDraftUpdate(transactionRequestUpdate);
 
     db.exec("RELEASE SAVEPOINT onboarding_transaction_request_edit");
   } catch (error) {
@@ -384,6 +390,27 @@ export function saveEditableOnboardingTransactionRequest(
     correlationId: parsed.correlationId,
     operation: "updated",
   };
+}
+
+function assertSingleDraftUpdate(result: unknown): void {
+  if (
+    !isSqlRunResult(result) ||
+    (result.changes !== 1 && result.changes !== 1n)
+  ) {
+    throw new Error(
+      "onboarding transaction request edit conflicts with the current draft state",
+    );
+  }
+}
+
+function isSqlRunResult(result: unknown): result is SqlRunResult {
+  if (!isRecord(result) || !("changes" in result)) {
+    return false;
+  }
+
+  return (
+    typeof result.changes === "number" || typeof result.changes === "bigint"
+  );
 }
 
 function parsePerson(input: unknown): OnboardingTransactionRequestPersonInput {

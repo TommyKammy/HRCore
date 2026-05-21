@@ -99,9 +99,9 @@ export async function buildApp(
         }
 
         if (isSyntheticWritebackConstraintError(error)) {
-          return reply.code(400).send({
+          return reply.code(409).send({
             error:
-              "onboarding transaction request violates local synthetic constraints",
+              "onboarding transaction request conflicts with existing local synthetic state",
           });
         }
 

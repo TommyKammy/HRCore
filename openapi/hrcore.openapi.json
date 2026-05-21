@@ -138,7 +138,7 @@
             }
           },
           "400": {
-            "description": "The request was malformed or violated local synthetic constraints.",
+            "description": "The request was malformed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -158,7 +158,14 @@
             }
           },
           "503": {
-            "description": "The local onboarding transaction_request database was not configured."
+            "description": "The local onboarding transaction_request database was not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }

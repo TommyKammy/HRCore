@@ -7,6 +7,7 @@ import {
   createOnboardingTransactionRequestFixture,
   OnboardingTransactionRequestValidationError,
   parseOnboardingTransactionRequestInput,
+  saveEditableOnboardingTransactionRequest,
   saveOnboardingTransactionRequest,
   type OnboardingTransactionRequestDatabase,
 } from "./onboarding-transaction-request.js";
@@ -454,6 +455,78 @@ test("MVP-A onboarding transaction request submit recovers when a stale retry re
           .get() as Record<string, unknown> | undefined,
       ),
       { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding draft edit fails closed when the draft update is stale", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const draft = createOnboardingTransactionRequestFixture({
+      statusCode: "draft",
+    });
+    saveEditableOnboardingTransactionRequest(db, draft);
+
+    const staleDraftDb: OnboardingTransactionRequestDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            return statement.get(...values) as
+              | Record<string, unknown>
+              | undefined;
+          },
+          run(...values) {
+            if (
+              sql.includes("UPDATE transaction_request") &&
+              sql.includes("AND status_code = 'draft'")
+            ) {
+              return { changes: 0 };
+            }
+
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    assert.throws(
+      () =>
+        saveEditableOnboardingTransactionRequest(
+          staleDraftDb,
+          createOnboardingTransactionRequestFixture({
+            statusCode: "draft",
+            person: {
+              displayName: "MVP-A Onboarding Stale Edit",
+            },
+          }),
+        ),
+      /onboarding transaction request edit conflicts with the current draft state/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+            SELECT person.display_name, transaction_request.status_code
+            FROM transaction_request
+            JOIN person ON person.id = transaction_request.person_id
+            WHERE transaction_request.id = ?
+          `,
+          )
+          .get(draft.id) as Record<string, unknown> | undefined,
+      ),
+      {
+        display_name: "MVP-A Onboarding Hire One",
+        status_code: "draft",
+      },
+      "stale draft edit must not leave a partial person update behind",
     );
   } finally {
     db.close();

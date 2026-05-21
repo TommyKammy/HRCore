@@ -70,6 +70,23 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       .content["application/json"].schema.$ref,
     "#/components/schemas/OnboardingTransactionRequestInput",
   );
+  const onboardingSaveOperation =
+    contract.paths["/onboarding/new-hire/transaction-requests"].post;
+  assert.equal(
+    onboardingSaveOperation.responses["400"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ValidationErrorResponse",
+  );
+  assert.equal(
+    onboardingSaveOperation.responses["409"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
+  );
+  assert.equal(
+    onboardingSaveOperation.responses["503"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
+  );
 
   const writebackOperation =
     contract.paths["/writeback-events/work-email"].post;
@@ -207,6 +224,89 @@ test("POST /onboarding/new-hire/transaction-requests validates MVP-A request pay
           "payload.assignment.managerReference must be a non-empty string",
       },
     ],
+  });
+});
+
+test("POST /onboarding/new-hire/transaction-requests returns save-path validation details", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const fixture = createOnboardingTransactionRequestFixture();
+  const response = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: {
+      ...fixture,
+      payload: {
+        ...fixture.payload,
+        effectiveDate: "2026-06-02",
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: "payload.employment.startDate must match payload.effectiveDate",
+    validationErrors: [
+      {
+        message:
+          "payload.employment.startDate must match payload.effectiveDate",
+      },
+    ],
+  });
+});
+
+test("POST /onboarding/new-hire/transaction-requests reports unavailable and conflict states with error bodies", async (t) => {
+  const unavailableApp = await buildApp();
+  t.after(async () => {
+    await unavailableApp.close();
+  });
+
+  const unavailableResponse = await unavailableApp.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture(),
+  });
+
+  assert.equal(unavailableResponse.statusCode, 503);
+  assert.deepEqual(unavailableResponse.json(), {
+    error: "onboarding transaction request database is not configured",
+  });
+
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const firstResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture({
+      statusCode: "draft",
+    }),
+  });
+  assert.equal(firstResponse.statusCode, 201);
+
+  const conflictResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture({
+      id: "transaction-request-onboarding-conflict",
+      correlationId: "correlation-onboarding-conflict",
+      statusCode: "draft",
+    }),
+  });
+
+  assert.equal(conflictResponse.statusCode, 409);
+  assert.deepEqual(conflictResponse.json(), {
+    error:
+      "onboarding transaction request conflicts with existing local synthetic state",
   });
 });
 
