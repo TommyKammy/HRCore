@@ -24,6 +24,7 @@ Epic closeout review is defined in [Epic Completion Review](docs/epic-completion
 The Phase 1 Okta mastering PoC connection mode is defined in [Okta PoC Connection Contract](docs/okta-poc-connection-contract.md).
 The MVP-A Go/No-Go scope boundary is defined in [MVP-A Go/No-Go Scope Boundary](docs/mvp-a-go-no-go-scope.md).
 The post-MVP-A later-wave Ready boundary is defined in [Post-MVP-A Future Wave Readiness](docs/mvp-a-go-no-go-future-wave-readiness.md).
+The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision](docs/mvp-a-go-no-go.md).
 
 ## Baseline structure
 
@@ -66,6 +67,10 @@ The post-MVP-A later-wave Ready boundary is defined in [Post-MVP-A Future Wave R
 - `docs/mvp-a-go-no-go-future-wave-readiness.md` records the separate Ready
   conditions for MVP-B transfer, MVP-C termination, and MVP-D CSV/Ops/DLQ so
   later waves remain gated after MVP-A.
+- `docs/mvp-a-go-no-go.md` records the final Conditional Go recommendation,
+  residual risk classification, next Phase 2A issue wave, and gates that remain
+  closed before production-like, real-data, live-provider, export, operational,
+  or later-wave use.
 
 ## Local verification
 
