@@ -50,6 +50,8 @@ const requiredColumnsByTable = {
     "request_type",
     "status_code",
     "requested_at",
+    "payload_version",
+    "payload_json",
   ],
   lifecycle_event: [
     "id",
@@ -208,6 +210,7 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.match(migrationSql, /writeback_provider_refresh/);
   assert.match(migrationSql, /provider_name.*synthetic_okta/s);
   assert.match(migrationSql, /transaction_request/);
+  assert.match(migrationSql, /payload_version.*mvp_a_onboarding_v1/s);
   assert.match(migrationSql, /lifecycle_event/);
   assert.match(
     migrationSql,

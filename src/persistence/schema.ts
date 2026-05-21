@@ -470,6 +470,10 @@ export const transaction_request = sqliteTable(
     }).notNull(),
     requestedAt: text("requested_at").notNull(),
     correlationId: text("correlation_id"),
+    payloadVersion: text("payload_version", {
+      enum: ["mvp_a_onboarding_v1"],
+    }),
+    payloadJson: text("payload_json"),
   },
   (table) => [
     uniqueIndex("transaction_request_id_person_unique").on(
@@ -491,6 +495,14 @@ export const transaction_request = sqliteTable(
     check(
       "transaction_request_requested_at_date",
       sql`${table.requestedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "transaction_request_payload_version_allowed",
+      sql`${table.payloadVersion} is null or ${table.payloadVersion} in ('mvp_a_onboarding_v1')`,
+    ),
+    check(
+      "transaction_request_payload_pair",
+      sql`(${table.payloadVersion} is null and ${table.payloadJson} is null) or (${table.payloadVersion} is not null and ${table.payloadJson} is not null and length(${table.payloadJson}) > 0)`,
     ),
   ],
 );
