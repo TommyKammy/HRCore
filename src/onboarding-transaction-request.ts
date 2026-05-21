@@ -11,6 +11,9 @@ export interface OnboardingTransactionRequestDatabase {
 }
 
 export type OnboardingTransactionRequestStatus = "draft" | "submitted";
+export type OnboardingTransactionRequestPersistedStatus =
+  | OnboardingTransactionRequestStatus
+  | "completed";
 
 export interface OnboardingTransactionRequestPersonInput {
   id: string;
@@ -59,7 +62,7 @@ export interface OnboardingTransactionRequestInput {
 export interface OnboardingTransactionRequestPersistenceResult {
   personId: string;
   transactionRequestId: string;
-  statusCode: OnboardingTransactionRequestStatus;
+  statusCode: OnboardingTransactionRequestPersistedStatus;
   correlationId: string;
 }
 
@@ -67,6 +70,19 @@ type OnboardingTransactionRequestFixtureOverrides = {
   person?: Partial<OnboardingTransactionRequestPersonInput>;
   payload?: Partial<Record<string, unknown>>;
 } & Partial<Omit<OnboardingTransactionRequestInput, "person" | "payload">>;
+
+type ExistingOnboardingTransactionRequestRow = {
+  person_id: string;
+  transaction_request_id: string;
+  display_name: string;
+  created_at: string;
+  request_type: string;
+  status_code: string;
+  requested_at: string;
+  correlation_id: string | null;
+  payload_version: string | null;
+  payload_json: string | null;
+};
 
 const onboardingTransactionRequestFields = [
   "id",
@@ -205,6 +221,23 @@ export function saveOnboardingTransactionRequest(
   const parsed = parseOnboardingTransactionRequestInput(input);
   const payloadJson = serializeOnboardingPayload(parsed.payload);
 
+  const existingRequest = readOnboardingTransactionRequest(db, parsed);
+  if (existingRequest) {
+    if (
+      matchesOnboardingTransactionRequestRetry(
+        existingRequest,
+        parsed,
+        payloadJson,
+      )
+    ) {
+      return buildOnboardingTransactionRequestRetryResult(existingRequest);
+    }
+
+    throw new Error(
+      "onboarding transaction request retry conflicts with the existing request",
+    );
+  }
+
   let savepointStarted = false;
 
   try {
@@ -254,6 +287,17 @@ export function saveOnboardingTransactionRequest(
   } catch (error) {
     if (savepointStarted) {
       rollbackNamedSavepoint(db, "onboarding_transaction_request_persistence");
+      const existingRequest = readOnboardingTransactionRequest(db, parsed);
+      if (
+        existingRequest &&
+        matchesOnboardingTransactionRequestRetry(
+          existingRequest,
+          parsed,
+          payloadJson,
+        )
+      ) {
+        return buildOnboardingTransactionRequestRetryResult(existingRequest);
+      }
     }
 
     throw error;
@@ -325,15 +369,15 @@ function parseAssignmentPayload(
       assignment.assignmentCode,
     ),
     departmentReference: requireNonEmpty(
-      "payload.departmentReference",
+      "payload.assignment.departmentReference",
       assignment.departmentReference,
     ),
     legalEntityReference: requireNonEmpty(
-      "payload.legalEntityReference",
+      "payload.assignment.legalEntityReference",
       assignment.legalEntityReference,
     ),
     managerReference: requireNonEmpty(
-      "payload.managerReference",
+      "payload.assignment.managerReference",
       assignment.managerReference,
     ),
     positionCode:
@@ -401,6 +445,92 @@ function serializeOnboardingPayload(
       value: payload.workEmailExpectation.value,
     },
   });
+}
+
+function readOnboardingTransactionRequest(
+  db: OnboardingTransactionRequestDatabase,
+  input: OnboardingTransactionRequestInput,
+): ExistingOnboardingTransactionRequestRow | undefined {
+  const statement = db.prepare(
+    `
+      SELECT
+        person.id AS person_id,
+        transaction_request.id AS transaction_request_id,
+        person.display_name,
+        person.created_at,
+        transaction_request.request_type,
+        transaction_request.status_code,
+        transaction_request.requested_at,
+        transaction_request.correlation_id,
+        transaction_request.payload_version,
+        transaction_request.payload_json
+      FROM transaction_request
+      JOIN person ON person.id = transaction_request.person_id
+      WHERE transaction_request.correlation_id = ?
+         OR (
+           transaction_request.id = ?
+           AND transaction_request.person_id = ?
+         )
+      ORDER BY
+        CASE
+          WHEN transaction_request.correlation_id = ? THEN 0
+          WHEN transaction_request.id = ?
+            AND transaction_request.person_id = ? THEN 1
+          ELSE 2
+        END,
+        transaction_request.id
+      LIMIT 1
+    `,
+  );
+
+  return statement.get(
+    input.correlationId,
+    input.id,
+    input.person.id,
+    input.correlationId,
+    input.id,
+    input.person.id,
+  ) as ExistingOnboardingTransactionRequestRow | undefined;
+}
+
+function matchesOnboardingTransactionRequestRetry(
+  existing: ExistingOnboardingTransactionRequestRow,
+  input: OnboardingTransactionRequestInput,
+  payloadJson: string,
+): boolean {
+  const requestAlreadyAccepted =
+    existing.status_code === input.statusCode ||
+    (input.statusCode === "submitted" && existing.status_code === "completed");
+
+  return (
+    requestAlreadyAccepted &&
+    existing.person_id === input.person.id &&
+    existing.display_name === input.person.displayName &&
+    existing.created_at === input.person.createdAt &&
+    existing.request_type === input.requestType &&
+    existing.requested_at === input.requestedAt &&
+    existing.correlation_id === input.correlationId &&
+    existing.payload_version === input.payloadVersion &&
+    existing.payload_json === payloadJson
+  );
+}
+
+function buildOnboardingTransactionRequestRetryResult(
+  existing: ExistingOnboardingTransactionRequestRow,
+): OnboardingTransactionRequestPersistenceResult {
+  if (existing.correlation_id === null) {
+    throw new Error(
+      "onboarding transaction request retry read malformed existing request",
+    );
+  }
+
+  return {
+    personId: existing.person_id,
+    transactionRequestId: existing.transaction_request_id,
+    statusCode:
+      existing.status_code as OnboardingTransactionRequestPersistedStatus,
+    correlationId: existing.correlation_id,
+  };
 }
 
 function assertSupportedFields(

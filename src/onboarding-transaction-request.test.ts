@@ -8,6 +8,7 @@ import {
   OnboardingTransactionRequestValidationError,
   parseOnboardingTransactionRequestInput,
   saveOnboardingTransactionRequest,
+  type OnboardingTransactionRequestDatabase,
 } from "./onboarding-transaction-request.js";
 
 const readRepoFile = (path: string): Promise<string> =>
@@ -28,6 +29,10 @@ const readCommittedMigrationSql = async (): Promise<string> => {
 const normalizeRow = <TRow extends Record<string, unknown>>(
   row: TRow | undefined,
 ): Record<string, unknown> | undefined => (row ? { ...row } : row);
+
+const normalizeRows = <TRow extends Record<string, unknown>>(
+  rows: TRow[],
+): Record<string, unknown>[] => rows.map((row) => ({ ...row }));
 
 const openSchemaBackedDatabase = async (t: test.TestContext) => {
   let sqlite: typeof import("node:sqlite");
@@ -83,8 +88,38 @@ test("MVP-A onboarding transaction request validation returns deterministic requ
     (error) =>
       error instanceof OnboardingTransactionRequestValidationError &&
       error instanceof Error &&
-      error.message === "payload.managerReference must be a non-empty string",
+      error.message ===
+        "payload.assignment.managerReference must be a non-empty string",
   );
+});
+
+test("MVP-A onboarding transaction request validation reports assignment reference paths", () => {
+  const fixture = createOnboardingTransactionRequestFixture();
+
+  for (const fieldName of [
+    "departmentReference",
+    "legalEntityReference",
+    "managerReference",
+  ] as const) {
+    assert.throws(
+      () =>
+        parseOnboardingTransactionRequestInput({
+          ...fixture,
+          payload: {
+            ...fixture.payload,
+            assignment: {
+              ...fixture.payload.assignment,
+              [fieldName]: "",
+            },
+          },
+        }),
+      (error) =>
+        error instanceof OnboardingTransactionRequestValidationError &&
+        error instanceof Error &&
+        error.message ===
+          `payload.assignment.${fieldName} must be a non-empty string`,
+    );
+  }
 });
 
 test("MVP-A onboarding transaction request validation rejects invalid effective dates", () => {
@@ -204,6 +239,221 @@ test("MVP-A onboarding transaction request persistence stores request payload on
       ),
       { count: 0 },
       "request persistence must not apply employment data early",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding transaction request submit is idempotent for same correlation", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createOnboardingTransactionRequestFixture();
+
+    const firstResult = saveOnboardingTransactionRequest(db, request);
+    const retryResult = saveOnboardingTransactionRequest(db, request);
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM person").get() as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare("SELECT count(*) AS count FROM transaction_request")
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding transaction request submit uses correlation for regenerated request ids", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createOnboardingTransactionRequestFixture();
+
+    const firstResult = saveOnboardingTransactionRequest(db, request);
+    const retryResult = saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        id: "transaction-request-onboarding-regenerated",
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, person_id, correlation_id
+              FROM transaction_request
+              ORDER BY id
+            `,
+          )
+          .all() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "transaction-request-onboarding-001",
+          person_id: "person-onboarding-001",
+          correlation_id: "correlation-onboarding-001",
+        },
+      ],
+      "correlated retry must return the original request without writing a new one",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding transaction request submit returns authoritative completed retry state", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createOnboardingTransactionRequestFixture();
+
+    const firstResult = saveOnboardingTransactionRequest(db, request);
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET status_code = 'completed'
+        WHERE id = ?
+      `,
+    ).run(firstResult.transactionRequestId);
+
+    assert.deepEqual(saveOnboardingTransactionRequest(db, request), {
+      ...firstResult,
+      statusCode: "completed",
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare("SELECT count(*) AS count FROM transaction_request")
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+      "out-of-order submit retry must not replace an authoritative completed request",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding transaction request submit fails closed when correlated retry drifts", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+
+    assert.throws(
+      () =>
+        saveOnboardingTransactionRequest(
+          db,
+          createOnboardingTransactionRequestFixture({
+            id: "transaction-request-onboarding-regenerated",
+            person: {
+              id: "person-onboarding-retry",
+              displayName: "MVP-A Onboarding Retry",
+            },
+          }),
+        ),
+      /onboarding transaction request retry conflicts with the existing request/,
+    );
+
+    for (const tableName of ["person", "transaction_request"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get() as
+            | Record<string, unknown>
+            | undefined,
+        ),
+        { count: 1 },
+        `${tableName} must not duplicate rows after correlated person drift`,
+      );
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding transaction request submit recovers when a stale retry read collides", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const request = createOnboardingTransactionRequestFixture();
+    const firstResult = saveOnboardingTransactionRequest(db, request);
+    let hideFirstRetryRead = true;
+    const staleReadDb: OnboardingTransactionRequestDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          get(...values) {
+            if (
+              hideFirstRetryRead &&
+              sql.includes(
+                "JOIN person ON person.id = transaction_request.person_id",
+              ) &&
+              sql.includes("transaction_request.correlation_id = ?")
+            ) {
+              hideFirstRetryRead = false;
+              return undefined;
+            }
+
+            return statement.get(...values) as
+              | Record<string, unknown>
+              | undefined;
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    const retryResult = saveOnboardingTransactionRequest(
+      staleReadDb,
+      createOnboardingTransactionRequestFixture({
+        id: "transaction-request-onboarding-regenerated",
+      }),
+    );
+
+    assert.deepEqual(retryResult, firstResult);
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM person").get() as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+      "stale submit retry must roll back the failed write collision",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare("SELECT count(*) AS count FROM transaction_request")
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
     );
   } finally {
     db.close();
