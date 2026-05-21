@@ -14,8 +14,17 @@ export interface OnboardingTransactionRequestDatabase {
 }
 
 export type OnboardingTransactionRequestStatus = "draft" | "submitted";
+export type OnboardingApprovalDecision =
+  | "approve"
+  | "return"
+  | "reject"
+  | "cancel";
 export type OnboardingTransactionRequestPersistedStatus =
   | OnboardingTransactionRequestStatus
+  | "returned"
+  | "rejected"
+  | "cancelled"
+  | "approved"
   | "completed";
 
 export interface OnboardingTransactionRequestPersonInput {
@@ -73,6 +82,26 @@ export interface EditableOnboardingTransactionRequestPersistenceResult extends O
   operation: "created" | "updated" | "idempotent";
 }
 
+export interface OnboardingApprovalDecisionInput {
+  transactionRequestId: string;
+  decision: OnboardingApprovalDecision;
+  decidedAt: string;
+  decidedBy: string;
+  correlationId: string;
+}
+
+export interface OnboardingApprovalDecisionResult {
+  personId: string;
+  transactionRequestId: string;
+  statusCode: Exclude<
+    OnboardingTransactionRequestPersistedStatus,
+    "draft" | "submitted" | "completed"
+  >;
+  decision: OnboardingApprovalDecision;
+  auditEventId: string;
+  correlationId: string;
+}
+
 type OnboardingTransactionRequestFixtureOverrides = {
   person?: Partial<OnboardingTransactionRequestPersonInput>;
   payload?: Partial<Record<string, unknown>>;
@@ -89,6 +118,21 @@ type ExistingOnboardingTransactionRequestRow = {
   correlation_id: string | null;
   payload_version: string | null;
   payload_json: string | null;
+};
+
+type OnboardingDecisionTarget = {
+  statusCode: OnboardingApprovalDecisionResult["statusCode"];
+  auditAction: string;
+};
+
+type ExistingAuditEventRow = {
+  id: string;
+  actor_id: string;
+  action: string;
+  subject_table: string;
+  subject_id: string;
+  occurred_at: string;
+  correlation_id: string | null;
 };
 
 const onboardingTransactionRequestFields = [
@@ -363,7 +407,7 @@ export function saveEditableOnboardingTransactionRequest(
         WHERE id = ?
           AND person_id = ?
           AND correlation_id = ?
-          AND status_code = 'draft'
+          AND status_code in ('draft', 'returned')
       `,
       )
       .run(
@@ -392,6 +436,96 @@ export function saveEditableOnboardingTransactionRequest(
   };
 }
 
+export function decideOnboardingTransactionRequest(
+  db: OnboardingTransactionRequestDatabase,
+  input: unknown,
+): OnboardingApprovalDecisionResult {
+  const decision = parseOnboardingApprovalDecisionInput(input);
+  const target = getOnboardingDecisionTarget(decision.decision);
+  const auditEventId = buildOnboardingDecisionAuditEventId(decision);
+  const existing = readOnboardingTransactionRequestById(
+    db,
+    decision.transactionRequestId,
+  );
+
+  if (!existing) {
+    throw new Error("onboarding transaction request decision target not found");
+  }
+
+  const existingAuditEvent = readAuditEventById(db, auditEventId);
+  if (existing.status_code === target.statusCode && existingAuditEvent) {
+    assertMatchingOnboardingDecisionAuditEvent(
+      existingAuditEvent,
+      existing,
+      decision,
+      target,
+    );
+    return buildOnboardingDecisionResult(
+      existing,
+      decision,
+      target,
+      auditEventId,
+    );
+  }
+
+  assertLegalOnboardingDecision(existing, decision, target);
+
+  db.exec("SAVEPOINT onboarding_transaction_request_decision");
+  try {
+    const updateResult = db
+      .prepare(
+        `
+          UPDATE transaction_request
+          SET status_code = ?
+          WHERE id = ?
+            AND person_id = ?
+            AND status_code = 'submitted'
+        `,
+      )
+      .run(
+        target.statusCode,
+        existing.transaction_request_id,
+        existing.person_id,
+      );
+    assertSingleDecisionUpdate(updateResult);
+
+    db.prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, 'transaction_request', ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      auditEventId,
+      decision.decidedBy,
+      target.auditAction,
+      existing.transaction_request_id,
+      decision.decidedAt,
+      decision.correlationId,
+    );
+
+    db.exec("RELEASE SAVEPOINT onboarding_transaction_request_decision");
+  } catch (error) {
+    rollbackNamedSavepoint(db, "onboarding_transaction_request_decision");
+    throw error;
+  }
+
+  return buildOnboardingDecisionResult(
+    existing,
+    decision,
+    target,
+    auditEventId,
+  );
+}
+
 function assertSingleDraftUpdate(result: unknown): void {
   if (
     !isSqlRunResult(result) ||
@@ -399,6 +533,99 @@ function assertSingleDraftUpdate(result: unknown): void {
   ) {
     throw new Error(
       "onboarding transaction request edit conflicts with the current draft state",
+    );
+  }
+}
+
+function assertSingleDecisionUpdate(result: unknown): void {
+  if (
+    !isSqlRunResult(result) ||
+    (result.changes !== 1 && result.changes !== 1n)
+  ) {
+    throw new Error(
+      "onboarding transaction request decision conflicts with the current submitted state",
+    );
+  }
+}
+
+function parseOnboardingApprovalDecisionInput(
+  input: unknown,
+): OnboardingApprovalDecisionInput {
+  const decision = requireRecord("decision", input);
+  assertSupportedFields("decision", decision, [
+    "transactionRequestId",
+    "decision",
+    "decidedAt",
+    "decidedBy",
+    "correlationId",
+  ]);
+
+  const transactionRequestId = requireNonEmpty(
+    "transactionRequestId",
+    decision.transactionRequestId,
+  );
+  const decisionCode = requireNonEmpty("decision", decision.decision);
+  if (
+    decisionCode !== "approve" &&
+    decisionCode !== "return" &&
+    decisionCode !== "reject" &&
+    decisionCode !== "cancel"
+  ) {
+    throw new OnboardingTransactionRequestValidationError(
+      "decision must be approve, return, reject, or cancel",
+    );
+  }
+
+  return {
+    transactionRequestId,
+    decision: decisionCode,
+    decidedAt: requireTimestamp("decidedAt", decision.decidedAt),
+    decidedBy: requireNonEmpty("decidedBy", decision.decidedBy),
+    correlationId: requireNonEmpty("correlationId", decision.correlationId),
+  };
+}
+
+function getOnboardingDecisionTarget(
+  decision: OnboardingApprovalDecision,
+): OnboardingDecisionTarget {
+  switch (decision) {
+    case "approve":
+      return {
+        statusCode: "approved",
+        auditAction: "mvp_a.onboarding.approve",
+      };
+    case "return":
+      return {
+        statusCode: "returned",
+        auditAction: "mvp_a.onboarding.return",
+      };
+    case "reject":
+      return {
+        statusCode: "rejected",
+        auditAction: "mvp_a.onboarding.reject",
+      };
+    case "cancel":
+      return {
+        statusCode: "cancelled",
+        auditAction: "mvp_a.onboarding.cancel",
+      };
+  }
+}
+
+function assertLegalOnboardingDecision(
+  existing: ExistingOnboardingTransactionRequestRow,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+): void {
+  if (existing.status_code === target.statusCode) {
+    throw new Error(
+      "onboarding transaction request decision audit evidence is missing for the repeated command",
+    );
+  }
+
+  if (existing.status_code !== "submitted") {
+    throw new Error(
+      `onboarding transaction request ${decision.decision} decision requires submitted state`,
     );
   }
 }
@@ -602,6 +829,58 @@ function readOnboardingTransactionRequest(
   ) as ExistingOnboardingTransactionRequestRow | undefined;
 }
 
+function readOnboardingTransactionRequestById(
+  db: OnboardingTransactionRequestDatabase,
+  transactionRequestId: string,
+): ExistingOnboardingTransactionRequestRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT
+          person.id AS person_id,
+          transaction_request.id AS transaction_request_id,
+          person.display_name,
+          person.created_at,
+          transaction_request.request_type,
+          transaction_request.status_code,
+          transaction_request.requested_at,
+          transaction_request.correlation_id,
+          transaction_request.payload_version,
+          transaction_request.payload_json
+        FROM transaction_request
+        JOIN person ON person.id = transaction_request.person_id
+        WHERE transaction_request.id = ?
+        LIMIT 1
+      `,
+    )
+    .get(transactionRequestId) as
+    | ExistingOnboardingTransactionRequestRow
+    | undefined;
+}
+
+function readAuditEventById(
+  db: OnboardingTransactionRequestDatabase,
+  auditEventId: string,
+): ExistingAuditEventRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id
+        FROM audit_event
+        WHERE id = ?
+        LIMIT 1
+      `,
+    )
+    .get(auditEventId) as ExistingAuditEventRow | undefined;
+}
+
 function matchesOnboardingTransactionRequestRetry(
   existing: ExistingOnboardingTransactionRequestRow,
   input: OnboardingTransactionRequestInput,
@@ -609,7 +888,9 @@ function matchesOnboardingTransactionRequestRetry(
 ): boolean {
   const requestAlreadyAccepted =
     existing.status_code === input.statusCode ||
-    (input.statusCode === "submitted" && existing.status_code === "completed");
+    (input.statusCode === "submitted" &&
+      (existing.status_code === "completed" ||
+        existing.status_code === "approved"));
 
   return (
     requestAlreadyAccepted &&
@@ -642,6 +923,48 @@ function buildOnboardingTransactionRequestRetryResult(
   };
 }
 
+function buildOnboardingDecisionResult(
+  existing: ExistingOnboardingTransactionRequestRow,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+  auditEventId: string,
+): OnboardingApprovalDecisionResult {
+  return {
+    personId: existing.person_id,
+    transactionRequestId: existing.transaction_request_id,
+    statusCode: target.statusCode,
+    decision: decision.decision,
+    auditEventId,
+    correlationId: decision.correlationId,
+  };
+}
+
+function buildOnboardingDecisionAuditEventId(
+  decision: OnboardingApprovalDecisionInput,
+): string {
+  return `audit-event-${decision.transactionRequestId}-${decision.decision}-${decision.correlationId}`;
+}
+
+function assertMatchingOnboardingDecisionAuditEvent(
+  auditEvent: ExistingAuditEventRow,
+  existing: ExistingOnboardingTransactionRequestRow,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+): void {
+  if (
+    auditEvent.actor_id !== decision.decidedBy ||
+    auditEvent.action !== target.auditAction ||
+    auditEvent.subject_table !== "transaction_request" ||
+    auditEvent.subject_id !== existing.transaction_request_id ||
+    auditEvent.occurred_at !== decision.decidedAt ||
+    auditEvent.correlation_id !== decision.correlationId
+  ) {
+    throw new Error(
+      "onboarding transaction request repeated decision conflicts with existing audit evidence",
+    );
+  }
+}
+
 function assertEditableDraftBinding(
   existing: ExistingOnboardingTransactionRequestRow,
   input: OnboardingTransactionRequestInput,
@@ -656,9 +979,9 @@ function assertEditableDraftBinding(
     );
   }
 
-  if (existing.status_code !== "draft") {
+  if (existing.status_code !== "draft" && existing.status_code !== "returned") {
     throw new Error(
-      "onboarding transaction request can only be edited while draft",
+      "onboarding transaction request can only be edited while draft or returned",
     );
   }
 }
