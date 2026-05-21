@@ -452,6 +452,10 @@ export function decideOnboardingTransactionRequest(
     throw new Error("onboarding transaction request decision target not found");
   }
 
+  if (existing.request_type !== "hire") {
+    throw new Error("onboarding transaction request decision target not found");
+  }
+
   const existingAuditEvent = readAuditEventById(db, auditEventId);
   if (existing.status_code === target.statusCode && existingAuditEvent) {
     assertMatchingOnboardingDecisionAuditEvent(
@@ -479,6 +483,7 @@ export function decideOnboardingTransactionRequest(
           SET status_code = ?
           WHERE id = ?
             AND person_id = ?
+            AND request_type = 'hire'
             AND status_code = 'submitted'
         `,
       )
@@ -487,7 +492,22 @@ export function decideOnboardingTransactionRequest(
         existing.transaction_request_id,
         existing.person_id,
       );
-    assertSingleDecisionUpdate(updateResult);
+    if (!isSingleSqlChange(updateResult)) {
+      const retryResult = buildOnboardingDecisionRetryResultAfterConflict(
+        db,
+        decision,
+        target,
+        auditEventId,
+      );
+      if (retryResult) {
+        db.exec("RELEASE SAVEPOINT onboarding_transaction_request_decision");
+        return retryResult;
+      }
+
+      throw new Error(
+        "onboarding transaction request decision conflicts with the current submitted state",
+      );
+    }
 
     db.prepare(
       `
@@ -527,25 +547,17 @@ export function decideOnboardingTransactionRequest(
 }
 
 function assertSingleDraftUpdate(result: unknown): void {
-  if (
-    !isSqlRunResult(result) ||
-    (result.changes !== 1 && result.changes !== 1n)
-  ) {
+  if (!isSingleSqlChange(result)) {
     throw new Error(
       "onboarding transaction request edit conflicts with the current draft state",
     );
   }
 }
 
-function assertSingleDecisionUpdate(result: unknown): void {
-  if (
-    !isSqlRunResult(result) ||
-    (result.changes !== 1 && result.changes !== 1n)
-  ) {
-    throw new Error(
-      "onboarding transaction request decision conflicts with the current submitted state",
-    );
-  }
+function isSingleSqlChange(result: unknown): boolean {
+  return (
+    isSqlRunResult(result) && (result.changes === 1 || result.changes === 1n)
+  );
 }
 
 function parseOnboardingApprovalDecisionInput(
@@ -937,6 +949,36 @@ function buildOnboardingDecisionResult(
     auditEventId,
     correlationId: decision.correlationId,
   };
+}
+
+function buildOnboardingDecisionRetryResultAfterConflict(
+  db: OnboardingTransactionRequestDatabase,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+  auditEventId: string,
+): OnboardingApprovalDecisionResult | undefined {
+  const latest = readOnboardingTransactionRequestById(
+    db,
+    decision.transactionRequestId,
+  );
+  const auditEvent = readAuditEventById(db, auditEventId);
+
+  if (
+    !latest ||
+    latest.request_type !== "hire" ||
+    latest.status_code !== target.statusCode ||
+    !auditEvent
+  ) {
+    return undefined;
+  }
+
+  assertMatchingOnboardingDecisionAuditEvent(
+    auditEvent,
+    latest,
+    decision,
+    target,
+  );
+  return buildOnboardingDecisionResult(latest, decision, target, auditEventId);
 }
 
 function buildOnboardingDecisionAuditEventId(

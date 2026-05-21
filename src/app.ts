@@ -140,6 +140,10 @@ export async function buildApp(
           return reply.code(400).send(buildValidationErrorResponse(error));
         }
 
+        if (isOnboardingTransactionRequestDecisionTargetNotFound(error)) {
+          return reply.code(404).send({ error: error.message });
+        }
+
         if (isOnboardingTransactionRequestConflict(error)) {
           return reply.code(409).send({ error: error.message });
         }
@@ -405,8 +409,16 @@ function isOnboardingTransactionRequestConflict(
     error.message.startsWith("onboarding transaction request ") &&
     (error.message.includes("conflicts") ||
       error.message.includes("can only be edited") ||
-      error.message.includes("decision") ||
-      error.message.includes("not found"))
+      error.message.includes("decision"))
+  );
+}
+
+function isOnboardingTransactionRequestDecisionTargetNotFound(
+  error: unknown,
+): error is Error {
+  return (
+    error instanceof Error &&
+    error.message === "onboarding transaction request decision target not found"
   );
 }
 

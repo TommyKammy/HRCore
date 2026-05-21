@@ -579,6 +579,31 @@ test("POST /onboarding/new-hire/transaction-requests/:id/decisions applies appro
   );
 });
 
+test("POST /onboarding/new-hire/transaction-requests/:id/decisions returns not found for missing targets", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-missing/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+
+  assert.equal(decisionResponse.statusCode, 404);
+  assert.deepEqual(decisionResponse.json(), {
+    error: "onboarding transaction request decision target not found",
+  });
+});
+
 test("OpenAPI contract loading is independent from process cwd", async () => {
   const originalCwd = process.cwd();
   process.chdir("..");
