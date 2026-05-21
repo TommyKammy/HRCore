@@ -87,6 +87,13 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       .$ref,
     "#/components/schemas/ErrorResponse",
   );
+  const onboardingRequestInput =
+    contract.components.schemas.OnboardingTransactionRequestInput;
+  assert.equal(onboardingRequestInput.properties.id.minLength, 1);
+  assert.equal(
+    onboardingRequestInput.properties.requestedAt.pattern,
+    "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$",
+  );
 
   const writebackOperation =
     contract.paths["/writeback-events/work-email"].post;
@@ -334,6 +341,15 @@ test("POST /onboarding/new-hire/transaction-requests saves draft edits and submi
     statusCode: "draft",
     correlationId: "correlation-onboarding-001",
   });
+
+  const draftRetryResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: draft,
+  });
+
+  assert.equal(draftRetryResponse.statusCode, 200);
+  assert.deepEqual(draftRetryResponse.json(), createResponse.json());
 
   const editedDraft = createOnboardingTransactionRequestFixture({
     statusCode: "draft",

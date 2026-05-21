@@ -84,7 +84,7 @@ export async function buildApp(
         );
         const { operation, ...responseBody } = result;
         const statusCode =
-          operation === "updated" && responseBody.statusCode === "draft"
+          responseBody.statusCode === "draft" && operation !== "created"
             ? 200
             : 201;
 
