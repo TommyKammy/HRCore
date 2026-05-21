@@ -1746,6 +1746,53 @@ test("Okta PoC connection contract keeps Phase 1 mock-first and synthetic", asyn
   );
 });
 
+test("MVP-A Go/No-Go scope keeps onboarding boundary and deferred gates explicit", async () => {
+  const [scope, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-go-no-go-scope.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedScope = scope.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A Go/No-Go Scope Boundary",
+    "Status: Proposed for Go/No-Go package review.",
+    "Part of: #157.",
+    "Depends on: #158.",
+    "minimum HRCore person, employment, assignment, contact-point, transaction-request, lifecycle-event, and audit evidence",
+    "Mock-first Okta mastering behavior",
+    "MVP-B transfer workflows",
+    "MVP-C termination workflows",
+    "MVP-D CSV/Ops/DLQ",
+    "Production legal, labor, privacy, retention, consent, DSAR, My Number, Specific Personal Information, sensitive personal information",
+    "Real provider commitments not proven by PoC",
+    "Phase 2A implementation issue creation from this child",
+    "MVP-A Go must not imply that MVP-B, MVP-C, or MVP-D are ready",
+    "P0-R05 / #11 data-scope and authorization boundary",
+    "Conditional-go control",
+    "Real-data or production-like use requires an accepted authorization and data-scope gate",
+    "P0-R06 / #12 audit immutability and production evidence boundary",
+    "must not claim WORM, S3 Object Lock, hash-chain production immutability, or external archive readiness",
+    "P0-R08 / #14 raw payload, CSV export, prohibited payload, and extension boundary",
+    "Pre-MVP-A real-data blocker; later-wave implementation gate for CSV/Ops/DLQ",
+    "accepted redaction, export permission, watermark or traceability, download-log, and prohibited-payload controls",
+    "Required Before Real-Data Or Production-Like Runtime Use",
+    "Missing, placeholder, malformed, or partially trusted evidence",
+    "blocks production-like use",
+    "must remain loosely coupled from core MVP-A onboarding",
+    "Core MVP-A tables, DTOs, fixtures, logs, metadata, notes, raw payloads, audit payloads, and CSV surfaces must not become escape hatches",
+  ]) {
+    assert.ok(
+      normalizedScope.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing MVP-A scope text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-A Go\/No-Go Scope Boundary\]\(docs\/mvp-a-go-no-go-scope\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
