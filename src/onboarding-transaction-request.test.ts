@@ -1634,6 +1634,132 @@ test("MVP-A onboarding future-date apply worker returns persisted success on sam
   }
 });
 
+test("MVP-A onboarding future-date apply worker preserves success when attempt insert finds same-correlation failure", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const workerCorrelationId =
+      "correlation-onboarding-future-apply-worker-success-conflict-001";
+    const attemptCorrelationId = workerAttemptCorrelationId(
+      workerCorrelationId,
+      "transaction-request-onboarding-001",
+    );
+    let conflictInserted = false;
+    const conflictDb: OnboardingTransactionRequestDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          all(...values) {
+            return statement.all(...values) as Record<string, unknown>[];
+          },
+          get(...values) {
+            return statement.get(...values) as
+              | Record<string, unknown>
+              | undefined;
+          },
+          run(...values) {
+            if (
+              !conflictInserted &&
+              sql.includes("INSERT INTO onboarding_apply_job_attempt") &&
+              values[3] === "applied"
+            ) {
+              conflictInserted = true;
+              db.prepare(
+                `
+                  INSERT INTO onboarding_apply_job_attempt (
+                    id,
+                    transaction_request_id,
+                    person_id,
+                    status_code,
+                    attempted_at,
+                    worker_id,
+                    correlation_id,
+                    retryable,
+                    error_message
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `,
+              ).run(
+                "onboarding-apply-job-attempt-conflicting-retryable-001",
+                "transaction-request-onboarding-001",
+                "person-onboarding-001",
+                "retryable_failure",
+                "2026-06-01T00:00:01Z",
+                "worker-onboarding-conflict-other-001",
+                attemptCorrelationId,
+                1,
+                "synthetic concurrent retryable failure",
+              );
+            }
+
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(conflictDb, {
+        now: "2026-06-01T00:00:02Z",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId: workerCorrelationId,
+      }),
+      {
+        attempted: 1,
+        applied: 1,
+        failed: 0,
+        skipped: 0,
+        correlationId: workerCorrelationId,
+        results: [
+          {
+            transactionRequestId: "transaction-request-onboarding-001",
+            status: "applied",
+            lifecycleEventId:
+              "lifecycle-event-transaction-request-onboarding-001-apply",
+          },
+        ],
+      },
+    );
+    assert.equal(conflictInserted, true);
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code, attempted_at, worker_id, retryable, error_message
+              FROM onboarding_apply_job_attempt
+              WHERE correlation_id = ?
+            `,
+          )
+          .get(attemptCorrelationId) as Record<string, unknown> | undefined,
+      ),
+      {
+        status_code: "applied",
+        attempted_at: "2026-06-01T00:00:02Z",
+        worker_id: "worker-onboarding-future-apply-001",
+        retryable: 0,
+        error_message: null,
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding future-date apply worker ignores already applied hires", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

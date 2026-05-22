@@ -1658,6 +1658,41 @@ function recordOnboardingApplyJobAttempt(
       "onboarding apply job attempt correlation conflicts with another request",
     );
   }
+  if (attempt.status === "applied" && recorded.status_code !== "applied") {
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET status_code = 'applied',
+            attempted_at = ?,
+            worker_id = ?,
+            retryable = 0,
+            error_message = NULL
+        WHERE correlation_id = ?
+          AND transaction_request_id = ?
+          AND status_code != 'applied'
+      `,
+    ).run(
+      attempt.attemptedAt,
+      attempt.workerId,
+      attempt.correlationId,
+      attempt.transactionRequestId,
+    );
+    const upgraded = readOnboardingApplyJobAttemptByCorrelation(
+      db,
+      attempt.correlationId,
+    );
+    if (
+      !upgraded ||
+      upgraded.transaction_request_id !== attempt.transactionRequestId ||
+      upgraded.status_code !== "applied"
+    ) {
+      throw new Error(
+        "onboarding apply job attempt applied outcome was not persisted",
+      );
+    }
+
+    return upgraded;
+  }
 
   return recorded;
 }
