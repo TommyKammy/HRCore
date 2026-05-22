@@ -840,7 +840,7 @@ export function applyDueOnboardingTransactionRequests(
       attemptCorrelationId,
     );
     if (existingAttempt) {
-      results.push(buildOnboardingApplyJobAttemptRetryResult(existingAttempt));
+      results.push(buildOnboardingApplyJobAttemptResult(existingAttempt));
       continue;
     }
 
@@ -849,21 +849,20 @@ export function applyDueOnboardingTransactionRequests(
       payload = parsePersistedOnboardingApplyPayload(candidate);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
-      recordOnboardingApplyJobAttempt(db, {
-        transactionRequestId: candidate.transaction_request_id,
-        personId: candidate.person_id,
-        status: "non_retryable_failure",
-        attemptedAt: worker.now,
-        workerId: worker.workerId,
-        correlationId: attemptCorrelationId,
-        retryable: false,
-        errorMessage,
-      });
-      results.push({
-        transactionRequestId: candidate.transaction_request_id,
-        status: "non_retryable_failure",
-        errorMessage,
-      });
+      results.push(
+        buildOnboardingApplyJobAttemptResult(
+          recordOnboardingApplyJobAttempt(db, {
+            transactionRequestId: candidate.transaction_request_id,
+            personId: candidate.person_id,
+            status: "non_retryable_failure",
+            attemptedAt: worker.now,
+            workerId: worker.workerId,
+            correlationId: attemptCorrelationId,
+            retryable: false,
+            errorMessage,
+          }),
+        ),
+      );
       continue;
     }
 
@@ -879,40 +878,41 @@ export function applyDueOnboardingTransactionRequests(
         appliedBy: worker.workerId,
         correlationId: attemptCorrelationId,
       });
-      recordOnboardingApplyJobAttempt(db, {
-        transactionRequestId: candidate.transaction_request_id,
-        personId: candidate.person_id,
-        status: "applied",
-        attemptedAt: worker.now,
-        workerId: worker.workerId,
-        correlationId: attemptCorrelationId,
-        retryable: false,
-        errorMessage: null,
-      });
-      results.push({
-        transactionRequestId: candidate.transaction_request_id,
-        status: "applied",
-        lifecycleEventId: applied.lifecycleEventId,
-      });
+      const attemptResult = buildOnboardingApplyJobAttemptResult(
+        recordOnboardingApplyJobAttempt(db, {
+          transactionRequestId: candidate.transaction_request_id,
+          personId: candidate.person_id,
+          status: "applied",
+          attemptedAt: worker.now,
+          workerId: worker.workerId,
+          correlationId: attemptCorrelationId,
+          retryable: false,
+          errorMessage: null,
+        }),
+      );
+      results.push(
+        attemptResult.status === "applied"
+          ? { ...attemptResult, lifecycleEventId: applied.lifecycleEventId }
+          : attemptResult,
+      );
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       const retryable = isRetryableOnboardingApplyWorkerFailure(error);
       const status = retryable ? "retryable_failure" : "non_retryable_failure";
-      recordOnboardingApplyJobAttempt(db, {
-        transactionRequestId: candidate.transaction_request_id,
-        personId: candidate.person_id,
-        status,
-        attemptedAt: worker.now,
-        workerId: worker.workerId,
-        correlationId: attemptCorrelationId,
-        retryable,
-        errorMessage,
-      });
-      results.push({
-        transactionRequestId: candidate.transaction_request_id,
-        status,
-        errorMessage,
-      });
+      results.push(
+        buildOnboardingApplyJobAttemptResult(
+          recordOnboardingApplyJobAttempt(db, {
+            transactionRequestId: candidate.transaction_request_id,
+            personId: candidate.person_id,
+            status,
+            attemptedAt: worker.now,
+            workerId: worker.workerId,
+            correlationId: attemptCorrelationId,
+            retryable,
+            errorMessage,
+          }),
+        ),
+      );
     }
   }
 
@@ -1585,7 +1585,7 @@ function recordOnboardingApplyJobAttempt(
     retryable: boolean;
     errorMessage: string | null;
   },
-): void {
+): ExistingOnboardingApplyJobAttemptRow {
   db.prepare(
     `
       INSERT INTO onboarding_apply_job_attempt (
@@ -1616,6 +1616,21 @@ function recordOnboardingApplyJobAttempt(
     attempt.retryable ? 1 : 0,
     attempt.errorMessage,
   );
+
+  const recorded = readOnboardingApplyJobAttemptByCorrelation(
+    db,
+    attempt.correlationId,
+  );
+  if (!recorded) {
+    throw new Error("onboarding apply job attempt was not persisted");
+  }
+  if (recorded.transaction_request_id !== attempt.transactionRequestId) {
+    throw new Error(
+      "onboarding apply job attempt correlation conflicts with another request",
+    );
+  }
+
+  return recorded;
 }
 
 function readOnboardingApplyJobAttemptByCorrelation(
@@ -1637,7 +1652,7 @@ function readOnboardingApplyJobAttemptByCorrelation(
     .get(correlationId) as ExistingOnboardingApplyJobAttemptRow | undefined;
 }
 
-function buildOnboardingApplyJobAttemptRetryResult(
+function buildOnboardingApplyJobAttemptResult(
   existing: ExistingOnboardingApplyJobAttemptRow,
 ): ApplyDueOnboardingTransactionRequestsItemResult {
   if (existing.status_code === "applied") {

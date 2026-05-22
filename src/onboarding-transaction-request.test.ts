@@ -1651,6 +1651,128 @@ test("MVP-A onboarding future-date apply worker records retryable failure eviden
   }
 });
 
+test("MVP-A onboarding future-date apply worker returns persisted evidence after a same-correlation insert conflict", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const workerCorrelationId =
+      "correlation-onboarding-future-apply-worker-race-001";
+    const attemptCorrelationId = workerAttemptCorrelationId(
+      workerCorrelationId,
+      "transaction-request-onboarding-001",
+    );
+    let injectedAttemptConflict = false;
+    const conflictDb: OnboardingTransactionRequestDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          all(...values) {
+            return statement.all(...values) as Record<string, unknown>[];
+          },
+          get(...values) {
+            return statement.get(...values) as
+              | Record<string, unknown>
+              | undefined;
+          },
+          run(...values) {
+            if (
+              !injectedAttemptConflict &&
+              sql.includes("INSERT INTO onboarding_apply_job_attempt")
+            ) {
+              injectedAttemptConflict = true;
+              db.prepare(
+                `
+                  INSERT INTO onboarding_apply_job_attempt (
+                    id,
+                    transaction_request_id,
+                    person_id,
+                    status_code,
+                    attempted_at,
+                    worker_id,
+                    correlation_id,
+                    retryable,
+                    error_message
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `,
+              ).run(
+                "job-attempt-onboarding-race-001",
+                "transaction-request-onboarding-001",
+                "person-onboarding-001",
+                "applied",
+                "2026-06-01T00:00:00Z",
+                "worker-onboarding-future-apply-001",
+                attemptCorrelationId,
+                0,
+                null,
+              );
+            }
+
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(conflictDb, {
+        now: "2026-06-01T00:00:00Z",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId: workerCorrelationId,
+      }),
+      {
+        attempted: 1,
+        applied: 1,
+        failed: 0,
+        skipped: 0,
+        correlationId: workerCorrelationId,
+        results: [
+          {
+            transactionRequestId: "transaction-request-onboarding-001",
+            status: "applied",
+            lifecycleEventId:
+              "lifecycle-event-transaction-request-onboarding-001-apply",
+          },
+        ],
+      },
+    );
+    assert.equal(injectedAttemptConflict, true);
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT id, correlation_id
+              FROM onboarding_apply_job_attempt
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      {
+        id: "job-attempt-onboarding-race-001",
+        correlation_id: attemptCorrelationId,
+      },
+      "worker result must come from the persisted attempt after a duplicate insert",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding future-date apply worker records non-retryable persisted payload failures", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
