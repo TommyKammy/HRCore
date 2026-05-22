@@ -826,7 +826,11 @@ export function applyDueOnboardingTransactionRequests(
   const worker = parseApplyDueOnboardingTransactionRequestsInput(input);
   const batchLimit = worker.batchLimit ?? 100;
   const effectiveDate = getMvpWorkerEffectiveDate(worker.now);
-  const candidates = readDueOnboardingApplyCandidates(db, batchLimit);
+  const candidates = readDueOnboardingApplyCandidates(
+    db,
+    batchLimit,
+    effectiveDate,
+  );
   const results: ApplyDueOnboardingTransactionRequestsItemResult[] = [];
   let skipped = 0;
 
@@ -1388,6 +1392,7 @@ function readCompletedOnboardingApply(
 function readDueOnboardingApplyCandidates(
   db: OnboardingTransactionRequestDatabase,
   batchLimit: number,
+  effectiveDate: string,
 ): DueOnboardingApplyCandidateRow[] {
   const statement = db.prepare(
     `
@@ -1413,7 +1418,16 @@ function readDueOnboardingApplyCandidates(
           WHERE onboarding_apply_job_attempt.transaction_request_id = transaction_request.id
             AND onboarding_apply_job_attempt.status_code = 'non_retryable_failure'
         )
-      ORDER BY transaction_request.requested_at, transaction_request.id
+      ORDER BY
+        CASE
+          WHEN json_valid(transaction_request.payload_json) = 0 THEN 0
+          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') IS NULL THEN 0
+          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') != 'text' THEN 0
+          WHEN json_extract(transaction_request.payload_json, '$.effectiveDate') <= ? THEN 0
+          ELSE 1
+        END,
+        transaction_request.requested_at,
+        transaction_request.id
       LIMIT ?
     `,
   );
@@ -1421,7 +1435,10 @@ function readDueOnboardingApplyCandidates(
     throw new Error("onboarding apply worker requires query-all support");
   }
 
-  return statement.all(batchLimit) as DueOnboardingApplyCandidateRow[];
+  return statement.all(
+    effectiveDate,
+    batchLimit,
+  ) as DueOnboardingApplyCandidateRow[];
 }
 
 function matchesOnboardingTransactionRequestRetry(
@@ -1755,7 +1772,14 @@ function buildOnboardingApplyJobAttemptId(
 }
 
 function getMvpWorkerEffectiveDate(now: string): string {
-  return new Date(now).toISOString().slice(0, 10);
+  const parsed = new Date(now);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new OnboardingTransactionRequestValidationError(
+      "now must be a valid ISO timestamp",
+    );
+  }
+
+  return parsed.toISOString().slice(0, 10);
 }
 
 function encodeStableKey(parts: string[]): string {

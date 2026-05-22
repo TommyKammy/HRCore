@@ -1296,7 +1296,26 @@ test("MVP-A onboarding future-date apply worker normalizes offset timestamps bef
   }
 });
 
-test("MVP-A onboarding future-date apply worker enforces batch limit on scanned candidates", async (t) => {
+test("MVP-A onboarding future-date apply worker rejects semantically invalid timestamps", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    assert.throws(
+      () =>
+        applyDueOnboardingTransactionRequests(db, {
+          now: "2026-13-40T00:00:00Z",
+          workerId: "worker-onboarding-future-apply-001",
+          correlationId: "correlation-onboarding-future-apply-worker-bad-now",
+        }),
+      OnboardingTransactionRequestValidationError,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding future-date apply worker prioritizes due hires before enforcing the candidate batch limit", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
 
@@ -1348,12 +1367,19 @@ test("MVP-A onboarding future-date apply worker enforces batch limit on scanned 
         batchLimit: 2,
       }),
       {
-        attempted: 0,
-        applied: 0,
+        attempted: 1,
+        applied: 1,
         failed: 0,
-        skipped: 2,
+        skipped: 1,
         correlationId: "correlation-onboarding-future-apply-worker-batch-001",
-        results: [],
+        results: [
+          {
+            transactionRequestId: "transaction-request-onboarding-due",
+            status: "applied",
+            lifecycleEventId:
+              "lifecycle-event-transaction-request-onboarding-due-apply",
+          },
+        ],
       },
     );
     assert.deepEqual(
@@ -1368,7 +1394,7 @@ test("MVP-A onboarding future-date apply worker enforces batch limit on scanned 
           )
           .get() as Record<string, unknown> | undefined,
       ),
-      { status_code: "approved" },
+      { status_code: "completed" },
     );
   } finally {
     db.close();

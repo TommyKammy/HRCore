@@ -18,3 +18,5 @@ CREATE TABLE `onboarding_apply_job_attempt` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `onboarding_apply_job_attempt_correlation_unique` ON `onboarding_apply_job_attempt` (`correlation_id`);
+--> statement-breakpoint
+CREATE INDEX `onboarding_apply_job_attempt_request_status_idx` ON `onboarding_apply_job_attempt` (`transaction_request_id`,`status_code`);

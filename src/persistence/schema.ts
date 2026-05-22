@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
+  index,
   integer,
   sqliteTable,
   text,
@@ -621,6 +622,10 @@ export const onboarding_apply_job_attempt = sqliteTable(
   (table) => [
     uniqueIndex("onboarding_apply_job_attempt_correlation_unique").on(
       table.correlationId,
+    ),
+    index("onboarding_apply_job_attempt_request_status_idx").on(
+      table.transactionRequestId,
+      table.statusCode,
     ),
     foreignKey({
       name: "onboarding_apply_job_attempt_request_person_match_fk",
