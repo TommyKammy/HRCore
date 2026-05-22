@@ -826,6 +826,12 @@ export function applyDueOnboardingTransactionRequests(
   const worker = parseApplyDueOnboardingTransactionRequestsInput(input);
   const batchLimit = worker.batchLimit ?? 100;
   const effectiveDate = getMvpWorkerEffectiveDate(worker.now);
+  const replayedAttemptsByRequestId = new Map(
+    readOnboardingApplyJobAttemptsForWorkerCorrelation(
+      db,
+      worker.correlationId,
+    ).map((attempt) => [attempt.transaction_request_id, attempt]),
+  );
   const candidates = readDueOnboardingApplyCandidates(
     db,
     batchLimit,
@@ -839,12 +845,12 @@ export function applyDueOnboardingTransactionRequests(
       worker.correlationId,
       candidate.transaction_request_id,
     );
-    const existingAttempt = readOnboardingApplyJobAttemptByCorrelation(
-      db,
-      attemptCorrelationId,
-    );
+    const existingAttempt =
+      replayedAttemptsByRequestId.get(candidate.transaction_request_id) ??
+      readOnboardingApplyJobAttemptByCorrelation(db, attemptCorrelationId);
     if (existingAttempt) {
       results.push(buildOnboardingApplyJobAttemptResult(existingAttempt));
+      replayedAttemptsByRequestId.delete(candidate.transaction_request_id);
       continue;
     }
 
@@ -918,6 +924,10 @@ export function applyDueOnboardingTransactionRequests(
         ),
       );
     }
+  }
+
+  for (const existingAttempt of replayedAttemptsByRequestId.values()) {
+    results.push(buildOnboardingApplyJobAttemptResult(existingAttempt));
   }
 
   const failed = results.filter((result) => result.status !== "applied").length;
@@ -1420,11 +1430,13 @@ function readDueOnboardingApplyCandidates(
         )
       ORDER BY
         CASE
-          WHEN json_valid(transaction_request.payload_json) = 0 THEN 0
-          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') IS NULL THEN 0
-          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') != 'text' THEN 0
-          WHEN json_extract(transaction_request.payload_json, '$.effectiveDate') <= ? THEN 0
-          ELSE 1
+          WHEN json_valid(transaction_request.payload_json) = 1
+            AND json_type(transaction_request.payload_json, '$.effectiveDate') = 'text'
+            AND json_extract(transaction_request.payload_json, '$.effectiveDate') <= ? THEN 0
+          WHEN json_valid(transaction_request.payload_json) = 0 THEN 1
+          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') IS NULL THEN 1
+          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') != 'text' THEN 1
+          ELSE 2
         END,
         transaction_request.requested_at,
         transaction_request.id
@@ -1669,6 +1681,45 @@ function readOnboardingApplyJobAttemptByCorrelation(
     .get(correlationId) as ExistingOnboardingApplyJobAttemptRow | undefined;
 }
 
+function readOnboardingApplyJobAttemptsForWorkerCorrelation(
+  db: OnboardingTransactionRequestDatabase,
+  workerCorrelationId: string,
+): ExistingOnboardingApplyJobAttemptRow[] {
+  const statement = db.prepare(
+    `
+      SELECT
+        transaction_request_id,
+        status_code,
+        error_message,
+        correlation_id
+      FROM onboarding_apply_job_attempt
+      ORDER BY attempted_at, transaction_request_id
+    `,
+  );
+  if (!statement.all) {
+    throw new Error("onboarding apply worker requires query-all support");
+  }
+
+  return (
+    statement.all() as (ExistingOnboardingApplyJobAttemptRow & {
+      correlation_id: string;
+    })[]
+  )
+    .filter(
+      (attempt) =>
+        attempt.correlation_id ===
+        buildWorkerAttemptCorrelationId(
+          workerCorrelationId,
+          attempt.transaction_request_id,
+        ),
+    )
+    .map(({ transaction_request_id, status_code, error_message }) => ({
+      transaction_request_id,
+      status_code,
+      error_message,
+    }));
+}
+
 function buildOnboardingApplyJobAttemptResult(
   existing: ExistingOnboardingApplyJobAttemptRow,
 ): ApplyDueOnboardingTransactionRequestsItemResult {
@@ -1794,7 +1845,8 @@ function isRetryableOnboardingApplyWorkerFailure(error: unknown): boolean {
   return !(
     error instanceof OnboardingTransactionRequestValidationError ||
     error.message.includes("persisted onboarding apply payload") ||
-    error.message.includes("requires an approved hire transaction request")
+    error.message.includes("requires an approved hire transaction request") ||
+    error.message.includes("retry conflicts with the completed request")
   );
 }
 
