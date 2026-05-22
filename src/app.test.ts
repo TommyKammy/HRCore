@@ -106,6 +106,11 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       .schema.$ref,
     "#/components/schemas/OnboardingApprovalDecisionResult",
   );
+  assert.equal(
+    onboardingDecisionOperation.responses["404"].content["application/json"]
+      .schema.$ref,
+    "#/components/schemas/ErrorResponse",
+  );
   assert.deepEqual(
     contract.components.schemas.OnboardingApprovalDecisionInput.properties
       .decision.enum,
@@ -602,6 +607,88 @@ test("POST /onboarding/new-hire/transaction-requests/:id/decisions returns not f
   assert.deepEqual(decisionResponse.json(), {
     error: "onboarding transaction request decision target not found",
   });
+});
+
+test("POST /onboarding/new-hire/transaction-requests/:id/decisions rejects non-hire targets without mutation", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  onboardingDb
+    .prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES ('person-change-request-001', 'Change Request One', '2026-05-21T00:00:00Z')
+      `,
+    )
+    .run();
+  onboardingDb
+    .prepare(
+      `
+        INSERT INTO transaction_request (
+          id,
+          person_id,
+          request_type,
+          status_code,
+          requested_at,
+          correlation_id,
+          payload_version,
+          payload_json
+        )
+        VALUES (
+          'transaction-request-change-001',
+          'person-change-request-001',
+          'change',
+          'submitted',
+          '2026-05-21T00:00:00Z',
+          'correlation-change-request-001',
+          NULL,
+          NULL
+        )
+      `,
+    )
+    .run();
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-change-001/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+
+  assert.equal(decisionResponse.statusCode, 404);
+  assert.deepEqual(decisionResponse.json(), {
+    error: "onboarding transaction request decision target not found",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT request_type, status_code
+            FROM transaction_request
+            WHERE id = 'transaction-request-change-001'
+          `,
+        )
+        .get() as Record<string, unknown> | undefined,
+    ),
+    { request_type: "change", status_code: "submitted" },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare("SELECT count(*) AS count FROM audit_event")
+        .get() as Record<string, unknown> | undefined,
+    ),
+    { count: 0 },
+  );
 });
 
 test("OpenAPI contract loading is independent from process cwd", async () => {
