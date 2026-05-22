@@ -1432,6 +1432,8 @@ function readDueOnboardingApplyCandidates(
         CASE
           WHEN json_valid(transaction_request.payload_json) = 1
             AND json_type(transaction_request.payload_json, '$.effectiveDate') = 'text'
+            AND json_extract(transaction_request.payload_json, '$.effectiveDate') GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            AND date(json_extract(transaction_request.payload_json, '$.effectiveDate')) = json_extract(transaction_request.payload_json, '$.effectiveDate')
             AND json_extract(transaction_request.payload_json, '$.effectiveDate') <= ? THEN 0
           WHEN json_valid(transaction_request.payload_json) = 0 THEN 1
           WHEN json_type(transaction_request.payload_json, '$.effectiveDate') IS NULL THEN 1

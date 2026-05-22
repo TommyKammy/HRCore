@@ -1407,8 +1407,9 @@ test("MVP-A onboarding future-date apply worker prioritizes due hires before mal
 
   try {
     for (const [suffix, requestedAt] of [
-      ["malformed", "2026-05-20T00:00:00Z"],
-      ["due", "2026-05-20T00:01:00Z"],
+      ["invalid-date", "2026-05-20T00:00:00Z"],
+      ["malformed", "2026-05-20T00:01:00Z"],
+      ["due", "2026-05-20T00:02:00Z"],
     ] as const) {
       saveOnboardingTransactionRequest(
         db,
@@ -1447,6 +1448,13 @@ test("MVP-A onboarding future-date apply worker prioritizes due hires before mal
         UPDATE transaction_request
         SET payload_json = '{'
         WHERE id = 'transaction-request-onboarding-malformed'
+      `,
+    ).run();
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = json_set(payload_json, '$.effectiveDate', '1999-99-99')
+        WHERE id = 'transaction-request-onboarding-invalid-date'
       `,
     ).run();
 
@@ -1493,7 +1501,7 @@ test("MVP-A onboarding future-date apply worker prioritizes due hires before mal
           status_code: "applied",
         },
       ],
-      "malformed rows must not consume the candidate limit ahead of due hires",
+      "malformed and invalid-date rows must not consume the candidate limit ahead of due hires",
     );
   } finally {
     db.close();
