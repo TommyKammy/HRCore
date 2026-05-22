@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 
 import {
+  applyApprovedOnboardingTransactionRequest,
   decideOnboardingTransactionRequest,
   OnboardingTransactionRequestValidationError,
   parseOnboardingTransactionRequestInput,
@@ -152,6 +153,51 @@ export async function buildApp(
           return reply.code(409).send({
             error:
               "onboarding transaction request decision conflicts with existing local synthetic state",
+          });
+        }
+
+        throw error;
+      }
+    },
+  );
+
+  app.post(
+    "/onboarding/new-hire/transaction-requests/:transactionRequestId/apply",
+    async (request, reply) => {
+      if (!options.onboardingDb) {
+        return reply.code(503).send({
+          error: "onboarding transaction request database is not configured",
+        });
+      }
+
+      const params = request.params as { transactionRequestId?: string };
+      const body =
+        typeof request.body === "object" &&
+        request.body !== null &&
+        !Array.isArray(request.body)
+          ? (request.body as Record<string, unknown>)
+          : {};
+
+      try {
+        return reply.code(200).send(
+          applyApprovedOnboardingTransactionRequest(options.onboardingDb, {
+            ...body,
+            transactionRequestId: params.transactionRequestId,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof OnboardingTransactionRequestValidationError) {
+          return reply.code(400).send(buildValidationErrorResponse(error));
+        }
+
+        if (isApprovedOnboardingApplyConflict(error)) {
+          return reply.code(409).send({ error: error.message });
+        }
+
+        if (isSyntheticWritebackConstraintError(error)) {
+          return reply.code(409).send({
+            error:
+              "approved onboarding apply conflicts with existing local synthetic state",
           });
         }
 
@@ -419,6 +465,13 @@ function isOnboardingTransactionRequestDecisionTargetNotFound(
   return (
     error instanceof Error &&
     error.message === "onboarding transaction request decision target not found"
+  );
+}
+
+function isApprovedOnboardingApplyConflict(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    error.message.startsWith("approved onboarding apply ")
   );
 }
 

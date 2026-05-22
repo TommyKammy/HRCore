@@ -60,6 +60,11 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     ],
   );
   assert.ok(
+    contract.paths[
+      "/onboarding/new-hire/transaction-requests/{transactionRequestId}/apply"
+    ],
+  );
+  assert.ok(
     contract.paths["/onboarding/new-hire/transaction-requests/validate"],
   );
   assert.ok(contract.paths["/writeback-events/work-email"]);
@@ -110,6 +115,25 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     onboardingDecisionOperation.responses["404"].content["application/json"]
       .schema.$ref,
     "#/components/schemas/ErrorResponse",
+  );
+  const onboardingApplyOperation =
+    contract.paths[
+      "/onboarding/new-hire/transaction-requests/{transactionRequestId}/apply"
+    ].post;
+  assert.equal(
+    onboardingApplyOperation.requestBody.content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ApplyApprovedOnboardingTransactionRequestInput",
+  );
+  assert.equal(
+    onboardingApplyOperation.responses["200"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/AppliedOnboardingTransactionRequestResult",
+  );
+  assert.equal(
+    contract.components.schemas.AppliedOnboardingTransactionRequestResult
+      .properties.statusCode.const,
+    "completed",
   );
   assert.deepEqual(
     contract.components.schemas.OnboardingApprovalDecisionInput.properties
@@ -580,6 +604,86 @@ test("POST /onboarding/new-hire/transaction-requests/:id/decisions applies appro
     {
       status_code: "approved",
       action: "mvp_a.onboarding.approve",
+    },
+  );
+});
+
+test("POST /onboarding/new-hire/transaction-requests/:id/apply commits approved onboarding", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture(),
+  });
+  assert.equal(submitResponse.statusCode, 201);
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+  assert.equal(decisionResponse.statusCode, 200);
+
+  const applyResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/apply",
+    payload: {
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+    },
+  });
+
+  assert.equal(applyResponse.statusCode, 200);
+  assert.deepEqual(applyResponse.json(), {
+    personId: "person-onboarding-001",
+    employmentId: "employment-onboarding-001",
+    assignmentId: "assignment-onboarding-001",
+    transactionRequestId: "transaction-request-onboarding-001",
+    lifecycleEventId:
+      "lifecycle-event-transaction-request-onboarding-001-apply",
+    statusCode: "completed",
+    correlationId: "correlation-onboarding-apply-001",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT
+              transaction_request.status_code,
+              employment.id AS employment_id,
+              assignment.id AS assignment_id,
+              lifecycle_event.id AS lifecycle_event_id,
+              audit_event.action
+            FROM transaction_request
+            JOIN employment ON employment.person_id = transaction_request.person_id
+            JOIN assignment ON assignment.employment_id = employment.id
+            JOIN lifecycle_event ON lifecycle_event.transaction_request_id = transaction_request.id
+            JOIN audit_event ON audit_event.subject_id = lifecycle_event.id
+            WHERE transaction_request.id = ?
+          `,
+        )
+        .get("transaction-request-onboarding-001"),
+    ),
+    {
+      status_code: "completed",
+      employment_id: "employment-onboarding-001",
+      assignment_id: "assignment-onboarding-001",
+      lifecycle_event_id:
+        "lifecycle-event-transaction-request-onboarding-001-apply",
+      action: "mvp_a.onboarding.apply",
     },
   );
 });

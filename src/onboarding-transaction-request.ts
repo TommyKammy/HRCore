@@ -102,6 +102,23 @@ export interface OnboardingApprovalDecisionResult {
   correlationId: string;
 }
 
+export interface ApplyApprovedOnboardingTransactionRequestInput {
+  transactionRequestId: string;
+  appliedAt: string;
+  appliedBy: string;
+  correlationId: string;
+}
+
+export interface AppliedOnboardingTransactionRequestResult {
+  personId: string;
+  employmentId: string;
+  assignmentId: string;
+  transactionRequestId: string;
+  lifecycleEventId: string;
+  statusCode: "completed";
+  correlationId: string;
+}
+
 type OnboardingTransactionRequestFixtureOverrides = {
   person?: Partial<OnboardingTransactionRequestPersonInput>;
   payload?: Partial<Record<string, unknown>>;
@@ -133,6 +150,36 @@ type ExistingAuditEventRow = {
   subject_id: string;
   occurred_at: string;
   correlation_id: string | null;
+};
+
+type ExistingAppliedOnboardingTransactionRequestRow = {
+  transaction_status_code: string;
+  request_type: string;
+  person_id: string;
+  payload_version: string | null;
+  payload_json: string | null;
+  lifecycle_event_id: string | null;
+  lifecycle_event_type: string | null;
+  lifecycle_effective_date: string | null;
+  lifecycle_occurred_at: string | null;
+  employment_id: string | null;
+  employment_code: string | null;
+  employment_status_code: string | null;
+  employment_start_date: string | null;
+  employment_end_date: string | null;
+  assignment_id: string | null;
+  assignment_code: string | null;
+  organization_code: string | null;
+  position_code: string | null;
+  assignment_start_date: string | null;
+  assignment_end_date: string | null;
+  audit_event_id: string | null;
+  audit_actor_id: string | null;
+  audit_action: string | null;
+  audit_subject_table: string | null;
+  audit_subject_id: string | null;
+  audit_occurred_at: string | null;
+  audit_correlation_id: string | null;
 };
 
 const onboardingTransactionRequestFields = [
@@ -546,6 +593,180 @@ export function decideOnboardingTransactionRequest(
   );
 }
 
+export function applyApprovedOnboardingTransactionRequest(
+  db: OnboardingTransactionRequestDatabase,
+  input: unknown,
+): AppliedOnboardingTransactionRequestResult {
+  const apply = parseApplyApprovedOnboardingTransactionRequestInput(input);
+  const lifecycleEventId = buildOnboardingApplyLifecycleEventId(apply);
+  const auditEventId = buildOnboardingApplyAuditEventId(lifecycleEventId);
+
+  const completedApply = readCompletedOnboardingApply(
+    db,
+    apply,
+    lifecycleEventId,
+    auditEventId,
+  );
+  if (completedApply) {
+    return buildCompletedOnboardingApplyRetryResult(
+      completedApply,
+      apply,
+      lifecycleEventId,
+    );
+  }
+
+  const existing = readOnboardingTransactionRequestById(
+    db,
+    apply.transactionRequestId,
+  );
+  if (
+    !existing ||
+    existing.request_type !== "hire" ||
+    existing.status_code !== "approved"
+  ) {
+    throw new Error(
+      "approved onboarding apply requires an approved hire transaction request",
+    );
+  }
+
+  const payload = parsePersistedOnboardingApplyPayload(existing);
+
+  db.exec("SAVEPOINT approved_onboarding_transaction_request_apply");
+  try {
+    db.prepare(
+      `
+        INSERT INTO employment (
+          id,
+          person_id,
+          employment_code,
+          status_code,
+          start_date,
+          end_date
+        )
+        VALUES (?, ?, ?, 'active', ?, NULL)
+      `,
+    ).run(
+      payload.employment.id,
+      existing.person_id,
+      payload.employment.employmentCode,
+      payload.employment.startDate,
+    );
+
+    db.prepare(
+      `
+        INSERT INTO assignment (
+          id,
+          person_id,
+          employment_id,
+          assignment_code,
+          organization_code,
+          position_code,
+          start_date,
+          end_date
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+      `,
+    ).run(
+      payload.assignment.id,
+      existing.person_id,
+      payload.employment.id,
+      payload.assignment.assignmentCode,
+      payload.assignment.departmentReference,
+      payload.assignment.positionCode ?? null,
+      payload.effectiveDate,
+    );
+
+    db.prepare(
+      `
+        INSERT INTO lifecycle_event (
+          id,
+          person_id,
+          transaction_request_id,
+          event_type,
+          effective_date,
+          occurred_at
+        )
+        VALUES (?, ?, ?, 'hire', ?, ?)
+      `,
+    ).run(
+      lifecycleEventId,
+      existing.person_id,
+      existing.transaction_request_id,
+      payload.effectiveDate,
+      apply.appliedAt,
+    );
+
+    const updateResult = db
+      .prepare(
+        `
+          UPDATE transaction_request
+          SET status_code = 'completed'
+          WHERE id = ?
+            AND person_id = ?
+            AND request_type = 'hire'
+            AND status_code = 'approved'
+        `,
+      )
+      .run(existing.transaction_request_id, existing.person_id);
+    if (!isSingleSqlChange(updateResult)) {
+      throw new Error(
+        "approved onboarding apply conflicts with the current approved state",
+      );
+    }
+
+    db.prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, 'mvp_a.onboarding.apply', 'lifecycle_event', ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      auditEventId,
+      apply.appliedBy,
+      lifecycleEventId,
+      apply.appliedAt,
+      apply.correlationId,
+    );
+
+    db.exec("RELEASE SAVEPOINT approved_onboarding_transaction_request_apply");
+  } catch (error) {
+    rollbackNamedSavepoint(db, "approved_onboarding_transaction_request_apply");
+    const completedAfterRollback = readCompletedOnboardingApply(
+      db,
+      apply,
+      lifecycleEventId,
+      auditEventId,
+    );
+    if (completedAfterRollback) {
+      return buildCompletedOnboardingApplyRetryResult(
+        completedAfterRollback,
+        apply,
+        lifecycleEventId,
+      );
+    }
+
+    throw error;
+  }
+
+  return {
+    personId: existing.person_id,
+    employmentId: payload.employment.id,
+    assignmentId: payload.assignment.id,
+    transactionRequestId: existing.transaction_request_id,
+    lifecycleEventId,
+    statusCode: "completed",
+    correlationId: apply.correlationId,
+  };
+}
+
 function assertSingleDraftUpdate(result: unknown): void {
   if (!isSingleSqlChange(result)) {
     throw new Error(
@@ -594,6 +815,28 @@ function parseOnboardingApprovalDecisionInput(
     decidedAt: requireTimestamp("decidedAt", decision.decidedAt),
     decidedBy: requireNonEmpty("decidedBy", decision.decidedBy),
     correlationId: requireNonEmpty("correlationId", decision.correlationId),
+  };
+}
+
+function parseApplyApprovedOnboardingTransactionRequestInput(
+  input: unknown,
+): ApplyApprovedOnboardingTransactionRequestInput {
+  const apply = requireRecord("apply", input);
+  assertSupportedFields("apply", apply, [
+    "transactionRequestId",
+    "appliedAt",
+    "appliedBy",
+    "correlationId",
+  ]);
+
+  return {
+    transactionRequestId: requireNonEmpty(
+      "transactionRequestId",
+      apply.transactionRequestId,
+    ),
+    appliedAt: requireTimestamp("appliedAt", apply.appliedAt),
+    appliedBy: requireNonEmpty("appliedBy", apply.appliedBy),
+    correlationId: requireNonEmpty("correlationId", apply.correlationId),
   };
 }
 
@@ -893,6 +1136,65 @@ function readAuditEventById(
     .get(auditEventId) as ExistingAuditEventRow | undefined;
 }
 
+function readCompletedOnboardingApply(
+  db: OnboardingTransactionRequestDatabase,
+  apply: ApplyApprovedOnboardingTransactionRequestInput,
+  lifecycleEventId: string,
+  auditEventId: string,
+): ExistingAppliedOnboardingTransactionRequestRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT
+          transaction_request.status_code AS transaction_status_code,
+          transaction_request.request_type,
+          transaction_request.person_id,
+          transaction_request.payload_version,
+          transaction_request.payload_json,
+          lifecycle_event.id AS lifecycle_event_id,
+          lifecycle_event.event_type AS lifecycle_event_type,
+          lifecycle_event.effective_date AS lifecycle_effective_date,
+          lifecycle_event.occurred_at AS lifecycle_occurred_at,
+          employment.id AS employment_id,
+          employment.employment_code,
+          employment.status_code AS employment_status_code,
+          employment.start_date AS employment_start_date,
+          employment.end_date AS employment_end_date,
+          assignment.id AS assignment_id,
+          assignment.assignment_code,
+          assignment.organization_code,
+          assignment.position_code,
+          assignment.start_date AS assignment_start_date,
+          assignment.end_date AS assignment_end_date,
+          audit_event.id AS audit_event_id,
+          audit_event.actor_id AS audit_actor_id,
+          audit_event.action AS audit_action,
+          audit_event.subject_table AS audit_subject_table,
+          audit_event.subject_id AS audit_subject_id,
+          audit_event.occurred_at AS audit_occurred_at,
+          audit_event.correlation_id AS audit_correlation_id
+        FROM transaction_request
+        LEFT JOIN lifecycle_event
+          ON lifecycle_event.id = ?
+         AND lifecycle_event.transaction_request_id = transaction_request.id
+         AND lifecycle_event.person_id = transaction_request.person_id
+        LEFT JOIN audit_event
+          ON audit_event.id = ?
+        LEFT JOIN employment
+          ON employment.person_id = transaction_request.person_id
+        LEFT JOIN assignment
+          ON assignment.person_id = transaction_request.person_id
+         AND assignment.employment_id = employment.id
+        WHERE transaction_request.id = ?
+          AND transaction_request.status_code = 'completed'
+        LIMIT 1
+      `,
+    )
+    .get(lifecycleEventId, auditEventId, apply.transactionRequestId) as
+    | ExistingAppliedOnboardingTransactionRequestRow
+    | undefined;
+}
+
 function matchesOnboardingTransactionRequestRetry(
   existing: ExistingOnboardingTransactionRequestRow,
   input: OnboardingTransactionRequestInput,
@@ -949,6 +1251,104 @@ function buildOnboardingDecisionResult(
     auditEventId,
     correlationId: decision.correlationId,
   };
+}
+
+function buildCompletedOnboardingApplyRetryResult(
+  existing: ExistingAppliedOnboardingTransactionRequestRow,
+  apply: ApplyApprovedOnboardingTransactionRequestInput,
+  lifecycleEventId: string,
+): AppliedOnboardingTransactionRequestResult {
+  const payload = parsePersistedOnboardingApplyPayload(existing);
+  assertCompletedOnboardingApplyMatchesInput(
+    existing,
+    payload,
+    apply,
+    lifecycleEventId,
+  );
+
+  return {
+    personId: existing.person_id,
+    employmentId: payload.employment.id,
+    assignmentId: payload.assignment.id,
+    transactionRequestId: apply.transactionRequestId,
+    lifecycleEventId,
+    statusCode: "completed",
+    correlationId: apply.correlationId,
+  };
+}
+
+function parsePersistedOnboardingApplyPayload(
+  existing:
+    | ExistingOnboardingTransactionRequestRow
+    | ExistingAppliedOnboardingTransactionRequestRow,
+): OnboardingTransactionRequestPayload {
+  if (
+    existing.payload_version !== "mvp_a_onboarding_v1" ||
+    typeof existing.payload_json !== "string"
+  ) {
+    throw new Error(
+      "approved onboarding apply requires persisted MVP-A payload",
+    );
+  }
+
+  try {
+    return parsePayload(JSON.parse(existing.payload_json));
+  } catch (error) {
+    if (error instanceof OnboardingTransactionRequestValidationError) {
+      throw error;
+    }
+
+    throw new Error("approved onboarding apply persisted payload is malformed");
+  }
+}
+
+function assertCompletedOnboardingApplyMatchesInput(
+  existing: ExistingAppliedOnboardingTransactionRequestRow,
+  payload: OnboardingTransactionRequestPayload,
+  apply: ApplyApprovedOnboardingTransactionRequestInput,
+  lifecycleEventId: string,
+): void {
+  if (
+    existing.transaction_status_code !== "completed" ||
+    existing.request_type !== "hire" ||
+    existing.lifecycle_event_id !== lifecycleEventId ||
+    existing.lifecycle_event_type !== "hire" ||
+    existing.lifecycle_effective_date !== payload.effectiveDate ||
+    existing.lifecycle_occurred_at !== apply.appliedAt ||
+    existing.employment_id !== payload.employment.id ||
+    existing.employment_code !== payload.employment.employmentCode ||
+    existing.employment_status_code !== "active" ||
+    existing.employment_start_date !== payload.employment.startDate ||
+    existing.employment_end_date !== null ||
+    existing.assignment_id !== payload.assignment.id ||
+    existing.assignment_code !== payload.assignment.assignmentCode ||
+    existing.organization_code !== payload.assignment.departmentReference ||
+    existing.position_code !== (payload.assignment.positionCode ?? null) ||
+    existing.assignment_start_date !== payload.effectiveDate ||
+    existing.assignment_end_date !== null ||
+    existing.audit_event_id !==
+      buildOnboardingApplyAuditEventId(lifecycleEventId) ||
+    existing.audit_actor_id !== apply.appliedBy ||
+    existing.audit_action !== "mvp_a.onboarding.apply" ||
+    existing.audit_subject_table !== "lifecycle_event" ||
+    existing.audit_subject_id !== lifecycleEventId ||
+    existing.audit_occurred_at !== apply.appliedAt ||
+    existing.audit_correlation_id !== apply.correlationId
+  ) {
+    throw new Error(
+      "approved onboarding apply retry conflicts with the completed request",
+    );
+  }
+}
+
+function buildOnboardingApplyLifecycleEventId(
+  apply: ApplyApprovedOnboardingTransactionRequestInput,
+): string {
+  return `lifecycle-event-${apply.transactionRequestId}-apply`;
+}
+
+function buildOnboardingApplyAuditEventId(lifecycleEventId: string): string {
+  return `audit-event-${lifecycleEventId}-applied`;
 }
 
 function buildOnboardingDecisionRetryResultAfterConflict(
