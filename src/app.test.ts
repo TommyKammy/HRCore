@@ -55,6 +55,11 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.ok(contract.paths["/onboarding/new-hire"]);
   assert.ok(contract.paths["/onboarding/new-hire/transaction-requests"]);
   assert.ok(
+    contract.paths[
+      "/onboarding/new-hire/transaction-requests/{transactionRequestId}/decisions"
+    ],
+  );
+  assert.ok(
     contract.paths["/onboarding/new-hire/transaction-requests/validate"],
   );
   assert.ok(contract.paths["/writeback-events/work-email"]);
@@ -86,6 +91,35 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     onboardingSaveOperation.responses["503"].content["application/json"].schema
       .$ref,
     "#/components/schemas/ErrorResponse",
+  );
+  const onboardingDecisionOperation =
+    contract.paths[
+      "/onboarding/new-hire/transaction-requests/{transactionRequestId}/decisions"
+    ].post;
+  assert.equal(
+    onboardingDecisionOperation.requestBody.content["application/json"].schema
+      .$ref,
+    "#/components/schemas/OnboardingApprovalDecisionInput",
+  );
+  assert.equal(
+    onboardingDecisionOperation.responses["200"].content["application/json"]
+      .schema.$ref,
+    "#/components/schemas/OnboardingApprovalDecisionResult",
+  );
+  assert.equal(
+    onboardingDecisionOperation.responses["404"].content["application/json"]
+      .schema.$ref,
+    "#/components/schemas/ErrorResponse",
+  );
+  assert.deepEqual(
+    contract.components.schemas.OnboardingApprovalDecisionInput.properties
+      .decision.enum,
+    ["approve", "return", "reject", "cancel"],
+  );
+  assert.deepEqual(
+    contract.components.schemas.OnboardingApprovalDecisionResult.properties
+      .statusCode.enum,
+    ["returned", "rejected", "cancelled", "approved"],
   );
   const onboardingRequestInput =
     contract.components.schemas.OnboardingTransactionRequestInput;
@@ -491,6 +525,169 @@ test("POST /onboarding/new-hire/transaction-requests saves draft edits and submi
         },
       }),
     },
+  );
+});
+
+test("POST /onboarding/new-hire/transaction-requests/:id/decisions applies approval decisions", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture(),
+  });
+  assert.equal(submitResponse.statusCode, 201);
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+
+  assert.equal(decisionResponse.statusCode, 200);
+  assert.deepEqual(decisionResponse.json(), {
+    personId: "person-onboarding-001",
+    transactionRequestId: "transaction-request-onboarding-001",
+    statusCode: "approved",
+    decision: "approve",
+    auditEventId:
+      "audit-event-transaction-request-onboarding-001-approve-correlation-onboarding-approval-001",
+    correlationId: "correlation-onboarding-approval-001",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT transaction_request.status_code, audit_event.action
+            FROM transaction_request
+            JOIN audit_event ON audit_event.subject_id = transaction_request.id
+            WHERE transaction_request.id = ?
+          `,
+        )
+        .get("transaction-request-onboarding-001"),
+    ),
+    {
+      status_code: "approved",
+      action: "mvp_a.onboarding.approve",
+    },
+  );
+});
+
+test("POST /onboarding/new-hire/transaction-requests/:id/decisions returns not found for missing targets", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-missing/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+
+  assert.equal(decisionResponse.statusCode, 404);
+  assert.deepEqual(decisionResponse.json(), {
+    error: "onboarding transaction request decision target not found",
+  });
+});
+
+test("POST /onboarding/new-hire/transaction-requests/:id/decisions rejects non-hire targets without mutation", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  onboardingDb
+    .prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES ('person-change-request-001', 'Change Request One', '2026-05-21T00:00:00Z')
+      `,
+    )
+    .run();
+  onboardingDb
+    .prepare(
+      `
+        INSERT INTO transaction_request (
+          id,
+          person_id,
+          request_type,
+          status_code,
+          requested_at,
+          correlation_id,
+          payload_version,
+          payload_json
+        )
+        VALUES (
+          'transaction-request-change-001',
+          'person-change-request-001',
+          'change',
+          'submitted',
+          '2026-05-21T00:00:00Z',
+          'correlation-change-request-001',
+          NULL,
+          NULL
+        )
+      `,
+    )
+    .run();
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-change-001/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+
+  assert.equal(decisionResponse.statusCode, 404);
+  assert.deepEqual(decisionResponse.json(), {
+    error: "onboarding transaction request decision target not found",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT request_type, status_code
+            FROM transaction_request
+            WHERE id = 'transaction-request-change-001'
+          `,
+        )
+        .get() as Record<string, unknown> | undefined,
+    ),
+    { request_type: "change", status_code: "submitted" },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare("SELECT count(*) AS count FROM audit_event")
+        .get() as Record<string, unknown> | undefined,
+    ),
+    { count: 0 },
   );
 });
 

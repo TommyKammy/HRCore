@@ -466,7 +466,15 @@ export const transaction_request = sqliteTable(
       enum: ["hire", "change", "terminate"],
     }).notNull(),
     statusCode: text("status_code", {
-      enum: ["draft", "submitted", "completed", "cancelled"],
+      enum: [
+        "draft",
+        "submitted",
+        "returned",
+        "rejected",
+        "cancelled",
+        "approved",
+        "completed",
+      ],
     }).notNull(),
     requestedAt: text("requested_at").notNull(),
     correlationId: text("correlation_id"),
@@ -490,7 +498,7 @@ export const transaction_request = sqliteTable(
     ),
     check(
       "transaction_request_status_allowed",
-      sql`${table.statusCode} in ('draft', 'submitted', 'completed', 'cancelled')`,
+      sql`${table.statusCode} in ('draft', 'submitted', 'returned', 'rejected', 'cancelled', 'approved', 'completed')`,
     ),
     check(
       "transaction_request_requested_at_date",
