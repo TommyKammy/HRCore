@@ -38,6 +38,15 @@ const normalizeRows = <TRow extends Record<string, unknown>>(
   rows: TRow[],
 ): Record<string, unknown>[] => rows.map((row) => ({ ...row }));
 
+const workerAttemptCorrelationId = (
+  workerCorrelationId: string,
+  transactionRequestId: string,
+): string =>
+  `onboarding-apply-worker-attempt-${Buffer.from(
+    JSON.stringify([workerCorrelationId, transactionRequestId]),
+    "utf8",
+  ).toString("base64url")}`;
+
 const openSchemaBackedDatabase = async (t: test.TestContext) => {
   let sqlite: typeof import("node:sqlite");
   try {
@@ -1196,8 +1205,10 @@ test("MVP-A onboarding future-date apply worker skips future hires and applies d
         {
           actor_id: "worker-onboarding-future-apply-001",
           action: "mvp_a.onboarding.apply",
-          correlation_id:
-            "correlation-onboarding-future-apply-worker-001:transaction-request-onboarding-due",
+          correlation_id: workerAttemptCorrelationId(
+            "correlation-onboarding-future-apply-worker-001",
+            "transaction-request-onboarding-due",
+          ),
         },
       ],
     );
@@ -1220,12 +1231,219 @@ test("MVP-A onboarding future-date apply worker skips future hires and applies d
           status_code: "applied",
           attempted_at: "2026-06-01T00:00:00Z",
           worker_id: "worker-onboarding-future-apply-001",
-          correlation_id:
-            "correlation-onboarding-future-apply-worker-001:transaction-request-onboarding-due",
+          correlation_id: workerAttemptCorrelationId(
+            "correlation-onboarding-future-apply-worker-001",
+            "transaction-request-onboarding-due",
+          ),
           retryable: 0,
           error_message: null,
         },
       ],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding future-date apply worker normalizes offset timestamps before due checks", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        now: "2026-06-01T00:30:00+02:00",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId: "correlation-onboarding-future-apply-worker-offset-001",
+      }),
+      {
+        attempted: 0,
+        applied: 0,
+        failed: 0,
+        skipped: 1,
+        correlationId: "correlation-onboarding-future-apply-worker-offset-001",
+        results: [],
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "approved" },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding future-date apply worker enforces batch limit on scanned candidates", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    for (const [suffix, effectiveDate, requestedAt] of [
+      ["future-a", "2026-06-02", "2026-05-20T00:00:00Z"],
+      ["future-b", "2026-06-03", "2026-05-20T00:01:00Z"],
+      ["due", "2026-06-01", "2026-05-20T00:02:00Z"],
+    ] as const) {
+      saveOnboardingTransactionRequest(
+        db,
+        createOnboardingTransactionRequestFixture({
+          id: `transaction-request-onboarding-${suffix}`,
+          person: { id: `person-onboarding-${suffix}` },
+          requestedAt,
+          correlationId: `correlation-onboarding-${suffix}`,
+          payload: {
+            effectiveDate,
+            employment: {
+              id: `employment-onboarding-${suffix}`,
+              employmentCode: `EMP-ONBOARDING-${suffix.toUpperCase()}`,
+              startDate: effectiveDate,
+            },
+            assignment: {
+              id: `assignment-onboarding-${suffix}`,
+              assignmentCode: `ASN-ONBOARDING-${suffix.toUpperCase()}`,
+              departmentReference: "department-people-ops",
+              legalEntityReference: "legal-entity-jp-001",
+              managerReference: "manager-001",
+              positionCode: "position-engineer-001",
+            },
+          },
+        }),
+      );
+      decideOnboardingTransactionRequest(db, {
+        transactionRequestId: `transaction-request-onboarding-${suffix}`,
+        decision: "approve",
+        decidedAt: "2026-05-21T01:00:00Z",
+        decidedBy: "operator-people-ops-001",
+        correlationId: `correlation-onboarding-approval-${suffix}`,
+      });
+    }
+
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        now: "2026-06-01T00:00:00Z",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId: "correlation-onboarding-future-apply-worker-batch-001",
+        batchLimit: 2,
+      }),
+      {
+        attempted: 0,
+        applied: 0,
+        failed: 0,
+        skipped: 2,
+        correlationId: "correlation-onboarding-future-apply-worker-batch-001",
+        results: [],
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-onboarding-due'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "approved" },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding future-date apply worker encodes ambiguous correlation parts distinctly", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    for (const [transactionRequestId, workerCorrelationId, requestedAt] of [
+      ["c", "a:b", "2026-05-20T00:00:00Z"],
+      ["b:c", "a", "2026-05-20T00:01:00Z"],
+    ] as const) {
+      saveOnboardingTransactionRequest(
+        db,
+        createOnboardingTransactionRequestFixture({
+          id: transactionRequestId,
+          person: { id: `person-onboarding-${transactionRequestId}` },
+          requestedAt,
+          correlationId: `correlation-onboarding-${transactionRequestId}`,
+          payload: {
+            employment: {
+              id: `employment-onboarding-${transactionRequestId}`,
+              employmentCode: `EMP-ONBOARDING-${transactionRequestId.toUpperCase()}`,
+              startDate: "2026-06-01",
+            },
+            assignment: {
+              id: `assignment-onboarding-${transactionRequestId}`,
+              assignmentCode: `ASN-ONBOARDING-${transactionRequestId.toUpperCase()}`,
+              departmentReference: "department-people-ops",
+              legalEntityReference: "legal-entity-jp-001",
+              managerReference: "manager-001",
+              positionCode: "position-engineer-001",
+            },
+          },
+        }),
+      );
+      decideOnboardingTransactionRequest(db, {
+        transactionRequestId,
+        decision: "approve",
+        decidedAt: "2026-05-21T01:00:00Z",
+        decidedBy: "operator-people-ops-001",
+        correlationId: `correlation-onboarding-approval-${transactionRequestId}`,
+      });
+      assert.equal(
+        applyDueOnboardingTransactionRequests(db, {
+          now: "2026-06-01T00:00:00Z",
+          workerId: "worker-onboarding-future-apply-001",
+          correlationId: workerCorrelationId,
+          batchLimit: 1,
+        }).applied,
+        1,
+      );
+    }
+
+    const correlationIds = normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT correlation_id
+            FROM onboarding_apply_job_attempt
+            ORDER BY attempted_at, transaction_request_id
+          `,
+        )
+        .all() as Record<string, unknown>[],
+    );
+    assert.deepEqual(correlationIds, [
+      { correlation_id: workerAttemptCorrelationId("a", "b:c") },
+      { correlation_id: workerAttemptCorrelationId("a:b", "c") },
+    ]);
+    assert.notEqual(
+      workerAttemptCorrelationId("a:b", "c"),
+      workerAttemptCorrelationId("a", "b:c"),
     );
   } finally {
     db.close();
@@ -1252,8 +1470,10 @@ test("MVP-A onboarding future-date apply worker ignores already applied hires", 
       transactionRequestId: "transaction-request-onboarding-001",
       appliedAt: "2026-06-01T00:00:00Z",
       appliedBy: "worker-onboarding-future-apply-001",
-      correlationId:
-        "correlation-onboarding-future-apply-worker-001:transaction-request-onboarding-001",
+      correlationId: workerAttemptCorrelationId(
+        "correlation-onboarding-future-apply-worker-001",
+        "transaction-request-onboarding-001",
+      ),
     });
 
     assert.deepEqual(
@@ -1365,6 +1585,41 @@ test("MVP-A onboarding future-date apply worker records retryable failure eviden
       { status_code: "approved" },
       "retryable worker failure must leave the request eligible for retry",
     );
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        now: "2026-06-01T00:00:30Z",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId: "correlation-onboarding-future-apply-worker-fail-001",
+      }),
+      {
+        attempted: 1,
+        applied: 0,
+        failed: 1,
+        skipped: 0,
+        correlationId: "correlation-onboarding-future-apply-worker-fail-001",
+        results: [
+          {
+            transactionRequestId: "transaction-request-onboarding-001",
+            status: "retryable_failure",
+            errorMessage: "synthetic retryable audit write failure",
+          },
+        ],
+      },
+      "same-correlation retry must return the recorded attempt without a duplicate insert",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM onboarding_apply_job_attempt
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
 
     assert.equal(
       applyDueOnboardingTransactionRequests(db, {
@@ -1454,6 +1709,37 @@ test("MVP-A onboarding future-date apply worker records non-retryable persisted 
           error_message: "persisted onboarding apply payload is malformed",
         },
       ],
+    );
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        now: "2026-06-01T00:05:00Z",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId:
+          "correlation-onboarding-future-apply-worker-bad-payload-002",
+      }),
+      {
+        attempted: 0,
+        applied: 0,
+        failed: 0,
+        skipped: 0,
+        correlationId:
+          "correlation-onboarding-future-apply-worker-bad-payload-002",
+        results: [],
+      },
+      "non-retryable payload failures must not be selected on later runs",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM onboarding_apply_job_attempt
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
     );
     assert.deepEqual(
       normalizeRow(

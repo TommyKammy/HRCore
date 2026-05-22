@@ -213,6 +213,12 @@ type ExistingAppliedOnboardingTransactionRequestRow = {
 
 type DueOnboardingApplyCandidateRow = ExistingOnboardingTransactionRequestRow;
 
+type ExistingOnboardingApplyJobAttemptRow = {
+  transaction_request_id: string;
+  status_code: string;
+  error_message: string | null;
+};
+
 const onboardingTransactionRequestFields = [
   "id",
   "person",
@@ -818,20 +824,25 @@ export function applyDueOnboardingTransactionRequests(
   input: unknown,
 ): ApplyDueOnboardingTransactionRequestsResult {
   const worker = parseApplyDueOnboardingTransactionRequestsInput(input);
+  const batchLimit = worker.batchLimit ?? 100;
   const effectiveDate = getMvpWorkerEffectiveDate(worker.now);
-  const candidates = readDueOnboardingApplyCandidates(db);
+  const candidates = readDueOnboardingApplyCandidates(db, batchLimit);
   const results: ApplyDueOnboardingTransactionRequestsItemResult[] = [];
   let skipped = 0;
 
   for (const candidate of candidates) {
-    if (results.length >= (worker.batchLimit ?? 100)) {
-      break;
-    }
-
     const attemptCorrelationId = buildWorkerAttemptCorrelationId(
       worker.correlationId,
       candidate.transaction_request_id,
     );
+    const existingAttempt = readOnboardingApplyJobAttemptByCorrelation(
+      db,
+      attemptCorrelationId,
+    );
+    if (existingAttempt) {
+      results.push(buildOnboardingApplyJobAttemptRetryResult(existingAttempt));
+      continue;
+    }
 
     let payload: OnboardingTransactionRequestPayload;
     try {
@@ -1376,6 +1387,7 @@ function readCompletedOnboardingApply(
 
 function readDueOnboardingApplyCandidates(
   db: OnboardingTransactionRequestDatabase,
+  batchLimit: number,
 ): DueOnboardingApplyCandidateRow[] {
   const statement = db.prepare(
     `
@@ -1395,14 +1407,21 @@ function readDueOnboardingApplyCandidates(
       WHERE transaction_request.request_type = 'hire'
         AND transaction_request.status_code = 'approved'
         AND transaction_request.payload_version = 'mvp_a_onboarding_v1'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM onboarding_apply_job_attempt
+          WHERE onboarding_apply_job_attempt.transaction_request_id = transaction_request.id
+            AND onboarding_apply_job_attempt.status_code = 'non_retryable_failure'
+        )
       ORDER BY transaction_request.requested_at, transaction_request.id
+      LIMIT ?
     `,
   );
   if (!statement.all) {
     throw new Error("onboarding apply worker requires query-all support");
   }
 
-  return statement.all() as DueOnboardingApplyCandidateRow[];
+  return statement.all(batchLimit) as DueOnboardingApplyCandidateRow[];
 }
 
 function matchesOnboardingTransactionRequestRetry(
@@ -1581,6 +1600,7 @@ function recordOnboardingApplyJobAttempt(
         error_message
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(correlation_id) DO NOTHING
     `,
   ).run(
     buildOnboardingApplyJobAttemptId(
@@ -1598,10 +1618,65 @@ function recordOnboardingApplyJobAttempt(
   );
 }
 
+function readOnboardingApplyJobAttemptByCorrelation(
+  db: OnboardingTransactionRequestDatabase,
+  correlationId: string,
+): ExistingOnboardingApplyJobAttemptRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT
+          transaction_request_id,
+          status_code,
+          error_message
+        FROM onboarding_apply_job_attempt
+        WHERE correlation_id = ?
+        LIMIT 1
+      `,
+    )
+    .get(correlationId) as ExistingOnboardingApplyJobAttemptRow | undefined;
+}
+
+function buildOnboardingApplyJobAttemptRetryResult(
+  existing: ExistingOnboardingApplyJobAttemptRow,
+): ApplyDueOnboardingTransactionRequestsItemResult {
+  if (existing.status_code === "applied") {
+    return {
+      transactionRequestId: existing.transaction_request_id,
+      status: "applied",
+      lifecycleEventId: buildOnboardingApplyLifecycleEventIdForRequest(
+        existing.transaction_request_id,
+      ),
+    };
+  }
+
+  if (
+    existing.status_code !== "retryable_failure" &&
+    existing.status_code !== "non_retryable_failure"
+  ) {
+    throw new Error("onboarding apply job attempt retry is malformed");
+  }
+
+  return {
+    transactionRequestId: existing.transaction_request_id,
+    status: existing.status_code,
+    errorMessage:
+      existing.error_message ?? "unknown onboarding apply attempt failure",
+  };
+}
+
 function buildOnboardingApplyLifecycleEventId(
   apply: ApplyApprovedOnboardingTransactionRequestInput,
 ): string {
-  return `lifecycle-event-${apply.transactionRequestId}-apply`;
+  return buildOnboardingApplyLifecycleEventIdForRequest(
+    apply.transactionRequestId,
+  );
+}
+
+function buildOnboardingApplyLifecycleEventIdForRequest(
+  transactionRequestId: string,
+): string {
+  return `lifecycle-event-${transactionRequestId}-apply`;
 }
 
 function buildOnboardingApplyAuditEventId(lifecycleEventId: string): string {
@@ -1648,18 +1723,28 @@ function buildWorkerAttemptCorrelationId(
   workerCorrelationId: string,
   transactionRequestId: string,
 ): string {
-  return `${workerCorrelationId}:${transactionRequestId}`;
+  return `onboarding-apply-worker-attempt-${encodeStableKey([
+    workerCorrelationId,
+    transactionRequestId,
+  ])}`;
 }
 
 function buildOnboardingApplyJobAttemptId(
   transactionRequestId: string,
   correlationId: string,
 ): string {
-  return `onboarding-apply-job-attempt-${transactionRequestId}-${correlationId}`;
+  return `onboarding-apply-job-attempt-${encodeStableKey([
+    transactionRequestId,
+    correlationId,
+  ])}`;
 }
 
 function getMvpWorkerEffectiveDate(now: string): string {
-  return now.slice(0, 10);
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+function encodeStableKey(parts: string[]): string {
+  return Buffer.from(JSON.stringify(parts), "utf8").toString("base64url");
 }
 
 function isRetryableOnboardingApplyWorkerFailure(error: unknown): boolean {
