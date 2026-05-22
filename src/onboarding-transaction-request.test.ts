@@ -1676,6 +1676,52 @@ test("MVP-A onboarding future-date apply worker returns persisted success on sam
   }
 });
 
+test("MVP-A onboarding future-date apply worker replays non-ASCII worker correlations", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const input = {
+      now: "2026-06-01T00:00:00Z",
+      workerId: "worker-onboarding-future-apply-001",
+      correlationId:
+        "correlation-onboarding-future-apply-worker-success-replay-\u00ff",
+    };
+    assert.equal(applyDueOnboardingTransactionRequests(db, input).applied, 1);
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+      attempted: 1,
+      applied: 1,
+      failed: 0,
+      skipped: 0,
+      correlationId:
+        "correlation-onboarding-future-apply-worker-success-replay-\u00ff",
+      results: [
+        {
+          transactionRequestId: "transaction-request-onboarding-001",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-001-apply",
+        },
+      ],
+    });
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding future-date apply worker preserves success when attempt insert finds same-correlation failure", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

@@ -1768,16 +1768,12 @@ function buildWorkerAttemptCorrelationIdSearchPrefix(
   workerCorrelationId: string,
 ): string {
   const rawPrefix = JSON.stringify([workerCorrelationId, ""]).slice(0, -2);
-  const alignedPrefix = rawPrefix.slice(
+  const rawPrefixBytes = Buffer.from(rawPrefix, "utf8");
+  const alignedPrefixBytes = rawPrefixBytes.subarray(
     0,
-    rawPrefix.length % 3 === 0
-      ? rawPrefix.length
-      : rawPrefix.length - (rawPrefix.length % 3),
+    rawPrefixBytes.length - (rawPrefixBytes.length % 3),
   );
-  return `onboarding-apply-worker-attempt-${Buffer.from(
-    alignedPrefix,
-    "utf8",
-  ).toString("base64url")}`;
+  return `onboarding-apply-worker-attempt-${alignedPrefixBytes.toString("base64url")}`;
 }
 
 function buildOnboardingApplyJobAttemptResult(
