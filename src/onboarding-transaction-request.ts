@@ -5,6 +5,7 @@ type SqlRunResult = {
 
 export interface SqlStatement {
   get(...values: SqlValue[]): Record<string, unknown> | undefined;
+  all?(...values: SqlValue[]): Record<string, unknown>[];
   run(...values: SqlValue[]): unknown;
 }
 
@@ -119,6 +120,34 @@ export interface AppliedOnboardingTransactionRequestResult {
   correlationId: string;
 }
 
+export interface ApplyDueOnboardingTransactionRequestsInput {
+  now: string;
+  workerId: string;
+  correlationId: string;
+  batchLimit?: number;
+}
+
+export type ApplyDueOnboardingTransactionRequestsStatus =
+  | "applied"
+  | "retryable_failure"
+  | "non_retryable_failure";
+
+export interface ApplyDueOnboardingTransactionRequestsItemResult {
+  transactionRequestId: string;
+  status: ApplyDueOnboardingTransactionRequestsStatus;
+  lifecycleEventId?: string;
+  errorMessage?: string;
+}
+
+export interface ApplyDueOnboardingTransactionRequestsResult {
+  attempted: number;
+  applied: number;
+  failed: number;
+  skipped: number;
+  correlationId: string;
+  results: ApplyDueOnboardingTransactionRequestsItemResult[];
+}
+
 type OnboardingTransactionRequestFixtureOverrides = {
   person?: Partial<OnboardingTransactionRequestPersonInput>;
   payload?: Partial<Record<string, unknown>>;
@@ -181,6 +210,8 @@ type ExistingAppliedOnboardingTransactionRequestRow = {
   audit_occurred_at: string | null;
   audit_correlation_id: string | null;
 };
+
+type DueOnboardingApplyCandidateRow = ExistingOnboardingTransactionRequestRow;
 
 const onboardingTransactionRequestFields = [
   "id",
@@ -782,6 +813,110 @@ export function applyApprovedOnboardingTransactionRequest(
   };
 }
 
+export function applyDueOnboardingTransactionRequests(
+  db: OnboardingTransactionRequestDatabase,
+  input: unknown,
+): ApplyDueOnboardingTransactionRequestsResult {
+  const worker = parseApplyDueOnboardingTransactionRequestsInput(input);
+  const effectiveDate = getMvpWorkerEffectiveDate(worker.now);
+  const candidates = readDueOnboardingApplyCandidates(db);
+  const results: ApplyDueOnboardingTransactionRequestsItemResult[] = [];
+  let skipped = 0;
+
+  for (const candidate of candidates) {
+    if (results.length >= (worker.batchLimit ?? 100)) {
+      break;
+    }
+
+    const attemptCorrelationId = buildWorkerAttemptCorrelationId(
+      worker.correlationId,
+      candidate.transaction_request_id,
+    );
+
+    let payload: OnboardingTransactionRequestPayload;
+    try {
+      payload = parsePersistedOnboardingApplyPayload(candidate);
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      recordOnboardingApplyJobAttempt(db, {
+        transactionRequestId: candidate.transaction_request_id,
+        personId: candidate.person_id,
+        status: "non_retryable_failure",
+        attemptedAt: worker.now,
+        workerId: worker.workerId,
+        correlationId: attemptCorrelationId,
+        retryable: false,
+        errorMessage,
+      });
+      results.push({
+        transactionRequestId: candidate.transaction_request_id,
+        status: "non_retryable_failure",
+        errorMessage,
+      });
+      continue;
+    }
+
+    if (payload.effectiveDate > effectiveDate) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const applied = applyApprovedOnboardingTransactionRequest(db, {
+        transactionRequestId: candidate.transaction_request_id,
+        appliedAt: worker.now,
+        appliedBy: worker.workerId,
+        correlationId: attemptCorrelationId,
+      });
+      recordOnboardingApplyJobAttempt(db, {
+        transactionRequestId: candidate.transaction_request_id,
+        personId: candidate.person_id,
+        status: "applied",
+        attemptedAt: worker.now,
+        workerId: worker.workerId,
+        correlationId: attemptCorrelationId,
+        retryable: false,
+        errorMessage: null,
+      });
+      results.push({
+        transactionRequestId: candidate.transaction_request_id,
+        status: "applied",
+        lifecycleEventId: applied.lifecycleEventId,
+      });
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      const retryable = isRetryableOnboardingApplyWorkerFailure(error);
+      const status = retryable ? "retryable_failure" : "non_retryable_failure";
+      recordOnboardingApplyJobAttempt(db, {
+        transactionRequestId: candidate.transaction_request_id,
+        personId: candidate.person_id,
+        status,
+        attemptedAt: worker.now,
+        workerId: worker.workerId,
+        correlationId: attemptCorrelationId,
+        retryable,
+        errorMessage,
+      });
+      results.push({
+        transactionRequestId: candidate.transaction_request_id,
+        status,
+        errorMessage,
+      });
+    }
+  }
+
+  const failed = results.filter((result) => result.status !== "applied").length;
+
+  return {
+    attempted: results.length,
+    applied: results.length - failed,
+    failed,
+    skipped,
+    correlationId: worker.correlationId,
+    results,
+  };
+}
+
 function assertSingleDraftUpdate(result: unknown): void {
   if (!isSingleSqlChange(result)) {
     throw new Error(
@@ -852,6 +987,28 @@ function parseApplyApprovedOnboardingTransactionRequestInput(
     appliedAt: requireTimestamp("appliedAt", apply.appliedAt),
     appliedBy: requireNonEmpty("appliedBy", apply.appliedBy),
     correlationId: requireNonEmpty("correlationId", apply.correlationId),
+  };
+}
+
+function parseApplyDueOnboardingTransactionRequestsInput(
+  input: unknown,
+): ApplyDueOnboardingTransactionRequestsInput {
+  const worker = requireRecord("worker", input);
+  assertSupportedFields("worker", worker, [
+    "now",
+    "workerId",
+    "correlationId",
+    "batchLimit",
+  ]);
+
+  return {
+    now: requireTimestamp("now", worker.now),
+    workerId: requireNonEmpty("workerId", worker.workerId),
+    correlationId: requireNonEmpty("correlationId", worker.correlationId),
+    batchLimit:
+      worker.batchLimit === undefined
+        ? 100
+        : requirePositiveInteger("batchLimit", worker.batchLimit),
   };
 }
 
@@ -1217,6 +1374,37 @@ function readCompletedOnboardingApply(
     ) as ExistingAppliedOnboardingTransactionRequestRow | undefined;
 }
 
+function readDueOnboardingApplyCandidates(
+  db: OnboardingTransactionRequestDatabase,
+): DueOnboardingApplyCandidateRow[] {
+  const statement = db.prepare(
+    `
+      SELECT
+        person.id AS person_id,
+        transaction_request.id AS transaction_request_id,
+        person.display_name,
+        person.created_at,
+        transaction_request.request_type,
+        transaction_request.status_code,
+        transaction_request.requested_at,
+        transaction_request.correlation_id,
+        transaction_request.payload_version,
+        transaction_request.payload_json
+      FROM transaction_request
+      JOIN person ON person.id = transaction_request.person_id
+      WHERE transaction_request.request_type = 'hire'
+        AND transaction_request.status_code = 'approved'
+        AND transaction_request.payload_version = 'mvp_a_onboarding_v1'
+      ORDER BY transaction_request.requested_at, transaction_request.id
+    `,
+  );
+  if (!statement.all) {
+    throw new Error("onboarding apply worker requires query-all support");
+  }
+
+  return statement.all() as DueOnboardingApplyCandidateRow[];
+}
+
 function matchesOnboardingTransactionRequestRetry(
   existing: ExistingOnboardingTransactionRequestRow,
   input: OnboardingTransactionRequestInput,
@@ -1366,6 +1554,50 @@ function assertCompletedOnboardingApplyMatchesInput(
   }
 }
 
+function recordOnboardingApplyJobAttempt(
+  db: OnboardingTransactionRequestDatabase,
+  attempt: {
+    transactionRequestId: string;
+    personId: string;
+    status: ApplyDueOnboardingTransactionRequestsStatus;
+    attemptedAt: string;
+    workerId: string;
+    correlationId: string;
+    retryable: boolean;
+    errorMessage: string | null;
+  },
+): void {
+  db.prepare(
+    `
+      INSERT INTO onboarding_apply_job_attempt (
+        id,
+        transaction_request_id,
+        person_id,
+        status_code,
+        attempted_at,
+        worker_id,
+        correlation_id,
+        retryable,
+        error_message
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    buildOnboardingApplyJobAttemptId(
+      attempt.transactionRequestId,
+      attempt.correlationId,
+    ),
+    attempt.transactionRequestId,
+    attempt.personId,
+    attempt.status,
+    attempt.attemptedAt,
+    attempt.workerId,
+    attempt.correlationId,
+    attempt.retryable ? 1 : 0,
+    attempt.errorMessage,
+  );
+}
+
 function buildOnboardingApplyLifecycleEventId(
   apply: ApplyApprovedOnboardingTransactionRequestInput,
 ): string {
@@ -1410,6 +1642,42 @@ function buildOnboardingDecisionAuditEventId(
   decision: OnboardingApprovalDecisionInput,
 ): string {
   return `audit-event-${decision.transactionRequestId}-${decision.decision}-${decision.correlationId}`;
+}
+
+function buildWorkerAttemptCorrelationId(
+  workerCorrelationId: string,
+  transactionRequestId: string,
+): string {
+  return `${workerCorrelationId}:${transactionRequestId}`;
+}
+
+function buildOnboardingApplyJobAttemptId(
+  transactionRequestId: string,
+  correlationId: string,
+): string {
+  return `onboarding-apply-job-attempt-${transactionRequestId}-${correlationId}`;
+}
+
+function getMvpWorkerEffectiveDate(now: string): string {
+  return now.slice(0, 10);
+}
+
+function isRetryableOnboardingApplyWorkerFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return true;
+  }
+
+  return !(
+    error instanceof OnboardingTransactionRequestValidationError ||
+    error.message.includes("persisted onboarding apply payload") ||
+    error.message.includes("requires an approved hire transaction request")
+  );
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "unknown onboarding apply error";
 }
 
 function assertMatchingOnboardingDecisionAuditEvent(
@@ -1514,6 +1782,16 @@ function requireTimestamp(fieldName: string, value: unknown): string {
   }
 
   return text;
+}
+
+function requirePositiveInteger(fieldName: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new OnboardingTransactionRequestValidationError(
+      `${fieldName} must be a positive integer`,
+    );
+  }
+
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
