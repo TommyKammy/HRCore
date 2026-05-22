@@ -1091,6 +1091,210 @@ test("MVP-A approved onboarding apply retry is idempotent without duplicate dura
   }
 });
 
+test("MVP-A approved onboarding apply retry reads the records identified by the persisted payload", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    db.prepare(
+      `
+        INSERT INTO employment (
+          id,
+          person_id,
+          employment_code,
+          status_code,
+          start_date,
+          end_date
+        )
+        VALUES (
+          'employment-onboarding-sibling',
+          'person-onboarding-001',
+          'EMP-ONBOARDING-SIBLING',
+          'active',
+          '2026-05-15',
+          NULL
+        )
+      `,
+    ).run();
+    db.prepare(
+      `
+        INSERT INTO assignment (
+          id,
+          person_id,
+          employment_id,
+          assignment_code,
+          organization_code,
+          position_code,
+          start_date,
+          end_date
+        )
+        VALUES (
+          'assignment-onboarding-sibling',
+          'person-onboarding-001',
+          'employment-onboarding-sibling',
+          'ASN-ONBOARDING-SIBLING',
+          'department-sibling',
+          NULL,
+          '2026-05-15',
+          NULL
+        )
+      `,
+    ).run();
+    const apply = {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+    };
+
+    const firstResult = applyApprovedOnboardingTransactionRequest(db, apply);
+    const retryResult = applyApprovedOnboardingTransactionRequest(db, apply);
+
+    assert.deepEqual(retryResult, firstResult);
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding apply revalidates persisted payload date invariants without mutation", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = ?
+        WHERE id = 'transaction-request-onboarding-001'
+      `,
+    ).run(
+      JSON.stringify({
+        effectiveDate: "2026-06-01",
+        employment: {
+          id: "employment-onboarding-001",
+          employmentCode: "EMP-ONBOARDING-001",
+          startDate: "2026-06-02",
+        },
+        assignment: {
+          id: "assignment-onboarding-001",
+          assignmentCode: "ASN-ONBOARDING-001",
+          departmentReference: "department-people-ops",
+          legalEntityReference: "legal-entity-jp-001",
+          managerReference: "manager-001",
+          positionCode: "position-engineer-001",
+        },
+        workEmailExpectation: {
+          contactPointId: "contact-point-onboarding-001",
+          value: "onboarding.hire.001@example.invalid",
+        },
+      }),
+    );
+
+    assert.throws(
+      () =>
+        applyApprovedOnboardingTransactionRequest(db, {
+          transactionRequestId: "transaction-request-onboarding-001",
+          appliedAt: "2026-05-21T02:00:00Z",
+          appliedBy: "operator-people-ops-apply-001",
+          correlationId: "correlation-onboarding-apply-001",
+        }),
+      /persisted onboarding apply payload violates date invariants/,
+    );
+
+    for (const tableName of ["employment", "assignment", "lifecycle_event"]) {
+      assert.deepEqual(
+        normalizeRow(
+          db.prepare(`SELECT count(*) AS count FROM ${tableName}`).get() as
+            | Record<string, unknown>
+            | undefined,
+        ),
+        { count: 0 },
+        `${tableName} must remain empty after rejected persisted payload`,
+      );
+    }
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "approved" },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding apply classifies persisted payload parse failures as server-side errors", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = '{'
+        WHERE id = 'transaction-request-onboarding-001'
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        applyApprovedOnboardingTransactionRequest(db, {
+          transactionRequestId: "transaction-request-onboarding-001",
+          appliedAt: "2026-05-21T02:00:00Z",
+          appliedBy: "operator-people-ops-apply-001",
+          correlationId: "correlation-onboarding-apply-001",
+        }),
+      (error) =>
+        error instanceof Error &&
+        !(error instanceof OnboardingTransactionRequestValidationError) &&
+        error.message === "persisted onboarding apply payload is malformed",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding apply rejects unapproved requests without mutation", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

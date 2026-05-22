@@ -601,24 +601,37 @@ export function applyApprovedOnboardingTransactionRequest(
   const lifecycleEventId = buildOnboardingApplyLifecycleEventId(apply);
   const auditEventId = buildOnboardingApplyAuditEventId(lifecycleEventId);
 
-  const completedApply = readCompletedOnboardingApply(
+  const existing = readOnboardingTransactionRequestById(
     db,
-    apply,
-    lifecycleEventId,
-    auditEventId,
+    apply.transactionRequestId,
   );
-  if (completedApply) {
+  if (
+    existing &&
+    existing.request_type === "hire" &&
+    existing.status_code === "completed"
+  ) {
+    const payload = parsePersistedOnboardingApplyPayload(existing);
+    const completedApply = readCompletedOnboardingApply(
+      db,
+      apply,
+      lifecycleEventId,
+      auditEventId,
+      payload,
+    );
+    if (!completedApply) {
+      throw new Error(
+        "approved onboarding apply retry conflicts with the completed request",
+      );
+    }
+
     return buildCompletedOnboardingApplyRetryResult(
       completedApply,
+      payload,
       apply,
       lifecycleEventId,
     );
   }
 
-  const existing = readOnboardingTransactionRequestById(
-    db,
-    apply.transactionRequestId,
-  );
   if (
     !existing ||
     existing.request_type !== "hire" ||
@@ -744,10 +757,12 @@ export function applyApprovedOnboardingTransactionRequest(
       apply,
       lifecycleEventId,
       auditEventId,
+      payload,
     );
     if (completedAfterRollback) {
       return buildCompletedOnboardingApplyRetryResult(
         completedAfterRollback,
+        payload,
         apply,
         lifecycleEventId,
       );
@@ -1141,6 +1156,7 @@ function readCompletedOnboardingApply(
   apply: ApplyApprovedOnboardingTransactionRequestInput,
   lifecycleEventId: string,
   auditEventId: string,
+  payload: OnboardingTransactionRequestPayload,
 ): ExistingAppliedOnboardingTransactionRequestRow | undefined {
   return db
     .prepare(
@@ -1181,18 +1197,24 @@ function readCompletedOnboardingApply(
         LEFT JOIN audit_event
           ON audit_event.id = ?
         LEFT JOIN employment
-          ON employment.person_id = transaction_request.person_id
+          ON employment.id = ?
+         AND employment.person_id = transaction_request.person_id
         LEFT JOIN assignment
-          ON assignment.person_id = transaction_request.person_id
+          ON assignment.id = ?
+         AND assignment.person_id = transaction_request.person_id
          AND assignment.employment_id = employment.id
         WHERE transaction_request.id = ?
           AND transaction_request.status_code = 'completed'
         LIMIT 1
       `,
     )
-    .get(lifecycleEventId, auditEventId, apply.transactionRequestId) as
-    | ExistingAppliedOnboardingTransactionRequestRow
-    | undefined;
+    .get(
+      lifecycleEventId,
+      auditEventId,
+      payload.employment.id,
+      payload.assignment.id,
+      apply.transactionRequestId,
+    ) as ExistingAppliedOnboardingTransactionRequestRow | undefined;
 }
 
 function matchesOnboardingTransactionRequestRetry(
@@ -1255,10 +1277,10 @@ function buildOnboardingDecisionResult(
 
 function buildCompletedOnboardingApplyRetryResult(
   existing: ExistingAppliedOnboardingTransactionRequestRow,
+  payload: OnboardingTransactionRequestPayload,
   apply: ApplyApprovedOnboardingTransactionRequestInput,
   lifecycleEventId: string,
 ): AppliedOnboardingTransactionRequestResult {
-  const payload = parsePersistedOnboardingApplyPayload(existing);
   assertCompletedOnboardingApplyMatchesInput(
     existing,
     payload,
@@ -1286,20 +1308,23 @@ function parsePersistedOnboardingApplyPayload(
     existing.payload_version !== "mvp_a_onboarding_v1" ||
     typeof existing.payload_json !== "string"
   ) {
+    throw new Error("persisted onboarding apply requires MVP-A payload");
+  }
+
+  let payload: OnboardingTransactionRequestPayload;
+  try {
+    payload = parsePayload(JSON.parse(existing.payload_json));
+  } catch {
+    throw new Error("persisted onboarding apply payload is malformed");
+  }
+
+  if (payload.effectiveDate !== payload.employment.startDate) {
     throw new Error(
-      "approved onboarding apply requires persisted MVP-A payload",
+      "persisted onboarding apply payload violates date invariants",
     );
   }
 
-  try {
-    return parsePayload(JSON.parse(existing.payload_json));
-  } catch (error) {
-    if (error instanceof OnboardingTransactionRequestValidationError) {
-      throw error;
-    }
-
-    throw new Error("approved onboarding apply persisted payload is malformed");
-  }
+  return payload;
 }
 
 function assertCompletedOnboardingApplyMatchesInput(

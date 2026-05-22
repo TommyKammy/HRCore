@@ -688,6 +688,56 @@ test("POST /onboarding/new-hire/transaction-requests/:id/apply commits approved 
   );
 });
 
+test("POST /onboarding/new-hire/transaction-requests/:id/apply treats corrupted persisted payload as server-side state", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture(),
+  });
+  assert.equal(submitResponse.statusCode, 201);
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    },
+  });
+  assert.equal(decisionResponse.statusCode, 200);
+
+  onboardingDb
+    .prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = '{'
+        WHERE id = 'transaction-request-onboarding-001'
+      `,
+    )
+    .run();
+
+  const applyResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/apply",
+    payload: {
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+    },
+  });
+
+  assert.equal(applyResponse.statusCode, 500);
+});
+
 test("POST /onboarding/new-hire/transaction-requests/:id/decisions returns not found for missing targets", async (t) => {
   const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
   const app = await buildApp({ onboardingDb });
