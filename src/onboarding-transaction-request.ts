@@ -1720,6 +1720,8 @@ function readOnboardingApplyJobAttemptsForWorkerCorrelation(
   db: OnboardingTransactionRequestDatabase,
   workerCorrelationId: string,
 ): ExistingOnboardingApplyJobAttemptRow[] {
+  const correlationPrefix =
+    buildWorkerAttemptCorrelationIdSearchPrefix(workerCorrelationId);
   const statement = db.prepare(
     `
       SELECT
@@ -1728,6 +1730,8 @@ function readOnboardingApplyJobAttemptsForWorkerCorrelation(
         error_message,
         correlation_id
       FROM onboarding_apply_job_attempt
+      WHERE correlation_id >= ?
+        AND correlation_id < ?
       ORDER BY attempted_at, transaction_request_id
     `,
   );
@@ -1736,7 +1740,10 @@ function readOnboardingApplyJobAttemptsForWorkerCorrelation(
   }
 
   return (
-    statement.all() as (ExistingOnboardingApplyJobAttemptRow & {
+    statement.all(
+      correlationPrefix,
+      `${correlationPrefix}\uffff`,
+    ) as (ExistingOnboardingApplyJobAttemptRow & {
       correlation_id: string;
     })[]
   )
@@ -1753,6 +1760,22 @@ function readOnboardingApplyJobAttemptsForWorkerCorrelation(
       status_code,
       error_message,
     }));
+}
+
+function buildWorkerAttemptCorrelationIdSearchPrefix(
+  workerCorrelationId: string,
+): string {
+  const rawPrefix = JSON.stringify([workerCorrelationId, ""]).slice(0, -2);
+  const alignedPrefix = rawPrefix.slice(
+    0,
+    rawPrefix.length % 3 === 0
+      ? rawPrefix.length
+      : rawPrefix.length - (rawPrefix.length % 3),
+  );
+  return `onboarding-apply-worker-attempt-${Buffer.from(
+    alignedPrefix,
+    "utf8",
+  ).toString("base64url")}`;
 }
 
 function buildOnboardingApplyJobAttemptResult(

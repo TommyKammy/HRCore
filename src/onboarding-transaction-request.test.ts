@@ -1600,7 +1600,40 @@ test("MVP-A onboarding future-date apply worker returns persisted success on sam
     };
     assert.equal(applyDueOnboardingTransactionRequests(db, input).applied, 1);
 
-    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+    let usedCorrelationRangeRead = false;
+    const replayDb: OnboardingTransactionRequestDatabase = {
+      exec: db.exec.bind(db),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        return {
+          all(...values) {
+            if (
+              sql.includes("FROM onboarding_apply_job_attempt") &&
+              sql.includes("ORDER BY attempted_at, transaction_request_id")
+            ) {
+              usedCorrelationRangeRead = true;
+              assert.match(sql, /WHERE correlation_id >= \?/);
+              assert.match(sql, /AND correlation_id < \?/);
+              assert.equal(values.length, 2);
+              assert.equal(typeof values[0], "string");
+              assert.equal(values[1], `${values[0]}\uffff`);
+            }
+
+            return statement.all(...values) as Record<string, unknown>[];
+          },
+          get(...values) {
+            return statement.get(...values) as
+              | Record<string, unknown>
+              | undefined;
+          },
+          run(...values) {
+            return statement.run(...values);
+          },
+        };
+      },
+    };
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(replayDb, input), {
       attempted: 1,
       applied: 1,
       failed: 0,
@@ -1616,6 +1649,7 @@ test("MVP-A onboarding future-date apply worker returns persisted success on sam
         },
       ],
     });
+    assert.equal(usedCorrelationRangeRead, true);
     assert.deepEqual(
       normalizeRow(
         db
