@@ -25,6 +25,7 @@ The Phase 1 Okta mastering PoC connection mode is defined in [Okta PoC Connectio
 The MVP-A Go/No-Go scope boundary is defined in [MVP-A Go/No-Go Scope Boundary](docs/mvp-a-go-no-go-scope.md).
 The post-MVP-A later-wave Ready boundary is defined in [Post-MVP-A Future Wave Readiness](docs/mvp-a-go-no-go-future-wave-readiness.md).
 The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision](docs/mvp-a-go-no-go.md).
+The MVP-A onboarding traceability closeout is recorded in [MVP-A Onboarding Traceability Closeout](docs/mvp-a-onboarding-traceability-closeout.md).
 
 ## Baseline structure
 
@@ -71,6 +72,8 @@ The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision]
   residual risk classification, next Phase 2A issue wave, and gates that remain
   closed before production-like, real-data, live-provider, export, operational,
   or later-wave use.
+- `docs/mvp-a-onboarding-traceability-closeout.md` records the MVP-A
+  onboarding correlation trace evidence and P2A-02 production-like gates.
 
 ## Local verification
 
