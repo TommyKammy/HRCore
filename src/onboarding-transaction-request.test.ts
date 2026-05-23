@@ -1279,7 +1279,87 @@ test("MVP-A approved onboarding apply keeps HR Core completed when Okta projecti
   }
 });
 
-test("MVP-A approved onboarding apply Okta projection retry is an explicit no-op after success", async (t) => {
+test("MVP-A onboarding work email writeback retries when Okta projection is already applied", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalEmit = adapter.emitWorkEmailWriteback.bind(adapter);
+    let failWritebackEmission = true;
+    adapter.emitWorkEmailWriteback = async (input) => {
+      if (failWritebackEmission) {
+        throw new Error("Synthetic transient writeback dispatch failure.");
+      }
+
+      return originalEmit(input);
+    };
+    const input = {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+      oktaAdapter: adapter,
+    };
+
+    const firstResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+    failWritebackEmission = false;
+    const retryResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+
+    assert.equal(firstResult.oktaProjection.status, "projected");
+    assert.equal(firstResult.workEmailWriteback.status, "failed");
+    assert.equal(retryResult.oktaProjection.status, "already_projected");
+    assert.equal(retryResult.workEmailWriteback.status, "applied");
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM writeback_event").get() as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = ?
+            `,
+          )
+          .get(retryResult.workEmailWriteback.eventId ?? "") as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A approved onboarding apply Okta projection retry reuses writeback evidence after success", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
 
@@ -1318,7 +1398,10 @@ test("MVP-A approved onboarding apply Okta projection retry is an explicit no-op
     assert.equal(firstResult.oktaProjection.status, "projected");
     assert.equal(retryResult.oktaProjection.status, "already_projected");
     assert.equal(firstResult.workEmailWriteback.status, "applied");
-    assert.equal(retryResult.workEmailWriteback.status, "skipped");
+    assert.deepEqual(
+      retryResult.workEmailWriteback,
+      firstResult.workEmailWriteback,
+    );
     assert.equal(
       (retryResult.oktaProjection.result as OktaMasteringProjectionResult)
         .outcome,
@@ -1335,6 +1418,22 @@ test("MVP-A approved onboarding apply Okta projection retry is an explicit no-op
             `,
           )
           .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = ?
+            `,
+          )
+          .get(firstResult.workEmailWriteback.eventId ?? "") as
+          | Record<string, unknown>
+          | undefined,
       ),
       { count: 1 },
     );

@@ -346,7 +346,7 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
         resultWithMetadata.employeeNumber,
         resultWithMetadata.metadata.projectionKey,
       );
-    } else {
+    } else if (!this.isCurrentIdempotentCreateSkip(resultWithMetadata)) {
       this.successfulUserProjectionKeys.delete(
         resultWithMetadata.metadata.projectionKey,
       );
@@ -724,6 +724,19 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     }
 
     return undefined;
+  }
+
+  private isCurrentIdempotentCreateSkip(
+    result: OktaMasteringProjectionResult,
+  ): boolean {
+    return (
+      result.outcome === "skipped" &&
+      result.operation === "create" &&
+      result.reason === "already_exists" &&
+      this.currentUserProjectionKeyByEmployeeNumber.get(
+        result.employeeNumber,
+      ) === result.metadata.projectionKey
+    );
   }
 }
 
