@@ -838,12 +838,6 @@ export function applyDueOnboardingTransactionRequests(
     );
   }
 
-  const replayedAttemptsByRequestId = new Map(
-    replayedAttempts.map((attempt) => [
-      attempt.transaction_request_id,
-      attempt,
-    ]),
-  );
   const candidates = readDueOnboardingApplyCandidates(
     db,
     batchLimit,
@@ -857,14 +851,6 @@ export function applyDueOnboardingTransactionRequests(
       worker.correlationId,
       candidate.transaction_request_id,
     );
-    const existingAttempt =
-      replayedAttemptsByRequestId.get(candidate.transaction_request_id) ??
-      readOnboardingApplyJobAttemptByCorrelation(db, attemptCorrelationId);
-    if (existingAttempt) {
-      results.push(buildOnboardingApplyJobAttemptResult(existingAttempt));
-      replayedAttemptsByRequestId.delete(candidate.transaction_request_id);
-      continue;
-    }
 
     let payload: OnboardingTransactionRequestPayload;
     try {
@@ -936,10 +922,6 @@ export function applyDueOnboardingTransactionRequests(
         ),
       );
     }
-  }
-
-  for (const existingAttempt of replayedAttemptsByRequestId.values()) {
-    results.push(buildOnboardingApplyJobAttemptResult(existingAttempt));
   }
 
   return buildApplyDueOnboardingTransactionRequestsResult(
@@ -1917,7 +1899,14 @@ function getMvpWorkerEffectiveDate(now: string): string {
     );
   }
 
-  return parsed.toISOString().slice(0, 10);
+  const effectiveDate = parsed.toISOString().slice(0, 10);
+  if (!isValidIsoDate(effectiveDate)) {
+    throw new OnboardingTransactionRequestValidationError(
+      "now must be a valid ISO timestamp",
+    );
+  }
+
+  return effectiveDate;
 }
 
 function encodeStableKey(parts: string[]): string {

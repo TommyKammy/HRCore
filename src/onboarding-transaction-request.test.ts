@@ -1301,15 +1301,17 @@ test("MVP-A onboarding future-date apply worker rejects semantically invalid tim
   if (!db) return;
 
   try {
-    assert.throws(
-      () =>
-        applyDueOnboardingTransactionRequests(db, {
-          now: "2026-13-40T00:00:00Z",
-          workerId: "worker-onboarding-future-apply-001",
-          correlationId: "correlation-onboarding-future-apply-worker-bad-now",
-        }),
-      OnboardingTransactionRequestValidationError,
-    );
+    for (const now of ["2026-13-40T00:00:00Z", "9999-12-31T23:59:59-23:59"]) {
+      assert.throws(
+        () =>
+          applyDueOnboardingTransactionRequests(db, {
+            now,
+            workerId: "worker-onboarding-future-apply-001",
+            correlationId: "correlation-onboarding-future-apply-worker-bad-now",
+          }),
+        OnboardingTransactionRequestValidationError,
+      );
+    }
   } finally {
     db.close();
   }
