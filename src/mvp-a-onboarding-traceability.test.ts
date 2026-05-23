@@ -176,6 +176,24 @@ test("MVP-A onboarding evidence is traceable from one root correlation id", asyn
       "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A00%3A00Z",
     );
     assert.equal(trace.remainingP2A02Gates.length, 6);
+
+    db.exec(`
+      DELETE FROM writeback_provider_refresh
+      WHERE writeback_event_id = '${writebackEventId}';
+      DELETE FROM writeback_event
+      WHERE id = '${writebackEventId}';
+    `);
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: true,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires work_email writeback evidence linked to the correlated onboarding payload/,
+    );
   } finally {
     db.close();
   }
