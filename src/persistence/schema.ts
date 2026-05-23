@@ -659,6 +659,54 @@ export const onboarding_apply_job_attempt = sqliteTable(
   ],
 );
 
+export const onboarding_apply_job_run = sqliteTable(
+  "onboarding_apply_job_run",
+  {
+    id: syntheticId(),
+    correlationId: text("correlation_id").notNull(),
+    workerId: text("worker_id").notNull(),
+    startedAt: text("started_at").notNull(),
+    effectiveDate: text("effective_date").notNull(),
+    attempted: integer("attempted").notNull(),
+    applied: integer("applied").notNull(),
+    failed: integer("failed").notNull(),
+    skipped: integer("skipped").notNull(),
+  },
+  (table) => [
+    uniqueIndex("onboarding_apply_job_run_correlation_unique").on(
+      table.correlationId,
+    ),
+    check(
+      "onboarding_apply_job_run_id_non_empty",
+      sql`length(${table.id}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_worker_id_non_empty",
+      sql`length(${table.workerId}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_started_at_date",
+      sql`${table.startedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "onboarding_apply_job_run_effective_date_shape",
+      sql`${table.effectiveDate} glob '????-??-??'`,
+    ),
+    check(
+      "onboarding_apply_job_run_counts_non_negative",
+      sql`${table.attempted} >= 0 and ${table.applied} >= 0 and ${table.failed} >= 0 and ${table.skipped} >= 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_counts_consistent",
+      sql`${table.attempted} = ${table.applied} + ${table.failed}`,
+    ),
+  ],
+);
+
 export const schema = {
   person,
   employment,
@@ -672,4 +720,5 @@ export const schema = {
   lifecycle_event,
   audit_event,
   onboarding_apply_job_attempt,
+  onboarding_apply_job_run,
 };

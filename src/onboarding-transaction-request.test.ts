@@ -1809,6 +1809,133 @@ test("MVP-A onboarding future-date apply worker does not apply new candidates on
   }
 });
 
+test("MVP-A onboarding future-date apply worker persists zero-attempt replay markers", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const input = {
+      now: "2026-06-01T00:00:00Z",
+      workerId: "worker-onboarding-future-apply-001",
+      correlationId:
+        "correlation-onboarding-future-apply-worker-empty-replay-001",
+      batchLimit: 10,
+    };
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+      attempted: 0,
+      applied: 0,
+      failed: 0,
+      skipped: 0,
+      correlationId:
+        "correlation-onboarding-future-apply-worker-empty-replay-001",
+      results: [],
+    });
+
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        id: "transaction-request-onboarding-empty-replay",
+        person: { id: "person-onboarding-empty-replay" },
+        correlationId: "correlation-onboarding-empty-replay",
+        payload: {
+          effectiveDate: "2026-06-01",
+          employment: {
+            id: "employment-onboarding-empty-replay",
+            employmentCode: "EMP-ONBOARDING-EMPTY-REPLAY",
+            startDate: "2026-06-01",
+          },
+          assignment: {
+            id: "assignment-onboarding-empty-replay",
+            assignmentCode: "ASN-ONBOARDING-EMPTY-REPLAY",
+            departmentReference: "department-people-ops",
+            legalEntityReference: "legal-entity-jp-001",
+            managerReference: "manager-001",
+            positionCode: "position-engineer-001",
+          },
+        },
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-empty-replay",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-empty-replay-approval",
+    });
+
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        ...input,
+        now: "2026-06-02T00:00:00Z",
+      }),
+      {
+        attempted: 0,
+        applied: 0,
+        failed: 0,
+        skipped: 0,
+        correlationId:
+          "correlation-onboarding-future-apply-worker-empty-replay-001",
+        results: [],
+      },
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT correlation_id, worker_id, started_at, effective_date, attempted, applied, failed, skipped
+              FROM onboarding_apply_job_run
+              WHERE correlation_id = 'correlation-onboarding-future-apply-worker-empty-replay-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      {
+        correlation_id:
+          "correlation-onboarding-future-apply-worker-empty-replay-001",
+        worker_id: "worker-onboarding-future-apply-001",
+        started_at: "2026-06-01T00:00:00Z",
+        effective_date: "2026-06-01",
+        attempted: 0,
+        applied: 0,
+        failed: 0,
+        skipped: 0,
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-onboarding-empty-replay'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "approved" },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM onboarding_apply_job_attempt
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 0 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding future-date apply worker replays non-ASCII worker correlations", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

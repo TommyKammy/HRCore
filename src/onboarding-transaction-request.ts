@@ -219,6 +219,13 @@ type ExistingOnboardingApplyJobAttemptRow = {
   error_message: string | null;
 };
 
+type ExistingOnboardingApplyJobRunRow = {
+  attempted: number;
+  applied: number;
+  failed: number;
+  skipped: number;
+};
+
 const onboardingTransactionRequestFields = [
   "id",
   "person",
@@ -826,6 +833,7 @@ export function applyDueOnboardingTransactionRequests(
   const worker = parseApplyDueOnboardingTransactionRequestsInput(input);
   const batchLimit = worker.batchLimit ?? 100;
   const effectiveDate = getMvpWorkerEffectiveDate(worker.now);
+  const replayedRun = readOnboardingApplyJobRun(db, worker.correlationId);
   const replayedAttempts = readOnboardingApplyJobAttemptsForWorkerCorrelation(
     db,
     worker.correlationId,
@@ -835,6 +843,12 @@ export function applyDueOnboardingTransactionRequests(
       worker.correlationId,
       replayedAttempts,
       0,
+    );
+  }
+  if (replayedRun) {
+    return buildApplyDueOnboardingTransactionRequestsResultFromRun(
+      worker.correlationId,
+      replayedRun,
     );
   }
 
@@ -924,11 +938,22 @@ export function applyDueOnboardingTransactionRequests(
     }
   }
 
-  return buildApplyDueOnboardingTransactionRequestsResult(
+  const result = buildApplyDueOnboardingTransactionRequestsResult(
     worker.correlationId,
     results,
     skipped,
   );
+  recordOnboardingApplyJobRun(db, {
+    correlationId: worker.correlationId,
+    workerId: worker.workerId,
+    startedAt: worker.now,
+    effectiveDate,
+    attempted: result.attempted,
+    applied: result.applied,
+    failed: result.failed,
+    skipped: result.skipped,
+  });
+  return result;
 }
 
 function buildApplyDueOnboardingTransactionRequestsResult(
@@ -952,6 +977,20 @@ function buildApplyDueOnboardingTransactionRequestsResult(
     skipped,
     correlationId,
     results,
+  };
+}
+
+function buildApplyDueOnboardingTransactionRequestsResultFromRun(
+  correlationId: string,
+  run: ExistingOnboardingApplyJobRunRow,
+): ApplyDueOnboardingTransactionRequestsResult {
+  return {
+    attempted: run.attempted,
+    applied: run.applied,
+    failed: run.failed,
+    skipped: run.skipped,
+    correlationId,
+    results: [],
   };
 }
 
@@ -1468,6 +1507,51 @@ function readDueOnboardingApplyCandidates(
   ) as DueOnboardingApplyCandidateRow[];
 }
 
+function recordOnboardingApplyJobRun(
+  db: OnboardingTransactionRequestDatabase,
+  run: ExistingOnboardingApplyJobRunRow & {
+    correlationId: string;
+    workerId: string;
+    startedAt: string;
+    effectiveDate: string;
+  },
+): ExistingOnboardingApplyJobRunRow {
+  db.prepare(
+    `
+      INSERT INTO onboarding_apply_job_run (
+        id,
+        correlation_id,
+        worker_id,
+        started_at,
+        effective_date,
+        attempted,
+        applied,
+        failed,
+        skipped
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(correlation_id) DO NOTHING
+    `,
+  ).run(
+    buildOnboardingApplyJobRunId(run.correlationId),
+    run.correlationId,
+    run.workerId,
+    run.startedAt,
+    run.effectiveDate,
+    run.attempted,
+    run.applied,
+    run.failed,
+    run.skipped,
+  );
+
+  const recorded = readOnboardingApplyJobRun(db, run.correlationId);
+  if (!recorded) {
+    throw new Error("onboarding apply job run was not persisted");
+  }
+
+  return recorded;
+}
+
 function matchesOnboardingTransactionRequestRetry(
   existing: ExistingOnboardingTransactionRequestRow,
   input: OnboardingTransactionRequestInput,
@@ -1731,6 +1815,26 @@ function readOnboardingApplyJobAttemptByCorrelation(
     .get(correlationId) as ExistingOnboardingApplyJobAttemptRow | undefined;
 }
 
+function readOnboardingApplyJobRun(
+  db: OnboardingTransactionRequestDatabase,
+  correlationId: string,
+): ExistingOnboardingApplyJobRunRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT
+          attempted,
+          applied,
+          failed,
+          skipped
+        FROM onboarding_apply_job_run
+        WHERE correlation_id = ?
+        LIMIT 1
+      `,
+    )
+    .get(correlationId) as ExistingOnboardingApplyJobRunRow | undefined;
+}
+
 function readOnboardingApplyJobAttemptsForWorkerCorrelation(
   db: OnboardingTransactionRequestDatabase,
   workerCorrelationId: string,
@@ -1889,6 +1993,10 @@ function buildOnboardingApplyJobAttemptId(
     transactionRequestId,
     correlationId,
   ])}`;
+}
+
+function buildOnboardingApplyJobRunId(correlationId: string): string {
+  return `onboarding-apply-job-run-${encodeStableKey([correlationId])}`;
 }
 
 function getMvpWorkerEffectiveDate(now: string): string {
