@@ -1173,6 +1173,50 @@ test("MVP-A approved onboarding apply projects a deterministic minimal Okta user
         synthetic: true,
       },
     });
+    assert.deepEqual(result.workEmailWriteback, {
+      status: "applied",
+      eventId:
+        "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      providerSubjectId: "synthetic-okta-user-person-onboarding-001",
+      correlationId:
+        "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z",
+      refreshCorrelationId:
+        "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T02%3A00%3A00Z",
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT id, value
+              FROM contact_point
+              WHERE person_id = 'person-onboarding-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      {
+        id: "contact-point-onboarding-001",
+        value: "onboarding.hire.001@example.invalid",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = ?
+            `,
+          )
+          .get(result.workEmailWriteback.eventId ?? "") as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
   } finally {
     db.close();
   }
@@ -1273,10 +1317,306 @@ test("MVP-A approved onboarding apply Okta projection retry is an explicit no-op
 
     assert.equal(firstResult.oktaProjection.status, "projected");
     assert.equal(retryResult.oktaProjection.status, "already_projected");
+    assert.equal(firstResult.workEmailWriteback.status, "applied");
+    assert.equal(retryResult.workEmailWriteback.status, "skipped");
     assert.equal(
       (retryResult.oktaProjection.result as OktaMasteringProjectionResult)
         .outcome,
       "skipped",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_event
+              WHERE person_id = 'person-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding work email writeback keeps manual conflict evidence without overwrite", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    db.exec(`
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-onboarding-001',
+        'person-onboarding-001',
+        'work_email',
+        'manual.override@example.invalid',
+        1,
+        '2026-05-21T00:30:00Z'
+      );
+    `);
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const result =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-onboarding-001",
+        appliedAt: "2026-05-21T02:00:00Z",
+        appliedBy: "operator-people-ops-apply-001",
+        correlationId: "correlation-onboarding-apply-001",
+        oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+      });
+
+    assert.equal(result.workEmailWriteback.status, "conflict");
+    assert.equal(
+      result.workEmailWriteback.conflict?.conflictType,
+      "inbound_value_conflict",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE id = 'contact-point-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { value: "manual.override@example.invalid" },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 0 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding work email writeback reports provider refresh failure after event evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    adapter.refreshWorkEmailWriteback = async () => {
+      throw new Error("synthetic provider refresh unavailable");
+    };
+
+    const result =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-onboarding-001",
+        appliedAt: "2026-05-21T02:00:00Z",
+        appliedBy: "operator-people-ops-apply-001",
+        correlationId: "correlation-onboarding-apply-001",
+        oktaAdapter: adapter,
+      });
+
+    assert.deepEqual(
+      {
+        status: result.workEmailWriteback.status,
+        errorMessage: result.workEmailWriteback.errorMessage,
+      },
+      {
+        status: "refresh_failed",
+        errorMessage: "synthetic provider refresh unavailable",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_event
+              WHERE person_id = 'person-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 0 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding work email writeback rejects stale emitted events without overwrite", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    db.exec(`
+      INSERT INTO contact_point (
+        id,
+        person_id,
+        contact_type,
+        value,
+        is_primary,
+        created_at
+      )
+      VALUES (
+        'contact-point-onboarding-001',
+        'person-onboarding-001',
+        'work_email',
+        'newer.accepted@example.invalid',
+        1,
+        '2026-05-21T01:40:00Z'
+      );
+
+      INSERT INTO writeback_event (
+        id,
+        person_id,
+        contact_point_id,
+        provider_name,
+        provider_subject_id,
+        provider_value,
+        target_contact_type,
+        correlation_id,
+        received_at,
+        poc_marker
+      )
+      VALUES (
+        'writeback-event-onboarding-newer',
+        'person-onboarding-001',
+        'contact-point-onboarding-001',
+        'synthetic_okta',
+        'synthetic-okta-user-person-onboarding-001',
+        'newer.accepted@example.invalid',
+        'work_email',
+        'correlation-onboarding-writeback-newer',
+        '2026-05-21T01:45:00Z',
+        'synthetic_poc'
+      );
+    `);
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalEmit = adapter.emitWorkEmailWriteback.bind(adapter);
+    adapter.emitWorkEmailWriteback = async (input) => {
+      const event = await originalEmit(input);
+      return {
+        ...event,
+        payload: {
+          ...event.payload,
+          eventId: "writeback-event-onboarding-stale",
+          correlationId: "correlation-onboarding-writeback-stale",
+          receivedAt: "2026-05-21T01:30:00Z",
+        },
+      };
+    };
+
+    const result =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-onboarding-001",
+        appliedAt: "2026-05-21T02:00:00Z",
+        appliedBy: "operator-people-ops-apply-001",
+        correlationId: "correlation-onboarding-apply-001",
+        oktaAdapter: adapter,
+      });
+
+    assert.deepEqual(
+      {
+        status: result.workEmailWriteback.status,
+        errorMessage: result.workEmailWriteback.errorMessage,
+      },
+      {
+        status: "failed",
+        errorMessage:
+          "writeback event must not be older than the latest accepted event for the contact point",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE id = 'contact-point-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { value: "newer.accepted@example.invalid" },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_event
+              WHERE id = 'writeback-event-onboarding-stale'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 0 },
     );
   } finally {
     db.close();

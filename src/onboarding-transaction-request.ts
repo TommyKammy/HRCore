@@ -3,6 +3,12 @@ import type {
   OktaMasteringProjectionResult,
   SyntheticOktaUserFixture,
 } from "./okta-mastering-adapter.js";
+import {
+  ingestSyntheticWorkEmailWriteback,
+  refreshSyntheticWorkEmailFromProvider,
+  SyntheticWorkEmailWritebackValidationError,
+  type SyntheticWorkEmailConflictEvidence,
+} from "./writeback-ingest.js";
 
 type SqlValue = string | number | bigint | null;
 type SqlRunResult = {
@@ -137,8 +143,26 @@ export interface OktaOnboardingUserProjectionResult {
   result: OktaMasteringProjectionResult;
 }
 
+export type OnboardingWorkEmailWritebackStatus =
+  | "applied"
+  | "conflict"
+  | "refresh_failed"
+  | "failed"
+  | "skipped";
+
+export interface OnboardingWorkEmailWritebackResult {
+  status: OnboardingWorkEmailWritebackStatus;
+  eventId?: string;
+  providerSubjectId?: string;
+  correlationId?: string;
+  refreshCorrelationId?: string;
+  conflict?: SyntheticWorkEmailConflictEvidence;
+  errorMessage?: string;
+}
+
 export interface AppliedOnboardingTransactionRequestWithOktaProjectionResult extends AppliedOnboardingTransactionRequestResult {
   oktaProjection: OktaOnboardingUserProjectionResult;
+  workEmailWriteback: OnboardingWorkEmailWritebackResult;
 }
 
 export interface ApplyApprovedOnboardingTransactionRequestWithOktaProjectionInput extends ApplyApprovedOnboardingTransactionRequestInput {
@@ -876,13 +900,21 @@ export async function applyApprovedOnboardingTransactionRequestWithOktaProjectio
       input.appliedAt,
     ),
   });
+  const oktaProjection = {
+    status: toOktaOnboardingUserProjectionStatus(projectionResult),
+    result: projectionResult,
+  };
 
   return {
     ...applied,
-    oktaProjection: {
-      status: toOktaOnboardingUserProjectionStatus(projectionResult),
-      result: projectionResult,
-    },
+    oktaProjection,
+    workEmailWriteback: await consumeMvpAOnboardingWorkEmailWriteback(db, {
+      oktaAdapter,
+      oktaProjection,
+      existing,
+      payload,
+      emittedAt: input.appliedAt,
+    }),
   };
 }
 
@@ -1720,6 +1752,119 @@ function buildMvpAOktaUserProjection(
     managerExternalId: payload.assignment.managerReference,
     effectiveAt,
   };
+}
+
+async function consumeMvpAOnboardingWorkEmailWriteback(
+  db: OnboardingTransactionRequestDatabase,
+  input: {
+    oktaAdapter: OktaMasteringAdapter;
+    oktaProjection: OktaOnboardingUserProjectionResult;
+    existing: ExistingOnboardingTransactionRequestRow;
+    payload: OnboardingTransactionRequestPayload;
+    emittedAt: string;
+  },
+): Promise<OnboardingWorkEmailWritebackResult> {
+  if (input.oktaProjection.result.outcome !== "success") {
+    return {
+      status: "skipped",
+      errorMessage: "work_email writeback requires successful Okta projection",
+    };
+  }
+
+  try {
+    const writebackEvent = await input.oktaAdapter.emitWorkEmailWriteback({
+      personId: input.existing.person_id,
+      contactPointId: input.payload.workEmailExpectation.contactPointId,
+      employeeNumber: input.payload.employment.employmentCode,
+      workEmail: input.payload.workEmailExpectation.value,
+      emittedAt: input.emittedAt,
+      projectionEvidence: input.oktaProjection.result.metadata,
+    });
+    const writebackResult = ingestSyntheticWorkEmailWriteback(
+      db,
+      writebackEvent.payload,
+    );
+
+    if (!writebackResult.applied) {
+      return {
+        status: "conflict",
+        eventId: writebackResult.eventId,
+        providerSubjectId: writebackResult.providerSubjectId,
+        correlationId: writebackResult.correlationId,
+        conflict: writebackResult.conflict,
+      };
+    }
+
+    try {
+      const refreshedProviderValue =
+        await input.oktaAdapter.refreshWorkEmailWriteback({
+          providerSubjectId: writebackResult.providerSubjectId,
+          refreshedAt: input.emittedAt,
+          projectionEvidence: input.oktaProjection.result.metadata,
+        });
+      const refreshResult = refreshSyntheticWorkEmailFromProvider(db, {
+        eventId: writebackResult.eventId,
+        providerName: refreshedProviderValue.providerName,
+        providerSubjectId: refreshedProviderValue.providerSubjectId,
+        providerValue: refreshedProviderValue.providerValue,
+        refreshedAt: refreshedProviderValue.refreshedAt,
+      });
+
+      if (!refreshResult.applied) {
+        return {
+          status: "conflict",
+          eventId: refreshResult.eventId,
+          providerSubjectId: refreshResult.providerSubjectId,
+          correlationId: refreshResult.correlationId,
+          conflict: refreshResult.conflict,
+        };
+      }
+
+      return {
+        status: "applied",
+        eventId: writebackResult.eventId,
+        providerSubjectId: writebackResult.providerSubjectId,
+        correlationId: writebackResult.correlationId,
+        refreshCorrelationId: createMvpAOnboardingWorkEmailRefreshCorrelationId(
+          writebackResult.correlationId,
+          refreshedProviderValue.refreshedAt,
+        ),
+      };
+    } catch (error) {
+      return {
+        status: "refresh_failed",
+        eventId: writebackResult.eventId,
+        providerSubjectId: writebackResult.providerSubjectId,
+        correlationId: writebackResult.correlationId,
+        errorMessage: getSyntheticWorkEmailWritebackErrorMessage(error),
+      };
+    }
+  } catch (error) {
+    return {
+      status: "failed",
+      errorMessage: getSyntheticWorkEmailWritebackErrorMessage(error),
+    };
+  }
+}
+
+function createMvpAOnboardingWorkEmailRefreshCorrelationId(
+  eventCorrelationId: string,
+  refreshedAt: string,
+): string {
+  return `${eventCorrelationId}:provider_refresh:${encodeURIComponent(
+    refreshedAt,
+  )}`;
+}
+
+function getSyntheticWorkEmailWritebackErrorMessage(error: unknown): string {
+  if (
+    error instanceof SyntheticWorkEmailWritebackValidationError ||
+    error instanceof Error
+  ) {
+    return error.message;
+  }
+
+  return "work_email writeback failed";
 }
 
 function splitSyntheticDisplayName(displayName: string): {

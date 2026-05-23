@@ -2264,6 +2264,73 @@ test("synthetic work email provider refresh rejects superseded writeback events"
   }
 });
 
+test("synthetic work email writeback rejects stale events before overwrite", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    db.exec(`
+      INSERT INTO person (id, display_name, created_at)
+      VALUES ('person-writeback-001', 'Synthetic Writeback Person', '2026-05-18T00:00:00Z');
+    `);
+
+    ingestSyntheticWorkEmailWriteback(
+      db,
+      createSyntheticWorkEmailWritebackFixture({
+        eventId: "writeback-event-work-email-newer",
+        providerValue: "newer.writeback@example.invalid",
+        correlationId: "correlation-writeback-work-email-newer",
+        receivedAt: "2026-05-18T01:10:00Z",
+      }),
+    );
+
+    assert.throws(
+      () =>
+        ingestSyntheticWorkEmailWriteback(
+          db,
+          createSyntheticWorkEmailWritebackFixture({
+            eventId: "writeback-event-work-email-stale",
+            providerValue: "stale.writeback@example.invalid",
+            correlationId: "correlation-writeback-work-email-stale",
+            receivedAt: "2026-05-18T01:05:00Z",
+          }),
+        ),
+      /writeback event must not be older than the latest accepted event for the contact point/,
+    );
+
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT value
+              FROM contact_point
+              WHERE person_id = 'person-writeback-001'
+                AND contact_type = 'work_email'
+            `,
+          )
+          .get(),
+      ),
+      { value: "newer.writeback@example.invalid" },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_event
+            `,
+          )
+          .get(),
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("synthetic work email provider refresh rejects same-time superseded writeback events by ingest order", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
