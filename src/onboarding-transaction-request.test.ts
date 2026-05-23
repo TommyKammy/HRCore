@@ -1376,6 +1376,15 @@ test("MVP-A approved onboarding apply Okta projection retry reuses writeback evi
       correlationId: "correlation-onboarding-approval-001",
     });
     const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalRefresh = adapter.refreshWorkEmailWriteback.bind(adapter);
+    let refreshProviderValue = "provider.changed@example.invalid";
+    adapter.refreshWorkEmailWriteback = async (refreshInput) => {
+      const refresh = await originalRefresh(refreshInput);
+      return {
+        ...refresh,
+        providerValue: refreshProviderValue,
+      };
+    };
     const input = {
       transactionRequestId: "transaction-request-onboarding-001",
       appliedAt: "2026-05-21T02:00:00Z",
@@ -1389,6 +1398,7 @@ test("MVP-A approved onboarding apply Okta projection retry reuses writeback evi
         db,
         input,
       );
+    refreshProviderValue = "retry.should.not.refresh@example.invalid";
     adapter.emitWorkEmailWriteback = async () => {
       throw new Error("retry must reuse persisted writeback evidence");
     };
@@ -1443,6 +1453,22 @@ test("MVP-A approved onboarding apply Okta projection retry reuses writeback evi
       ),
       { count: 1 },
     );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT provider_value
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = ?
+            `,
+          )
+          .get(firstResult.workEmailWriteback.eventId ?? "") as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { provider_value: "provider.changed@example.invalid" },
+    );
   } finally {
     db.close();
   }
@@ -1480,7 +1506,11 @@ test("MVP-A approved onboarding apply Okta projection retry reuses provider refr
         `,
       ).run();
 
-      return originalRefresh(refreshInput);
+      const refresh = await originalRefresh(refreshInput);
+      return {
+        ...refresh,
+        providerValue: "provider.refresh.conflict@example.invalid",
+      };
     };
     const input = {
       transactionRequestId: "transaction-request-onboarding-001",

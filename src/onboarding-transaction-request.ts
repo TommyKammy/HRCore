@@ -1851,7 +1851,6 @@ async function consumeMvpAOnboardingWorkEmailWriteback(
         readExistingMvpAOnboardingWorkEmailRefreshAttempt(db, {
           eventId: writebackResult.eventId,
           providerSubjectId: writebackResult.providerSubjectId,
-          providerValue: writebackEventPayload.providerValue,
           refreshedAt: input.emittedAt,
           eventCorrelationId: writebackResult.correlationId,
         });
@@ -2108,7 +2107,7 @@ function readExistingMvpAOnboardingWorkEmailConflict(
   conflictType: ExistingMvpAWorkEmailConflictRow["conflict_type"],
   refreshAttempt?: {
     providerSubjectId: string;
-    providerValue: string;
+    providerValue?: string;
     refreshedAt: string;
     eventCorrelationId: string;
   },
@@ -2144,7 +2143,8 @@ function readExistingMvpAOnboardingWorkEmailConflict(
   if (
     refreshAttempt !== undefined &&
     (conflict.provider_subject_id !== refreshAttempt.providerSubjectId ||
-      conflict.attempted_provider_value !== refreshAttempt.providerValue ||
+      (refreshAttempt.providerValue !== undefined &&
+        conflict.attempted_provider_value !== refreshAttempt.providerValue) ||
       conflict.detected_at !== refreshAttempt.refreshedAt ||
       conflict.correlation_id !==
         `${createMvpAOnboardingWorkEmailRefreshCorrelationId(
@@ -2171,7 +2171,7 @@ function readExistingMvpAOnboardingWorkEmailRefreshAttempt(
   input: {
     eventId: string;
     providerSubjectId: string;
-    providerValue: string;
+    providerValue?: string;
     refreshedAt: string;
     eventCorrelationId: string;
   },
@@ -2224,7 +2224,8 @@ function readExistingMvpAOnboardingWorkEmailRefreshAttempt(
   }
 
   if (
-    refresh.provider_value !== input.providerValue ||
+    (input.providerValue !== undefined &&
+      refresh.provider_value !== input.providerValue) ||
     refresh.correlation_id !==
       createMvpAOnboardingWorkEmailRefreshCorrelationId(
         input.eventCorrelationId,
