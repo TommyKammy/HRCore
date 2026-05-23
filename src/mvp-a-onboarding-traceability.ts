@@ -718,7 +718,8 @@ function readWorkEmailProviderRefreshConflict(
           AND conflict_type = 'provider_refresh_conflict'
           AND substr(correlation_id, 1, ?) = ?
           AND substr(correlation_id, -?) = ?
-        ORDER BY detected_at DESC,
+        ORDER BY julianday(detected_at) DESC,
+          detected_at DESC,
           id DESC
         LIMIT 1
       `,

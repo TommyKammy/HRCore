@@ -412,6 +412,37 @@ test("MVP-A onboarding trace includes representative failure and partial-success
       "2026-05-21T03:15:00Z",
       "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A15%3A00Z:conflict:provider_refresh_conflict",
     );
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "correlated-provider-refresh-conflict-older-offset-001",
+      "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "provider_refresh_conflict",
+      "manual.override@example.invalid",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T12:00:00+09:00",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T12%3A00%3A00%2B09%3A00:conflict:provider_refresh_conflict",
+    );
 
     const providerRefreshConflictTrace = verifyMvpAOnboardingCorrelationTrace(
       db,
@@ -427,6 +458,10 @@ test("MVP-A onboarding trace includes representative failure and partial-success
     assert.equal(
       providerRefreshConflictTrace.workEmailConflict?.conflictType,
       "provider_refresh_conflict",
+    );
+    assert.equal(
+      providerRefreshConflictTrace.workEmailConflict?.id,
+      "correlated-provider-refresh-conflict-001",
     );
   } finally {
     db.close();
