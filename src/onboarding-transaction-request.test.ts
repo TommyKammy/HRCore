@@ -1389,6 +1389,12 @@ test("MVP-A approved onboarding apply Okta projection retry reuses writeback evi
         db,
         input,
       );
+    adapter.emitWorkEmailWriteback = async () => {
+      throw new Error("retry must reuse persisted writeback evidence");
+    };
+    adapter.refreshWorkEmailWriteback = async () => {
+      throw new Error("retry must reuse persisted refresh evidence");
+    };
     const retryResult =
       await applyApprovedOnboardingTransactionRequestWithOktaProjection(
         db,
@@ -1429,6 +1435,110 @@ test("MVP-A approved onboarding apply Okta projection retry reuses writeback evi
               SELECT count(*) AS count
               FROM writeback_provider_refresh
               WHERE writeback_event_id = ?
+            `,
+          )
+          .get(firstResult.workEmailWriteback.eventId ?? "") as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A approved onboarding apply Okta projection retry reuses provider refresh conflict evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalRefresh = adapter.refreshWorkEmailWriteback.bind(adapter);
+    let createRefreshConflict = true;
+    adapter.refreshWorkEmailWriteback = async (refreshInput) => {
+      if (!createRefreshConflict) {
+        throw new Error("retry must reuse persisted refresh conflict evidence");
+      }
+
+      db.prepare(
+        `
+          UPDATE contact_point
+          SET value = 'manual.refresh.conflict@example.invalid'
+          WHERE id = 'contact-point-onboarding-001'
+        `,
+      ).run();
+
+      return originalRefresh(refreshInput);
+    };
+    const input = {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+      oktaAdapter: adapter,
+    };
+
+    const firstResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+    createRefreshConflict = false;
+    adapter.emitWorkEmailWriteback = async () => {
+      throw new Error("retry must reuse persisted writeback evidence");
+    };
+    const retryResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+
+    assert.equal(firstResult.oktaProjection.status, "projected");
+    assert.equal(firstResult.workEmailWriteback.status, "conflict");
+    assert.equal(
+      firstResult.workEmailWriteback.conflict?.conflictType,
+      "provider_refresh_conflict",
+    );
+    assert.equal(retryResult.oktaProjection.status, "already_projected");
+    assert.deepEqual(
+      retryResult.workEmailWriteback,
+      firstResult.workEmailWriteback,
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_event
+              WHERE person_id = 'person-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_work_email_conflict
+              WHERE writeback_event_id = ?
+                AND conflict_type = 'provider_refresh_conflict'
             `,
           )
           .get(firstResult.workEmailWriteback.eventId ?? "") as

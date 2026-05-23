@@ -276,9 +276,11 @@ type ExistingMvpAWorkEmailWritebackEventRow = {
 
 type ExistingMvpAWorkEmailConflictRow = {
   id: string;
+  provider_subject_id: string;
   conflict_type: "inbound_value_conflict" | "provider_refresh_conflict";
   current_contact_value: string;
   attempted_provider_value: string;
+  detected_at: string;
   correlation_id: string;
 };
 
@@ -1801,19 +1803,38 @@ async function consumeMvpAOnboardingWorkEmailWriteback(
   }
 
   try {
-    const writebackEvent = await input.oktaAdapter.emitWorkEmailWriteback({
-      personId: input.existing.person_id,
-      contactPointId: input.payload.workEmailExpectation.contactPointId,
-      employeeNumber: input.payload.employment.employmentCode,
-      workEmail: input.payload.workEmailExpectation.value,
-      emittedAt: input.emittedAt,
-      projectionEvidence: input.oktaProjection.result.metadata,
-    });
+    const expectedWritebackInput =
+      createExpectedMvpAOnboardingWorkEmailWritebackInput(input);
+    const existingWritebackResult =
+      expectedWritebackInput === undefined
+        ? undefined
+        : readExistingMvpAOnboardingWorkEmailWriteback(
+            db,
+            expectedWritebackInput,
+          );
+    let writebackEventPayload: SyntheticWorkEmailWritebackInput;
+    if (existingWritebackResult === undefined) {
+      writebackEventPayload = (
+        await input.oktaAdapter.emitWorkEmailWriteback({
+          personId: input.existing.person_id,
+          contactPointId: input.payload.workEmailExpectation.contactPointId,
+          employeeNumber: input.payload.employment.employmentCode,
+          workEmail: input.payload.workEmailExpectation.value,
+          emittedAt: input.emittedAt,
+          projectionEvidence: input.oktaProjection.result.metadata,
+        })
+      ).payload;
+    } else if (expectedWritebackInput !== undefined) {
+      writebackEventPayload = expectedWritebackInput;
+    } else {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "existing work_email writeback evidence requires deterministic retry input",
+      );
+    }
+
     const writebackResult =
-      readExistingMvpAOnboardingWorkEmailWriteback(
-        db,
-        writebackEvent.payload,
-      ) ?? ingestSyntheticWorkEmailWriteback(db, writebackEvent.payload);
+      existingWritebackResult ??
+      ingestSyntheticWorkEmailWriteback(db, writebackEventPayload);
 
     if (!writebackResult.applied) {
       return {
@@ -1826,31 +1847,49 @@ async function consumeMvpAOnboardingWorkEmailWriteback(
     }
 
     try {
+      const existingRefreshAttempt =
+        readExistingMvpAOnboardingWorkEmailRefreshAttempt(db, {
+          eventId: writebackResult.eventId,
+          providerSubjectId: writebackResult.providerSubjectId,
+          providerValue: writebackEventPayload.providerValue,
+          refreshedAt: input.emittedAt,
+          eventCorrelationId: writebackResult.correlationId,
+        });
+      if (existingRefreshAttempt !== undefined) {
+        return {
+          status: existingRefreshAttempt.status,
+          eventId: writebackResult.eventId,
+          providerSubjectId: writebackResult.providerSubjectId,
+          correlationId: writebackResult.correlationId,
+          ...getMvpAOnboardingWorkEmailRefreshAttemptResultEvidence(
+            existingRefreshAttempt,
+          ),
+        };
+      }
+
       const refreshedProviderValue =
         await input.oktaAdapter.refreshWorkEmailWriteback({
           providerSubjectId: writebackResult.providerSubjectId,
           refreshedAt: input.emittedAt,
           projectionEvidence: input.oktaProjection.result.metadata,
         });
-      if (
-        hasExistingMvpAOnboardingWorkEmailRefresh(db, {
+      const persistedRefreshAttempt =
+        readExistingMvpAOnboardingWorkEmailRefreshAttempt(db, {
           eventId: writebackResult.eventId,
           providerSubjectId: writebackResult.providerSubjectId,
           providerValue: refreshedProviderValue.providerValue,
           refreshedAt: refreshedProviderValue.refreshedAt,
           eventCorrelationId: writebackResult.correlationId,
-        })
-      ) {
+        });
+      if (persistedRefreshAttempt !== undefined) {
         return {
-          status: "applied",
+          status: persistedRefreshAttempt.status,
           eventId: writebackResult.eventId,
           providerSubjectId: writebackResult.providerSubjectId,
           correlationId: writebackResult.correlationId,
-          refreshCorrelationId:
-            createMvpAOnboardingWorkEmailRefreshCorrelationId(
-              writebackResult.correlationId,
-              refreshedProviderValue.refreshedAt,
-            ),
+          ...getMvpAOnboardingWorkEmailRefreshAttemptResultEvidence(
+            persistedRefreshAttempt,
+          ),
         };
       }
 
@@ -1897,6 +1936,102 @@ async function consumeMvpAOnboardingWorkEmailWriteback(
       errorMessage: getSyntheticWorkEmailWritebackErrorMessage(error),
     };
   }
+}
+
+function createExpectedMvpAOnboardingWorkEmailWritebackInput(input: {
+  oktaProjection: OktaOnboardingUserProjectionResult;
+  existing: ExistingOnboardingTransactionRequestRow;
+  payload: OnboardingTransactionRequestPayload;
+  emittedAt: string;
+}): SyntheticWorkEmailWritebackInput | undefined {
+  const projectionEvidence = readMvpAOnboardingWritebackProjectionEvidence(
+    input.oktaProjection.result,
+    input.payload.employment.employmentCode,
+    input.emittedAt,
+  );
+  if (projectionEvidence === undefined) {
+    return undefined;
+  }
+
+  const employeeNumberIdentity = encodeMvpAOnboardingWorkEmailIdentityPart(
+    input.payload.employment.employmentCode,
+  );
+  const emittedAtIdentity = encodeMvpAOnboardingWorkEmailIdentityPart(
+    input.emittedAt,
+  );
+
+  return {
+    eventId: [
+      "okta-work-email-writeback",
+      projectionEvidence.operation,
+      employeeNumberIdentity,
+      emittedAtIdentity,
+    ].join("-"),
+    personId: input.existing.person_id,
+    contactPointId: input.payload.workEmailExpectation.contactPointId,
+    providerName: "synthetic_okta",
+    providerSubjectId: `synthetic-okta-user-${input.existing.person_id}`,
+    providerValue: input.payload.workEmailExpectation.value,
+    targetContactType: "work_email",
+    correlationId: [
+      "okta",
+      "mock",
+      "work_email_writeback",
+      projectionEvidence.operation,
+      employeeNumberIdentity,
+      emittedAtIdentity,
+    ].join(":"),
+    receivedAt: input.emittedAt,
+    pocMarker: "synthetic_poc",
+  };
+}
+
+function readMvpAOnboardingWritebackProjectionEvidence(
+  result: OktaMasteringProjectionResult,
+  employeeNumber: string,
+  emittedAt: string,
+): { operation: "create" | "update" } | undefined {
+  const { metadata } = result;
+  if (
+    metadata.provider !== "okta" ||
+    metadata.adapterMode !== "mock" ||
+    metadata.synthetic !== true
+  ) {
+    return undefined;
+  }
+
+  const projectionKeyParts = metadata.projectionKey.split(":");
+  if (projectionKeyParts.length !== 5) {
+    return undefined;
+  }
+
+  try {
+    const [
+      provider,
+      adapterMode,
+      operation,
+      evidenceEmployeeNumber,
+      effectiveAt,
+    ] = projectionKeyParts.map(decodeURIComponent);
+
+    if (
+      provider !== "okta" ||
+      adapterMode !== "mock" ||
+      (operation !== "create" && operation !== "update") ||
+      evidenceEmployeeNumber !== employeeNumber ||
+      effectiveAt !== emittedAt
+    ) {
+      return undefined;
+    }
+
+    return { operation };
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeMvpAOnboardingWorkEmailIdentityPart(value: string): string {
+  return encodeURIComponent(value);
 }
 
 function canConsumeMvpAOnboardingWorkEmailWriteback(
@@ -1971,15 +2106,23 @@ function readExistingMvpAOnboardingWorkEmailConflict(
   db: OnboardingTransactionRequestDatabase,
   eventId: string,
   conflictType: ExistingMvpAWorkEmailConflictRow["conflict_type"],
+  refreshAttempt?: {
+    providerSubjectId: string;
+    providerValue: string;
+    refreshedAt: string;
+    eventCorrelationId: string;
+  },
 ): SyntheticWorkEmailConflictEvidence | undefined {
   const conflict = db
     .prepare(
       `
         SELECT
           id,
+          provider_subject_id,
           conflict_type,
           current_contact_value,
           attempted_provider_value,
+          detected_at,
           correlation_id
         FROM writeback_work_email_conflict
         WHERE writeback_event_id = ?
@@ -1998,6 +2141,22 @@ function readExistingMvpAOnboardingWorkEmailConflict(
     );
   }
 
+  if (
+    refreshAttempt !== undefined &&
+    (conflict.provider_subject_id !== refreshAttempt.providerSubjectId ||
+      conflict.attempted_provider_value !== refreshAttempt.providerValue ||
+      conflict.detected_at !== refreshAttempt.refreshedAt ||
+      conflict.correlation_id !==
+        `${createMvpAOnboardingWorkEmailRefreshCorrelationId(
+          refreshAttempt.eventCorrelationId,
+          refreshAttempt.refreshedAt,
+        )}:conflict:provider_refresh_conflict`)
+  ) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "existing work_email provider refresh conflict conflicts with retry payload",
+    );
+  }
+
   return {
     conflictId: conflict.id,
     conflictType: conflict.conflict_type,
@@ -2007,7 +2166,7 @@ function readExistingMvpAOnboardingWorkEmailConflict(
   };
 }
 
-function hasExistingMvpAOnboardingWorkEmailRefresh(
+function readExistingMvpAOnboardingWorkEmailRefreshAttempt(
   db: OnboardingTransactionRequestDatabase,
   input: {
     eventId: string;
@@ -2016,7 +2175,31 @@ function hasExistingMvpAOnboardingWorkEmailRefresh(
     refreshedAt: string;
     eventCorrelationId: string;
   },
-): boolean {
+):
+  | {
+      status: "applied";
+      refreshCorrelationId: string;
+      conflict?: undefined;
+    }
+  | {
+      status: "conflict";
+      conflict: SyntheticWorkEmailConflictEvidence;
+      refreshCorrelationId?: undefined;
+    }
+  | undefined {
+  const conflict = readExistingMvpAOnboardingWorkEmailConflict(
+    db,
+    input.eventId,
+    "provider_refresh_conflict",
+    input,
+  );
+  if (conflict !== undefined) {
+    return {
+      status: "conflict",
+      conflict,
+    };
+  }
+
   const refresh = db
     .prepare(
       `
@@ -2031,7 +2214,7 @@ function hasExistingMvpAOnboardingWorkEmailRefresh(
     .get(input.eventId, input.providerSubjectId, input.refreshedAt);
 
   if (refresh === undefined) {
-    return false;
+    return undefined;
   }
 
   if (!isExistingMvpAWorkEmailRefreshRow(refresh)) {
@@ -2053,7 +2236,32 @@ function hasExistingMvpAOnboardingWorkEmailRefresh(
     );
   }
 
-  return true;
+  return {
+    status: "applied",
+    refreshCorrelationId: refresh.correlation_id,
+  };
+}
+
+function getMvpAOnboardingWorkEmailRefreshAttemptResultEvidence(
+  attempt:
+    | {
+        status: "applied";
+        refreshCorrelationId: string;
+        conflict?: undefined;
+      }
+    | {
+        status: "conflict";
+        conflict: SyntheticWorkEmailConflictEvidence;
+        refreshCorrelationId?: undefined;
+      },
+):
+  | { refreshCorrelationId: string }
+  | { conflict: SyntheticWorkEmailConflictEvidence } {
+  if (attempt.status === "applied") {
+    return { refreshCorrelationId: attempt.refreshCorrelationId };
+  }
+
+  return { conflict: attempt.conflict };
 }
 
 function doesExistingMvpAWorkEmailWritebackMatch(
@@ -2094,10 +2302,12 @@ function isExistingMvpAWorkEmailConflictRow(
 ): row is ExistingMvpAWorkEmailConflictRow {
   return (
     typeof row.id === "string" &&
+    typeof row.provider_subject_id === "string" &&
     (row.conflict_type === "inbound_value_conflict" ||
       row.conflict_type === "provider_refresh_conflict") &&
     typeof row.current_contact_value === "string" &&
     typeof row.attempted_provider_value === "string" &&
+    typeof row.detected_at === "string" &&
     typeof row.correlation_id === "string"
   );
 }
