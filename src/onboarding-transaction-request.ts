@@ -842,7 +842,7 @@ export function applyDueOnboardingTransactionRequests(
     return buildApplyDueOnboardingTransactionRequestsResult(
       worker.correlationId,
       replayedAttempts,
-      0,
+      replayedRun?.skipped ?? 0,
     );
   }
   if (replayedRun) {

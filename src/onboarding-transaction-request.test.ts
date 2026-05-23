@@ -1166,6 +1166,29 @@ test("MVP-A onboarding future-date apply worker skips future hires and applies d
       ],
     });
     assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        now: "2026-06-01T00:00:00Z",
+        workerId: "worker-onboarding-future-apply-001",
+        correlationId: "correlation-onboarding-future-apply-worker-001",
+        batchLimit: 10,
+      }),
+      {
+        attempted: 1,
+        applied: 1,
+        failed: 0,
+        skipped: 1,
+        correlationId: "correlation-onboarding-future-apply-worker-001",
+        results: [
+          {
+            transactionRequestId: "transaction-request-onboarding-due",
+            status: "applied",
+            lifecycleEventId:
+              "lifecycle-event-transaction-request-onboarding-due-apply",
+          },
+        ],
+      },
+    );
+    assert.deepEqual(
       normalizeRows(
         db
           .prepare(
