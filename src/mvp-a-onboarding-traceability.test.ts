@@ -6,11 +6,21 @@ import test from "node:test";
 import { buildOktaMasteringAdapter } from "./okta-mastering-adapter.js";
 import {
   applyApprovedOnboardingTransactionRequestWithOktaProjection,
+  applyDueOnboardingTransactionRequests,
   createOnboardingTransactionRequestFixture,
   decideOnboardingTransactionRequest,
   saveOnboardingTransactionRequest,
 } from "./onboarding-transaction-request.js";
 import { verifyMvpAOnboardingCorrelationTrace } from "./mvp-a-onboarding-traceability.js";
+
+const workerAttemptCorrelationId = (
+  workerCorrelationId: string,
+  transactionRequestId: string,
+): string =>
+  `onboarding-apply-worker-attempt-${Buffer.from(
+    JSON.stringify([workerCorrelationId, transactionRequestId]),
+    "utf8",
+  ).toString("base64url")}`;
 
 const readRepoFile = (path: string): Promise<string> =>
   readFile(join(process.cwd(), path), "utf8");
@@ -418,6 +428,84 @@ test("MVP-A onboarding trace fails closed when required apply evidence is missin
           requireProviderRefresh: false,
         }),
       /MVP-A onboarding trace requires lifecycle apply evidence/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding trace follows scheduled worker apply audit correlation", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-onboarding-worker-trace-001";
+    const workerCorrelationId = "correlation-onboarding-worker-apply-001";
+    const attemptCorrelationId = workerAttemptCorrelationId(
+      workerCorrelationId,
+      "transaction-request-onboarding-001",
+    );
+
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: rootCorrelationId,
+    });
+
+    assert.deepEqual(
+      applyDueOnboardingTransactionRequests(db, {
+        now: "2026-06-01T00:00:00Z",
+        workerId: "worker-onboarding-apply-001",
+        correlationId: workerCorrelationId,
+        batchLimit: 10,
+      }),
+      {
+        attempted: 1,
+        applied: 1,
+        failed: 0,
+        skipped: 0,
+        correlationId: workerCorrelationId,
+        results: [
+          {
+            transactionRequestId: "transaction-request-onboarding-001",
+            status: "applied",
+            lifecycleEventId:
+              "lifecycle-event-transaction-request-onboarding-001-apply",
+          },
+        ],
+      },
+    );
+
+    const trace = verifyMvpAOnboardingCorrelationTrace(db, {
+      correlationId: rootCorrelationId,
+      requireApproval: true,
+      requireApply: true,
+      requireWriteback: false,
+      requireProviderRefresh: false,
+    });
+
+    assert.equal(trace.applyAuditEvent?.correlationId, attemptCorrelationId);
+    assert.deepEqual(
+      trace.auditEvents.map((event) => [event.action, event.correlationId]),
+      [
+        ["mvp_a.onboarding.approve", rootCorrelationId],
+        ["mvp_a.onboarding.apply", attemptCorrelationId],
+      ],
+    );
+    assert.deepEqual(
+      trace.applyJobAttempts.map((attempt) => [
+        attempt.statusCode,
+        attempt.correlationId,
+      ]),
+      [["applied", attemptCorrelationId]],
     );
   } finally {
     db.close();

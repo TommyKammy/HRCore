@@ -197,7 +197,13 @@ export function verifyMvpAOnboardingCorrelationTrace(
   const correlationId = requireNonEmptyCorrelationId(input.correlationId);
   const request = readTransactionRequest(db, correlationId);
   const payload = parsePayload(request);
-  const auditEvents = readAuditEvents(db, request, correlationId);
+  const applyJobAttempts = readApplyJobAttempts(db, request);
+  const auditEvents = readAuditEvents(
+    db,
+    request,
+    correlationId,
+    applyJobAttempts,
+  );
   const approvalAuditEvent = auditEvents.find(
     (event) => event.action === "mvp_a.onboarding.approve",
   );
@@ -205,7 +211,6 @@ export function verifyMvpAOnboardingCorrelationTrace(
     (event) => event.action === "mvp_a.onboarding.apply",
   );
   const lifecycleEvent = readLifecycleEvent(db, request, payload);
-  const applyJobAttempts = readApplyJobAttempts(db, request);
 
   if (input.requireApproval && approvalAuditEvent === undefined) {
     throw new Error(
@@ -408,7 +413,19 @@ function readAuditEvents(
   db: MvpAOnboardingTraceabilityDatabase,
   request: TransactionRequestRow,
   correlationId: string,
+  applyJobAttempts: MvpAOnboardingApplyJobAttemptTrace[],
 ): MvpAOnboardingAuditTrace[] {
+  const applyAuditCorrelationIds = uniqueStrings([
+    correlationId,
+    ...applyJobAttempts
+      .filter((attempt) => attempt.statusCode === "applied")
+      .map((attempt) => attempt.correlationId),
+  ]);
+  const applyAuditCorrelationPlaceholders = applyAuditCorrelationIds
+    .map(() => "?")
+    .join(", ");
+  const acceptedApplyAuditCorrelationIds = new Set(applyAuditCorrelationIds);
+
   return db
     .prepare(
       `
@@ -421,28 +438,55 @@ function readAuditEvents(
           occurred_at,
           correlation_id
         FROM audit_event
-        WHERE correlation_id = ?
-          AND (
-            (subject_table = 'transaction_request' AND subject_id = ?)
-            OR (
-              subject_table = 'lifecycle_event'
-              AND subject_id IN (
-                SELECT id
-                FROM lifecycle_event
-                WHERE transaction_request_id = ?
-                  AND person_id = ?
-              )
+        WHERE (
+          (
+            correlation_id = ?
+            AND subject_table = 'transaction_request'
+            AND subject_id = ?
+          )
+          OR (
+            correlation_id IN (${applyAuditCorrelationPlaceholders})
+            AND subject_table = 'lifecycle_event'
+            AND subject_id IN (
+              SELECT id
+              FROM lifecycle_event
+              WHERE transaction_request_id = ?
+                AND person_id = ?
             )
           )
+        )
         ORDER BY occurred_at, id
       `,
     )
-    .all(correlationId, request.id, request.id, request.person_id)
+    .all(
+      correlationId,
+      request.id,
+      ...applyAuditCorrelationIds,
+      request.id,
+      request.person_id,
+    )
     .map(assertAuditRow)
     .map((row) => {
-      if (row.correlation_id !== correlationId) {
+      const rowCorrelationId = row.correlation_id;
+      if (rowCorrelationId === null) {
         throw new Error(
-          "MVP-A onboarding trace audit evidence must share the root correlation id",
+          "MVP-A onboarding trace audit evidence must include a correlation id",
+        );
+      }
+      if (
+        row.subject_table === "transaction_request" &&
+        rowCorrelationId !== correlationId
+      ) {
+        throw new Error(
+          "MVP-A onboarding trace approval audit evidence must share the root correlation id",
+        );
+      }
+      if (
+        row.subject_table === "lifecycle_event" &&
+        !acceptedApplyAuditCorrelationIds.has(rowCorrelationId)
+      ) {
+        throw new Error(
+          "MVP-A onboarding trace apply audit evidence must share the root or applied worker attempt correlation id",
         );
       }
 
@@ -453,9 +497,13 @@ function readAuditEvents(
         subjectTable: row.subject_table,
         subjectId: row.subject_id,
         occurredAt: row.occurred_at,
-        correlationId: row.correlation_id,
+        correlationId: rowCorrelationId,
       };
     });
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function readLifecycleEvent(
