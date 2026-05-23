@@ -348,7 +348,7 @@ test("mock Okta work email writeback emission requires successful projection evi
   );
 });
 
-test("mock Okta work email writeback emission rejects later non-success evidence for a reused projection key", async () => {
+test("mock Okta work email writeback emission accepts current idempotent create evidence for a reused projection key", async () => {
   const adapter = buildOktaMasteringAdapter({ mode: "mock" });
   const effectiveAt = "2026-05-18T16:15:00.000Z";
 
@@ -388,8 +388,8 @@ test("mock Okta work email writeback emission rejects later non-success evidence
     successfulProjectionResult.metadata,
   );
 
-  await assert.rejects(
-    adapter.emitWorkEmailWriteback({
+  assert.deepEqual(
+    await adapter.emitWorkEmailWriteback({
       personId: "person-writeback-reused-key-001",
       contactPointId: "contact-point-writeback-reused-key-001",
       employeeNumber: "EMP-WRITEBACK-REUSED-KEY-001",
@@ -397,7 +397,30 @@ test("mock Okta work email writeback emission rejects later non-success evidence
       emittedAt: effectiveAt,
       projectionEvidence: skippedProjectionResult.metadata,
     }),
-    /Synthetic writeback requires successful mock Okta projection evidence/,
+    {
+      payload: {
+        eventId:
+          "okta-work-email-writeback-create-EMP-WRITEBACK-REUSED-KEY-001-2026-05-18T16%3A15%3A00.000Z",
+        personId: "person-writeback-reused-key-001",
+        contactPointId: "contact-point-writeback-reused-key-001",
+        providerName: "synthetic_okta",
+        providerSubjectId: "okta-user-writeback-reused-key-001",
+        providerValue: "reused.key.writeback@example.invalid",
+        targetContactType: "work_email",
+        correlationId:
+          "okta:mock:work_email_writeback:create:EMP-WRITEBACK-REUSED-KEY-001:2026-05-18T16%3A15%3A00.000Z",
+        receivedAt: "2026-05-18T16:15:00.000Z",
+        pocMarker: "synthetic_poc",
+      },
+      metadata: {
+        provider: "okta",
+        adapterMode: "mock",
+        eventType: "work_email_writeback",
+        projectionKey:
+          "okta:mock:create:EMP-WRITEBACK-REUSED-KEY-001:2026-05-18T16%3A15%3A00.000Z",
+        synthetic: true,
+      },
+    },
   );
 });
 

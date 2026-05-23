@@ -232,6 +232,21 @@ export function ingestSyntheticWorkEmailWriteback(
         validatedInput.personId,
         contactPoint.id,
       );
+    const latestAcceptedEvent =
+      getLatestAcceptedSyntheticWorkEmailWritebackEvent(
+        db,
+        validatedInput.personId,
+        contactPoint.id,
+      );
+    if (
+      latestAcceptedEvent &&
+      toTimestampMillis(validatedInput.receivedAt) <
+        toTimestampMillis(latestAcceptedEvent.received_at)
+    ) {
+      throw new SyntheticWorkEmailWritebackValidationError(
+        "writeback event must not be older than the latest accepted event for the contact point",
+      );
+    }
 
     insertSyntheticWorkEmailWritebackEvent(db, validatedInput, contactPoint.id);
     if (
@@ -1250,6 +1265,43 @@ function getLatestSyntheticProviderValueForContactPoint(
   return isLatestProviderRefreshValueRow(latestRefresh)
     ? latestRefresh.provider_value
     : latestEvent.provider_value;
+}
+
+function getLatestAcceptedSyntheticWorkEmailWritebackEvent(
+  db: SyntheticWritebackDatabase,
+  personId: string,
+  contactPointId: string,
+): { received_at: string } | undefined {
+  const row = db
+    .prepare(
+      `
+        SELECT received_at
+        FROM writeback_event
+        WHERE person_id = ?
+          AND contact_point_id = ?
+          AND target_contact_type = 'work_email'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM writeback_work_email_conflict AS inbound_conflict
+            WHERE inbound_conflict.writeback_event_id = writeback_event.id
+              AND inbound_conflict.conflict_type = 'inbound_value_conflict'
+          )
+        ORDER BY julianday(received_at) DESC,
+          rowid DESC
+        LIMIT 1
+      `,
+    )
+    .get(personId, contactPointId);
+
+  if (
+    isRecord(row) &&
+    typeof row.received_at === "string" &&
+    timestampPattern.test(row.received_at)
+  ) {
+    return { received_at: row.received_at };
+  }
+
+  return undefined;
 }
 
 export function parseSyntheticWorkEmailProviderRefreshInput(
