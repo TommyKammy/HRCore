@@ -1832,6 +1832,130 @@ test("MVP-A onboarding future-date apply worker does not apply new candidates on
   }
 });
 
+test("MVP-A onboarding future-date apply worker continues when attempts lack run marker", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    for (const suffix of ["001", "002"] as const) {
+      saveOnboardingTransactionRequest(
+        db,
+        createOnboardingTransactionRequestFixture({
+          id: `transaction-request-onboarding-orphan-attempt-${suffix}`,
+          person: { id: `person-onboarding-orphan-attempt-${suffix}` },
+          requestedAt: `2026-05-20T00:0${suffix === "001" ? "1" : "2"}:00Z`,
+          correlationId: `correlation-onboarding-orphan-attempt-${suffix}`,
+          payload: {
+            effectiveDate: "2026-06-01",
+            employment: {
+              id: `employment-onboarding-orphan-attempt-${suffix}`,
+              employmentCode: `EMP-ONBOARDING-ORPHAN-ATTEMPT-${suffix}`,
+              startDate: "2026-06-01",
+            },
+            assignment: {
+              id: `assignment-onboarding-orphan-attempt-${suffix}`,
+              assignmentCode: `ASN-ONBOARDING-ORPHAN-ATTEMPT-${suffix}`,
+              departmentReference: "department-people-ops",
+              legalEntityReference: "legal-entity-jp-001",
+              managerReference: "manager-001",
+              positionCode: "position-engineer-001",
+            },
+            workEmailExpectation: {
+              contactPointId: `contact-point-onboarding-orphan-attempt-${suffix}`,
+              value: `onboarding.orphan-attempt.${suffix}@example.invalid`,
+            },
+          },
+        }),
+      );
+      decideOnboardingTransactionRequest(db, {
+        transactionRequestId: `transaction-request-onboarding-orphan-attempt-${suffix}`,
+        decision: "approve",
+        decidedAt: "2026-05-21T01:00:00Z",
+        decidedBy: "operator-people-ops-001",
+        correlationId: `correlation-onboarding-orphan-attempt-approval-${suffix}`,
+      });
+    }
+
+    const input = {
+      now: "2026-06-01T00:00:00Z",
+      workerId: "worker-onboarding-future-apply-001",
+      correlationId:
+        "correlation-onboarding-future-apply-worker-orphan-attempt-001",
+      batchLimit: 1,
+    };
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+      attempted: 1,
+      applied: 1,
+      failed: 0,
+      skipped: 0,
+      correlationId:
+        "correlation-onboarding-future-apply-worker-orphan-attempt-001",
+      results: [
+        {
+          transactionRequestId:
+            "transaction-request-onboarding-orphan-attempt-001",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-orphan-attempt-001-apply",
+        },
+      ],
+    });
+    db.prepare(
+      `
+        DELETE FROM onboarding_apply_job_run
+        WHERE correlation_id = ?
+      `,
+    ).run(input.correlationId);
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+      attempted: 2,
+      applied: 2,
+      failed: 0,
+      skipped: 0,
+      correlationId:
+        "correlation-onboarding-future-apply-worker-orphan-attempt-001",
+      results: [
+        {
+          transactionRequestId:
+            "transaction-request-onboarding-orphan-attempt-001",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-orphan-attempt-001-apply",
+        },
+        {
+          transactionRequestId:
+            "transaction-request-onboarding-orphan-attempt-002",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-orphan-attempt-002-apply",
+        },
+      ],
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT attempted, applied, failed, skipped
+              FROM onboarding_apply_job_run
+              WHERE correlation_id = ?
+            `,
+          )
+          .get(input.correlationId) as Record<string, unknown> | undefined,
+      ),
+      {
+        attempted: 2,
+        applied: 2,
+        failed: 0,
+        skipped: 0,
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding future-date apply worker persists zero-attempt replay markers", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

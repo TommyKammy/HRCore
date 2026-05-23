@@ -838,14 +838,15 @@ export function applyDueOnboardingTransactionRequests(
     db,
     worker.correlationId,
   );
-  if (replayedAttempts.length > 0) {
-    return buildApplyDueOnboardingTransactionRequestsResult(
-      worker.correlationId,
-      replayedAttempts,
-      replayedRun?.skipped ?? 0,
-    );
-  }
   if (replayedRun) {
+    if (replayedAttempts.length > 0) {
+      return buildApplyDueOnboardingTransactionRequestsResult(
+        worker.correlationId,
+        replayedAttempts,
+        replayedRun.skipped,
+      );
+    }
+
     return buildApplyDueOnboardingTransactionRequestsResultFromRun(
       worker.correlationId,
       replayedRun,
@@ -938,9 +939,13 @@ export function applyDueOnboardingTransactionRequests(
     }
   }
 
+  const persistedAttempts = readOnboardingApplyJobAttemptsForWorkerCorrelation(
+    db,
+    worker.correlationId,
+  );
   const result = buildApplyDueOnboardingTransactionRequestsResult(
     worker.correlationId,
-    results,
+    persistedAttempts.length > 0 ? persistedAttempts : results,
     skipped,
   );
   recordOnboardingApplyJobRun(db, {
