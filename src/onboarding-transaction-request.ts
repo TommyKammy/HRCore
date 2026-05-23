@@ -2108,10 +2108,9 @@ function readExistingMvpAOnboardingWorkEmailWriteback(
     );
   }
 
-  const conflict = readExistingMvpAOnboardingWorkEmailConflict(
+  const conflict = readExistingMvpAOnboardingInboundWorkEmailConflict(
     db,
     input.eventId,
-    "inbound_value_conflict",
   );
 
   return {
@@ -2126,22 +2125,60 @@ function readExistingMvpAOnboardingWorkEmailWriteback(
   };
 }
 
+function readExistingMvpAOnboardingInboundWorkEmailConflict(
+  db: OnboardingTransactionRequestDatabase,
+  eventId: string,
+): SyntheticWorkEmailConflictEvidence | undefined {
+  const conflict = db
+    .prepare(
+      `
+        SELECT
+          id,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id
+        FROM writeback_work_email_conflict
+        WHERE writeback_event_id = ?
+          AND conflict_type = 'inbound_value_conflict'
+      `,
+    )
+    .get(eventId);
+
+  if (conflict === undefined) {
+    return undefined;
+  }
+
+  if (!isExistingMvpAWorkEmailConflictRow(conflict)) {
+    throw new SyntheticWorkEmailWritebackValidationError(
+      "existing work_email writeback conflict is malformed",
+    );
+  }
+
+  return {
+    conflictId: conflict.id,
+    conflictType: conflict.conflict_type,
+    currentContactValue: conflict.current_contact_value,
+    attemptedProviderValue: conflict.attempted_provider_value,
+    correlationId: conflict.correlation_id,
+  };
+}
+
 function readExistingMvpAOnboardingWorkEmailConflict(
   db: OnboardingTransactionRequestDatabase,
   eventId: string,
-  conflictType: ExistingMvpAWorkEmailConflictRow["conflict_type"],
-  refreshAttempt?: {
+  refreshAttempt: {
     providerSubjectId: string;
     providerValue?: string;
     refreshedAt: string;
     eventCorrelationId: string;
   },
 ): SyntheticWorkEmailConflictEvidence | undefined {
-  const conflict =
-    refreshAttempt === undefined
-      ? db
-          .prepare(
-            `
+  const conflict = db
+    .prepare(
+      `
         SELECT
           id,
           provider_subject_id,
@@ -2152,42 +2189,24 @@ function readExistingMvpAOnboardingWorkEmailConflict(
           correlation_id
         FROM writeback_work_email_conflict
         WHERE writeback_event_id = ?
-          AND conflict_type = ?
-      `,
-          )
-          .get(eventId, conflictType)
-      : db
-          .prepare(
-            `
-        SELECT
-          id,
-          provider_subject_id,
-          conflict_type,
-          current_contact_value,
-          attempted_provider_value,
-          detected_at,
-          correlation_id
-        FROM writeback_work_email_conflict
-        WHERE writeback_event_id = ?
-          AND conflict_type = ?
+          AND conflict_type = 'provider_refresh_conflict'
           AND provider_subject_id = ?
           AND detected_at = ?
           AND correlation_id = ?
           AND (? IS NULL OR attempted_provider_value = ?)
       `,
-          )
-          .get(
-            eventId,
-            conflictType,
-            refreshAttempt.providerSubjectId,
-            refreshAttempt.refreshedAt,
-            `${createMvpAOnboardingWorkEmailRefreshCorrelationId(
-              refreshAttempt.eventCorrelationId,
-              refreshAttempt.refreshedAt,
-            )}:conflict:provider_refresh_conflict`,
-            refreshAttempt.providerValue ?? null,
-            refreshAttempt.providerValue ?? null,
-          );
+    )
+    .get(
+      eventId,
+      refreshAttempt.providerSubjectId,
+      refreshAttempt.refreshedAt,
+      `${createMvpAOnboardingWorkEmailRefreshCorrelationId(
+        refreshAttempt.eventCorrelationId,
+        refreshAttempt.refreshedAt,
+      )}:conflict:provider_refresh_conflict`,
+      refreshAttempt.providerValue ?? null,
+      refreshAttempt.providerValue ?? null,
+    );
 
   if (conflict === undefined) {
     return undefined;
@@ -2266,7 +2285,6 @@ function readExistingMvpAOnboardingWorkEmailRefreshAttempt(
   const conflict = readExistingMvpAOnboardingWorkEmailConflict(
     db,
     input.eventId,
-    "provider_refresh_conflict",
     input,
   );
   if (conflict !== undefined) {
