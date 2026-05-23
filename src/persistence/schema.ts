@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
+  index,
   integer,
   sqliteTable,
   text,
@@ -603,6 +604,109 @@ export const audit_event = sqliteTable(
   ],
 );
 
+export const onboarding_apply_job_attempt = sqliteTable(
+  "onboarding_apply_job_attempt",
+  {
+    id: syntheticId(),
+    transactionRequestId: text("transaction_request_id").notNull(),
+    personId: text("person_id").notNull(),
+    statusCode: text("status_code", {
+      enum: ["applied", "retryable_failure", "non_retryable_failure"],
+    }).notNull(),
+    attemptedAt: text("attempted_at").notNull(),
+    workerId: text("worker_id").notNull(),
+    correlationId: text("correlation_id").notNull(),
+    retryable: integer("retryable", { mode: "boolean" }).notNull(),
+    errorMessage: text("error_message"),
+  },
+  (table) => [
+    uniqueIndex("onboarding_apply_job_attempt_correlation_unique").on(
+      table.correlationId,
+    ),
+    index("onboarding_apply_job_attempt_request_status_idx").on(
+      table.transactionRequestId,
+      table.statusCode,
+    ),
+    foreignKey({
+      name: "onboarding_apply_job_attempt_request_person_match_fk",
+      columns: [table.transactionRequestId, table.personId],
+      foreignColumns: [transaction_request.id, transaction_request.personId],
+    }),
+    check(
+      "onboarding_apply_job_attempt_id_non_empty",
+      sql`length(${table.id}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_attempt_status_allowed",
+      sql`${table.statusCode} in ('applied', 'retryable_failure', 'non_retryable_failure')`,
+    ),
+    check(
+      "onboarding_apply_job_attempt_attempted_at_date",
+      sql`${table.attemptedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "onboarding_apply_job_attempt_worker_id_non_empty",
+      sql`length(${table.workerId}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_attempt_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_attempt_error_pair",
+      sql`(${table.statusCode} = 'applied' and ${table.errorMessage} is null and ${table.retryable} = 0) or (${table.statusCode} != 'applied' and ${table.errorMessage} is not null and length(${table.errorMessage}) > 0)`,
+    ),
+  ],
+);
+
+export const onboarding_apply_job_run = sqliteTable(
+  "onboarding_apply_job_run",
+  {
+    id: syntheticId(),
+    correlationId: text("correlation_id").notNull(),
+    workerId: text("worker_id").notNull(),
+    startedAt: text("started_at").notNull(),
+    effectiveDate: text("effective_date").notNull(),
+    attempted: integer("attempted").notNull(),
+    applied: integer("applied").notNull(),
+    failed: integer("failed").notNull(),
+    skipped: integer("skipped").notNull(),
+  },
+  (table) => [
+    uniqueIndex("onboarding_apply_job_run_correlation_unique").on(
+      table.correlationId,
+    ),
+    check(
+      "onboarding_apply_job_run_id_non_empty",
+      sql`length(${table.id}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_worker_id_non_empty",
+      sql`length(${table.workerId}) > 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_started_at_date",
+      sql`${table.startedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "onboarding_apply_job_run_effective_date_shape",
+      sql`${table.effectiveDate} glob '????-??-??'`,
+    ),
+    check(
+      "onboarding_apply_job_run_counts_non_negative",
+      sql`${table.attempted} >= 0 and ${table.applied} >= 0 and ${table.failed} >= 0 and ${table.skipped} >= 0`,
+    ),
+    check(
+      "onboarding_apply_job_run_counts_consistent",
+      sql`${table.attempted} = ${table.applied} + ${table.failed}`,
+    ),
+  ],
+);
+
 export const schema = {
   person,
   employment,
@@ -615,4 +719,6 @@ export const schema = {
   transaction_request,
   lifecycle_event,
   audit_event,
+  onboarding_apply_job_attempt,
+  onboarding_apply_job_run,
 };
