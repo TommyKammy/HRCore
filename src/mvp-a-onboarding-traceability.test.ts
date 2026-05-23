@@ -332,6 +332,7 @@ test("MVP-A onboarding trace includes representative failure and partial-success
       conflictTrace.workEmailConflict?.conflictType,
       "inbound_value_conflict",
     );
+    assert.equal(conflictTrace.providerRefresh, undefined);
     assert.throws(
       () =>
         verifyMvpAOnboardingCorrelationTrace(db, {
@@ -342,6 +343,53 @@ test("MVP-A onboarding trace includes representative failure and partial-success
           requireProviderRefresh: true,
         }),
       /MVP-A onboarding trace requires provider refresh or conflict evidence/,
+    );
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "correlated-provider-refresh-conflict-001",
+      "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "provider_refresh_conflict",
+      "manual.override@example.invalid",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T03:15:00Z",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A15%3A00Z:conflict:provider_refresh_conflict",
+    );
+
+    const providerRefreshConflictTrace = verifyMvpAOnboardingCorrelationTrace(
+      db,
+      {
+        correlationId: "correlation-onboarding-writeback-conflict-001",
+        requireApproval: true,
+        requireApply: true,
+        requireWriteback: true,
+        requireProviderRefresh: true,
+      },
+    );
+    assert.equal(providerRefreshConflictTrace.providerRefresh, undefined);
+    assert.equal(
+      providerRefreshConflictTrace.workEmailConflict?.conflictType,
+      "provider_refresh_conflict",
     );
   } finally {
     db.close();

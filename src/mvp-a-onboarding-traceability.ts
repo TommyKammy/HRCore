@@ -236,9 +236,21 @@ export function verifyMvpAOnboardingCorrelationTrace(
   const providerRefresh = workEmailWriteback
     ? readProviderRefresh(db, workEmailWriteback, writebackCorrelationChain)
     : undefined;
-  const workEmailConflict = workEmailWriteback
-    ? readWorkEmailConflict(db, workEmailWriteback, writebackCorrelationChain)
+  const providerRefreshConflict = workEmailWriteback
+    ? readWorkEmailProviderRefreshConflict(
+        db,
+        workEmailWriteback,
+        writebackCorrelationChain,
+      )
     : undefined;
+  const inboundWorkEmailConflict = workEmailWriteback
+    ? readInboundWorkEmailConflict(
+        db,
+        workEmailWriteback,
+        writebackCorrelationChain,
+      )
+    : undefined;
+  const workEmailConflict = providerRefreshConflict ?? inboundWorkEmailConflict;
 
   if (input.requireWriteback && workEmailWriteback === undefined) {
     throw new Error(
@@ -248,7 +260,7 @@ export function verifyMvpAOnboardingCorrelationTrace(
   if (
     input.requireProviderRefresh &&
     providerRefresh === undefined &&
-    workEmailConflict?.conflictType !== "provider_refresh_conflict"
+    providerRefreshConflict === undefined
   ) {
     throw new Error(
       "MVP-A onboarding trace requires provider refresh or conflict evidence linked to the writeback event",
@@ -541,6 +553,8 @@ function readWorkEmailWriteback(
 ): MvpAOnboardingWorkEmailWritebackTrace | undefined {
   if (correlationChain === undefined) return undefined;
 
+  const expectedWritebackCorrelationId =
+    correlationChain.writebackCorrelationId;
   const rows = db
     .prepare(
       `
@@ -553,19 +567,19 @@ function readWorkEmailWriteback(
           provider_value,
           correlation_id
         FROM writeback_event
-        WHERE person_id = ?
+        WHERE correlation_id = ?
+          AND person_id = ?
           AND contact_point_id = ?
           AND provider_value = ?
           AND target_contact_type = 'work_email'
-          AND correlation_id = ?
         ORDER BY received_at, id
       `,
     )
     .all(
+      expectedWritebackCorrelationId,
       request.person_id,
       payload.workEmailExpectation.contactPointId,
       payload.workEmailExpectation.value,
-      correlationChain.writebackCorrelationId,
     )
     .map(assertWritebackRow);
 
@@ -633,7 +647,7 @@ function readProviderRefresh(
   };
 }
 
-function readWorkEmailConflict(
+function readWorkEmailProviderRefreshConflict(
   db: MvpAOnboardingTraceabilityDatabase,
   writeback: MvpAOnboardingWorkEmailWritebackTrace,
   correlationChain: WritebackCorrelationChain | undefined,
@@ -653,32 +667,62 @@ function readWorkEmailConflict(
           correlation_id
         FROM writeback_work_email_conflict
         WHERE writeback_event_id = ?
-          AND (
-            correlation_id = ?
-            OR (
-              conflict_type = 'provider_refresh_conflict'
-              AND substr(correlation_id, 1, ?) = ?
-              AND substr(correlation_id, -?) = ?
-            )
-          )
-        ORDER BY
-          CASE conflict_type
-            WHEN 'provider_refresh_conflict' THEN 0
-            ELSE 1
-          END,
-          detected_at DESC,
+          AND conflict_type = 'provider_refresh_conflict'
+          AND substr(correlation_id, 1, ?) = ?
+          AND substr(correlation_id, -?) = ?
+        ORDER BY detected_at DESC,
           id DESC
         LIMIT 1
       `,
     )
     .get(
       writeback.eventId,
-      correlationChain.inboundConflictCorrelationId,
       correlationChain.providerRefreshCorrelationPrefix.length,
       correlationChain.providerRefreshCorrelationPrefix,
       correlationChain.providerRefreshConflictCorrelationSuffix.length,
       correlationChain.providerRefreshConflictCorrelationSuffix,
     );
+  if (!row) return undefined;
+  const conflictRow = assertConflictRow(row);
+
+  return {
+    id: conflictRow.id,
+    writebackEventId: conflictRow.writeback_event_id,
+    conflictType: conflictRow.conflict_type,
+    currentContactValue: conflictRow.current_contact_value,
+    attemptedProviderValue: conflictRow.attempted_provider_value,
+    detectedAt: conflictRow.detected_at,
+    correlationId: conflictRow.correlation_id,
+  };
+}
+
+function readInboundWorkEmailConflict(
+  db: MvpAOnboardingTraceabilityDatabase,
+  writeback: MvpAOnboardingWorkEmailWritebackTrace,
+  correlationChain: WritebackCorrelationChain | undefined,
+): MvpAOnboardingWorkEmailConflictTrace | undefined {
+  if (correlationChain === undefined) return undefined;
+
+  const row = db
+    .prepare(
+      `
+        SELECT
+          id,
+          writeback_event_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id
+        FROM writeback_work_email_conflict
+        WHERE writeback_event_id = ?
+          AND conflict_type = 'inbound_value_conflict'
+          AND correlation_id = ?
+        ORDER BY detected_at DESC, id DESC
+        LIMIT 1
+      `,
+    )
+    .get(writeback.eventId, correlationChain.inboundConflictCorrelationId);
   if (!row) return undefined;
   const conflictRow = assertConflictRow(row);
 
