@@ -1676,6 +1676,137 @@ test("MVP-A onboarding future-date apply worker returns persisted success on sam
   }
 });
 
+test("MVP-A onboarding future-date apply worker does not apply new candidates on same-correlation replay", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    for (const suffix of ["001", "002"] as const) {
+      saveOnboardingTransactionRequest(
+        db,
+        createOnboardingTransactionRequestFixture({
+          id: `transaction-request-onboarding-run-replay-${suffix}`,
+          person: { id: `person-onboarding-run-replay-${suffix}` },
+          requestedAt: `2026-05-20T00:0${suffix === "001" ? "1" : "2"}:00Z`,
+          correlationId: `correlation-onboarding-run-replay-${suffix}`,
+          payload: {
+            effectiveDate: "2026-06-01",
+            employment: {
+              id: `employment-onboarding-run-replay-${suffix}`,
+              employmentCode: `EMP-ONBOARDING-RUN-REPLAY-${suffix}`,
+              startDate: "2026-06-01",
+            },
+            assignment: {
+              id: `assignment-onboarding-run-replay-${suffix}`,
+              assignmentCode: `ASN-ONBOARDING-RUN-REPLAY-${suffix}`,
+              departmentReference: "department-people-ops",
+              legalEntityReference: "legal-entity-jp-001",
+              managerReference: "manager-001",
+              positionCode: "position-engineer-001",
+            },
+            workEmailExpectation: {
+              contactPointId: `contact-point-onboarding-run-replay-${suffix}`,
+              value: `onboarding.run-replay.${suffix}@example.invalid`,
+            },
+          },
+        }),
+      );
+      decideOnboardingTransactionRequest(db, {
+        transactionRequestId: `transaction-request-onboarding-run-replay-${suffix}`,
+        decision: "approve",
+        decidedAt: "2026-05-21T01:00:00Z",
+        decidedBy: "operator-people-ops-001",
+        correlationId: `correlation-onboarding-run-replay-approval-${suffix}`,
+      });
+    }
+
+    const input = {
+      now: "2026-06-01T00:00:00Z",
+      workerId: "worker-onboarding-future-apply-001",
+      correlationId:
+        "correlation-onboarding-future-apply-worker-run-replay-001",
+      batchLimit: 1,
+    };
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+      attempted: 1,
+      applied: 1,
+      failed: 0,
+      skipped: 0,
+      correlationId:
+        "correlation-onboarding-future-apply-worker-run-replay-001",
+      results: [
+        {
+          transactionRequestId: "transaction-request-onboarding-run-replay-001",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-run-replay-001-apply",
+        },
+      ],
+    });
+
+    assert.deepEqual(applyDueOnboardingTransactionRequests(db, input), {
+      attempted: 1,
+      applied: 1,
+      failed: 0,
+      skipped: 0,
+      correlationId:
+        "correlation-onboarding-future-apply-worker-run-replay-001",
+      results: [
+        {
+          transactionRequestId: "transaction-request-onboarding-run-replay-001",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-run-replay-001-apply",
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, status_code
+              FROM transaction_request
+              WHERE id IN (
+                'transaction-request-onboarding-run-replay-001',
+                'transaction-request-onboarding-run-replay-002'
+              )
+              ORDER BY id
+            `,
+          )
+          .all() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "transaction-request-onboarding-run-replay-001",
+          status_code: "completed",
+        },
+        {
+          id: "transaction-request-onboarding-run-replay-002",
+          status_code: "approved",
+        },
+      ],
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM onboarding_apply_job_attempt
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding future-date apply worker replays non-ASCII worker correlations", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

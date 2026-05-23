@@ -826,11 +826,23 @@ export function applyDueOnboardingTransactionRequests(
   const worker = parseApplyDueOnboardingTransactionRequestsInput(input);
   const batchLimit = worker.batchLimit ?? 100;
   const effectiveDate = getMvpWorkerEffectiveDate(worker.now);
-  const replayedAttemptsByRequestId = new Map(
-    readOnboardingApplyJobAttemptsForWorkerCorrelation(
-      db,
+  const replayedAttempts = readOnboardingApplyJobAttemptsForWorkerCorrelation(
+    db,
+    worker.correlationId,
+  );
+  if (replayedAttempts.length > 0) {
+    return buildApplyDueOnboardingTransactionRequestsResult(
       worker.correlationId,
-    ).map((attempt) => [attempt.transaction_request_id, attempt]),
+      replayedAttempts,
+      0,
+    );
+  }
+
+  const replayedAttemptsByRequestId = new Map(
+    replayedAttempts.map((attempt) => [
+      attempt.transaction_request_id,
+      attempt,
+    ]),
   );
   const candidates = readDueOnboardingApplyCandidates(
     db,
@@ -930,6 +942,25 @@ export function applyDueOnboardingTransactionRequests(
     results.push(buildOnboardingApplyJobAttemptResult(existingAttempt));
   }
 
+  return buildApplyDueOnboardingTransactionRequestsResult(
+    worker.correlationId,
+    results,
+    skipped,
+  );
+}
+
+function buildApplyDueOnboardingTransactionRequestsResult(
+  correlationId: string,
+  attempts:
+    | ApplyDueOnboardingTransactionRequestsItemResult[]
+    | ExistingOnboardingApplyJobAttemptRow[],
+  skipped: number,
+): ApplyDueOnboardingTransactionRequestsResult {
+  const results = attempts.map((attempt) =>
+    "status" in attempt
+      ? attempt
+      : buildOnboardingApplyJobAttemptResult(attempt),
+  );
   const failed = results.filter((result) => result.status !== "applied").length;
 
   return {
@@ -937,7 +968,7 @@ export function applyDueOnboardingTransactionRequests(
     applied: results.length - failed,
     failed,
     skipped,
-    correlationId: worker.correlationId,
+    correlationId,
     results,
   };
 }
