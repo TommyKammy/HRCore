@@ -672,7 +672,7 @@ function readProviderRefresh(
         WHERE writeback_event_id = ?
           AND provider_subject_id = ?
           AND substr(correlation_id, 1, ?) = ?
-        ORDER BY refreshed_at DESC, id DESC
+        ORDER BY julianday(refreshed_at) DESC, refreshed_at DESC, id DESC
         LIMIT 1
       `,
     )

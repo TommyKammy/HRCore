@@ -143,6 +143,33 @@ test("MVP-A onboarding evidence is traceable from one root correlation id", asyn
       "2026-05-21T03:00:00Z",
       `${writebackCorrelationId}:provider_refresh:2026-05-21T03%3A00%3A00Z`,
     );
+    db.prepare(
+      `
+        INSERT INTO writeback_provider_refresh (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          refreshed_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "synthetic-work-email-provider-refresh-older-offset-001",
+      writebackEventId,
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T04:00:00+09:00",
+      `${writebackCorrelationId}:provider_refresh:2026-05-21T04%3A00%3A00%2B09%3A00`,
+    );
 
     const trace = verifyMvpAOnboardingCorrelationTrace(db, {
       correlationId: rootCorrelationId,
