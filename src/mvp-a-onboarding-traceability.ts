@@ -114,6 +114,13 @@ type Payload = {
   workEmailExpectation: { contactPointId: string; value: string };
 };
 
+type WritebackCorrelationChain = {
+  writebackCorrelationId: string;
+  providerRefreshCorrelationPrefix: string;
+  providerRefreshConflictCorrelationSuffix: string;
+  inboundConflictCorrelationId: string;
+};
+
 type AuditRow = {
   id: string;
   actor_id: string;
@@ -199,13 +206,6 @@ export function verifyMvpAOnboardingCorrelationTrace(
   );
   const lifecycleEvent = readLifecycleEvent(db, request, payload);
   const applyJobAttempts = readApplyJobAttempts(db, request);
-  const workEmailWriteback = readWorkEmailWriteback(db, request, payload);
-  const providerRefresh = workEmailWriteback
-    ? readProviderRefresh(db, workEmailWriteback)
-    : undefined;
-  const workEmailConflict = workEmailWriteback
-    ? readWorkEmailConflict(db, workEmailWriteback)
-    : undefined;
 
   if (input.requireApproval && approvalAuditEvent === undefined) {
     throw new Error(
@@ -222,6 +222,24 @@ export function verifyMvpAOnboardingCorrelationTrace(
       "MVP-A onboarding trace requires apply audit evidence for the root correlation id",
     );
   }
+
+  const writebackCorrelationChain = buildWritebackCorrelationChain(
+    payload,
+    readApplyEvidenceTimestamp(lifecycleEvent, applyAuditEvent),
+  );
+  const workEmailWriteback = readWorkEmailWriteback(
+    db,
+    request,
+    payload,
+    writebackCorrelationChain,
+  );
+  const providerRefresh = workEmailWriteback
+    ? readProviderRefresh(db, workEmailWriteback, writebackCorrelationChain)
+    : undefined;
+  const workEmailConflict = workEmailWriteback
+    ? readWorkEmailConflict(db, workEmailWriteback, writebackCorrelationChain)
+    : undefined;
+
   if (input.requireWriteback && workEmailWriteback === undefined) {
     throw new Error(
       "MVP-A onboarding trace requires work_email writeback evidence linked to the correlated onboarding payload",
@@ -230,7 +248,7 @@ export function verifyMvpAOnboardingCorrelationTrace(
   if (
     input.requireProviderRefresh &&
     providerRefresh === undefined &&
-    workEmailConflict === undefined
+    workEmailConflict?.conflictType !== "provider_refresh_conflict"
   ) {
     throw new Error(
       "MVP-A onboarding trace requires provider refresh or conflict evidence linked to the writeback event",
@@ -248,6 +266,49 @@ export function verifyMvpAOnboardingCorrelationTrace(
     providerRefresh,
     workEmailConflict,
     remainingP2A02Gates: [...remainingP2A02Gates],
+  };
+}
+
+function readApplyEvidenceTimestamp(
+  lifecycleEvent: MvpAOnboardingLifecycleTrace | undefined,
+  applyAuditEvent: MvpAOnboardingAuditTrace | undefined,
+): string | undefined {
+  if (
+    lifecycleEvent !== undefined &&
+    applyAuditEvent !== undefined &&
+    lifecycleEvent.occurredAt !== applyAuditEvent.occurredAt
+  ) {
+    throw new Error(
+      "MVP-A onboarding trace requires consistent apply timestamps before selecting writeback evidence",
+    );
+  }
+
+  return lifecycleEvent?.occurredAt ?? applyAuditEvent?.occurredAt;
+}
+
+function buildWritebackCorrelationChain(
+  payload: Payload,
+  applyTimestamp: string | undefined,
+): WritebackCorrelationChain | undefined {
+  if (applyTimestamp === undefined) return undefined;
+
+  const writebackCorrelationId = [
+    "okta",
+    "mock",
+    "work_email_writeback",
+    "create",
+    encodeMvpAOnboardingWorkEmailIdentityPart(
+      payload.employment.employmentCode,
+    ),
+    encodeMvpAOnboardingWorkEmailIdentityPart(applyTimestamp),
+  ].join(":");
+
+  return {
+    writebackCorrelationId,
+    providerRefreshCorrelationPrefix: `${writebackCorrelationId}:provider_refresh:`,
+    providerRefreshConflictCorrelationSuffix:
+      ":conflict:provider_refresh_conflict",
+    inboundConflictCorrelationId: `${writebackCorrelationId}:conflict:inbound_value_conflict`,
   };
 }
 
@@ -476,7 +537,10 @@ function readWorkEmailWriteback(
   db: MvpAOnboardingTraceabilityDatabase,
   request: TransactionRequestRow,
   payload: Payload,
+  correlationChain: WritebackCorrelationChain | undefined,
 ): MvpAOnboardingWorkEmailWritebackTrace | undefined {
+  if (correlationChain === undefined) return undefined;
+
   const rows = db
     .prepare(
       `
@@ -492,6 +556,8 @@ function readWorkEmailWriteback(
         WHERE person_id = ?
           AND contact_point_id = ?
           AND provider_value = ?
+          AND target_contact_type = 'work_email'
+          AND correlation_id = ?
         ORDER BY received_at, id
       `,
     )
@@ -499,6 +565,7 @@ function readWorkEmailWriteback(
       request.person_id,
       payload.workEmailExpectation.contactPointId,
       payload.workEmailExpectation.value,
+      correlationChain.writebackCorrelationId,
     )
     .map(assertWritebackRow);
 
@@ -525,8 +592,11 @@ function readWorkEmailWriteback(
 function readProviderRefresh(
   db: MvpAOnboardingTraceabilityDatabase,
   writeback: MvpAOnboardingWorkEmailWritebackTrace,
+  correlationChain: WritebackCorrelationChain | undefined,
 ): MvpAOnboardingProviderRefreshTrace | undefined {
-  const rows = db
+  if (correlationChain === undefined) return undefined;
+
+  const row = db
     .prepare(
       `
         SELECT
@@ -539,36 +609,38 @@ function readProviderRefresh(
         FROM writeback_provider_refresh
         WHERE writeback_event_id = ?
           AND provider_subject_id = ?
-        ORDER BY refreshed_at, id
+          AND substr(correlation_id, 1, ?) = ?
+        ORDER BY refreshed_at DESC, id DESC
+        LIMIT 1
       `,
     )
-    .all(writeback.eventId, writeback.providerSubjectId)
-    .map(assertProviderRefreshRow);
-
-  if (rows.length > 1) {
-    throw new Error(
-      "MVP-A onboarding trace requires a single provider refresh evidence record",
+    .get(
+      writeback.eventId,
+      writeback.providerSubjectId,
+      correlationChain.providerRefreshCorrelationPrefix.length,
+      correlationChain.providerRefreshCorrelationPrefix,
     );
-  }
-
-  const row = rows[0];
   if (!row) return undefined;
+  const refreshRow = assertProviderRefreshRow(row);
 
   return {
-    id: row.id,
-    writebackEventId: row.writeback_event_id,
-    providerSubjectId: row.provider_subject_id,
-    providerValue: row.provider_value,
-    refreshedAt: row.refreshed_at,
-    correlationId: row.correlation_id,
+    id: refreshRow.id,
+    writebackEventId: refreshRow.writeback_event_id,
+    providerSubjectId: refreshRow.provider_subject_id,
+    providerValue: refreshRow.provider_value,
+    refreshedAt: refreshRow.refreshed_at,
+    correlationId: refreshRow.correlation_id,
   };
 }
 
 function readWorkEmailConflict(
   db: MvpAOnboardingTraceabilityDatabase,
   writeback: MvpAOnboardingWorkEmailWritebackTrace,
+  correlationChain: WritebackCorrelationChain | undefined,
 ): MvpAOnboardingWorkEmailConflictTrace | undefined {
-  const rows = db
+  if (correlationChain === undefined) return undefined;
+
+  const row = db
     .prepare(
       `
         SELECT
@@ -581,30 +653,48 @@ function readWorkEmailConflict(
           correlation_id
         FROM writeback_work_email_conflict
         WHERE writeback_event_id = ?
-        ORDER BY detected_at, id
+          AND (
+            correlation_id = ?
+            OR (
+              conflict_type = 'provider_refresh_conflict'
+              AND substr(correlation_id, 1, ?) = ?
+              AND substr(correlation_id, -?) = ?
+            )
+          )
+        ORDER BY
+          CASE conflict_type
+            WHEN 'provider_refresh_conflict' THEN 0
+            ELSE 1
+          END,
+          detected_at DESC,
+          id DESC
+        LIMIT 1
       `,
     )
-    .all(writeback.eventId)
-    .map(assertConflictRow);
-
-  if (rows.length > 1) {
-    throw new Error(
-      "MVP-A onboarding trace requires a single writeback conflict evidence record",
+    .get(
+      writeback.eventId,
+      correlationChain.inboundConflictCorrelationId,
+      correlationChain.providerRefreshCorrelationPrefix.length,
+      correlationChain.providerRefreshCorrelationPrefix,
+      correlationChain.providerRefreshConflictCorrelationSuffix.length,
+      correlationChain.providerRefreshConflictCorrelationSuffix,
     );
-  }
-
-  const row = rows[0];
   if (!row) return undefined;
+  const conflictRow = assertConflictRow(row);
 
   return {
-    id: row.id,
-    writebackEventId: row.writeback_event_id,
-    conflictType: row.conflict_type,
-    currentContactValue: row.current_contact_value,
-    attemptedProviderValue: row.attempted_provider_value,
-    detectedAt: row.detected_at,
-    correlationId: row.correlation_id,
+    id: conflictRow.id,
+    writebackEventId: conflictRow.writeback_event_id,
+    conflictType: conflictRow.conflict_type,
+    currentContactValue: conflictRow.current_contact_value,
+    attemptedProviderValue: conflictRow.attempted_provider_value,
+    detectedAt: conflictRow.detected_at,
+    correlationId: conflictRow.correlation_id,
   };
+}
+
+function encodeMvpAOnboardingWorkEmailIdentityPart(value: string): string {
+  return encodeURIComponent(value);
 }
 
 function mapTransactionRequest(

@@ -75,6 +75,64 @@ test("MVP-A onboarding evidence is traceable from one root correlation id", asyn
         correlationId: rootCorrelationId,
         oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
       });
+    const writebackEventId =
+      "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z";
+    const writebackCorrelationId =
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z";
+    db.prepare(
+      `
+        INSERT INTO writeback_event (
+          id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          target_contact_type,
+          correlation_id,
+          received_at,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "unrelated-work-email-writeback-same-value-001",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "onboarding.hire.001@example.invalid",
+      "work_email",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A05%3A00Z",
+      "2026-05-21T02:05:00Z",
+    );
+    db.prepare(
+      `
+        INSERT INTO writeback_provider_refresh (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          refreshed_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "synthetic-work-email-provider-refresh-extra-001",
+      writebackEventId,
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T03:00:00Z",
+      `${writebackCorrelationId}:provider_refresh:2026-05-21T03%3A00%3A00Z`,
+    );
 
     const trace = verifyMvpAOnboardingCorrelationTrace(db, {
       correlationId: rootCorrelationId,
@@ -105,19 +163,17 @@ test("MVP-A onboarding evidence is traceable from one root correlation id", asyn
       occurredAt: "2026-05-21T02:00:00Z",
     });
     assert.deepEqual(trace.workEmailWriteback, {
-      eventId:
-        "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      eventId: writebackEventId,
       personId: "person-onboarding-001",
       contactPointId: "contact-point-onboarding-001",
       providerName: "synthetic_okta",
       providerSubjectId: "synthetic-okta-user-person-onboarding-001",
       providerValue: "onboarding.hire.001@example.invalid",
-      correlationId:
-        "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z",
+      correlationId: writebackCorrelationId,
     });
     assert.equal(
       trace.providerRefresh?.correlationId,
-      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T02%3A00%3A00Z",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A00%3A00Z",
     );
     assert.equal(trace.remainingP2A02Gates.length, 6);
   } finally {
@@ -215,6 +271,37 @@ test("MVP-A onboarding trace includes representative failure and partial-success
       correlationId: "correlation-onboarding-writeback-conflict-001",
       oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
     });
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "unrelated-work-email-conflict-same-event-001",
+      "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "provider_refresh_conflict",
+      "manual.override@example.invalid",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T03:00:00Z",
+      "unrelated-provider-refresh-conflict-correlation",
+    );
 
     const conflictTrace = verifyMvpAOnboardingCorrelationTrace(db, {
       correlationId: "correlation-onboarding-writeback-conflict-001",
@@ -226,6 +313,17 @@ test("MVP-A onboarding trace includes representative failure and partial-success
     assert.equal(
       conflictTrace.workEmailConflict?.conflictType,
       "inbound_value_conflict",
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: "correlation-onboarding-writeback-conflict-001",
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: true,
+          requireProviderRefresh: true,
+        }),
+      /MVP-A onboarding trace requires provider refresh or conflict evidence/,
     );
   } finally {
     db.close();
