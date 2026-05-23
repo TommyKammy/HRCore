@@ -1,3 +1,9 @@
+import type {
+  OktaMasteringAdapter,
+  OktaMasteringProjectionResult,
+  SyntheticOktaUserFixture,
+} from "./okta-mastering-adapter.js";
+
 type SqlValue = string | number | bigint | null;
 type SqlRunResult = {
   changes?: number | bigint;
@@ -118,6 +124,25 @@ export interface AppliedOnboardingTransactionRequestResult {
   lifecycleEventId: string;
   statusCode: "completed";
   correlationId: string;
+}
+
+export type OktaOnboardingUserProjectionStatus =
+  | "projected"
+  | "already_projected"
+  | "retryable_failure"
+  | "failed";
+
+export interface OktaOnboardingUserProjectionResult {
+  status: OktaOnboardingUserProjectionStatus;
+  result: OktaMasteringProjectionResult;
+}
+
+export interface AppliedOnboardingTransactionRequestWithOktaProjectionResult extends AppliedOnboardingTransactionRequestResult {
+  oktaProjection: OktaOnboardingUserProjectionResult;
+}
+
+export interface ApplyApprovedOnboardingTransactionRequestWithOktaProjectionInput extends ApplyApprovedOnboardingTransactionRequestInput {
+  oktaAdapter: OktaMasteringAdapter;
 }
 
 export interface ApplyDueOnboardingTransactionRequestsInput {
@@ -823,6 +848,41 @@ export function applyApprovedOnboardingTransactionRequest(
     lifecycleEventId,
     statusCode: "completed",
     correlationId: apply.correlationId,
+  };
+}
+
+export async function applyApprovedOnboardingTransactionRequestWithOktaProjection(
+  db: OnboardingTransactionRequestDatabase,
+  input: ApplyApprovedOnboardingTransactionRequestWithOktaProjectionInput,
+): Promise<AppliedOnboardingTransactionRequestWithOktaProjectionResult> {
+  const { oktaAdapter, ...applyInput } = input;
+  const applied = applyApprovedOnboardingTransactionRequest(db, applyInput);
+  const existing = readOnboardingTransactionRequestById(
+    db,
+    applied.transactionRequestId,
+  );
+  if (!existing) {
+    throw new Error(
+      "Okta onboarding projection requires an applied transaction request",
+    );
+  }
+
+  const payload = parsePersistedOnboardingApplyPayload(existing);
+  const projectionResult = await oktaAdapter.project({
+    operation: "create",
+    desiredUser: buildMvpAOktaUserProjection(
+      existing,
+      payload,
+      input.appliedAt,
+    ),
+  });
+
+  return {
+    ...applied,
+    oktaProjection: {
+      status: toOktaOnboardingUserProjectionStatus(projectionResult),
+      result: projectionResult,
+    },
   };
 }
 
@@ -1637,6 +1697,56 @@ function buildCompletedOnboardingApplyRetryResult(
     statusCode: "completed",
     correlationId: apply.correlationId,
   };
+}
+
+function buildMvpAOktaUserProjection(
+  existing: ExistingOnboardingTransactionRequestRow,
+  payload: OnboardingTransactionRequestPayload,
+  effectiveAt: string,
+): SyntheticOktaUserFixture {
+  const { givenName, familyName } = splitSyntheticDisplayName(
+    existing.display_name,
+  );
+
+  return {
+    externalId: `synthetic-okta-user-${existing.person_id}`,
+    employeeNumber: payload.employment.employmentCode,
+    email: payload.workEmailExpectation.value,
+    displayName: existing.display_name,
+    givenName,
+    familyName,
+    status: "active",
+    departmentCode: payload.assignment.departmentReference,
+    managerExternalId: payload.assignment.managerReference,
+    effectiveAt,
+  };
+}
+
+function splitSyntheticDisplayName(displayName: string): {
+  givenName: string;
+  familyName: string;
+} {
+  const parts = displayName.trim().split(/\s+/u);
+  const givenName = parts[0] ?? displayName;
+  const familyName = parts.slice(1).join(" ") || givenName;
+
+  return { givenName, familyName };
+}
+
+function toOktaOnboardingUserProjectionStatus(
+  result: OktaMasteringProjectionResult,
+): OktaOnboardingUserProjectionStatus {
+  if (result.outcome === "success") {
+    return "projected";
+  }
+  if (result.outcome === "skipped" && result.reason === "already_exists") {
+    return "already_projected";
+  }
+  if (result.outcome === "retryable_failure") {
+    return "retryable_failure";
+  }
+
+  return "failed";
 }
 
 function parsePersistedOnboardingApplyPayload(

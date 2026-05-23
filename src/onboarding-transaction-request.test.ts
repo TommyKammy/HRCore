@@ -4,7 +4,13 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  buildOktaMasteringAdapter,
+  type OktaMasteringProjection,
+  type OktaMasteringProjectionResult,
+} from "./okta-mastering-adapter.js";
+import {
   applyApprovedOnboardingTransactionRequest,
+  applyApprovedOnboardingTransactionRequestWithOktaProjection,
   applyDueOnboardingTransactionRequests,
   createOnboardingTransactionRequestFixture,
   decideOnboardingTransactionRequest,
@@ -1095,6 +1101,182 @@ test("MVP-A approved onboarding apply retry is idempotent without duplicate dura
           .get() as Record<string, unknown> | undefined,
       ),
       { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A approved onboarding apply projects a deterministic minimal Okta user", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const capturedProjections: OktaMasteringProjection[] = [];
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalProject = adapter.project.bind(adapter);
+    adapter.project = async (projection) => {
+      capturedProjections.push(projection);
+      return originalProject(projection);
+    };
+
+    const result =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-onboarding-001",
+        appliedAt: "2026-05-21T02:00:00Z",
+        appliedBy: "operator-people-ops-apply-001",
+        correlationId: "correlation-onboarding-apply-001",
+        oktaAdapter: adapter,
+      });
+
+    assert.deepEqual(capturedProjections, [
+      {
+        operation: "create",
+        desiredUser: {
+          externalId: "synthetic-okta-user-person-onboarding-001",
+          employeeNumber: "EMP-ONBOARDING-001",
+          email: "onboarding.hire.001@example.invalid",
+          displayName: "MVP-A Onboarding Hire One",
+          givenName: "MVP-A",
+          familyName: "Onboarding Hire One",
+          status: "active",
+          departmentCode: "department-people-ops",
+          managerExternalId: "manager-001",
+          effectiveAt: "2026-05-21T02:00:00Z",
+        },
+      },
+    ]);
+    assert.equal(result.oktaProjection.status, "projected");
+    assert.deepEqual(result.oktaProjection.result, {
+      outcome: "success",
+      operation: "create",
+      employeeNumber: "EMP-ONBOARDING-001",
+      externalId: "synthetic-okta-user-person-onboarding-001",
+      effectiveAt: "2026-05-21T02:00:00Z",
+      metadata: {
+        provider: "okta",
+        adapterMode: "mock",
+        projectionKey:
+          "okta:mock:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z",
+        synthetic: true,
+      },
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A approved onboarding apply keeps HR Core completed when Okta projection is retryable", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const result =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-onboarding-001",
+        appliedAt: "2026-05-21T02:00:00Z",
+        appliedBy: "operator-people-ops-apply-001",
+        correlationId: "correlation-onboarding-apply-001",
+        oktaAdapter: buildOktaMasteringAdapter({
+          mode: "mock",
+          forcedFailures: {
+            "EMP-ONBOARDING-001": {
+              outcome: "retryable_failure",
+              errorCode: "mock_rate_limited",
+              message: "Synthetic retryable provider failure.",
+              retryAfterSeconds: 60,
+            },
+          },
+        }),
+      });
+
+    assert.equal(result.oktaProjection.status, "retryable_failure");
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-onboarding-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "completed" },
+      "provider failure must not roll back already-applied HR Core state",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A approved onboarding apply Okta projection retry is an explicit no-op after success", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const input = {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+      oktaAdapter: adapter,
+    };
+
+    const firstResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+    const retryResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+
+    assert.equal(firstResult.oktaProjection.status, "projected");
+    assert.equal(retryResult.oktaProjection.status, "already_projected");
+    assert.equal(
+      (retryResult.oktaProjection.result as OktaMasteringProjectionResult)
+        .outcome,
+      "skipped",
     );
   } finally {
     db.close();
