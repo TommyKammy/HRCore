@@ -1834,7 +1834,10 @@ async function consumeMvpAOnboardingWorkEmailWriteback(
 
     const writebackResult =
       existingWritebackResult ??
-      ingestSyntheticWorkEmailWriteback(db, writebackEventPayload);
+      ingestOrReadExistingMvpAOnboardingWorkEmailWritebackAfterRace(
+        db,
+        writebackEventPayload,
+      );
 
     if (!writebackResult.applied) {
       return {
@@ -1969,7 +1972,10 @@ function createExpectedMvpAOnboardingWorkEmailWritebackInput(input: {
     personId: input.existing.person_id,
     contactPointId: input.payload.workEmailExpectation.contactPointId,
     providerName: "synthetic_okta",
-    providerSubjectId: `synthetic-okta-user-${input.existing.person_id}`,
+    providerSubjectId:
+      readMvpAOnboardingWritebackProviderSubjectId(
+        input.oktaProjection.result,
+      ) ?? `synthetic-okta-user-${input.existing.person_id}`,
     providerValue: input.payload.workEmailExpectation.value,
     targetContactType: "work_email",
     correlationId: [
@@ -1983,6 +1989,25 @@ function createExpectedMvpAOnboardingWorkEmailWritebackInput(input: {
     receivedAt: input.emittedAt,
     pocMarker: "synthetic_poc",
   };
+}
+
+function readMvpAOnboardingWritebackProviderSubjectId(
+  result: OktaMasteringProjectionResult,
+): string | undefined {
+  if (result.outcome === "success" && result.externalId.length > 0) {
+    return result.externalId;
+  }
+
+  if (
+    result.outcome === "skipped" &&
+    result.operation === "create" &&
+    result.reason === "already_exists" &&
+    result.externalId.length > 0
+  ) {
+    return result.externalId;
+  }
+
+  return undefined;
 }
 
 function readMvpAOnboardingWritebackProjectionEvidence(
@@ -2112,9 +2137,11 @@ function readExistingMvpAOnboardingWorkEmailConflict(
     eventCorrelationId: string;
   },
 ): SyntheticWorkEmailConflictEvidence | undefined {
-  const conflict = db
-    .prepare(
-      `
+  const conflict =
+    refreshAttempt === undefined
+      ? db
+          .prepare(
+            `
         SELECT
           id,
           provider_subject_id,
@@ -2127,8 +2154,40 @@ function readExistingMvpAOnboardingWorkEmailConflict(
         WHERE writeback_event_id = ?
           AND conflict_type = ?
       `,
-    )
-    .get(eventId, conflictType);
+          )
+          .get(eventId, conflictType)
+      : db
+          .prepare(
+            `
+        SELECT
+          id,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id
+        FROM writeback_work_email_conflict
+        WHERE writeback_event_id = ?
+          AND conflict_type = ?
+          AND provider_subject_id = ?
+          AND detected_at = ?
+          AND correlation_id = ?
+          AND (? IS NULL OR attempted_provider_value = ?)
+      `,
+          )
+          .get(
+            eventId,
+            conflictType,
+            refreshAttempt.providerSubjectId,
+            refreshAttempt.refreshedAt,
+            `${createMvpAOnboardingWorkEmailRefreshCorrelationId(
+              refreshAttempt.eventCorrelationId,
+              refreshAttempt.refreshedAt,
+            )}:conflict:provider_refresh_conflict`,
+            refreshAttempt.providerValue ?? null,
+            refreshAttempt.providerValue ?? null,
+          );
 
   if (conflict === undefined) {
     return undefined;
@@ -2164,6 +2223,23 @@ function readExistingMvpAOnboardingWorkEmailConflict(
     attemptedProviderValue: conflict.attempted_provider_value,
     correlationId: conflict.correlation_id,
   };
+}
+
+function ingestOrReadExistingMvpAOnboardingWorkEmailWritebackAfterRace(
+  db: OnboardingTransactionRequestDatabase,
+  input: SyntheticWorkEmailWritebackInput,
+): SyntheticWorkEmailWritebackResult {
+  try {
+    return ingestSyntheticWorkEmailWriteback(db, input);
+  } catch (error) {
+    const existingWritebackResult =
+      readExistingMvpAOnboardingWorkEmailWriteback(db, input);
+    if (existingWritebackResult !== undefined) {
+      return existingWritebackResult;
+    }
+
+    throw error;
+  }
 }
 
 function readExistingMvpAOnboardingWorkEmailRefreshAttempt(

@@ -8,6 +8,8 @@ import {
   type OktaMasteringProjection,
   type OktaMasteringProjectionResult,
 } from "./okta-mastering-adapter.js";
+import { ingestSyntheticWorkEmailWriteback } from "./writeback-ingest.js";
+
 import {
   applyApprovedOnboardingTransactionRequest,
   applyApprovedOnboardingTransactionRequestWithOktaProjection,
@@ -1359,6 +1361,75 @@ test("MVP-A onboarding work email writeback retries when Okta projection is alre
   }
 });
 
+test("MVP-A onboarding writeback reuses raced duplicate event evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalEmit = adapter.emitWorkEmailWriteback.bind(adapter);
+    let duplicateIngested = false;
+    adapter.emitWorkEmailWriteback = async (input) => {
+      const event = await originalEmit(input);
+      if (!duplicateIngested) {
+        duplicateIngested = true;
+        ingestSyntheticWorkEmailWriteback(db, event.payload);
+      }
+
+      return event;
+    };
+
+    const result =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-onboarding-001",
+        appliedAt: "2026-05-21T02:00:00Z",
+        appliedBy: "operator-people-ops-apply-001",
+        correlationId: "correlation-onboarding-apply-001",
+        oktaAdapter: adapter,
+      });
+
+    assert.equal(result.workEmailWriteback.status, "applied");
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM writeback_event").get() as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM writeback_provider_refresh
+              WHERE writeback_event_id = ?
+            `,
+          )
+          .get(result.workEmailWriteback.eventId ?? "") as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A approved onboarding apply Okta projection retry reuses writeback evidence after success", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -1474,6 +1545,104 @@ test("MVP-A approved onboarding apply Okta projection retry reuses writeback evi
   }
 });
 
+test("MVP-A approved onboarding retry uses projection provider subject for writeback evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture(),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: "correlation-onboarding-approval-001",
+    });
+    const providerSubjectId = "okta-user-existing-onboarding-001";
+    const adapter = buildOktaMasteringAdapter({ mode: "mock" });
+    const originalProject = adapter.project.bind(adapter);
+    const originalEmit = adapter.emitWorkEmailWriteback.bind(adapter);
+    adapter.project = async (projection) => {
+      const result = await originalProject(projection);
+      if (
+        result.outcome === "skipped" &&
+        result.operation === "create" &&
+        result.reason === "already_exists"
+      ) {
+        return {
+          ...result,
+          externalId: providerSubjectId,
+        };
+      }
+
+      return result;
+    };
+    adapter.emitWorkEmailWriteback = async (input) => {
+      const event = await originalEmit(input);
+      return {
+        ...event,
+        payload: {
+          ...event.payload,
+          providerSubjectId,
+        },
+      };
+    };
+    adapter.refreshWorkEmailWriteback = async (input) => ({
+      providerName: "synthetic_okta",
+      providerSubjectId: input.providerSubjectId,
+      providerValue: "onboarding.hire.001@example.invalid",
+      refreshedAt: input.refreshedAt,
+      metadata: {
+        provider: "okta",
+        adapterMode: "mock",
+        eventType: "work_email_refresh",
+        projectionKey: input.projectionEvidence.projectionKey,
+        synthetic: true,
+      },
+    });
+    const input = {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: "correlation-onboarding-apply-001",
+      oktaAdapter: adapter,
+    };
+
+    const firstResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+    adapter.emitWorkEmailWriteback = async () => {
+      throw new Error("retry must reuse adapter-subject writeback evidence");
+    };
+    adapter.refreshWorkEmailWriteback = async () => {
+      throw new Error("retry must reuse adapter-subject refresh evidence");
+    };
+    const retryResult =
+      await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+        db,
+        input,
+      );
+
+    assert.equal(firstResult.workEmailWriteback.status, "applied");
+    assert.equal(
+      firstResult.workEmailWriteback.providerSubjectId,
+      providerSubjectId,
+    );
+    assert.equal(retryResult.oktaProjection.status, "already_projected");
+    assert.deepEqual(
+      retryResult.workEmailWriteback,
+      firstResult.workEmailWriteback,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A approved onboarding apply Okta projection retry reuses provider refresh conflict evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -1525,6 +1694,39 @@ test("MVP-A approved onboarding apply Okta projection retry reuses provider refr
         db,
         input,
       );
+    db.prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          rowid,
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      -1,
+      "synthetic-work-email-conflict:onboarding-unrelated-refresh-conflict",
+      firstResult.workEmailWriteback.eventId ?? "",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      firstResult.workEmailWriteback.providerSubjectId ?? "",
+      "provider_refresh_conflict",
+      "unrelated.current@example.invalid",
+      "unrelated.provider@example.invalid",
+      "2026-05-21T01:59:00Z",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T01%3A59%3A00Z:conflict:provider_refresh_conflict",
+    );
     createRefreshConflict = false;
     adapter.emitWorkEmailWriteback = async () => {
       throw new Error("retry must reuse persisted writeback evidence");
@@ -1569,11 +1771,13 @@ test("MVP-A approved onboarding apply Okta projection retry reuses provider refr
               FROM writeback_work_email_conflict
               WHERE writeback_event_id = ?
                 AND conflict_type = 'provider_refresh_conflict'
+                AND id = ?
             `,
           )
-          .get(firstResult.workEmailWriteback.eventId ?? "") as
-          | Record<string, unknown>
-          | undefined,
+          .get(
+            firstResult.workEmailWriteback.eventId ?? "",
+            firstResult.workEmailWriteback.conflict?.conflictId ?? "",
+          ) as Record<string, unknown> | undefined,
       ),
       { count: 1 },
     );

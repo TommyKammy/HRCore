@@ -151,9 +151,17 @@ type OktaMasteringProjectionResultCore =
     }
   | {
       outcome: "skipped";
+      operation: "create";
+      employeeNumber: string;
+      externalId: string;
+      reason: "already_exists";
+      effectiveAt: string;
+    }
+  | {
+      outcome: "skipped";
       operation: OktaMasteringOperation;
       employeeNumber: string;
-      reason: "already_exists" | "already_deprovisioned" | "missing_user";
+      reason: "already_deprovisioned" | "missing_user";
       effectiveAt: string;
     }
   | (RetryableOktaMasteringFailure & {
@@ -641,11 +649,15 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   private create(
     desiredUser: SyntheticOktaUserFixture,
   ): OktaMasteringProjectionResultCore {
-    if (this.usersByEmployeeNumber.has(desiredUser.employeeNumber)) {
+    const existingUser = this.usersByEmployeeNumber.get(
+      desiredUser.employeeNumber,
+    );
+    if (existingUser !== undefined) {
       return {
         outcome: "skipped",
         operation: "create",
         employeeNumber: desiredUser.employeeNumber,
+        externalId: existingUser.externalId,
         reason: "already_exists",
         effectiveAt: desiredUser.effectiveAt,
       };
