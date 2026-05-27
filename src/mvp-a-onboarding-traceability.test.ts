@@ -619,6 +619,7 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
     "employment",
     "assignment",
     "lifecycle_event",
+    "apply_job_attempt",
     "audit_event",
     "okta_projection",
     "work_email_evidence",
@@ -651,10 +652,10 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
         classifications:
           mvpAOnboardingEvidenceAuthorizationGate.classifications.filter(
             (classification) =>
-              classification.evidenceSurface !== "work_email_evidence",
+              classification.evidenceSurface !== "apply_job_attempt",
           ),
       }),
-    /MVP-A onboarding evidence authorization gate is missing work_email_evidence classification/u,
+    /MVP-A onboarding evidence authorization gate is missing apply_job_attempt classification/u,
   );
 
   assert.throws(

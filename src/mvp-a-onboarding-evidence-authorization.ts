@@ -4,6 +4,7 @@ export type MvpAOnboardingEvidenceSurface =
   | "employment"
   | "assignment"
   | "lifecycle_event"
+  | "apply_job_attempt"
   | "audit_event"
   | "okta_projection"
   | "work_email_evidence";
@@ -14,6 +15,7 @@ export type MvpAOnboardingFieldScope =
   | "employment_status"
   | "assignment_reference"
   | "lifecycle_evidence"
+  | "apply_job_attempt_evidence"
   | "audit_evidence"
   | "provider_projection"
   | "work_email_contact";
@@ -24,6 +26,7 @@ export type MvpAOnboardingDataScope =
   | "same_employment"
   | "same_assignment"
   | "same_lifecycle_event"
+  | "same_apply_job_attempt"
   | "same_correlation_id"
   | "same_mock_okta_projection"
   | "same_work_email_evidence_chain";
@@ -49,6 +52,7 @@ const allowedFieldScopes: readonly MvpAOnboardingFieldScope[] = [
   "employment_status",
   "assignment_reference",
   "lifecycle_evidence",
+  "apply_job_attempt_evidence",
   "audit_evidence",
   "provider_projection",
   "work_email_contact",
@@ -60,6 +64,7 @@ const allowedDataScopes: readonly MvpAOnboardingDataScope[] = [
   "same_employment",
   "same_assignment",
   "same_lifecycle_event",
+  "same_apply_job_attempt",
   "same_correlation_id",
   "same_mock_okta_projection",
   "same_work_email_evidence_chain",
@@ -112,6 +117,18 @@ const expectedClassifications: readonly MvpAOnboardingEvidenceAuthorizationClass
         "same_lifecycle_event",
         "same_onboarding_request",
         "same_person",
+      ],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "apply_job_attempt",
+      fieldScopes: ["apply_job_attempt_evidence"],
+      dataScopes: [
+        "same_apply_job_attempt",
+        "same_onboarding_request",
+        "same_person",
+        "same_correlation_id",
       ],
       readiness: "mvp_a_poc_only",
       authorizationBoundary: "classified_evidence_only",

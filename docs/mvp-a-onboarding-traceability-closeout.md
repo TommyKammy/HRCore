@@ -18,7 +18,8 @@ This closeout records PoC-depth evidence for issue #174. The runtime verifier is
   work email records for the correlated onboarding subject.
 - The trace verifier returns the MVP-A onboarding evidence authorization gate
   before exposing onboarding request, person, employment, assignment,
-  lifecycle, audit, mock Okta projection, or work_email evidence.
+  lifecycle, apply-job attempt, audit, mock Okta projection, or work_email
+  evidence.
 
 ## Representative Paths
 
