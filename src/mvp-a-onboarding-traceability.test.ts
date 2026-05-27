@@ -665,6 +665,17 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
       assertMvpAOnboardingEvidenceAuthorizationGate(
         unsafeMvpAOnboardingEvidenceAuthorizationGate({
           ...mvpAOnboardingEvidenceAuthorizationGate,
+          outOfScope: [],
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate is missing broad enterprise RBAC out-of-scope boundary/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
           classifications: [
             ...mvpAOnboardingEvidenceAuthorizationGate.classifications,
             {

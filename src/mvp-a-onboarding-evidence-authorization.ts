@@ -76,6 +76,16 @@ const allowedDataScopes: readonly MvpAOnboardingDataScope[] = [
   "same_work_email_evidence_chain",
 ];
 
+const requiredOutOfScopeBoundaries: readonly string[] = [
+  "broad enterprise RBAC",
+  "PostgreSQL RLS as source of truth",
+  "production tenant roles",
+  "real HR user provisioning",
+  "legal acceptance",
+  "live personal-data access paths",
+  "production authorization policy engines",
+];
+
 export const mvpAOnboardingEvidenceAuthorizationGate: MvpAOnboardingEvidenceAuthorizationGate =
   {
     gateId: "mvp_a_onboarding_evidence_authorization_v1",
@@ -150,15 +160,7 @@ export const mvpAOnboardingEvidenceAuthorizationGate: MvpAOnboardingEvidenceAuth
         authorizationBoundary: "classified_evidence_only",
       },
     ],
-    outOfScope: [
-      "broad enterprise RBAC",
-      "PostgreSQL RLS as source of truth",
-      "production tenant roles",
-      "real HR user provisioning",
-      "legal acceptance",
-      "live personal-data access paths",
-      "production authorization policy engines",
-    ],
+    outOfScope: requiredOutOfScopeBoundaries,
   };
 
 export function assertMvpAOnboardingEvidenceAuthorizationGate(
@@ -167,6 +169,9 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
   const requiredEvidenceSurfaceSet = new Set<string>(requiredEvidenceSurfaces);
   const allowedFieldScopeSet = new Set<string>(allowedFieldScopes);
   const allowedDataScopeSet = new Set<string>(allowedDataScopes);
+  const requiredOutOfScopeBoundarySet = new Set<string>(
+    requiredOutOfScopeBoundaries,
+  );
 
   if (gate.gateId !== "mvp_a_onboarding_evidence_authorization_v1") {
     throw new Error(
@@ -178,6 +183,28 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
     throw new Error(
       "MVP-A onboarding evidence authorization gate must stay anchored to ADR 0011",
     );
+  }
+
+  const outOfScopeBoundaries = new Set<string>();
+  for (const boundary of gate.outOfScope) {
+    if (!requiredOutOfScopeBoundarySet.has(boundary)) {
+      throw new Error(
+        `MVP-A onboarding evidence authorization gate contains unsupported ${boundary} out-of-scope boundary`,
+      );
+    }
+    if (outOfScopeBoundaries.has(boundary)) {
+      throw new Error(
+        `MVP-A onboarding evidence authorization gate duplicates ${boundary} out-of-scope boundary`,
+      );
+    }
+    outOfScopeBoundaries.add(boundary);
+  }
+  for (const requiredBoundary of requiredOutOfScopeBoundaries) {
+    if (!outOfScopeBoundaries.has(requiredBoundary)) {
+      throw new Error(
+        `MVP-A onboarding evidence authorization gate is missing ${requiredBoundary} out-of-scope boundary`,
+      );
+    }
   }
 
   const classificationsBySurface = new Map<
