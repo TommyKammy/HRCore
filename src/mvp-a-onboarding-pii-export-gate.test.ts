@@ -93,6 +93,7 @@ test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
   for (const route of [
     "/onboarding/new-hire/raw/payload",
     "/onboarding/new-hire/raw/view",
+    "/onboarding/new-hire/csv/export",
   ]) {
     assert.throws(
       () =>

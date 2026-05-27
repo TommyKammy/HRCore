@@ -61,10 +61,13 @@ const sourceAdrs = [
 
 const prohibitedRouteTokens = [
   "raw-payload",
+  "raw/payload",
   "raw_payload",
   "raw-view",
+  "raw/view",
   "raw_view",
   "csv",
+  "csv/export",
   "export",
   "download",
 ] as const;
