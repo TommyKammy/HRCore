@@ -1,3 +1,9 @@
+import {
+  assertMvpAOnboardingEvidenceAuthorizationGate,
+  mvpAOnboardingEvidenceAuthorizationGate,
+  type MvpAOnboardingEvidenceAuthorizationGate,
+} from "./mvp-a-onboarding-evidence-authorization.js";
+
 type SqlValue = string | number | bigint | null;
 
 export interface MvpAOnboardingTraceabilitySqlStatement {
@@ -87,6 +93,7 @@ export interface MvpAOnboardingWorkEmailConflictTrace {
 
 export interface MvpAOnboardingCorrelationTrace {
   transactionRequest: MvpAOnboardingTransactionTrace;
+  authorizationGate: MvpAOnboardingEvidenceAuthorizationGate;
   approvalAuditEvent?: MvpAOnboardingAuditTrace;
   applyAuditEvent?: MvpAOnboardingAuditTrace;
   auditEvents: MvpAOnboardingAuditTrace[];
@@ -185,7 +192,7 @@ const remainingP2A02Gates = [
   "WORM / S3 Object Lock audit immutability and archive evidence",
   "broad audit search UI for production support and review",
   "backup / restore rehearsal with snapshot-consistent trace reads",
-  "field-level RBAC and data-scope enforcement for onboarding evidence",
+  "production field-level RBAC and data-scope enforcement beyond the bounded MVP-A onboarding evidence authorization gate",
   "export controls for raw payloads, CSV output, download logs, and watermark or manifest traceability",
   "real Okta tenant credentials, tenant binding, webhook custody, and provider audit search",
 ];
@@ -194,6 +201,10 @@ export function verifyMvpAOnboardingCorrelationTrace(
   db: MvpAOnboardingTraceabilityDatabase,
   input: VerifyMvpAOnboardingCorrelationTraceInput,
 ): MvpAOnboardingCorrelationTrace {
+  assertMvpAOnboardingEvidenceAuthorizationGate(
+    mvpAOnboardingEvidenceAuthorizationGate,
+  );
+
   const correlationId = requireNonEmptyCorrelationId(input.correlationId);
   const request = readTransactionRequest(db, correlationId);
   const payload = parsePayload(request);
@@ -272,6 +283,7 @@ export function verifyMvpAOnboardingCorrelationTrace(
 
   return {
     transactionRequest: mapTransactionRequest(request, correlationId),
+    authorizationGate: mvpAOnboardingEvidenceAuthorizationGate,
     approvalAuditEvent,
     applyAuditEvent,
     auditEvents,

@@ -26,6 +26,7 @@ The MVP-A Go/No-Go scope boundary is defined in [MVP-A Go/No-Go Scope Boundary](
 The post-MVP-A later-wave Ready boundary is defined in [Post-MVP-A Future Wave Readiness](docs/mvp-a-go-no-go-future-wave-readiness.md).
 The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision](docs/mvp-a-go-no-go.md).
 The MVP-A onboarding traceability closeout is recorded in [MVP-A Onboarding Traceability Closeout](docs/mvp-a-onboarding-traceability-closeout.md).
+The bounded MVP-A onboarding evidence authorization gate is recorded in [MVP-A Onboarding Evidence Authorization Gate](docs/mvp-a-onboarding-evidence-authorization-gate.md).
 
 ## Baseline structure
 
@@ -74,6 +75,8 @@ The MVP-A onboarding traceability closeout is recorded in [MVP-A Onboarding Trac
   or later-wave use.
 - `docs/mvp-a-onboarding-traceability-closeout.md` records the MVP-A
   onboarding correlation trace evidence and P2A-02 production-like gates.
+- `docs/mvp-a-onboarding-evidence-authorization-gate.md` records the bounded
+  MVP-A field-level and data-scope classification gate for onboarding evidence.
 
 ## Local verification
 

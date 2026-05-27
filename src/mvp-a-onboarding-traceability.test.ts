@@ -5,6 +5,10 @@ import test from "node:test";
 
 import { buildOktaMasteringAdapter } from "./okta-mastering-adapter.js";
 import {
+  assertMvpAOnboardingEvidenceAuthorizationGate,
+  mvpAOnboardingEvidenceAuthorizationGate,
+} from "./mvp-a-onboarding-evidence-authorization.js";
+import {
   applyApprovedOnboardingTransactionRequestWithOktaProjection,
   applyDueOnboardingTransactionRequests,
   createOnboardingTransactionRequestFixture,
@@ -24,6 +28,11 @@ const workerAttemptCorrelationId = (
 
 const readRepoFile = (path: string): Promise<string> =>
   readFile(join(process.cwd(), path), "utf8");
+
+const unsafeMvpAOnboardingEvidenceAuthorizationGate = (
+  gate: unknown,
+): Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0] =>
+  gate as Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0];
 
 const readCommittedMigrationSql = async (): Promise<string> => {
   const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
@@ -213,6 +222,14 @@ test("MVP-A onboarding evidence is traceable from one root correlation id", asyn
       "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A00%3A00Z",
     );
     assert.equal(trace.remainingP2A02Gates.length, 6);
+    assert.deepEqual(trace.remainingP2A02Gates, [
+      "WORM / S3 Object Lock audit immutability and archive evidence",
+      "broad audit search UI for production support and review",
+      "backup / restore rehearsal with snapshot-consistent trace reads",
+      "production field-level RBAC and data-scope enforcement beyond the bounded MVP-A onboarding evidence authorization gate",
+      "export controls for raw payloads, CSV output, download logs, and watermark or manifest traceability",
+      "real Okta tenant credentials, tenant binding, webhook custody, and provider audit search",
+    ]);
 
     db.exec(`
       DELETE FROM writeback_provider_refresh
@@ -569,6 +586,24 @@ test("MVP-A onboarding trace follows scheduled worker apply audit correlation", 
       ]),
       [["applied", attemptCorrelationId]],
     );
+    assert.deepEqual(
+      trace.authorizationGate.classifications.find(
+        (classification) =>
+          classification.evidenceSurface === "apply_job_attempt",
+      ),
+      {
+        evidenceSurface: "apply_job_attempt",
+        fieldScopes: ["apply_job_attempt_evidence"],
+        dataScopes: [
+          "same_apply_job_attempt",
+          "same_onboarding_request",
+          "same_person",
+          "same_correlation_id",
+        ],
+        readiness: "mvp_a_poc_only",
+        authorizationBoundary: "classified_evidence_only",
+      },
+    );
   } finally {
     db.close();
   }
@@ -589,4 +624,202 @@ test("MVP-A onboarding trace closeout records P2A-02 production-like gates", asy
   ]) {
     assert.match(closeout, new RegExp(requiredText.replace("/", "\\/"), "u"));
   }
+});
+
+test("MVP-A onboarding evidence authorization gate classifies every exposed evidence surface", async () => {
+  const gateDoc = await readRepoFile(
+    "docs/mvp-a-onboarding-evidence-authorization-gate.md",
+  );
+  const normalizedGateDoc = gateDoc.replace(/\s+/gu, " ").trim();
+  const requiredEvidenceSurfaces = [
+    "transaction_request",
+    "person",
+    "employment",
+    "assignment",
+    "lifecycle_event",
+    "apply_job_attempt",
+    "audit_event",
+    "okta_projection",
+    "work_email_evidence",
+  ];
+
+  assertMvpAOnboardingEvidenceAuthorizationGate(
+    mvpAOnboardingEvidenceAuthorizationGate,
+  );
+
+  assert.deepEqual(
+    mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+      (classification) => classification.evidenceSurface,
+    ),
+    requiredEvidenceSurfaces,
+  );
+
+  for (const evidenceSurface of requiredEvidenceSurfaces) {
+    assert.match(gateDoc, new RegExp(`\\| ${evidenceSurface}\\s+\\|`, "u"));
+  }
+
+  assert.match(
+    normalizedGateDoc,
+    /Broad enterprise RBAC, PostgreSQL RLS as source of truth, production tenant roles, real HR user provisioning, and legal acceptance remain out of scope/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate({
+        ...mvpAOnboardingEvidenceAuthorizationGate,
+        classifications:
+          mvpAOnboardingEvidenceAuthorizationGate.classifications.filter(
+            (classification) =>
+              classification.evidenceSurface !== "apply_job_attempt",
+          ),
+      }),
+    /MVP-A onboarding evidence authorization gate is missing apply_job_attempt classification/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          sourceAdr: "ADR 0000",
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate must stay anchored to ADR 0011/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          outOfScope: [],
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate is missing broad enterprise RBAC out-of-scope boundary/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications: [
+            ...mvpAOnboardingEvidenceAuthorizationGate.classifications,
+            {
+              evidenceSurface: "payroll_export",
+              fieldScopes: ["person_identity"],
+              dataScopes: ["same_person"],
+              readiness: "mvp_a_poc_only",
+              authorizationBoundary: "classified_evidence_only",
+            },
+          ],
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate contains unsupported payroll_export classification/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications:
+            mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+              (classification) =>
+                classification.evidenceSurface === "person"
+                  ? {
+                      ...classification,
+                      fieldScopes: ["person_identity", "unreviewed_payload"],
+                    }
+                  : classification,
+            ),
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate person classification has unsupported unreviewed_payload field scope/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications:
+            mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+              (classification) =>
+                classification.evidenceSurface === "person"
+                  ? {
+                      ...classification,
+                      dataScopes: ["same_person", "cross_tenant"],
+                    }
+                  : classification,
+            ),
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate person classification has unsupported cross_tenant data scope/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications:
+            mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+              (classification) =>
+                classification.evidenceSurface === "person"
+                  ? {
+                      ...classification,
+                      fieldScopes: ["work_email_contact"],
+                    }
+                  : classification,
+            ),
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate person classification must use field scopes person_identity/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications:
+            mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+              (classification) =>
+                classification.evidenceSurface === "person"
+                  ? {
+                      ...classification,
+                      dataScopes: [
+                        "same_mock_okta_projection",
+                        "same_onboarding_request",
+                      ],
+                    }
+                  : classification,
+            ),
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate person classification must use data scopes same_person, same_onboarding_request/u,
+  );
+
+  assert.throws(
+    () =>
+      (
+        mvpAOnboardingEvidenceAuthorizationGate as unknown as {
+          outOfScope: string[];
+        }
+      ).outOfScope.pop(),
+    TypeError,
+  );
+  assert.throws(
+    () =>
+      (
+        mvpAOnboardingEvidenceAuthorizationGate as unknown as {
+          classifications: { fieldScopes: string[] }[];
+        }
+      ).classifications[0]?.fieldScopes.push("work_email_contact"),
+    TypeError,
+  );
+  assertMvpAOnboardingEvidenceAuthorizationGate(
+    mvpAOnboardingEvidenceAuthorizationGate,
+  );
 });
