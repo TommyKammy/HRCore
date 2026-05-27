@@ -142,9 +142,23 @@ test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
     "employeeMyNumber",
     "candidateSpecificPersonalInformation",
     "rawPayloadJson",
+    "exportJob",
+    "exportFileManifest",
+    "watermarkToken",
+    "rawPayloadAccessLog",
     "maskingProfile",
     "redactionProfile",
     "fieldClassification",
+    "processingPurpose",
+    "consentBasis",
+    "dsarHandling",
+    "privacyEvidence",
+    "dataScopePolicy",
+    "laborUnionMembership",
+    "harassmentInvestigation",
+    "disciplinaryInvestigation",
+    "familyOrigin",
+    "permanentDomicile",
   ]) {
     assert.throws(
       () =>
