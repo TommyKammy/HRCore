@@ -192,7 +192,7 @@ const remainingP2A02Gates = [
   "WORM / S3 Object Lock audit immutability and archive evidence",
   "broad audit search UI for production support and review",
   "backup / restore rehearsal with snapshot-consistent trace reads",
-  "field-level RBAC and data-scope enforcement for onboarding evidence",
+  "production field-level RBAC and data-scope enforcement beyond the bounded MVP-A onboarding evidence authorization gate",
   "export controls for raw payloads, CSV output, download logs, and watermark or manifest traceability",
   "real Okta tenant credentials, tenant binding, webhook custody, and provider audit search",
 ];

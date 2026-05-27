@@ -43,17 +43,6 @@ export interface MvpAOnboardingEvidenceAuthorizationGate {
   outOfScope: readonly string[];
 }
 
-const requiredEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[] = [
-  "transaction_request",
-  "person",
-  "employment",
-  "assignment",
-  "lifecycle_event",
-  "audit_event",
-  "okta_projection",
-  "work_email_evidence",
-];
-
 const allowedFieldScopes: readonly MvpAOnboardingFieldScope[] = [
   "request_metadata",
   "person_identity",
@@ -86,82 +75,118 @@ const requiredOutOfScopeBoundaries: readonly string[] = [
   "production authorization policy engines",
 ];
 
+const expectedClassifications: readonly MvpAOnboardingEvidenceAuthorizationClassification[] =
+  [
+    {
+      evidenceSurface: "transaction_request",
+      fieldScopes: ["request_metadata"],
+      dataScopes: ["same_onboarding_request", "same_correlation_id"],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "person",
+      fieldScopes: ["person_identity"],
+      dataScopes: ["same_person", "same_onboarding_request"],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "employment",
+      fieldScopes: ["employment_status"],
+      dataScopes: ["same_employment", "same_person"],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "assignment",
+      fieldScopes: ["assignment_reference"],
+      dataScopes: ["same_assignment", "same_employment", "same_person"],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "lifecycle_event",
+      fieldScopes: ["lifecycle_evidence"],
+      dataScopes: [
+        "same_lifecycle_event",
+        "same_onboarding_request",
+        "same_person",
+      ],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "audit_event",
+      fieldScopes: ["audit_evidence"],
+      dataScopes: ["same_correlation_id", "same_onboarding_request"],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "okta_projection",
+      fieldScopes: ["provider_projection"],
+      dataScopes: [
+        "same_mock_okta_projection",
+        "same_onboarding_request",
+        "same_person",
+      ],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+    {
+      evidenceSurface: "work_email_evidence",
+      fieldScopes: ["work_email_contact"],
+      dataScopes: [
+        "same_work_email_evidence_chain",
+        "same_mock_okta_projection",
+        "same_person",
+      ],
+      readiness: "mvp_a_poc_only",
+      authorizationBoundary: "classified_evidence_only",
+    },
+  ];
+
+const requiredEvidenceSurfaces = expectedClassifications.map(
+  (classification) => classification.evidenceSurface,
+);
+
+const expectedClassificationsBySurface = new Map(
+  expectedClassifications.map((classification) => [
+    classification.evidenceSurface,
+    classification,
+  ]),
+);
+
+const freezeClassification = (
+  classification: MvpAOnboardingEvidenceAuthorizationClassification,
+): MvpAOnboardingEvidenceAuthorizationClassification =>
+  Object.freeze({
+    ...classification,
+    fieldScopes: Object.freeze([...classification.fieldScopes]),
+    dataScopes: Object.freeze([...classification.dataScopes]),
+  });
+
+const freezeGate = (
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+): MvpAOnboardingEvidenceAuthorizationGate =>
+  Object.freeze({
+    ...gate,
+    classifications: Object.freeze(
+      gate.classifications.map((classification) =>
+        freezeClassification(classification),
+      ),
+    ),
+    outOfScope: Object.freeze([...gate.outOfScope]),
+  });
+
 export const mvpAOnboardingEvidenceAuthorizationGate: MvpAOnboardingEvidenceAuthorizationGate =
-  {
+  freezeGate({
     gateId: "mvp_a_onboarding_evidence_authorization_v1",
     sourceAdr: "ADR 0011",
-    classifications: [
-      {
-        evidenceSurface: "transaction_request",
-        fieldScopes: ["request_metadata"],
-        dataScopes: ["same_onboarding_request", "same_correlation_id"],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "person",
-        fieldScopes: ["person_identity"],
-        dataScopes: ["same_person", "same_onboarding_request"],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "employment",
-        fieldScopes: ["employment_status"],
-        dataScopes: ["same_employment", "same_person"],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "assignment",
-        fieldScopes: ["assignment_reference"],
-        dataScopes: ["same_assignment", "same_employment", "same_person"],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "lifecycle_event",
-        fieldScopes: ["lifecycle_evidence"],
-        dataScopes: [
-          "same_lifecycle_event",
-          "same_onboarding_request",
-          "same_person",
-        ],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "audit_event",
-        fieldScopes: ["audit_evidence"],
-        dataScopes: ["same_correlation_id", "same_onboarding_request"],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "okta_projection",
-        fieldScopes: ["provider_projection"],
-        dataScopes: [
-          "same_mock_okta_projection",
-          "same_onboarding_request",
-          "same_person",
-        ],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-      {
-        evidenceSurface: "work_email_evidence",
-        fieldScopes: ["work_email_contact"],
-        dataScopes: [
-          "same_work_email_evidence_chain",
-          "same_mock_okta_projection",
-          "same_person",
-        ],
-        readiness: "mvp_a_poc_only",
-        authorizationBoundary: "classified_evidence_only",
-      },
-    ],
+    classifications: expectedClassifications,
     outOfScope: requiredOutOfScopeBoundaries,
-  };
+  });
 
 export function assertMvpAOnboardingEvidenceAuthorizationGate(
   gate: MvpAOnboardingEvidenceAuthorizationGate,
@@ -246,6 +271,31 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
         );
       }
     }
+    const expectedClassification = expectedClassificationsBySurface.get(
+      classification.evidenceSurface,
+    );
+    if (
+      expectedClassification === undefined ||
+      !hasSameScopeSet(
+        classification.fieldScopes,
+        expectedClassification.fieldScopes,
+      )
+    ) {
+      throw new Error(
+        `MVP-A onboarding evidence authorization gate ${classification.evidenceSurface} classification must use field scopes ${expectedClassification?.fieldScopes.join(", ")}`,
+      );
+    }
+    if (
+      expectedClassification === undefined ||
+      !hasSameScopeSet(
+        classification.dataScopes,
+        expectedClassification.dataScopes,
+      )
+    ) {
+      throw new Error(
+        `MVP-A onboarding evidence authorization gate ${classification.evidenceSurface} classification must use data scopes ${expectedClassification?.dataScopes.join(", ")}`,
+      );
+    }
     if (classification.readiness !== "mvp_a_poc_only") {
       throw new Error(
         `MVP-A onboarding evidence authorization gate ${classification.evidenceSurface} classification must stay MVP-A PoC only`,
@@ -269,4 +319,17 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
       );
     }
   }
+}
+
+function hasSameScopeSet(
+  actualScopes: readonly string[],
+  expectedScopes: readonly string[],
+): boolean {
+  if (actualScopes.length !== expectedScopes.length) return false;
+
+  const expectedScopeSet = new Set(expectedScopes);
+  const actualScopeSet = new Set(actualScopes);
+  if (actualScopeSet.size !== actualScopes.length) return false;
+
+  return actualScopes.every((scope) => expectedScopeSet.has(scope));
 }
