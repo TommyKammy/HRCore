@@ -54,6 +54,28 @@ const requiredEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[] = [
   "work_email_evidence",
 ];
 
+const allowedFieldScopes: readonly MvpAOnboardingFieldScope[] = [
+  "request_metadata",
+  "person_identity",
+  "employment_status",
+  "assignment_reference",
+  "lifecycle_evidence",
+  "audit_evidence",
+  "provider_projection",
+  "work_email_contact",
+];
+
+const allowedDataScopes: readonly MvpAOnboardingDataScope[] = [
+  "same_onboarding_request",
+  "same_person",
+  "same_employment",
+  "same_assignment",
+  "same_lifecycle_event",
+  "same_correlation_id",
+  "same_mock_okta_projection",
+  "same_work_email_evidence_chain",
+];
+
 export const mvpAOnboardingEvidenceAuthorizationGate: MvpAOnboardingEvidenceAuthorizationGate =
   {
     gateId: "mvp_a_onboarding_evidence_authorization_v1",
@@ -142,9 +164,19 @@ export const mvpAOnboardingEvidenceAuthorizationGate: MvpAOnboardingEvidenceAuth
 export function assertMvpAOnboardingEvidenceAuthorizationGate(
   gate: MvpAOnboardingEvidenceAuthorizationGate,
 ): void {
+  const requiredEvidenceSurfaceSet = new Set<string>(requiredEvidenceSurfaces);
+  const allowedFieldScopeSet = new Set<string>(allowedFieldScopes);
+  const allowedDataScopeSet = new Set<string>(allowedDataScopes);
+
   if (gate.gateId !== "mvp_a_onboarding_evidence_authorization_v1") {
     throw new Error(
       "MVP-A onboarding evidence authorization gate has an unsupported gate id",
+    );
+  }
+
+  if (gate.sourceAdr !== "ADR 0011") {
+    throw new Error(
+      "MVP-A onboarding evidence authorization gate must stay anchored to ADR 0011",
     );
   }
 
@@ -153,6 +185,11 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
     MvpAOnboardingEvidenceAuthorizationClassification
   >();
   for (const classification of gate.classifications) {
+    if (!requiredEvidenceSurfaceSet.has(classification.evidenceSurface)) {
+      throw new Error(
+        `MVP-A onboarding evidence authorization gate contains unsupported ${classification.evidenceSurface} classification`,
+      );
+    }
     if (classificationsBySurface.has(classification.evidenceSurface)) {
       throw new Error(
         `MVP-A onboarding evidence authorization gate duplicates ${classification.evidenceSurface} classification`,
@@ -167,6 +204,20 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
       throw new Error(
         `MVP-A onboarding evidence authorization gate ${classification.evidenceSurface} classification has no data scope`,
       );
+    }
+    for (const fieldScope of classification.fieldScopes) {
+      if (!allowedFieldScopeSet.has(fieldScope)) {
+        throw new Error(
+          `MVP-A onboarding evidence authorization gate ${classification.evidenceSurface} classification has unsupported ${fieldScope} field scope`,
+        );
+      }
+    }
+    for (const dataScope of classification.dataScopes) {
+      if (!allowedDataScopeSet.has(dataScope)) {
+        throw new Error(
+          `MVP-A onboarding evidence authorization gate ${classification.evidenceSurface} classification has unsupported ${dataScope} data scope`,
+        );
+      }
     }
     if (classification.readiness !== "mvp_a_poc_only") {
       throw new Error(

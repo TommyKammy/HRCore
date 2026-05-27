@@ -29,6 +29,11 @@ const workerAttemptCorrelationId = (
 const readRepoFile = (path: string): Promise<string> =>
   readFile(join(process.cwd(), path), "utf8");
 
+const unsafeMvpAOnboardingEvidenceAuthorizationGate = (
+  gate: unknown,
+): Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0] =>
+  gate as Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0];
+
 const readCommittedMigrationSql = async (): Promise<string> => {
   const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
     .filter((file) => file.endsWith(".sql"))
@@ -642,5 +647,76 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
           ),
       }),
     /MVP-A onboarding evidence authorization gate is missing work_email_evidence classification/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          sourceAdr: "ADR 0000",
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate must stay anchored to ADR 0011/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications: [
+            ...mvpAOnboardingEvidenceAuthorizationGate.classifications,
+            {
+              evidenceSurface: "payroll_export",
+              fieldScopes: ["person_identity"],
+              dataScopes: ["same_person"],
+              readiness: "mvp_a_poc_only",
+              authorizationBoundary: "classified_evidence_only",
+            },
+          ],
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate contains unsupported payroll_export classification/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications:
+            mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+              (classification) =>
+                classification.evidenceSurface === "person"
+                  ? {
+                      ...classification,
+                      fieldScopes: ["person_identity", "unreviewed_payload"],
+                    }
+                  : classification,
+            ),
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate person classification has unsupported unreviewed_payload field scope/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate(
+        unsafeMvpAOnboardingEvidenceAuthorizationGate({
+          ...mvpAOnboardingEvidenceAuthorizationGate,
+          classifications:
+            mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+              (classification) =>
+                classification.evidenceSurface === "person"
+                  ? {
+                      ...classification,
+                      dataScopes: ["same_person", "cross_tenant"],
+                    }
+                  : classification,
+            ),
+        }),
+      ),
+    /MVP-A onboarding evidence authorization gate person classification has unsupported cross_tenant data scope/u,
   );
 });
