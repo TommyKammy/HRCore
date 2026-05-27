@@ -16,6 +16,9 @@ This closeout records PoC-depth evidence for issue #174. The runtime verifier is
 - `writeback_event`, `writeback_provider_refresh`, and
   `writeback_work_email_conflict` evidence is pulled only from directly linked
   work email records for the correlated onboarding subject.
+- The trace verifier returns the MVP-A onboarding evidence authorization gate
+  before exposing onboarding request, person, employment, assignment,
+  lifecycle, audit, mock Okta projection, or work_email evidence.
 
 ## Representative Paths
 
@@ -38,7 +41,8 @@ P2A-02 or later before real-data use:
 - WORM / S3 Object Lock audit immutability and archive evidence.
 - broad audit search UI for production support and review.
 - backup / restore rehearsal with snapshot-consistent trace reads.
-- field-level RBAC and data-scope enforcement for onboarding evidence.
+- production field-level RBAC and data-scope enforcement beyond the bounded
+  MVP-A onboarding evidence authorization gate.
 - export controls for raw payloads, CSV output, download logs, and watermark or
   manifest traceability.
 - real Okta tenant credentials, tenant binding, webhook custody, and provider
@@ -50,3 +54,5 @@ P2A-02 or later before real-data use:
   first failed because `src/mvp-a-onboarding-traceability.ts` did not exist.
 - Closeout verifier coverage now exercises success, partial provider failure,
   writeback conflict, missing apply evidence, and this gate list.
+- The MVP-A onboarding evidence authorization gate is documented in
+  [MVP-A Onboarding Evidence Authorization Gate](mvp-a-onboarding-evidence-authorization-gate.md).

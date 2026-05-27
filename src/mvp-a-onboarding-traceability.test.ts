@@ -5,6 +5,10 @@ import test from "node:test";
 
 import { buildOktaMasteringAdapter } from "./okta-mastering-adapter.js";
 import {
+  assertMvpAOnboardingEvidenceAuthorizationGate,
+  mvpAOnboardingEvidenceAuthorizationGate,
+} from "./mvp-a-onboarding-evidence-authorization.js";
+import {
   applyApprovedOnboardingTransactionRequestWithOktaProjection,
   applyDueOnboardingTransactionRequests,
   createOnboardingTransactionRequestFixture,
@@ -589,4 +593,54 @@ test("MVP-A onboarding trace closeout records P2A-02 production-like gates", asy
   ]) {
     assert.match(closeout, new RegExp(requiredText.replace("/", "\\/"), "u"));
   }
+});
+
+test("MVP-A onboarding evidence authorization gate classifies every exposed evidence surface", async () => {
+  const gateDoc = await readRepoFile(
+    "docs/mvp-a-onboarding-evidence-authorization-gate.md",
+  );
+  const normalizedGateDoc = gateDoc.replace(/\s+/gu, " ").trim();
+  const requiredEvidenceSurfaces = [
+    "transaction_request",
+    "person",
+    "employment",
+    "assignment",
+    "lifecycle_event",
+    "audit_event",
+    "okta_projection",
+    "work_email_evidence",
+  ];
+
+  assertMvpAOnboardingEvidenceAuthorizationGate(
+    mvpAOnboardingEvidenceAuthorizationGate,
+  );
+
+  assert.deepEqual(
+    mvpAOnboardingEvidenceAuthorizationGate.classifications.map(
+      (classification) => classification.evidenceSurface,
+    ),
+    requiredEvidenceSurfaces,
+  );
+
+  for (const evidenceSurface of requiredEvidenceSurfaces) {
+    assert.match(gateDoc, new RegExp(`\\| ${evidenceSurface}\\s+\\|`, "u"));
+  }
+
+  assert.match(
+    normalizedGateDoc,
+    /Broad enterprise RBAC, PostgreSQL RLS as source of truth, production tenant roles, real HR user provisioning, and legal acceptance remain out of scope/u,
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingEvidenceAuthorizationGate({
+        ...mvpAOnboardingEvidenceAuthorizationGate,
+        classifications:
+          mvpAOnboardingEvidenceAuthorizationGate.classifications.filter(
+            (classification) =>
+              classification.evidenceSurface !== "work_email_evidence",
+          ),
+      }),
+    /MVP-A onboarding evidence authorization gate is missing work_email_evidence classification/u,
+  );
 });
