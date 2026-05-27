@@ -16,6 +16,33 @@ import {
 const readRepoFile = (path: string): Promise<string> =>
   readFile(join(process.cwd(), path), "utf8");
 
+type OpenApiSchema = {
+  $ref?: string;
+  properties?: Record<string, OpenApiSchema>;
+  items?: OpenApiSchema;
+  allOf?: OpenApiSchema[];
+  anyOf?: OpenApiSchema[];
+  oneOf?: OpenApiSchema[];
+};
+
+type OpenApiContract = {
+  paths?: Record<string, unknown>;
+  components?: {
+    schemas?: Record<string, OpenApiSchema>;
+  };
+};
+
+const openApiMethods = new Set([
+  "get",
+  "put",
+  "post",
+  "delete",
+  "options",
+  "head",
+  "patch",
+  "trace",
+]);
+
 test("MVP-A onboarding PII masking/export gate is explicit and fail-closed", () => {
   assert.doesNotThrow(() =>
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate),
@@ -46,42 +73,47 @@ test("MVP-A onboarding input rejects prohibited raw, export, and regulated paylo
 test("MVP-A OpenAPI contract exposes no raw payload or CSV/export onboarding surfaces", async () => {
   const contract = JSON.parse(
     await readRepoFile("openapi/hrcore.openapi.json"),
-  ) as {
-    paths?: Record<string, unknown>;
-    components?: {
-      schemas?: Record<
-        string,
-        {
-          properties?: Record<string, unknown>;
-        }
-      >;
-    };
-  };
+  ) as OpenApiContract;
 
-  const onboardingRoutes = Object.keys(contract.paths ?? {}).filter((route) =>
-    route.startsWith("/onboarding/"),
+  const onboardingPathEntries = Object.entries(contract.paths ?? {}).filter(
+    ([route]) => route.startsWith("/onboarding/"),
   );
   assert.ok(
-    onboardingRoutes.length > 0,
+    onboardingPathEntries.length > 0,
     "expected OpenAPI contract to expose MVP-A onboarding routes",
   );
 
-  for (const route of onboardingRoutes) {
+  for (const [route, pathItem] of onboardingPathEntries) {
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
       route,
     });
+
+    for (const metadataValue of collectOpenApiOperationMetadata(pathItem)) {
+      assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
+        fieldName: metadataValue,
+      });
+    }
   }
 
-  const onboardingSchemas = Object.entries(
-    contract.components?.schemas ?? {},
-  ).filter(([schemaName]) => schemaName.includes("Onboarding"));
+  const schemas = contract.components?.schemas ?? {};
+  const onboardingSchemaNames = collectOnboardingSchemaNames(
+    onboardingPathEntries.map(([, pathItem]) => pathItem),
+    schemas,
+  );
+  assert.ok(
+    onboardingSchemaNames.has("ValidationErrorResponse"),
+    "expected onboarding schema scan to include shared referenced components",
+  );
 
-  for (const [schemaName, schema] of onboardingSchemas) {
+  for (const schemaName of onboardingSchemaNames) {
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
       fieldName: schemaName,
     });
 
-    for (const propertyName of Object.keys(schema.properties ?? {})) {
+    for (const propertyName of collectOpenApiSchemaPropertyNames(
+      schemas[schemaName],
+      schemas,
+    )) {
       assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
         fieldName: propertyName,
       });
@@ -91,6 +123,7 @@ test("MVP-A OpenAPI contract exposes no raw payload or CSV/export onboarding sur
 
 test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
   for (const route of [
+    "/onboarding/new-hire/raw",
     "/onboarding/new-hire/raw/payload",
     "/onboarding/new-hire/raw/view",
     "/onboarding/new-hire/csv/export",
@@ -109,6 +142,9 @@ test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
     "employeeMyNumber",
     "candidateSpecificPersonalInformation",
     "rawPayloadJson",
+    "maskingProfile",
+    "redactionProfile",
+    "fieldClassification",
   ]) {
     assert.throws(
       () =>
@@ -118,6 +154,37 @@ test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
       /exposes prohibited/u,
       `expected ${fieldName} to be rejected`,
     );
+  }
+});
+
+test("MVP-A onboarding input rejects prohibited keys inside payload sections", () => {
+  for (const prohibitedKey of mvpAOnboardingPiiExportGate.prohibitedPayloadKeys) {
+    for (const payloadSection of [
+      "employment",
+      "assignment",
+      "workEmailExpectation",
+    ] as const) {
+      const fixture = createOnboardingTransactionRequestFixture();
+      assert.throws(
+        () =>
+          parseOnboardingTransactionRequestInput({
+            ...fixture,
+            payload: {
+              ...fixture.payload,
+              [payloadSection]: {
+                ...fixture.payload[payloadSection],
+                [prohibitedKey]: "blocked",
+              },
+            },
+          }),
+        (error) =>
+          error instanceof OnboardingTransactionRequestValidationError &&
+          error instanceof Error &&
+          error.message ===
+            `payload.${payloadSection} contains unsupported fields: ${prohibitedKey}`,
+        `expected payload.${payloadSection}.${prohibitedKey} to be rejected`,
+      );
+    }
   }
 });
 
@@ -156,3 +223,149 @@ test("MVP-A onboarding PII/export gate documents remaining two-key dependencies"
     /\[MVP-A Onboarding PII Masking and Export Gate\]\(docs\/mvp-a-onboarding-pii-export-gate\.md\)/,
   );
 });
+
+function collectOpenApiOperationMetadata(pathItem: unknown): string[] {
+  if (!isRecord(pathItem)) {
+    return [];
+  }
+
+  const metadataValues: string[] = [];
+  for (const [method, operation] of Object.entries(pathItem)) {
+    if (!openApiMethods.has(method) || !isRecord(operation)) {
+      continue;
+    }
+
+    for (const key of ["operationId", "summary", "description"] as const) {
+      const value = operation[key];
+      if (typeof value === "string") {
+        metadataValues.push(value);
+      }
+    }
+
+    const tags = operation.tags;
+    if (Array.isArray(tags)) {
+      for (const tag of tags) {
+        if (typeof tag === "string") {
+          metadataValues.push(tag);
+        }
+      }
+    }
+  }
+
+  return metadataValues;
+}
+
+function collectOnboardingSchemaNames(
+  pathItems: readonly unknown[],
+  schemas: Record<string, OpenApiSchema>,
+): Set<string> {
+  const schemaNames = new Set(
+    Object.keys(schemas).filter((schemaName) =>
+      schemaName.includes("Onboarding"),
+    ),
+  );
+  const pendingSchemaNames = [
+    ...schemaNames,
+    ...pathItems.flatMap((pathItem) => collectOpenApiSchemaRefs(pathItem)),
+  ];
+  const processedSchemaNames = new Set<string>();
+
+  while (pendingSchemaNames.length > 0) {
+    const schemaName = pendingSchemaNames.pop();
+    if (
+      schemaName === undefined ||
+      processedSchemaNames.has(schemaName) ||
+      schemas[schemaName] === undefined
+    ) {
+      continue;
+    }
+
+    processedSchemaNames.add(schemaName);
+    schemaNames.add(schemaName);
+    pendingSchemaNames.push(...collectOpenApiSchemaRefs(schemas[schemaName]));
+  }
+
+  return schemaNames;
+}
+
+function collectOpenApiSchemaPropertyNames(
+  schema: OpenApiSchema | undefined,
+  schemas: Record<string, OpenApiSchema>,
+): string[] {
+  const propertyNames: string[] = [];
+
+  function visitSchema(
+    currentSchema: OpenApiSchema | undefined,
+    visitedSchemaNames: ReadonlySet<string>,
+  ): void {
+    if (currentSchema === undefined) {
+      return;
+    }
+
+    const refSchemaName = getOpenApiSchemaNameFromRef(currentSchema.$ref);
+    if (refSchemaName !== undefined) {
+      if (visitedSchemaNames.has(refSchemaName)) {
+        return;
+      }
+
+      visitSchema(
+        schemas[refSchemaName],
+        new Set([...visitedSchemaNames, refSchemaName]),
+      );
+    }
+
+    for (const [propertyName, propertySchema] of Object.entries(
+      currentSchema.properties ?? {},
+    )) {
+      propertyNames.push(propertyName);
+      visitSchema(propertySchema, visitedSchemaNames);
+    }
+
+    visitSchema(currentSchema.items, visitedSchemaNames);
+    for (const nestedSchema of [
+      ...(currentSchema.allOf ?? []),
+      ...(currentSchema.anyOf ?? []),
+      ...(currentSchema.oneOf ?? []),
+    ]) {
+      visitSchema(nestedSchema, visitedSchemaNames);
+    }
+  }
+
+  visitSchema(schema, new Set());
+  return propertyNames;
+}
+
+function collectOpenApiSchemaRefs(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectOpenApiSchemaRefs(item));
+  }
+
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const refs: string[] = [];
+  const schemaName = getOpenApiSchemaNameFromRef(value.$ref);
+  if (schemaName !== undefined) {
+    refs.push(schemaName);
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    refs.push(...collectOpenApiSchemaRefs(nestedValue));
+  }
+
+  return refs;
+}
+
+function getOpenApiSchemaNameFromRef(ref: unknown): string | undefined {
+  const schemaRefPrefix = "#/components/schemas/";
+  if (typeof ref !== "string" || !ref.startsWith(schemaRefPrefix)) {
+    return undefined;
+  }
+
+  return ref.slice(schemaRefPrefix.length);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

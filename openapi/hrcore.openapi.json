@@ -47,7 +47,7 @@
       "get": {
         "operationId": "renderMvpAOnboardingWizard",
         "summary": "Render MVP-A new hire onboarding wizard",
-        "description": "Returns the MVP-A-only new hire wizard surface for draft, validation, and submit. It does not expose transfer, termination, CSV, raw payload, regulated data, live-provider, or production control surfaces.",
+        "description": "Returns the MVP-A-only new hire wizard surface for draft, validation, and submit. Later-wave privacy, provider, and production control surfaces remain outside this operation.",
         "responses": {
           "200": {
             "description": "MVP-A onboarding wizard HTML.",

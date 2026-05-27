@@ -42,6 +42,12 @@ const prohibitedPayloadKeys = [
   "download_log",
   "exportDownloadLog",
   "export_download_log",
+  "maskingProfile",
+  "masking_profile",
+  "redactionProfile",
+  "redaction_profile",
+  "fieldClassification",
+  "field_classification",
   "myNumber",
   "my_number",
   "specificPersonalInformation",
@@ -60,6 +66,7 @@ const sourceAdrs = [
 ] as const;
 
 const prohibitedRouteTokens = [
+  "raw",
   "raw-payload",
   "raw/payload",
   "raw_payload",
@@ -180,14 +187,37 @@ function assertRouteHasNoProhibitedSurface(
   gate: MvpAOnboardingPiiExportGate,
   route: string,
 ): void {
-  const normalizedRoute = normalizeSurfaceName(route);
+  const normalizedRouteSegments = route
+    .split("/")
+    .map((segment) => normalizeSurfaceName(segment))
+    .filter((segment) => segment.length > 0);
+  const normalizedRoute = normalizedRouteSegments.join("");
   for (const prohibitedToken of gate.prohibitedRouteTokens) {
-    if (normalizedRoute.includes(normalizeSurfaceName(prohibitedToken))) {
+    if (
+      routeHasProhibitedToken(
+        normalizedRoute,
+        normalizedRouteSegments,
+        prohibitedToken,
+      )
+    ) {
       throw new Error(
         `MVP-A onboarding route ${route} exposes prohibited ${prohibitedToken} surface`,
       );
     }
   }
+}
+
+function routeHasProhibitedToken(
+  normalizedRoute: string,
+  normalizedRouteSegments: readonly string[],
+  prohibitedToken: string,
+): boolean {
+  const normalizedToken = normalizeSurfaceName(prohibitedToken);
+  if (prohibitedToken === "raw") {
+    return normalizedRouteSegments.includes(normalizedToken);
+  }
+
+  return normalizedRoute.includes(normalizedToken);
 }
 
 function assertFieldHasNoProhibitedSurface(
