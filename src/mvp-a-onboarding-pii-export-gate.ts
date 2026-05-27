@@ -193,7 +193,9 @@ function assertFieldHasNoProhibitedSurface(
 ): void {
   const normalizedFieldName = normalizeSurfaceName(fieldName);
   for (const prohibitedFieldName of gate.prohibitedFieldNames) {
-    if (normalizedFieldName === normalizeSurfaceName(prohibitedFieldName)) {
+    if (
+      normalizedFieldName.includes(normalizeSurfaceName(prohibitedFieldName))
+    ) {
       throw new Error(
         `MVP-A onboarding field ${fieldName} exposes prohibited ${prohibitedFieldName} surface`,
       );
@@ -233,5 +235,5 @@ function assertRequiredSet(
 }
 
 function normalizeSurfaceName(value: string): string {
-  return value.replace(/[-_]/gu, "").toLowerCase();
+  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
 }

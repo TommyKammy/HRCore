@@ -58,20 +58,65 @@ test("MVP-A OpenAPI contract exposes no raw payload or CSV/export onboarding sur
     };
   };
 
-  for (const route of Object.keys(contract.paths ?? {})) {
+  const onboardingRoutes = Object.keys(contract.paths ?? {}).filter((route) =>
+    route.startsWith("/onboarding/"),
+  );
+  assert.ok(
+    onboardingRoutes.length > 0,
+    "expected OpenAPI contract to expose MVP-A onboarding routes",
+  );
+
+  for (const route of onboardingRoutes) {
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
       route,
     });
   }
 
-  const onboardingSchemas = Object.entries(contract.components?.schemas ?? {})
-    .filter(([schemaName]) => schemaName.includes("Onboarding"))
-    .flatMap(([, schema]) => Object.keys(schema.properties ?? {}));
+  const onboardingSchemas = Object.entries(
+    contract.components?.schemas ?? {},
+  ).filter(([schemaName]) => schemaName.includes("Onboarding"));
 
-  for (const propertyName of onboardingSchemas) {
+  for (const [schemaName, schema] of onboardingSchemas) {
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
-      fieldName: propertyName,
+      fieldName: schemaName,
     });
+
+    for (const propertyName of Object.keys(schema.properties ?? {})) {
+      assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
+        fieldName: propertyName,
+      });
+    }
+  }
+});
+
+test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
+  for (const route of [
+    "/onboarding/new-hire/raw/payload",
+    "/onboarding/new-hire/raw/view",
+  ]) {
+    assert.throws(
+      () =>
+        assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
+          route,
+        }),
+      /exposes prohibited/u,
+      `expected ${route} to be rejected`,
+    );
+  }
+
+  for (const fieldName of [
+    "employeeMyNumber",
+    "candidateSpecificPersonalInformation",
+    "rawPayloadJson",
+  ]) {
+    assert.throws(
+      () =>
+        assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
+          fieldName,
+        }),
+      /exposes prohibited/u,
+      `expected ${fieldName} to be rejected`,
+    );
   }
 });
 
