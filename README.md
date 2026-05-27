@@ -27,6 +27,7 @@ The post-MVP-A later-wave Ready boundary is defined in [Post-MVP-A Future Wave R
 The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision](docs/mvp-a-go-no-go.md).
 The MVP-A onboarding traceability closeout is recorded in [MVP-A Onboarding Traceability Closeout](docs/mvp-a-onboarding-traceability-closeout.md).
 The bounded MVP-A onboarding evidence authorization gate is recorded in [MVP-A Onboarding Evidence Authorization Gate](docs/mvp-a-onboarding-evidence-authorization-gate.md).
+The MVP-A onboarding PII masking, raw payload, and CSV/export closed gate is recorded in [MVP-A Onboarding PII Masking and Export Gate](docs/mvp-a-onboarding-pii-export-gate.md).
 
 ## Baseline structure
 
@@ -77,6 +78,10 @@ The bounded MVP-A onboarding evidence authorization gate is recorded in [MVP-A O
   onboarding correlation trace evidence and P2A-02 production-like gates.
 - `docs/mvp-a-onboarding-evidence-authorization-gate.md` records the bounded
   MVP-A field-level and data-scope classification gate for onboarding evidence.
+- `docs/mvp-a-onboarding-pii-export-gate.md` records the MVP-A onboarding PII
+  masking, raw payload, and CSV/export closed gate plus the remaining two-key
+  ADR, masking, export-permission, watermark, download-log, and real-data
+  dependencies.
 
 ## Local verification
 
