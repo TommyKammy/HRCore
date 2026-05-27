@@ -54,4 +54,5 @@ implementation issue explicitly authorize them.
   `verifyMvpAOnboardingCorrelationTrace` returns the gate with every trace.
 - Negative guard:
   `assertMvpAOnboardingEvidenceAuthorizationGate` rejects missing, duplicated,
-  or empty evidence classifications.
+  unknown, empty, unsupported, or per-surface mismatched evidence
+  classifications.

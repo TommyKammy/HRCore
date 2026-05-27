@@ -586,6 +586,24 @@ test("MVP-A onboarding trace follows scheduled worker apply audit correlation", 
       ]),
       [["applied", attemptCorrelationId]],
     );
+    assert.deepEqual(
+      trace.authorizationGate.classifications.find(
+        (classification) =>
+          classification.evidenceSurface === "apply_job_attempt",
+      ),
+      {
+        evidenceSurface: "apply_job_attempt",
+        fieldScopes: ["apply_job_attempt_evidence"],
+        dataScopes: [
+          "same_apply_job_attempt",
+          "same_onboarding_request",
+          "same_person",
+          "same_correlation_id",
+        ],
+        readiness: "mvp_a_poc_only",
+        authorizationBoundary: "classified_evidence_only",
+      },
+    );
   } finally {
     db.close();
   }
