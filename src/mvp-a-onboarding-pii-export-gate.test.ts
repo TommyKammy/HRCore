@@ -75,14 +75,68 @@ test("MVP-A OpenAPI contract exposes no raw payload or CSV/export onboarding sur
     await readRepoFile("openapi/hrcore.openapi.json"),
   ) as OpenApiContract;
 
+  assertOpenApiOnboardingContractHasNoProhibitedSurfaces(contract);
+});
+
+test("MVP-A OpenAPI scan includes the root onboarding route", () => {
+  assert.throws(
+    () =>
+      assertOpenApiOnboardingContractHasNoProhibitedSurfaces({
+        paths: {
+          "/onboarding": {
+            get: {
+              operationId: "exportOnboardingTransactions",
+            },
+          },
+        },
+      }),
+    /exposes prohibited/u,
+  );
+});
+
+test("MVP-A OpenAPI scan inspects inline onboarding schemas", () => {
+  assert.throws(
+    () =>
+      assertOpenApiOnboardingContractHasNoProhibitedSurfaces({
+        paths: {
+          "/onboarding/new-hire": {
+            post: {
+              operationId: "createOnboardingRequest",
+              requestBody: {
+                content: {
+                  "application/json": {
+                    schema: {
+                      properties: {
+                        safeWrapper: {
+                          properties: {
+                            rawPayload: {},
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    /exposes prohibited/u,
+  );
+});
+
+function assertOpenApiOnboardingContractHasNoProhibitedSurfaces(
+  contract: OpenApiContract,
+): void {
   const onboardingPathEntries = Object.entries(contract.paths ?? {}).filter(
-    ([route]) => route.startsWith("/onboarding/"),
+    ([route]) => isMvpAOnboardingRoute(route),
   );
   assert.ok(
     onboardingPathEntries.length > 0,
     "expected OpenAPI contract to expose MVP-A onboarding routes",
   );
 
+  const schemas = contract.components?.schemas ?? {};
   for (const [route, pathItem] of onboardingPathEntries) {
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
       route,
@@ -93,17 +147,27 @@ test("MVP-A OpenAPI contract exposes no raw payload or CSV/export onboarding sur
         fieldName: metadataValue,
       });
     }
+
+    for (const propertyName of collectOpenApiSchemaPropertyNamesFromValue(
+      pathItem,
+      schemas,
+    )) {
+      assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
+        fieldName: propertyName,
+      });
+    }
   }
 
-  const schemas = contract.components?.schemas ?? {};
   const onboardingSchemaNames = collectOnboardingSchemaNames(
     onboardingPathEntries.map(([, pathItem]) => pathItem),
     schemas,
   );
-  assert.ok(
-    onboardingSchemaNames.has("ValidationErrorResponse"),
-    "expected onboarding schema scan to include shared referenced components",
-  );
+  if (Object.keys(schemas).length > 0) {
+    assert.ok(
+      onboardingSchemaNames.has("ValidationErrorResponse"),
+      "expected onboarding schema scan to include shared referenced components",
+    );
+  }
 
   for (const schemaName of onboardingSchemaNames) {
     assertMvpAOnboardingPiiExportGate(mvpAOnboardingPiiExportGate, {
@@ -119,7 +183,7 @@ test("MVP-A OpenAPI contract exposes no raw payload or CSV/export onboarding sur
       });
     }
   }
-});
+}
 
 test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
   for (const route of [
@@ -142,6 +206,17 @@ test("MVP-A onboarding PII/export gate rejects route and field aliases", () => {
     "employeeMyNumber",
     "candidateSpecificPersonalInformation",
     "rawPayloadJson",
+    "exportOnboardingTransactions",
+    "OnboardingExportResponse",
+    "onboardingDownloadUrl",
+    "onboardingCsvReport",
+    "metadata",
+    "requestMetadata",
+    "note",
+    "memo",
+    "jsonb",
+    "attachment",
+    "attachmentBlob",
     "exportJob",
     "exportFileManifest",
     "watermarkToken",
@@ -269,6 +344,10 @@ function collectOpenApiOperationMetadata(pathItem: unknown): string[] {
   return metadataValues;
 }
 
+function isMvpAOnboardingRoute(route: string): boolean {
+  return route === "/onboarding" || route.startsWith("/onboarding/");
+}
+
 function collectOnboardingSchemaNames(
   pathItems: readonly unknown[],
   schemas: Record<string, OpenApiSchema>,
@@ -349,6 +428,33 @@ function collectOpenApiSchemaPropertyNames(
   return propertyNames;
 }
 
+function collectOpenApiSchemaPropertyNamesFromValue(
+  value: unknown,
+  schemas: Record<string, OpenApiSchema>,
+): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) =>
+      collectOpenApiSchemaPropertyNamesFromValue(item, schemas),
+    );
+  }
+
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const propertyNames = isOpenApiSchemaLike(value)
+    ? collectOpenApiSchemaPropertyNames(value, schemas)
+    : [];
+
+  for (const nestedValue of Object.values(value)) {
+    propertyNames.push(
+      ...collectOpenApiSchemaPropertyNamesFromValue(nestedValue, schemas),
+    );
+  }
+
+  return propertyNames;
+}
+
 function collectOpenApiSchemaRefs(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.flatMap((item) => collectOpenApiSchemaRefs(item));
@@ -378,6 +484,17 @@ function getOpenApiSchemaNameFromRef(ref: unknown): string | undefined {
   }
 
   return ref.slice(schemaRefPrefix.length);
+}
+
+function isOpenApiSchemaLike(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.$ref === "string" ||
+    isRecord(value.properties) ||
+    isRecord(value.items) ||
+    Array.isArray(value.allOf) ||
+    Array.isArray(value.anyOf) ||
+    Array.isArray(value.oneOf)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

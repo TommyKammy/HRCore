@@ -36,6 +36,11 @@ const prohibitedPayloadKeys = [
   "export_template",
   "exportPermission",
   "export_permission",
+  "metadata",
+  "note",
+  "memo",
+  "jsonb",
+  "attachment",
   "rawPayloadViewPermission",
   "raw_payload_view_permission",
   "downloadLog",
@@ -103,6 +108,9 @@ const prohibitedRouteTokens = [
 
 const prohibitedFieldNames = [
   ...prohibitedPayloadKeys,
+  "csv",
+  "export",
+  "download",
   "nationalId",
   "national_id",
   "individualNumber",
