@@ -43,6 +43,56 @@
         }
       }
     },
+    "/audit/mvp-a/onboarding-correlations/{correlationId}": {
+      "get": {
+        "operationId": "getMvpAOnboardingCorrelationAuditTrace",
+        "summary": "Inspect bounded MVP-A onboarding audit evidence by correlation ID",
+        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID. This bounded surface fails closed when required linked evidence is missing and does not expose raw payloads, CSV/export output, broad audit browsing, WORM/S3 Object Lock, hash-chain production verification, real provider audit search, or production field-level audit permissions.",
+        "parameters": [
+          {
+            "name": "correlationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded MVP-A onboarding correlation trace evidence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Required linked onboarding audit evidence was missing or inconsistent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local MVP-A onboarding audit trace database was not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/onboarding/new-hire": {
       "get": {
         "operationId": "renderMvpAOnboardingWizard",
@@ -436,6 +486,148 @@
           "synthetic": {
             "type": "boolean",
             "const": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingCorrelationTraceResponse": {
+        "type": "object",
+        "required": [
+          "correlationId",
+          "evidenceType",
+          "trace",
+          "deferredProductionGates"
+        ],
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "evidenceType": {
+            "type": "string",
+            "const": "mvp_a_onboarding_correlation_trace"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceSummary"
+          },
+          "deferredProductionGates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingCorrelationTraceSummary": {
+        "type": "object",
+        "required": [
+          "transactionRequest",
+          "approvalAuditEvent",
+          "applyAuditEvent",
+          "auditEventCount",
+          "lifecycleEventId",
+          "applyJobAttemptCount",
+          "workEmailWritebackEventId",
+          "providerRefreshId",
+          "workEmailConflictId"
+        ],
+        "properties": {
+          "transactionRequest": {
+            "$ref": "#/components/schemas/MvpAOnboardingTransactionTrace"
+          },
+          "approvalAuditEvent": {
+            "$ref": "#/components/schemas/MvpAOnboardingAuditEventTrace"
+          },
+          "applyAuditEvent": {
+            "$ref": "#/components/schemas/MvpAOnboardingAuditEventTrace"
+          },
+          "auditEventCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lifecycleEventId": {
+            "type": ["string", "null"]
+          },
+          "applyJobAttemptCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "workEmailWritebackEventId": {
+            "type": ["string", "null"]
+          },
+          "providerRefreshId": {
+            "type": ["string", "null"]
+          },
+          "workEmailConflictId": {
+            "type": ["string", "null"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingTransactionTrace": {
+        "type": "object",
+        "required": [
+          "id",
+          "personId",
+          "requestType",
+          "statusCode",
+          "correlationId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "personId": {
+            "type": "string"
+          },
+          "requestType": {
+            "type": "string",
+            "const": "hire"
+          },
+          "statusCode": {
+            "type": "string",
+            "const": "completed"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingAuditEventTrace": {
+        "type": "object",
+        "required": [
+          "id",
+          "actorId",
+          "action",
+          "subjectTable",
+          "subjectId",
+          "occurredAt",
+          "correlationId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": ["mvp_a.onboarding.approve", "mvp_a.onboarding.apply"]
+          },
+          "subjectTable": {
+            "type": "string",
+            "enum": ["transaction_request", "lifecycle_event"]
+          },
+          "subjectId": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
           }
         },
         "additionalProperties": false
