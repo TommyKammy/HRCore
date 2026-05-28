@@ -409,6 +409,7 @@ function readTransactionRequest(
           FROM audit_event
           WHERE audit_event.correlation_id = ?
             AND audit_event.subject_table = 'transaction_request'
+            AND audit_event.action = 'mvp_a.onboarding.approve'
           UNION
           SELECT lifecycle_event.transaction_request_id
           FROM audit_event
@@ -416,11 +417,13 @@ function readTransactionRequest(
             ON lifecycle_event.id = audit_event.subject_id
           WHERE audit_event.correlation_id = ?
             AND audit_event.subject_table = 'lifecycle_event'
+            AND audit_event.action = 'mvp_a.onboarding.apply'
             AND lifecycle_event.transaction_request_id IS NOT NULL
           UNION
           SELECT onboarding_apply_job_attempt.transaction_request_id
           FROM onboarding_apply_job_attempt
           WHERE onboarding_apply_job_attempt.correlation_id = ?
+            AND onboarding_apply_job_attempt.status_code = 'applied'
         )
       `,
     )
