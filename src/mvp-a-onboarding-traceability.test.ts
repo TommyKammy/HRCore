@@ -387,17 +387,18 @@ test("MVP-A onboarding trace includes representative failure and partial-success
       "inbound_value_conflict",
     );
     assert.equal(conflictTrace.providerRefresh, undefined);
-    assert.throws(
-      () =>
-        verifyMvpAOnboardingCorrelationTrace(db, {
-          correlationId: "correlation-onboarding-writeback-conflict-001",
-          requireApproval: true,
-          requireApply: true,
-          requireWriteback: true,
-          requireProviderRefresh: true,
-        }),
-      /MVP-A onboarding trace requires provider refresh or conflict evidence/,
+    const inboundConflictTrace = verifyMvpAOnboardingCorrelationTrace(db, {
+      correlationId: "correlation-onboarding-writeback-conflict-001",
+      requireApproval: true,
+      requireApply: true,
+      requireWriteback: true,
+      requireProviderRefresh: true,
+    });
+    assert.equal(
+      inboundConflictTrace.workEmailConflict?.conflictType,
+      "inbound_value_conflict",
     );
+    assert.equal(inboundConflictTrace.providerRefresh, undefined);
     db.prepare(
       `
         INSERT INTO writeback_work_email_conflict (

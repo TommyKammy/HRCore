@@ -11,6 +11,7 @@ import {
 import { loadOpenApiContract } from "./openapi.js";
 import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import {
+  MvpAOnboardingCorrelationTraceError,
   verifyMvpAOnboardingCorrelationTrace,
   type MvpAOnboardingCorrelationTrace,
   type MvpAOnboardingTraceabilityDatabase,
@@ -79,7 +80,7 @@ export async function buildApp(
           buildMvpAOnboardingCorrelationTraceResponse(correlationId, trace),
         );
       } catch (error) {
-        if (error instanceof Error) {
+        if (error instanceof MvpAOnboardingCorrelationTraceError) {
           return reply.code(409).send({ error: error.message });
         }
 
