@@ -23,6 +23,10 @@ export interface VerifyMvpAOnboardingCorrelationTraceInput {
   requireProviderRefresh: boolean;
 }
 
+export class MvpAOnboardingCorrelationTraceError extends Error {
+  override name = "MvpAOnboardingCorrelationTraceError";
+}
+
 export interface MvpAOnboardingTransactionTrace {
   id: string;
   personId: string;
@@ -207,34 +211,42 @@ export function verifyMvpAOnboardingCorrelationTrace(
 
   const correlationId = requireNonEmptyCorrelationId(input.correlationId);
   const request = readTransactionRequest(db, correlationId);
+  const rootCorrelationId = requireString(request.correlation_id);
   const payload = parsePayload(request);
   const applyJobAttempts = readApplyJobAttempts(db, request);
-  const auditEvents = readAuditEvents(
-    db,
-    request,
-    correlationId,
-    applyJobAttempts,
-  );
-  const approvalAuditEvent = auditEvents.find(
+  const auditEvents = readAuditEvents(db, request);
+  const approvalAuditEvents = auditEvents.filter(
     (event) => event.action === "mvp_a.onboarding.approve",
   );
-  const applyAuditEvent = auditEvents.find(
+  const applyAuditEvents = auditEvents.filter(
     (event) => event.action === "mvp_a.onboarding.apply",
   );
+  if (approvalAuditEvents.length > 1) {
+    throwTraceError(
+      "MVP-A onboarding trace requires a single approval audit evidence record",
+    );
+  }
+  if (applyAuditEvents.length > 1) {
+    throwTraceError(
+      "MVP-A onboarding trace requires a single apply audit evidence record",
+    );
+  }
+  const approvalAuditEvent = approvalAuditEvents[0];
+  const applyAuditEvent = applyAuditEvents[0];
   const lifecycleEvent = readLifecycleEvent(db, request, payload);
 
   if (input.requireApproval && approvalAuditEvent === undefined) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires approval audit evidence for the root correlation id",
     );
   }
   if (input.requireApply && lifecycleEvent === undefined) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires lifecycle apply evidence linked to the correlated transaction request",
     );
   }
   if (input.requireApply && applyAuditEvent === undefined) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires apply audit evidence for the root correlation id",
     );
   }
@@ -268,21 +280,21 @@ export function verifyMvpAOnboardingCorrelationTrace(
     : undefined;
   const workEmailConflict = providerRefreshConflict ?? inboundWorkEmailConflict;
   const hasProviderRefreshEvidence =
-    providerRefresh !== undefined || providerRefreshConflict !== undefined;
+    providerRefresh !== undefined || workEmailConflict !== undefined;
 
   if (input.requireWriteback && workEmailWriteback === undefined) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires work_email writeback evidence linked to the correlated onboarding payload",
     );
   }
   if (input.requireProviderRefresh && !hasProviderRefreshEvidence) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires provider refresh or conflict evidence linked to the writeback event",
     );
   }
 
   return {
-    transactionRequest: mapTransactionRequest(request, correlationId),
+    transactionRequest: mapTransactionRequest(request, rootCorrelationId),
     authorizationGate: mvpAOnboardingEvidenceAuthorizationGate,
     approvalAuditEvent,
     applyAuditEvent,
@@ -305,7 +317,7 @@ function readApplyEvidenceTimestamp(
     applyAuditEvent !== undefined &&
     lifecycleEvent.occurredAt !== applyAuditEvent.occurredAt
   ) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires consistent apply timestamps before selecting writeback evidence",
     );
   }
@@ -341,7 +353,7 @@ function buildWritebackCorrelationChain(
 
 function requireNonEmptyCorrelationId(correlationId: string): string {
   if (correlationId.trim().length === 0) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires a non-empty correlation id",
     );
   }
@@ -353,7 +365,7 @@ function readTransactionRequest(
   db: MvpAOnboardingTraceabilityDatabase,
   correlationId: string,
 ): TransactionRequestRow {
-  const rows = db
+  const rootRows = db
     .prepare(
       `
         SELECT
@@ -371,13 +383,72 @@ function readTransactionRequest(
     .all(correlationId)
     .map(assertTransactionRequestRow);
 
-  if (rows.length !== 1) {
-    throw new Error(
-      "MVP-A onboarding trace requires exactly one transaction_request for the root correlation id",
+  if (rootRows.length > 1) {
+    throwTraceError(
+      "MVP-A onboarding trace requires exactly one transaction_request for the supplied correlation id",
+    );
+  }
+  if (rootRows.length === 1) {
+    return requireRootCorrelation(rootRows[0]);
+  }
+
+  const linkedRows = db
+    .prepare(
+      `
+        SELECT DISTINCT
+          transaction_request.id,
+          transaction_request.person_id,
+          transaction_request.request_type,
+          transaction_request.status_code,
+          transaction_request.correlation_id,
+          transaction_request.payload_version,
+          transaction_request.payload_json
+        FROM transaction_request
+        WHERE transaction_request.id IN (
+          SELECT audit_event.subject_id
+          FROM audit_event
+          WHERE audit_event.correlation_id = ?
+            AND audit_event.subject_table = 'transaction_request'
+            AND audit_event.action = 'mvp_a.onboarding.approve'
+          UNION
+          SELECT lifecycle_event.transaction_request_id
+          FROM audit_event
+          JOIN lifecycle_event
+            ON lifecycle_event.id = audit_event.subject_id
+          WHERE audit_event.correlation_id = ?
+            AND audit_event.subject_table = 'lifecycle_event'
+            AND audit_event.action = 'mvp_a.onboarding.apply'
+            AND lifecycle_event.transaction_request_id IS NOT NULL
+          UNION
+          SELECT onboarding_apply_job_attempt.transaction_request_id
+          FROM onboarding_apply_job_attempt
+          WHERE onboarding_apply_job_attempt.correlation_id = ?
+            AND onboarding_apply_job_attempt.status_code = 'applied'
+        )
+      `,
+    )
+    .all(correlationId, correlationId, correlationId)
+    .map(assertTransactionRequestRow);
+
+  if (linkedRows.length !== 1) {
+    throwTraceError(
+      "MVP-A onboarding trace requires exactly one transaction_request for the supplied correlation id",
     );
   }
 
-  return rows[0];
+  return requireRootCorrelation(linkedRows[0]);
+}
+
+function requireRootCorrelation(
+  row: TransactionRequestRow,
+): TransactionRequestRow {
+  if (row.correlation_id === null) {
+    throwTraceError(
+      "MVP-A onboarding trace requires transaction_request root correlation evidence",
+    );
+  }
+
+  return row;
 }
 
 function parsePayload(row: TransactionRequestRow): Payload {
@@ -386,14 +457,19 @@ function parsePayload(row: TransactionRequestRow): Payload {
     row.payload_version !== "mvp_a_onboarding_v1" ||
     row.payload_json === null
   ) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires a persisted MVP-A hire payload",
     );
   }
 
-  const parsed = JSON.parse(row.payload_json) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.payload_json);
+  } catch {
+    throwTraceError("MVP-A onboarding trace payload is malformed");
+  }
   if (!isRecord(parsed)) {
-    throw new Error("MVP-A onboarding trace payload is malformed");
+    throwTraceError("MVP-A onboarding trace payload is malformed");
   }
 
   const employment = isRecord(parsed.employment) ? parsed.employment : {};
@@ -406,7 +482,7 @@ function parsePayload(row: TransactionRequestRow): Payload {
     typeof workEmailExpectation.contactPointId !== "string" ||
     typeof workEmailExpectation.value !== "string"
   ) {
-    throw new Error("MVP-A onboarding trace payload is malformed");
+    throwTraceError("MVP-A onboarding trace payload is malformed");
   }
 
   return {
@@ -422,20 +498,7 @@ function parsePayload(row: TransactionRequestRow): Payload {
 function readAuditEvents(
   db: MvpAOnboardingTraceabilityDatabase,
   request: TransactionRequestRow,
-  correlationId: string,
-  applyJobAttempts: MvpAOnboardingApplyJobAttemptTrace[],
 ): MvpAOnboardingAuditTrace[] {
-  const applyAuditCorrelationIds = uniqueStrings([
-    correlationId,
-    ...applyJobAttempts
-      .filter((attempt) => attempt.statusCode === "applied")
-      .map((attempt) => attempt.correlationId),
-  ]);
-  const applyAuditCorrelationPlaceholders = applyAuditCorrelationIds
-    .map(() => "?")
-    .join(", ");
-  const acceptedApplyAuditCorrelationIds = new Set(applyAuditCorrelationIds);
-
   return db
     .prepare(
       `
@@ -450,13 +513,13 @@ function readAuditEvents(
         FROM audit_event
         WHERE (
           (
-            correlation_id = ?
-            AND subject_table = 'transaction_request'
+            subject_table = 'transaction_request'
             AND subject_id = ?
+            AND action = 'mvp_a.onboarding.approve'
           )
           OR (
-            correlation_id IN (${applyAuditCorrelationPlaceholders})
-            AND subject_table = 'lifecycle_event'
+            subject_table = 'lifecycle_event'
+            AND action = 'mvp_a.onboarding.apply'
             AND subject_id IN (
               SELECT id
               FROM lifecycle_event
@@ -468,35 +531,13 @@ function readAuditEvents(
         ORDER BY occurred_at, id
       `,
     )
-    .all(
-      correlationId,
-      request.id,
-      ...applyAuditCorrelationIds,
-      request.id,
-      request.person_id,
-    )
+    .all(request.id, request.id, request.person_id)
     .map(assertAuditRow)
     .map((row) => {
       const rowCorrelationId = row.correlation_id;
       if (rowCorrelationId === null) {
-        throw new Error(
+        throwTraceError(
           "MVP-A onboarding trace audit evidence must include a correlation id",
-        );
-      }
-      if (
-        row.subject_table === "transaction_request" &&
-        rowCorrelationId !== correlationId
-      ) {
-        throw new Error(
-          "MVP-A onboarding trace approval audit evidence must share the root correlation id",
-        );
-      }
-      if (
-        row.subject_table === "lifecycle_event" &&
-        !acceptedApplyAuditCorrelationIds.has(rowCorrelationId)
-      ) {
-        throw new Error(
-          "MVP-A onboarding trace apply audit evidence must share the root or applied worker attempt correlation id",
         );
       }
 
@@ -510,10 +551,6 @@ function readAuditEvents(
         correlationId: rowCorrelationId,
       };
     });
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values)];
 }
 
 function readLifecycleEvent(
@@ -542,7 +579,7 @@ function readLifecycleEvent(
     .map(assertLifecycleRow);
 
   if (rows.length > 1) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires a single lifecycle apply event",
     );
   }
@@ -550,7 +587,7 @@ function readLifecycleEvent(
   const row = rows[0];
   if (!row) return undefined;
   if (row.effective_date !== payload.effectiveDate) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace lifecycle evidence must match the persisted effective date",
     );
   }
@@ -642,7 +679,7 @@ function readWorkEmailWriteback(
     .map(assertWritebackRow);
 
   if (rows.length > 1) {
-    throw new Error(
+    throwTraceError(
       "MVP-A onboarding trace requires a single matching work_email writeback event",
     );
   }
@@ -814,7 +851,7 @@ function mapTransactionRequest(
 }
 
 function assertTransactionRequestRow(row: unknown): TransactionRequestRow {
-  if (!isRecord(row)) throw new Error("transaction_request row is malformed");
+  if (!isRecord(row)) throwTraceError("transaction_request row is malformed");
   return {
     id: requireString(row.id),
     person_id: requireString(row.person_id),
@@ -827,7 +864,7 @@ function assertTransactionRequestRow(row: unknown): TransactionRequestRow {
 }
 
 function assertAuditRow(row: unknown): AuditRow {
-  if (!isRecord(row)) throw new Error("audit_event row is malformed");
+  if (!isRecord(row)) throwTraceError("audit_event row is malformed");
   return {
     id: requireString(row.id),
     actor_id: requireString(row.actor_id),
@@ -840,7 +877,7 @@ function assertAuditRow(row: unknown): AuditRow {
 }
 
 function assertLifecycleRow(row: unknown): LifecycleRow {
-  if (!isRecord(row)) throw new Error("lifecycle_event row is malformed");
+  if (!isRecord(row)) throwTraceError("lifecycle_event row is malformed");
   return {
     id: requireString(row.id),
     transaction_request_id: requireNullableString(row.transaction_request_id),
@@ -853,7 +890,7 @@ function assertLifecycleRow(row: unknown): LifecycleRow {
 
 function assertApplyJobAttemptRow(row: unknown): ApplyJobAttemptRow {
   if (!isRecord(row)) {
-    throw new Error("onboarding_apply_job_attempt row is malformed");
+    throwTraceError("onboarding_apply_job_attempt row is malformed");
   }
   return {
     id: requireString(row.id),
@@ -869,7 +906,7 @@ function assertApplyJobAttemptRow(row: unknown): ApplyJobAttemptRow {
 }
 
 function assertWritebackRow(row: unknown): WritebackRow {
-  if (!isRecord(row)) throw new Error("writeback_event row is malformed");
+  if (!isRecord(row)) throwTraceError("writeback_event row is malformed");
   return {
     id: requireString(row.id),
     person_id: requireString(row.person_id),
@@ -883,7 +920,7 @@ function assertWritebackRow(row: unknown): WritebackRow {
 
 function assertProviderRefreshRow(row: unknown): ProviderRefreshRow {
   if (!isRecord(row)) {
-    throw new Error("writeback_provider_refresh row is malformed");
+    throwTraceError("writeback_provider_refresh row is malformed");
   }
   return {
     id: requireString(row.id),
@@ -897,7 +934,7 @@ function assertProviderRefreshRow(row: unknown): ProviderRefreshRow {
 
 function assertConflictRow(row: unknown): ConflictRow {
   if (!isRecord(row)) {
-    throw new Error("writeback_work_email_conflict row is malformed");
+    throwTraceError("writeback_work_email_conflict row is malformed");
   }
   return {
     id: requireString(row.id),
@@ -916,7 +953,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function requireString(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error("MVP-A onboarding trace encountered malformed evidence");
+    throwTraceError("MVP-A onboarding trace encountered malformed evidence");
   }
 
   return value;
@@ -929,8 +966,12 @@ function requireNullableString(value: unknown): string | null {
 
 function requireNumber(value: unknown): number {
   if (typeof value !== "number") {
-    throw new Error("MVP-A onboarding trace encountered malformed evidence");
+    throwTraceError("MVP-A onboarding trace encountered malformed evidence");
   }
 
   return value;
+}
+
+function throwTraceError(message: string): never {
+  throw new MvpAOnboardingCorrelationTraceError(message);
 }

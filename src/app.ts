@@ -11,6 +11,12 @@ import {
 import { loadOpenApiContract } from "./openapi.js";
 import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import {
+  MvpAOnboardingCorrelationTraceError,
+  verifyMvpAOnboardingCorrelationTrace,
+  type MvpAOnboardingCorrelationTrace,
+  type MvpAOnboardingTraceabilityDatabase,
+} from "./mvp-a-onboarding-traceability.js";
+import {
   ingestSyntheticWorkEmailWriteback,
   parseSyntheticWorkEmailWritebackInput,
   SyntheticWorkEmailWritebackValidationError,
@@ -20,6 +26,7 @@ import {
 export interface BuildAppOptions {
   logger?: boolean;
   onboardingDb?: OnboardingTransactionRequestDatabase;
+  auditTraceDb?: MvpAOnboardingTraceabilityDatabase;
   writebackDb?: SyntheticWritebackDatabase;
 }
 
@@ -42,6 +49,45 @@ export async function buildApp(
   app.get("/provisioning-runs", async () => {
     return listSyntheticProvisioningRuns();
   });
+
+  app.get(
+    "/audit/mvp-a/onboarding-correlations/:correlationId",
+    async (request, reply) => {
+      const auditTraceDb =
+        options.auditTraceDb ??
+        (options.onboardingDb as
+          | MvpAOnboardingTraceabilityDatabase
+          | undefined);
+      if (!auditTraceDb) {
+        return reply.code(503).send({
+          error: "MVP-A onboarding audit trace database is not configured",
+        });
+      }
+
+      const params = request.params as { correlationId?: string };
+      const correlationId = params.correlationId ?? "";
+
+      try {
+        const trace = verifyMvpAOnboardingCorrelationTrace(auditTraceDb, {
+          correlationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: true,
+          requireProviderRefresh: true,
+        });
+
+        return reply.send(
+          buildMvpAOnboardingCorrelationTraceResponse(correlationId, trace),
+        );
+      } catch (error) {
+        if (error instanceof MvpAOnboardingCorrelationTraceError) {
+          return reply.code(409).send({ error: error.message });
+        }
+
+        throw error;
+      }
+    },
+  );
 
   app.get("/onboarding/new-hire", async (_request, reply) => {
     return reply
@@ -237,6 +283,28 @@ export async function buildApp(
   });
 
   return app;
+}
+
+function buildMvpAOnboardingCorrelationTraceResponse(
+  correlationId: string,
+  trace: MvpAOnboardingCorrelationTrace,
+) {
+  return {
+    correlationId,
+    evidenceType: "mvp_a_onboarding_correlation_trace" as const,
+    trace: {
+      transactionRequest: trace.transactionRequest,
+      approvalAuditEvent: trace.approvalAuditEvent,
+      applyAuditEvent: trace.applyAuditEvent,
+      auditEventCount: trace.auditEvents.length,
+      lifecycleEventId: trace.lifecycleEvent?.id ?? null,
+      applyJobAttemptCount: trace.applyJobAttempts.length,
+      workEmailWritebackEventId: trace.workEmailWriteback?.eventId ?? null,
+      providerRefreshId: trace.providerRefresh?.id ?? null,
+      workEmailConflictId: trace.workEmailConflict?.id ?? null,
+    },
+    deferredProductionGates: trace.remainingP2A02Gates,
+  };
 }
 
 function renderOnboardingWizard(): string {

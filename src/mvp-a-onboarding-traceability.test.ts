@@ -387,17 +387,18 @@ test("MVP-A onboarding trace includes representative failure and partial-success
       "inbound_value_conflict",
     );
     assert.equal(conflictTrace.providerRefresh, undefined);
-    assert.throws(
-      () =>
-        verifyMvpAOnboardingCorrelationTrace(db, {
-          correlationId: "correlation-onboarding-writeback-conflict-001",
-          requireApproval: true,
-          requireApply: true,
-          requireWriteback: true,
-          requireProviderRefresh: true,
-        }),
-      /MVP-A onboarding trace requires provider refresh or conflict evidence/,
+    const inboundConflictTrace = verifyMvpAOnboardingCorrelationTrace(db, {
+      correlationId: "correlation-onboarding-writeback-conflict-001",
+      requireApproval: true,
+      requireApply: true,
+      requireWriteback: true,
+      requireProviderRefresh: true,
+    });
+    assert.equal(
+      inboundConflictTrace.workEmailConflict?.conflictType,
+      "inbound_value_conflict",
     );
+    assert.equal(inboundConflictTrace.providerRefresh, undefined);
     db.prepare(
       `
         INSERT INTO writeback_work_email_conflict (
@@ -603,6 +604,168 @@ test("MVP-A onboarding trace follows scheduled worker apply audit correlation", 
         readiness: "mvp_a_poc_only",
         authorizationBoundary: "classified_evidence_only",
       },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding trace rejects non-trace audit correlations", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-onboarding-trace-action-root-001";
+    const approvalCorrelationId =
+      "correlation-onboarding-trace-action-approval-001";
+    const applyCorrelationId = "correlation-onboarding-trace-action-apply-001";
+    const returnCorrelationId =
+      "correlation-onboarding-trace-action-return-001";
+
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: approvalCorrelationId,
+    });
+    await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: applyCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    });
+    db.prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, 'mvp_a.onboarding.return', 'transaction_request', ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      "audit-event-transaction-request-onboarding-001-return-unrelated",
+      "operator-people-ops-001",
+      "transaction-request-onboarding-001",
+      "2026-05-21T03:00:00Z",
+      returnCorrelationId,
+    );
+
+    assert.equal(
+      verifyMvpAOnboardingCorrelationTrace(db, {
+        correlationId: approvalCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireWriteback: false,
+        requireProviderRefresh: false,
+      }).transactionRequest.correlationId,
+      rootCorrelationId,
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: returnCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires exactly one transaction_request for the supplied correlation id/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding trace rejects failed apply attempt correlations", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-onboarding-failed-attempt-root-001";
+    const failedAttemptCorrelationId =
+      "correlation-onboarding-failed-attempt-worker-001";
+    const applyCorrelationId =
+      "correlation-onboarding-failed-attempt-apply-001";
+
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: rootCorrelationId,
+    });
+    db.prepare(
+      `
+        INSERT INTO onboarding_apply_job_attempt (
+          id,
+          transaction_request_id,
+          person_id,
+          status_code,
+          attempted_at,
+          worker_id,
+          correlation_id,
+          retryable,
+          error_message
+        )
+        VALUES (?, ?, ?, 'retryable_failure', ?, ?, ?, 1, ?)
+      `,
+    ).run(
+      "onboarding-apply-job-attempt-failed-trace-001",
+      "transaction-request-onboarding-001",
+      "person-onboarding-001",
+      "2026-05-21T01:30:00Z",
+      "worker-onboarding-apply-001",
+      failedAttemptCorrelationId,
+      "Synthetic retryable failure before later successful apply.",
+    );
+    await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: applyCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    });
+
+    assert.equal(
+      verifyMvpAOnboardingCorrelationTrace(db, {
+        correlationId: applyCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireWriteback: false,
+        requireProviderRefresh: false,
+      }).transactionRequest.correlationId,
+      rootCorrelationId,
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: failedAttemptCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires exactly one transaction_request for the supplied correlation id/u,
     );
   } finally {
     db.close();

@@ -1,7 +1,8 @@
 # MVP-A Onboarding Traceability Closeout
 
 This closeout records PoC-depth evidence for issue #174. The runtime verifier is
-`verifyMvpAOnboardingCorrelationTrace`.
+`verifyMvpAOnboardingCorrelationTrace`. The bounded inspection API is
+`GET /audit/mvp-a/onboarding-correlations/{correlationId}`.
 
 ## Evidence Covered
 
@@ -20,6 +21,10 @@ This closeout records PoC-depth evidence for issue #174. The runtime verifier is
   before exposing onboarding request, person, employment, assignment,
   lifecycle, apply-job attempt, audit, mock Okta projection, or work_email
   evidence.
+- The inspection API returns a summarized trace only: request metadata, linked
+  approval/apply audit rows, lifecycle ID, apply-job attempt count, writeback
+  event ID, provider refresh ID, conflict ID, and the deferred production gate
+  list. It does not expose raw payloads or unrestricted audit browsing.
 
 ## Representative Paths
 
@@ -33,6 +38,9 @@ This closeout records PoC-depth evidence for issue #174. The runtime verifier is
   decision, apply, worker run, writeback, and provider refresh retries.
 - Provider failure: mock Okta retryable failure is traceable without pretending
   downstream writeback happened.
+- API fail-closed: `GET /audit/mvp-a/onboarding-correlations/{correlationId}`
+  returns conflict evidence errors instead of a partial success when required
+  provider refresh or conflict evidence is missing.
 
 ## P2A-02 Gates
 
@@ -57,3 +65,5 @@ P2A-02 or later before real-data use:
   writeback conflict, missing apply evidence, and this gate list.
 - The MVP-A onboarding evidence authorization gate is documented in
   [MVP-A Onboarding Evidence Authorization Gate](mvp-a-onboarding-evidence-authorization-gate.md).
+- Focused API gate coverage:
+  `npm test -- --test-name-pattern "bounded onboarding evidence"`.
