@@ -49,7 +49,7 @@ P2A-02 or later before real-data use:
 
 - WORM / S3 Object Lock audit immutability and archive evidence.
 - broad audit search UI for production support and review.
-- backup / restore rehearsal with snapshot-consistent trace reads.
+- production backup readiness beyond the local synthetic backup / restore rehearsal.
 - production field-level RBAC and data-scope enforcement beyond the bounded
   MVP-A onboarding evidence authorization gate.
 - export controls for raw payloads, CSV output, download logs, and watermark or
@@ -67,3 +67,5 @@ P2A-02 or later before real-data use:
   [MVP-A Onboarding Evidence Authorization Gate](mvp-a-onboarding-evidence-authorization-gate.md).
 - Focused API gate coverage:
   `npm test -- --test-name-pattern "bounded onboarding evidence"`.
+- The local synthetic backup / restore rehearsal gate is documented in
+  [MVP-A Onboarding Backup / Restore Rehearsal Gate](mvp-a-onboarding-backup-restore-rehearsal-gate.md).
