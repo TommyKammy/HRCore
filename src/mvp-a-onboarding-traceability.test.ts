@@ -225,7 +225,7 @@ test("MVP-A onboarding evidence is traceable from one root correlation id", asyn
     assert.deepEqual(trace.remainingP2A02Gates, [
       "WORM / S3 Object Lock audit immutability and archive evidence",
       "broad audit search UI for production support and review",
-      "backup / restore rehearsal with snapshot-consistent trace reads",
+      "production backup readiness beyond the local synthetic backup / restore rehearsal",
       "production field-level RBAC and data-scope enforcement beyond the bounded MVP-A onboarding evidence authorization gate",
       "export controls for raw payloads, CSV output, download logs, and watermark or manifest traceability",
       "real Okta tenant credentials, tenant binding, webhook custody, and provider audit search",
@@ -780,7 +780,7 @@ test("MVP-A onboarding trace closeout records P2A-02 production-like gates", asy
   for (const requiredText of [
     "WORM / S3 Object Lock",
     "broad audit search UI",
-    "backup / restore rehearsal",
+    "production backup readiness beyond the local synthetic backup / restore rehearsal",
     "field-level RBAC",
     "export controls",
     "real Okta tenant credentials",

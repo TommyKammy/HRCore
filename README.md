@@ -28,6 +28,7 @@ The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision]
 The MVP-A onboarding traceability closeout is recorded in [MVP-A Onboarding Traceability Closeout](docs/mvp-a-onboarding-traceability-closeout.md).
 The bounded MVP-A onboarding evidence authorization gate is recorded in [MVP-A Onboarding Evidence Authorization Gate](docs/mvp-a-onboarding-evidence-authorization-gate.md).
 The MVP-A onboarding PII masking, raw payload, and CSV/export closed gate is recorded in [MVP-A Onboarding PII Masking and Export Gate](docs/mvp-a-onboarding-pii-export-gate.md).
+The MVP-A onboarding local synthetic backup / restore rehearsal gate is recorded in [MVP-A Onboarding Backup / Restore Rehearsal Gate](docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md).
 
 ## Baseline structure
 
@@ -82,6 +83,10 @@ The MVP-A onboarding PII masking, raw payload, and CSV/export closed gate is rec
   masking, raw payload, and CSV/export closed gate plus the remaining two-key
   ADR, masking, export-permission, watermark, download-log, and real-data
   dependencies.
+- `docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md` records the local
+  synthetic backup / restore rehearsal gate, restored correlation verification,
+  failed-restore rollback behavior, and remaining production backup-readiness
+  gaps.
 
 ## Local verification
 
