@@ -1896,8 +1896,10 @@ test("MVP-A onboarding Go/No-Go checklist separates bounded and stronger readine
     "bounded/non-production",
     "practical-use-ready",
     "production-like-ready",
+    "No-go until unblocked",
     "no-go",
     "P2A-01 implementation evidence",
+    "issues #175-#182",
     "authorization and data-scope gate",
     "PII masking, raw payload, and CSV/export gate",
     "audit search gate",
@@ -1920,6 +1922,11 @@ test("MVP-A onboarding Go/No-Go checklist separates bounded and stronger readine
       `missing MVP-A onboarding Go/No-Go checklist text: ${requiredText}`,
     );
   }
+
+  assert.ok(
+    !normalizedChecklist.includes("No-go until blocked"),
+    "MVP-A onboarding Go/No-Go checklist must not invert blocker wording",
+  );
 
   assert.match(
     readme,
