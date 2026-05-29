@@ -11,7 +11,7 @@
     "dev": "tsx src/server.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "policy:mvp-a": "node dist/mvp-a-policy-as-code-ci.js",
+    "policy:mvp-a": "tsx src/mvp-a-policy-as-code-ci.ts",
     "test": "npm run build && node --test \"dist/**/*.test.js\"",
     "verify:pre-pr": "npm run build && npm run policy:mvp-a && npm test && npm run format:check && npm run audit && npm run db:check"
   },

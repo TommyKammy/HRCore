@@ -158,9 +158,7 @@ function collectMigrationFindings(
 ): MvpAPolicyAsCodeFinding[] {
   const findings: MvpAPolicyAsCodeFinding[] = [];
   for (const [path, sql] of inputs.migrationSqlByPath) {
-    for (const { tableName, columnName } of collectCreateTableColumnNames(
-      sql,
-    )) {
+    for (const { tableName, columnName } of collectMigrationColumnNames(sql)) {
       const finding = checkPiiExportSurface(
         inputs.piiExportGate,
         "migration",
@@ -333,7 +331,7 @@ async function readCommittedMigrationSqlByPath(
   return migrationSqlByPath;
 }
 
-function collectCreateTableColumnNames(
+function collectMigrationColumnNames(
   sql: string,
 ): { tableName: string; columnName: string }[] {
   const columns: { tableName: string; columnName: string }[] = [];
@@ -346,6 +344,13 @@ function collectCreateTableColumnNames(
       const [, columnName] = columnMatch;
       columns.push({ tableName, columnName });
     }
+  }
+
+  const alterTableAddPattern =
+    /ALTER\s+TABLE\s+`([^`]+)`\s+ADD\s+(?:COLUMN\s+)?`([^`]+)`\s+(?:text|integer|real|blob|numeric)/giu;
+  for (const match of sql.matchAll(alterTableAddPattern)) {
+    const [, tableName, columnName] = match;
+    columns.push({ tableName, columnName });
   }
 
   return columns;

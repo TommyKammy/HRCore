@@ -29,7 +29,10 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
     migrationSqlByPath: new Map([
       [
         "drizzle/fixture.sql",
-        "CREATE TABLE `fixture_onboarding` (`id` text PRIMARY KEY, `csv_export` text);",
+        [
+          "CREATE TABLE `fixture_onboarding` (`id` text PRIMARY KEY, `csv_export` text);",
+          "ALTER TABLE `fixture_onboarding` ADD `raw_payload` text;",
+        ].join("\n"),
       ],
     ]),
     openApiContract: {
@@ -60,6 +63,14 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
         finding.subject === "fixture_onboarding.csv_export",
     ),
     "expected migration csv_export column to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "migration" &&
+        finding.subject === "fixture_onboarding.raw_payload",
+    ),
+    "expected ALTER migration raw_payload column to fail the policy gate",
   );
 });
 
