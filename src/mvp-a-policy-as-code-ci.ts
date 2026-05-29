@@ -42,10 +42,16 @@ interface OpenApiSchema {
 
 interface OpenApiContract {
   paths?: Record<string, unknown>;
-  components?: {
-    schemas?: Record<string, OpenApiSchema>;
-  };
+  components?: OpenApiComponents;
 }
+
+interface OpenApiComponents {
+  schemas?: Record<string, OpenApiSchema>;
+  parameters?: Record<string, unknown>;
+  requestBodies?: Record<string, unknown>;
+}
+
+type OpenApiComponentSection = keyof OpenApiComponents;
 
 const openApiMethods = new Set([
   "get",
@@ -184,7 +190,8 @@ function collectOpenApiFindings(
   inputs: MvpAPolicyAsCodeInputs,
 ): MvpAPolicyAsCodeFinding[] {
   const findings: MvpAPolicyAsCodeFinding[] = [];
-  const schemas = inputs.openApiContract.components?.schemas ?? {};
+  const components = inputs.openApiContract.components ?? {};
+  const schemas = components.schemas ?? {};
   const onboardingPathEntries = Object.entries(
     inputs.openApiContract.paths ?? {},
   ).filter(([route]) => isMvpAOnboardingRoute(route));
@@ -212,7 +219,10 @@ function collectOpenApiFindings(
       findings.push(routeFinding);
     }
 
-    for (const operationSurface of collectOpenApiOperationSurfaces(pathItem)) {
+    for (const operationSurface of collectOpenApiOperationSurfaces(
+      pathItem,
+      components,
+    )) {
       const finding = checkPiiExportSurface(
         inputs.piiExportGate,
         "openapi",
@@ -229,7 +239,7 @@ function collectOpenApiFindings(
 
     for (const propertyName of collectOpenApiSchemaPropertyNamesFromValue(
       pathItem,
-      schemas,
+      components,
     )) {
       const finding = checkPiiExportSurface(
         inputs.piiExportGate,
@@ -246,7 +256,7 @@ function collectOpenApiFindings(
 
   const onboardingSchemaNames = collectOnboardingSchemaNames(
     onboardingPathEntries.map(([, pathItem]) => pathItem),
-    schemas,
+    components,
   );
   for (const schemaName of onboardingSchemaNames) {
     const schemaNameFinding = checkPiiExportSurface(
@@ -262,7 +272,7 @@ function collectOpenApiFindings(
 
     for (const propertyName of collectOpenApiSchemaPropertyNames(
       schemas[schemaName],
-      schemas,
+      components,
     )) {
       const finding = checkPiiExportSurface(
         inputs.piiExportGate,
@@ -365,6 +375,7 @@ function collectMigrationColumnNames(
 
 function collectOpenApiOperationSurfaces(
   pathItem: unknown,
+  components: OpenApiComponents,
 ): { kind: "metadata" | "parameter"; value: string }[] {
   if (!isRecord(pathItem)) {
     return [];
@@ -374,6 +385,7 @@ function collectOpenApiOperationSurfaces(
     [];
   for (const parameterName of collectOpenApiParameterNames(
     pathItem.parameters,
+    components,
   )) {
     operationSurfaces.push({ kind: "parameter", value: parameterName });
   }
@@ -401,6 +413,7 @@ function collectOpenApiOperationSurfaces(
 
     for (const parameterName of collectOpenApiParameterNames(
       operation.parameters,
+      components,
     )) {
       operationSurfaces.push({ kind: "parameter", value: parameterName });
     }
@@ -418,22 +431,24 @@ function isMvpAOnboardingRoute(route: string): boolean {
   );
 }
 
-function collectOpenApiParameterNames(parameters: unknown): string[] {
+function collectOpenApiParameterNames(
+  parameters: unknown,
+  components: OpenApiComponents,
+): string[] {
   if (!Array.isArray(parameters)) {
     return [];
   }
 
   return parameters.flatMap((parameter) =>
-    isRecord(parameter) && typeof parameter.name === "string"
-      ? [parameter.name]
-      : [],
+    collectOpenApiParameterNamesFromValue(parameter, components, new Set()),
   );
 }
 
 function collectOnboardingSchemaNames(
   pathItems: readonly unknown[],
-  schemas: Record<string, OpenApiSchema>,
+  components: OpenApiComponents,
 ): Set<string> {
+  const schemas = components.schemas ?? {};
   const schemaNames = new Set(
     Object.keys(schemas).filter((schemaName) =>
       schemaName.includes("Onboarding"),
@@ -441,7 +456,9 @@ function collectOnboardingSchemaNames(
   );
   const pendingSchemaNames = [
     ...schemaNames,
-    ...pathItems.flatMap((pathItem) => collectOpenApiSchemaRefs(pathItem)),
+    ...pathItems.flatMap((pathItem) =>
+      collectOpenApiSchemaRefs(pathItem, components),
+    ),
   ];
   const processedSchemaNames = new Set<string>();
 
@@ -457,7 +474,9 @@ function collectOnboardingSchemaNames(
 
     processedSchemaNames.add(schemaName);
     schemaNames.add(schemaName);
-    pendingSchemaNames.push(...collectOpenApiSchemaRefs(schemas[schemaName]));
+    pendingSchemaNames.push(
+      ...collectOpenApiSchemaRefs(schemas[schemaName], components),
+    );
   }
 
   return schemaNames;
@@ -465,44 +484,45 @@ function collectOnboardingSchemaNames(
 
 function collectOpenApiSchemaPropertyNames(
   schema: OpenApiSchema | undefined,
-  schemas: Record<string, OpenApiSchema>,
+  components: OpenApiComponents,
 ): string[] {
   const propertyNames: string[] = [];
 
   function visitSchema(
     currentSchema: OpenApiSchema | undefined,
-    visitedSchemaNames: ReadonlySet<string>,
+    visitedComponentRefs: ReadonlySet<string>,
   ): void {
     if (currentSchema === undefined) {
       return;
     }
 
-    const refSchemaName = getOpenApiSchemaNameFromRef(currentSchema.$ref);
-    if (refSchemaName !== undefined) {
-      if (visitedSchemaNames.has(refSchemaName)) {
-        return;
+    const componentRef = getOpenApiComponentRef(currentSchema.$ref);
+    if (componentRef !== undefined) {
+      const refKey = getOpenApiComponentRefKey(componentRef);
+      if (!visitedComponentRefs.has(refKey)) {
+        visitSchema(
+          getOpenApiComponentValue(componentRef, components) as
+            | OpenApiSchema
+            | undefined,
+          new Set([...visitedComponentRefs, refKey]),
+        );
       }
-
-      visitSchema(
-        schemas[refSchemaName],
-        new Set([...visitedSchemaNames, refSchemaName]),
-      );
     }
 
     for (const [propertyName, propertySchema] of Object.entries(
       currentSchema.properties ?? {},
     )) {
       propertyNames.push(propertyName);
-      visitSchema(propertySchema, visitedSchemaNames);
+      visitSchema(propertySchema, visitedComponentRefs);
     }
 
-    visitSchema(currentSchema.items, visitedSchemaNames);
+    visitSchema(currentSchema.items, visitedComponentRefs);
     for (const nestedSchema of [
       ...(currentSchema.allOf ?? []),
       ...(currentSchema.anyOf ?? []),
       ...(currentSchema.oneOf ?? []),
     ]) {
-      visitSchema(nestedSchema, visitedSchemaNames);
+      visitSchema(nestedSchema, visitedComponentRefs);
     }
   }
 
@@ -512,11 +532,16 @@ function collectOpenApiSchemaPropertyNames(
 
 function collectOpenApiSchemaPropertyNamesFromValue(
   value: unknown,
-  schemas: Record<string, OpenApiSchema>,
+  components: OpenApiComponents,
+  visitedComponentRefs: ReadonlySet<string> = new Set(),
 ): string[] {
   if (Array.isArray(value)) {
     return value.flatMap((item) =>
-      collectOpenApiSchemaPropertyNamesFromValue(item, schemas),
+      collectOpenApiSchemaPropertyNamesFromValue(
+        item,
+        components,
+        visitedComponentRefs,
+      ),
     );
   }
 
@@ -524,22 +549,46 @@ function collectOpenApiSchemaPropertyNamesFromValue(
     return [];
   }
 
+  const componentRef = getOpenApiComponentRef(value.$ref);
+  if (componentRef !== undefined) {
+    const refKey = getOpenApiComponentRefKey(componentRef);
+    if (visitedComponentRefs.has(refKey)) {
+      return [];
+    }
+
+    return collectOpenApiSchemaPropertyNamesFromValue(
+      getOpenApiComponentValue(componentRef, components),
+      components,
+      new Set([...visitedComponentRefs, refKey]),
+    );
+  }
+
   const propertyNames = isOpenApiSchemaLike(value)
-    ? collectOpenApiSchemaPropertyNames(value, schemas)
+    ? collectOpenApiSchemaPropertyNames(value, components)
     : [];
 
   for (const nestedValue of Object.values(value)) {
     propertyNames.push(
-      ...collectOpenApiSchemaPropertyNamesFromValue(nestedValue, schemas),
+      ...collectOpenApiSchemaPropertyNamesFromValue(
+        nestedValue,
+        components,
+        visitedComponentRefs,
+      ),
     );
   }
 
   return propertyNames;
 }
 
-function collectOpenApiSchemaRefs(value: unknown): string[] {
+function collectOpenApiSchemaRefs(
+  value: unknown,
+  components: OpenApiComponents,
+  visitedComponentRefs: ReadonlySet<string> = new Set(),
+): string[] {
   if (Array.isArray(value)) {
-    return value.flatMap((item) => collectOpenApiSchemaRefs(item));
+    return value.flatMap((item) =>
+      collectOpenApiSchemaRefs(item, components, visitedComponentRefs),
+    );
   }
 
   if (!isRecord(value)) {
@@ -547,25 +596,114 @@ function collectOpenApiSchemaRefs(value: unknown): string[] {
   }
 
   const refs: string[] = [];
-  const schemaName = getOpenApiSchemaNameFromRef(value.$ref);
-  if (schemaName !== undefined) {
-    refs.push(schemaName);
+  const componentRef = getOpenApiComponentRef(value.$ref);
+  if (componentRef !== undefined) {
+    if (componentRef.section === "schemas") {
+      refs.push(componentRef.name);
+    }
+
+    const refKey = getOpenApiComponentRefKey(componentRef);
+    if (!visitedComponentRefs.has(refKey)) {
+      refs.push(
+        ...collectOpenApiSchemaRefs(
+          getOpenApiComponentValue(componentRef, components),
+          components,
+          new Set([...visitedComponentRefs, refKey]),
+        ),
+      );
+    }
   }
 
   for (const nestedValue of Object.values(value)) {
-    refs.push(...collectOpenApiSchemaRefs(nestedValue));
+    refs.push(
+      ...collectOpenApiSchemaRefs(
+        nestedValue,
+        components,
+        visitedComponentRefs,
+      ),
+    );
   }
 
   return refs;
 }
 
-function getOpenApiSchemaNameFromRef(ref: unknown): string | undefined {
-  const schemaRefPrefix = "#/components/schemas/";
-  if (typeof ref !== "string" || !ref.startsWith(schemaRefPrefix)) {
+function collectOpenApiParameterNamesFromValue(
+  value: unknown,
+  components: OpenApiComponents,
+  visitedComponentRefs: ReadonlySet<string>,
+): string[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const componentRef = getOpenApiComponentRef(value.$ref);
+  if (componentRef !== undefined) {
+    const refKey = getOpenApiComponentRefKey(componentRef);
+    if (visitedComponentRefs.has(refKey)) {
+      return [];
+    }
+
+    return collectOpenApiParameterNamesFromValue(
+      getOpenApiComponentValue(componentRef, components),
+      components,
+      new Set([...visitedComponentRefs, refKey]),
+    );
+  }
+
+  return typeof value.name === "string" ? [value.name] : [];
+}
+
+function getOpenApiComponentRef(
+  ref: unknown,
+): { section: OpenApiComponentSection; name: string } | undefined {
+  const componentRefPrefix = "#/components/";
+  if (typeof ref !== "string" || !ref.startsWith(componentRefPrefix)) {
     return undefined;
   }
 
-  return ref.slice(schemaRefPrefix.length);
+  const [section, name, ...rest] = ref
+    .slice(componentRefPrefix.length)
+    .split("/");
+  if (
+    rest.length > 0 ||
+    !isOpenApiComponentSection(section) ||
+    name === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    section,
+    name: decodeJsonPointerSegment(name),
+  };
+}
+
+function getOpenApiComponentValue(
+  componentRef: { section: OpenApiComponentSection; name: string },
+  components: OpenApiComponents,
+): unknown {
+  return components[componentRef.section]?.[componentRef.name];
+}
+
+function getOpenApiComponentRefKey(componentRef: {
+  section: OpenApiComponentSection;
+  name: string;
+}): string {
+  return `${componentRef.section}/${componentRef.name}`;
+}
+
+function isOpenApiComponentSection(
+  section: string,
+): section is OpenApiComponentSection {
+  return (
+    section === "schemas" ||
+    section === "parameters" ||
+    section === "requestBodies"
+  );
+}
+
+function decodeJsonPointerSegment(segment: string): string {
+  return segment.replaceAll("~1", "/").replaceAll("~0", "~");
 }
 
 function isOpenApiSchemaLike(value: Record<string, unknown>): boolean {

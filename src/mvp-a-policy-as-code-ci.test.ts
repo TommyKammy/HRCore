@@ -121,6 +121,50 @@ test("MVP-A policy-as-code gate fails closed for prohibited onboarding OpenAPI s
             },
           },
         },
+        "/onboarding/reusable-fixture": {
+          post: {
+            operationId: "submitReusableFixture",
+            parameters: [
+              {
+                $ref: "#/components/parameters/CsvExportFixture",
+              },
+            ],
+            requestBody: {
+              $ref: "#/components/requestBodies/RawPayloadFixture",
+            },
+            responses: {
+              204: {
+                description: "No content",
+              },
+            },
+          },
+        },
+      },
+      components: {
+        parameters: {
+          CsvExportFixture: {
+            in: "query",
+            name: "csvExport",
+            schema: {
+              type: "boolean",
+            },
+          },
+        },
+        requestBodies: {
+          RawPayloadFixture: {
+            content: {
+              "application/json": {
+                schema: {
+                  properties: {
+                    rawPayload: {
+                      type: "object",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -156,5 +200,21 @@ test("MVP-A policy-as-code gate fails closed for prohibited onboarding OpenAPI s
           "/audit/mvp-a/onboarding-correlations/{correlationId}/export",
     ),
     "expected audit onboarding export route to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "openapi" &&
+        finding.subject === "/onboarding/reusable-fixture parameter csvExport",
+    ),
+    "expected reusable csvExport OpenAPI parameter to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "openapi" &&
+        finding.subject === "/onboarding/reusable-fixture.rawPayload",
+    ),
+    "expected reusable rawPayload OpenAPI request body property to fail the policy gate",
   );
 });
