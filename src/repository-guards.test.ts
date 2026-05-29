@@ -1879,6 +1879,61 @@ test("MVP-A Go/No-Go final decision classifies residual risks and next wave", as
   );
 });
 
+test("MVP-A onboarding Go/No-Go checklist separates bounded and stronger readiness", async () => {
+  const [checklist, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-onboarding-go-no-go-checklist.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedChecklist = checklist.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A Onboarding Go/No-Go Checklist",
+    "Status: Ready for final gate review.",
+    "Part of: #184.",
+    "Depends on: #188.",
+    "This checklist does not approve production go-live",
+    "Readiness Classification",
+    "bounded/non-production",
+    "practical-use-ready",
+    "production-like-ready",
+    "No-go until unblocked",
+    "no-go",
+    "P2A-01 implementation evidence",
+    "issues #175-#182",
+    "authorization and data-scope gate",
+    "PII masking, raw payload, and CSV/export gate",
+    "audit search gate",
+    "backup / restore rehearsal",
+    "policy-as-code gate",
+    "independent review gate",
+    "Bounded MVP-A E2E",
+    "HR practical-use readiness",
+    "Production-like readiness",
+    "No-Go blockers",
+    "Follow-Up Issues Before Stronger Than Bounded",
+    "legal/two-key approvals",
+    "real Okta tenant operation",
+    "real personnel data",
+    "CSV/export launch",
+    "`npm run verify:pre-pr`",
+  ]) {
+    assert.ok(
+      normalizedChecklist.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing MVP-A onboarding Go/No-Go checklist text: ${requiredText}`,
+    );
+  }
+
+  assert.ok(
+    !normalizedChecklist.includes("No-go until blocked"),
+    "MVP-A onboarding Go/No-Go checklist must not invert blocker wording",
+  );
+
+  assert.match(
+    readme,
+    /\[MVP-A Onboarding Go\/No-Go Checklist\]\(docs\/mvp-a-onboarding-go-no-go-checklist\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
