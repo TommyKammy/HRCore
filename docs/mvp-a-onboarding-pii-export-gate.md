@@ -26,3 +26,21 @@ The current onboarding schema, DTO parser, fixture helper, OpenAPI contract, and
 audit evidence paths must reject prohibited raw, export, and regulated-data
 payload keys instead of storing them in generic payload, metadata, note, log, or
 audit surfaces.
+
+`npm run verify:pre-pr` runs `npm run policy:mvp-a` after the TypeScript build.
+That executable policy-as-code gate checks the current Drizzle schema,
+committed migration column names, onboarding OpenAPI routes and schemas, the
+closed PII/export gate, and the onboarding evidence classification gate. It is
+anchored to ADR 0002, ADR 0003, ADR 0014, ADR 0020, and the P2A-02 gate
+artifacts without claiming a full OPA/Rego engine, runtime authorization
+engine, legal acceptance, or production policy deployment.
+
+Residual checks for independent review:
+
+- confirm no new legal, privacy, or export decision is being inferred from the
+  Proposed ADR anchors;
+- confirm the gate remains bounded to MVP-A onboarding and does not approve
+  production-like real-data processing, raw-payload viewing, CSV/export, or
+  download behavior;
+- confirm any later parser-backed SQL, TypeScript AST, OpenAPI, PR-diff, or
+  OPA/Rego rollout is handled by a separate accepted issue or ADR.
