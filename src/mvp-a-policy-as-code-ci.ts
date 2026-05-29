@@ -336,11 +336,11 @@ function collectMigrationColumnNames(
 ): { tableName: string; columnName: string }[] {
   const columns: { tableName: string; columnName: string }[] = [];
   const createTablePattern = /CREATE\s+TABLE\s+`([^`]+)`\s*\(([\s\S]*?)\);/giu;
+  const columnDefinitionPattern =
+    /`([^`]+)`\s+(?:text|integer|real|blob|numeric)/giu;
   for (const match of sql.matchAll(createTablePattern)) {
     const [, tableName, tableBody] = match;
-    for (const columnMatch of tableBody.matchAll(
-      /`([^`]+)`\s+(?:text|integer|real|blob|numeric)/giu,
-    )) {
+    for (const columnMatch of tableBody.matchAll(columnDefinitionPattern)) {
       const [, columnName] = columnMatch;
       columns.push({ tableName, columnName });
     }
