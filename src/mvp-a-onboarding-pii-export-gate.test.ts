@@ -300,6 +300,14 @@ test("MVP-A onboarding PII/export gate documents remaining two-key dependencies"
     "download-log and raw-payload access audit evidence",
     "production real-data processing acceptance",
     "reject prohibited raw, export, and regulated-data payload keys",
+    "`npm run policy:mvp-a`",
+    "ADR 0002",
+    "ADR 0003",
+    "ADR 0014",
+    "P2A-02 gate artifacts",
+    "Residual checks for independent review",
+    "does not approve production-like real-data processing, raw-payload viewing, CSV/export, or download behavior",
+    "OPA/Rego rollout is handled by a separate accepted issue or ADR",
   ]) {
     assert.ok(
       normalizedGateDoc.includes(requiredText.replace(/\s+/gu, " ").trim()),

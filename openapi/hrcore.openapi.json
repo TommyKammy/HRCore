@@ -47,7 +47,7 @@
       "get": {
         "operationId": "getMvpAOnboardingCorrelationAuditTrace",
         "summary": "Inspect bounded MVP-A onboarding audit evidence by correlation ID",
-        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID. This bounded surface fails closed when required linked evidence is missing and does not expose raw payloads, CSV/export output, broad audit browsing, WORM/S3 Object Lock, hash-chain production verification, real provider audit search, or production field-level audit permissions.",
+        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
         "parameters": [
           {
             "name": "correlationId",

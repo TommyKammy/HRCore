@@ -277,7 +277,7 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   );
   assert.match(
     auditTraceOperation.description,
-    /does not expose raw payloads, CSV\/export output, broad audit browsing, WORM\/S3 Object Lock, hash-chain production verification/u,
+    /omits later-wave disclosure, archive, provider-search, and production field-permission behavior/u,
   );
   assert.deepEqual(
     contract.components.schemas.MvpAOnboardingCorrelationTraceSummary.required,
