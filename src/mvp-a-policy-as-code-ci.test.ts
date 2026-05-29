@@ -84,6 +84,15 @@ test("MVP-A policy-as-code gate fails closed for prohibited onboarding OpenAPI s
         "/onboarding/new-hire/export": {
           get: {
             operationId: "exportOnboardingRawPayload",
+            parameters: [
+              {
+                in: "query",
+                name: "csvExport",
+                schema: {
+                  type: "boolean",
+                },
+              },
+            ],
             responses: {
               200: {
                 description: "Blocked fixture",
@@ -98,6 +107,16 @@ test("MVP-A policy-as-code gate fails closed for prohibited onboarding OpenAPI s
                     },
                   },
                 },
+              },
+            },
+          },
+        },
+        "/audit/mvp-a/onboarding-correlations/{correlationId}/export": {
+          get: {
+            operationId: "getMvpAOnboardingAuditEvidence",
+            responses: {
+              200: {
+                description: "Blocked fixture",
               },
             },
           },
@@ -120,5 +139,22 @@ test("MVP-A policy-as-code gate fails closed for prohibited onboarding OpenAPI s
         finding.surface === "openapi" && finding.subject.includes("rawPayload"),
     ),
     "expected rawPayload OpenAPI property to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "openapi" &&
+        finding.subject === "/onboarding/new-hire/export parameter csvExport",
+    ),
+    "expected csvExport OpenAPI parameter to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "openapi" &&
+        finding.subject ===
+          "/audit/mvp-a/onboarding-correlations/{correlationId}/export",
+    ),
+    "expected audit onboarding export route to fail the policy gate",
   );
 });

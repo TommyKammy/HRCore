@@ -57,6 +57,11 @@ const openApiMethods = new Set([
   "patch",
   "trace",
 ]);
+const openApiOperationMetadataKeys = [
+  "operationId",
+  "summary",
+  "description",
+] as const;
 
 export function checkMvpAPolicyAsCode(
   inputs: MvpAPolicyAsCodeInputs,
@@ -207,13 +212,15 @@ function collectOpenApiFindings(
       findings.push(routeFinding);
     }
 
-    for (const metadataValue of collectOpenApiOperationMetadata(pathItem)) {
+    for (const operationSurface of collectOpenApiOperationSurfaces(pathItem)) {
       const finding = checkPiiExportSurface(
         inputs.piiExportGate,
         "openapi",
         "openapi/hrcore.openapi.json",
-        `${route} metadata`,
-        metadataValue,
+        operationSurface.kind === "parameter"
+          ? `${route} parameter ${operationSurface.value}`
+          : `${route} metadata`,
+        operationSurface.value,
       );
       if (finding !== undefined) {
         findings.push(finding);
@@ -356,21 +363,30 @@ function collectMigrationColumnNames(
   return columns;
 }
 
-function collectOpenApiOperationMetadata(pathItem: unknown): string[] {
+function collectOpenApiOperationSurfaces(
+  pathItem: unknown,
+): { kind: "metadata" | "parameter"; value: string }[] {
   if (!isRecord(pathItem)) {
     return [];
   }
 
-  const metadataValues: string[] = [];
+  const operationSurfaces: { kind: "metadata" | "parameter"; value: string }[] =
+    [];
+  for (const parameterName of collectOpenApiParameterNames(
+    pathItem.parameters,
+  )) {
+    operationSurfaces.push({ kind: "parameter", value: parameterName });
+  }
+
   for (const [method, operation] of Object.entries(pathItem)) {
     if (!openApiMethods.has(method) || !isRecord(operation)) {
       continue;
     }
 
-    for (const key of ["operationId", "summary", "description"] as const) {
+    for (const key of openApiOperationMetadataKeys) {
       const value = operation[key];
       if (typeof value === "string") {
-        metadataValues.push(value);
+        operationSurfaces.push({ kind: "metadata", value });
       }
     }
 
@@ -378,17 +394,40 @@ function collectOpenApiOperationMetadata(pathItem: unknown): string[] {
     if (Array.isArray(tags)) {
       for (const tag of tags) {
         if (typeof tag === "string") {
-          metadataValues.push(tag);
+          operationSurfaces.push({ kind: "metadata", value: tag });
         }
       }
     }
+
+    for (const parameterName of collectOpenApiParameterNames(
+      operation.parameters,
+    )) {
+      operationSurfaces.push({ kind: "parameter", value: parameterName });
+    }
   }
 
-  return metadataValues;
+  return operationSurfaces;
 }
 
 function isMvpAOnboardingRoute(route: string): boolean {
-  return route === "/onboarding" || route.startsWith("/onboarding/");
+  return (
+    route === "/onboarding" ||
+    route.startsWith("/onboarding/") ||
+    route === "/audit/mvp-a/onboarding-correlations" ||
+    route.startsWith("/audit/mvp-a/onboarding-correlations/")
+  );
+}
+
+function collectOpenApiParameterNames(parameters: unknown): string[] {
+  if (!Array.isArray(parameters)) {
+    return [];
+  }
+
+  return parameters.flatMap((parameter) =>
+    isRecord(parameter) && typeof parameter.name === "string"
+      ? [parameter.name]
+      : [],
+  );
 }
 
 function collectOnboardingSchemaNames(
