@@ -317,6 +317,13 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     [],
   );
   assert.deepEqual(
+    Object.keys(
+      contract.components.schemas.MvpAOnboardingCorrelationTraceSummary
+        .properties,
+    ).filter((propertyName) => propertyName.includes("Refresh")),
+    ["providerRefreshId", "providerRefreshConflictId"],
+  );
+  assert.deepEqual(
     contract.components.schemas.MvpAOnboardingCorrelationTraceResponse.required,
     [
       "correlationId",
@@ -555,7 +562,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
   assert.doesNotMatch(
     limitedResponse.body,
-    /personId|approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|workEmailWritebackEventId|providerRefreshId|workEmailConflictId/u,
+    /personId|approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|workEmailWritebackEventId|providerRefreshId|providerRefreshConflictId|workEmailConflictId/u,
   );
 
   const personOnlyResponse = await app.inject({
