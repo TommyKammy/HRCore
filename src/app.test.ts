@@ -964,6 +964,52 @@ test("POST /support/mvp-a/onboarding-reviews records reasoned bounded support re
     },
   );
 
+  const duplicateReviewResponse = await app.inject({
+    method: "POST",
+    url: "/support/mvp-a/onboarding-reviews",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-support-001",
+      "x-hrcore-mvp-a-tenant-environment":
+        "repo_owned_synthetic_mvp_a_onboarding",
+    },
+    payload: {
+      correlationId: rootCorrelationId,
+      reviewCorrelationId,
+      reasonCode: "onboarding_evidence_review",
+      requestedEvidenceSurfaces: ["transaction_request", "audit_event"],
+      requestedFieldScopes: ["request_metadata", "audit_evidence"],
+    },
+  });
+
+  assert.equal(duplicateReviewResponse.statusCode, 409);
+  assert.match(
+    duplicateReviewResponse.body,
+    /duplicate review correlation id/u,
+  );
+
+  const unboundSupportActorResponse = await app.inject({
+    method: "POST",
+    url: "/support/mvp-a/onboarding-reviews",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-support-",
+      "x-hrcore-mvp-a-tenant-environment":
+        "repo_owned_synthetic_mvp_a_onboarding",
+    },
+    payload: {
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "correlation-support-review-unbound-actor-001",
+      reasonCode: "onboarding_evidence_review",
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
+    },
+  });
+
+  assert.equal(unboundSupportActorResponse.statusCode, 403);
+  assert.match(
+    unboundSupportActorResponse.body,
+    /requires a bound support actor/u,
+  );
+
   for (const payload of [
     {
       reviewCorrelationId: "correlation-support-review-missing-reason-001",
@@ -990,6 +1036,20 @@ test("POST /support/mvp-a/onboarding-reviews records reasoned bounded support re
       reviewCorrelationId: "correlation-support-review-provider-001",
       requestedEvidenceSurfaces: ["okta_projection"],
       requestedFieldScopes: ["provider_projection"],
+    },
+    {
+      reasonCode: "onboarding_evidence_review",
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "fake001",
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
+    },
+    {
+      reasonCode: "onboarding_evidence_review",
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "unknown123",
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
     },
   ]) {
     const rejectedResponse = await app.inject({

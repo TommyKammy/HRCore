@@ -60,6 +60,10 @@ class MvpAOnboardingSupportReviewAccessError extends Error {
   override name = "MvpAOnboardingSupportReviewAccessError";
 }
 
+class MvpAOnboardingSupportReviewConflictError extends Error {
+  override name = "MvpAOnboardingSupportReviewConflictError";
+}
+
 export async function buildApp(
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
@@ -242,6 +246,10 @@ export async function buildApp(
       }
 
       if (error instanceof MvpAOnboardingCorrelationTraceError) {
+        return reply.code(409).send({ error: error.message });
+      }
+
+      if (error instanceof MvpAOnboardingSupportReviewConflictError) {
         return reply.code(409).send({ error: error.message });
       }
 
@@ -463,6 +471,21 @@ const mvpAOnboardingSupportReviewBlockedGates = [
   "compliance restore evidence beyond the local synthetic rehearsal",
   "production support procedures, custody, ticket binding, and post-use review",
 ] as const;
+
+const mvpAOnboardingSupportActorPrefix = "operator-support-";
+
+const mvpAOnboardingSupportReviewPlaceholderTokens = new Set([
+  "todo",
+  "tbd",
+  "unknown",
+  "placeholder",
+  "sample",
+  "example",
+  "dummy",
+  "fake",
+  "admin",
+  "anonymous",
+]);
 
 type MvpAOnboardingSupportReviewReasonCode = "onboarding_evidence_review";
 
@@ -811,11 +834,7 @@ function requireMvpAOnboardingSupportReviewText(
   }
 
   const trimmed = value.trim();
-  if (
-    /(?:^|[^a-z0-9])(todo|tbd|unknown|placeholder|sample|example|dummy|fake|admin|anonymous)(?:$|[^a-z0-9])/iu.test(
-      trimmed,
-    )
-  ) {
+  if (isMvpAOnboardingSupportReviewPlaceholderText(trimmed)) {
     throw new MvpAOnboardingSupportReviewAccessError(
       `MVP-A onboarding support review rejects placeholder ${label}`,
     );
@@ -824,8 +843,40 @@ function requireMvpAOnboardingSupportReviewText(
   return trimmed;
 }
 
+function isMvpAOnboardingSupportReviewPlaceholderText(value: string): boolean {
+  const tokens = value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter(Boolean);
+  return tokens.some((token) =>
+    isMvpAOnboardingSupportReviewPlaceholderToken(token),
+  );
+}
+
+function isMvpAOnboardingSupportReviewPlaceholderToken(token: string): boolean {
+  if (mvpAOnboardingSupportReviewPlaceholderTokens.has(token)) {
+    return true;
+  }
+
+  for (const placeholderToken of mvpAOnboardingSupportReviewPlaceholderTokens) {
+    const suffix = token.slice(placeholderToken.length);
+    if (
+      token.startsWith(placeholderToken) &&
+      suffix.length > 0 &&
+      /^\d+$/u.test(suffix)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function assertMvpAOnboardingSupportReviewer(actorId: string): void {
-  if (!actorId.startsWith("operator-support-")) {
+  if (
+    !actorId.startsWith(mvpAOnboardingSupportActorPrefix) ||
+    !/[a-z0-9]/iu.test(actorId.slice(mvpAOnboardingSupportActorPrefix.length))
+  ) {
     throw new MvpAOnboardingSupportReviewAccessError(
       "MVP-A onboarding support review requires a bound support actor",
     );
@@ -845,6 +896,26 @@ function recordMvpAOnboardingSupportReviewAuditEvidence(
     input.reviewCorrelationId,
   )}`;
   const action = `mvp_a.support_review.inspect.reason.${input.reasonCode}`;
+  const duplicateReviewAuditEvent = db
+    .prepare(
+      `
+        SELECT id
+        FROM audit_event
+        WHERE id = ?
+           OR (
+             correlation_id = ?
+             AND action LIKE 'mvp_a.support_review.%'
+           )
+        LIMIT 1
+      `,
+    )
+    .get(auditEventId, input.reviewCorrelationId);
+
+  if (duplicateReviewAuditEvent !== undefined) {
+    throw new MvpAOnboardingSupportReviewConflictError(
+      "MVP-A onboarding support review rejects duplicate review correlation id",
+    );
+  }
 
   db.prepare(
     `
