@@ -153,7 +153,7 @@ export async function runMvpAOnboardingBackupRestoreRehearsal(
       requireApproval: true,
       requireApply: true,
       requireWriteback: true,
-      requireProviderRefresh: true,
+      requireProviderRefresh: false,
     },
   );
 

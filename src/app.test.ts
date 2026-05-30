@@ -1102,18 +1102,14 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId summarizes conflic
     },
   });
 
-  assert.equal(providerOnlyResponse.statusCode, 200);
-  assert.deepEqual(providerOnlyResponse.json().authorization.evidenceSurfaces, [
-    "okta_projection",
-  ]);
-  assert.deepEqual(providerOnlyResponse.json().trace, {
-    providerRefreshId: null,
-    providerRefreshConflictId:
-      "synthetic-work-email-conflict:okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z:inbound_value_conflict",
+  assert.equal(providerOnlyResponse.statusCode, 409);
+  assert.deepEqual(providerOnlyResponse.json(), {
+    error:
+      "MVP-A onboarding trace requires provider refresh or provider refresh conflict evidence linked to the writeback event",
   });
   assert.doesNotMatch(
     providerOnlyResponse.body,
-    /workEmailWritebackEventId|workEmailConflictId/u,
+    /workEmailWritebackEventId|workEmailConflictId|providerRefreshConflictId|inbound_value_conflict/u,
   );
 });
 

@@ -486,6 +486,7 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
     if (
       trace.providerRefresh === undefined &&
       trace.workEmailConflict !== undefined &&
+      trace.workEmailConflict.conflictType === "provider_refresh_conflict" &&
       !hasAuthorizedWorkEmailEvidence
     ) {
       summary.providerRefreshConflictId = trace.workEmailConflict.id;
@@ -542,7 +543,8 @@ function buildMvpAOnboardingTraceVerificationRequirements(
       requiresWorkEmailEvidence ||
       requiresProviderProjection,
     requireWriteback: requiresWorkEmailEvidence || requiresProviderProjection,
-    requireProviderRefresh: requiresProviderProjection,
+    requireProviderRefresh:
+      requiresProviderProjection && !requiresWorkEmailEvidence,
   };
 }
 

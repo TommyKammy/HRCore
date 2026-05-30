@@ -52,6 +52,9 @@ Transaction-request metadata never carries the person identifier; authorized
 `person` / `person_identity` requests receive that identifier only as standalone
 person evidence, and narrower request headers do not receive audit, lifecycle,
 apply-job, provider, or work-email fields outside the authorization decision.
+Inbound work-email conflicts stay under `work_email_evidence` /
+`work_email_contact`; an `okta_projection` / `provider_projection`-only request
+must find a real provider refresh or provider-refresh conflict evidence record.
 
 ## Boundary
 

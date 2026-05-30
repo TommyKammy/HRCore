@@ -361,7 +361,7 @@ export function verifyMvpAOnboardingCorrelationTrace(
     : undefined;
   const workEmailConflict = providerRefreshConflict ?? inboundWorkEmailConflict;
   const hasProviderRefreshEvidence =
-    providerRefresh !== undefined || workEmailConflict !== undefined;
+    providerRefresh !== undefined || providerRefreshConflict !== undefined;
 
   if (input.requireWriteback && workEmailWriteback === undefined) {
     throwTraceError(
@@ -370,7 +370,7 @@ export function verifyMvpAOnboardingCorrelationTrace(
   }
   if (input.requireProviderRefresh && !hasProviderRefreshEvidence) {
     throwTraceError(
-      "MVP-A onboarding trace requires provider refresh or conflict evidence linked to the writeback event",
+      "MVP-A onboarding trace requires provider refresh or provider refresh conflict evidence linked to the writeback event",
     );
   }
 
