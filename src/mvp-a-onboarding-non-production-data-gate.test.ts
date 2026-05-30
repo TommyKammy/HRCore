@@ -139,10 +139,24 @@ test("MVP-A approved non-production evidence rejects placeholder approval and in
       },
     ],
     [
+      "nonexistent approvedAt date",
+      {
+        ...approvedEvidence,
+        approvedAt: "2026-02-31T00:00:00Z",
+      },
+    ],
+    [
       "malformed expiresAt",
       {
         ...approvedEvidence,
         expiresAt: "not-a-date",
+      },
+    ],
+    [
+      "nonexistent expiresAt date",
+      {
+        ...approvedEvidence,
+        expiresAt: "2099-02-31T00:00:00Z",
       },
     ],
     [
@@ -173,6 +187,20 @@ test("MVP-A approved non-production evidence rejects placeholder approval and in
         ...approvedEvidence,
         approvedAt: "2099-05-30T00:00:00Z",
         expiresAt: "2100-05-30T00:00:00Z",
+      },
+    ],
+    [
+      "nullable real personnel flag",
+      {
+        ...approvedEvidence,
+        containsRealPersonnelData: null as never,
+      },
+    ],
+    [
+      "string production-like flag",
+      {
+        ...approvedEvidence,
+        productionLikeSource: "false" as never,
       },
     ],
   ] as const) {

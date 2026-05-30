@@ -363,6 +363,12 @@ function assertApprovedNonProductionEvidence(
     assertConcreteEvidenceReference(evidence, field);
   }
 
+  assertApprovedNonProductionFalseBoolean(
+    evidence,
+    "containsRealPersonnelData",
+  );
+  assertApprovedNonProductionFalseBoolean(evidence, "productionLikeSource");
+
   const approvedAt = parseEvidenceInstant(evidence.approvedAt, "approvedAt");
   const expiresAt = parseEvidenceInstant(evidence.expiresAt, "expiresAt");
   if (approvedAt.getTime() > Date.now()) {
@@ -380,6 +386,23 @@ function assertApprovedNonProductionEvidence(
   if (expiresAt.getTime() <= Date.now()) {
     throw new MvpAOnboardingNonProductionDataGateError(
       "MVP-A approved_non_production_dataset evidence expiresAt must be in the future",
+    );
+  }
+}
+
+function assertApprovedNonProductionFalseBoolean(
+  evidence: MvpAOnboardingPracticalUseDataEvidence,
+  field: "containsRealPersonnelData" | "productionLikeSource",
+): void {
+  if (evidence[field] === true) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      "MVP-A practical-use data evidence must not approve real personnel or production-like data",
+    );
+  }
+
+  if (evidence[field] !== false) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      `MVP-A approved_non_production_dataset evidence ${field} must be explicitly false`,
     );
   }
 }
@@ -416,7 +439,13 @@ function parseEvidenceInstant(value: unknown, field: string): Date {
   }
 
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
+  const normalizedValue = value.includes(".")
+    ? value
+    : value.replace(/Z$/u, ".000Z");
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString() !== normalizedValue
+  ) {
     throw new MvpAOnboardingNonProductionDataGateError(
       `MVP-A approved_non_production_dataset evidence ${field} must be a valid ISO-8601 UTC instant`,
     );
