@@ -231,6 +231,7 @@ test("MVP-A onboarding transaction request persistence stores request payload on
         correlation_id: "correlation-onboarding-001",
         payload_version: "mvp_a_onboarding_v1",
         payload_json: JSON.stringify({
+          tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
           effectiveDate: "2026-06-01",
           employment: {
             id: "employment-onboarding-001",
@@ -3848,6 +3849,7 @@ test("MVP-A onboarding apply revalidates persisted payload date invariants witho
       `,
     ).run(
       JSON.stringify({
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
         effectiveDate: "2026-06-01",
         employment: {
           id: "employment-onboarding-001",

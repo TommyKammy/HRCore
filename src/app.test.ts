@@ -173,6 +173,17 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   );
 
   const onboardingPayload = contract.components.schemas.OnboardingPayload;
+  assert.deepEqual(onboardingPayload.required, [
+    "tenantEnvironmentId",
+    "effectiveDate",
+    "employment",
+    "assignment",
+    "workEmailExpectation",
+  ]);
+  assert.equal(
+    onboardingPayload.properties.tenantEnvironmentId.const,
+    "repo_owned_synthetic_mvp_a_onboarding",
+  );
   assert.equal(
     onboardingPayload.properties.effectiveDate.pattern,
     "^\\d{4}-\\d{2}-\\d{2}$",
@@ -471,7 +482,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
 });
 
-test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves operation correlation ids", async (t) => {
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-linked operation correlation ids", async (t) => {
   const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
   const app = await buildApp({ onboardingDb });
   t.after(async () => {
@@ -537,6 +548,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves operation
     );
 
   for (const lookupCorrelationId of [
+    rootCorrelationId,
     approvalCorrelationId,
     applyCorrelationId,
   ]) {
@@ -660,6 +672,11 @@ test("GET /onboarding/new-hire renders the MVP-A onboarding wizard surface", asy
   );
   assert.match(response.body, /id="mvp-a-onboarding-wizard"/u);
   assert.match(response.body, /name="person.displayName"/u);
+  assert.match(response.body, /name="payload.tenantEnvironmentId"/u);
+  assert.match(
+    response.body,
+    /tenantEnvironmentId: read\("payload\.tenantEnvironmentId"\)/u,
+  );
   assert.match(response.body, /name="payload.effectiveDate"/u);
   assert.match(response.body, /name="payload.workEmailExpectation.value"/u);
   assert.doesNotMatch(response.body, /myNumber|transfer|termination|CSV/u);
@@ -874,6 +891,7 @@ test("POST /onboarding/new-hire/transaction-requests saves draft edits and submi
       display_name: "MVP-A Onboarding Edited Hire",
       status_code: "submitted",
       payload_json: JSON.stringify({
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
         effectiveDate: "2026-06-01",
         employment: {
           id: "employment-onboarding-001",

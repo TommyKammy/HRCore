@@ -3,6 +3,11 @@ import {
   mvpAOnboardingEvidenceAuthorizationGate,
   type MvpAOnboardingEvidenceAuthorizationGate,
 } from "./mvp-a-onboarding-evidence-authorization.js";
+import {
+  assertMvpAOnboardingBindingGateEvidence,
+  mvpAOnboardingBindingGate,
+  type MvpAOnboardingBindingGate,
+} from "./mvp-a-onboarding-binding-gate.js";
 
 type SqlValue = string | number | bigint | null;
 
@@ -98,6 +103,7 @@ export interface MvpAOnboardingWorkEmailConflictTrace {
 export interface MvpAOnboardingCorrelationTrace {
   transactionRequest: MvpAOnboardingTransactionTrace;
   authorizationGate: MvpAOnboardingEvidenceAuthorizationGate;
+  bindingGate: MvpAOnboardingBindingGate;
   approvalAuditEvent?: MvpAOnboardingAuditTrace;
   applyAuditEvent?: MvpAOnboardingAuditTrace;
   auditEvents: MvpAOnboardingAuditTrace[];
@@ -120,8 +126,10 @@ type TransactionRequestRow = {
 };
 
 type Payload = {
+  tenantEnvironmentId: string;
   effectiveDate: string;
   employment: { employmentCode: string };
+  assignment: { legalEntityReference: string };
   workEmailExpectation: { contactPointId: string; value: string };
 };
 
@@ -251,6 +259,15 @@ export function verifyMvpAOnboardingCorrelationTrace(
     );
   }
 
+  assertTraceBindingEvidence({
+    requestedCorrelationId: correlationId,
+    request,
+    payload,
+    approvalAuditEvent,
+    auditEvents,
+    applyJobAttempts,
+  });
+
   const writebackCorrelationChain = buildWritebackCorrelationChain(
     payload,
     readApplyEvidenceTimestamp(lifecycleEvent, applyAuditEvent),
@@ -296,6 +313,7 @@ export function verifyMvpAOnboardingCorrelationTrace(
   return {
     transactionRequest: mapTransactionRequest(request, rootCorrelationId),
     authorizationGate: mvpAOnboardingEvidenceAuthorizationGate,
+    bindingGate: mvpAOnboardingBindingGate,
     approvalAuditEvent,
     applyAuditEvent,
     auditEvents,
@@ -472,13 +490,16 @@ function parsePayload(row: TransactionRequestRow): Payload {
     throwTraceError("MVP-A onboarding trace payload is malformed");
   }
 
+  const assignment = isRecord(parsed.assignment) ? parsed.assignment : {};
   const employment = isRecord(parsed.employment) ? parsed.employment : {};
   const workEmailExpectation = isRecord(parsed.workEmailExpectation)
     ? parsed.workEmailExpectation
     : {};
   if (
+    typeof parsed.tenantEnvironmentId !== "string" ||
     typeof parsed.effectiveDate !== "string" ||
     typeof employment.employmentCode !== "string" ||
+    typeof assignment.legalEntityReference !== "string" ||
     typeof workEmailExpectation.contactPointId !== "string" ||
     typeof workEmailExpectation.value !== "string"
   ) {
@@ -486,13 +507,45 @@ function parsePayload(row: TransactionRequestRow): Payload {
   }
 
   return {
+    tenantEnvironmentId: parsed.tenantEnvironmentId,
     effectiveDate: parsed.effectiveDate,
     employment: { employmentCode: employment.employmentCode },
+    assignment: { legalEntityReference: assignment.legalEntityReference },
     workEmailExpectation: {
       contactPointId: workEmailExpectation.contactPointId,
       value: workEmailExpectation.value,
     },
   };
+}
+
+function assertTraceBindingEvidence(input: {
+  requestedCorrelationId: string;
+  request: TransactionRequestRow;
+  payload: Payload;
+  approvalAuditEvent: MvpAOnboardingAuditTrace | undefined;
+  auditEvents: readonly MvpAOnboardingAuditTrace[];
+  applyJobAttempts: readonly MvpAOnboardingApplyJobAttemptTrace[];
+}): void {
+  try {
+    assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+      trustedActorId: input.approvalAuditEvent?.actorId,
+      effectiveActorIds: [
+        ...input.auditEvents.map((event) => event.actorId),
+        ...input.applyJobAttempts.map((attempt) => attempt.workerId),
+      ],
+      subjectEmployeeId: input.request.person_id,
+      tenantEnvironmentId: input.payload.tenantEnvironmentId,
+      requestOwnerId: input.approvalAuditEvent?.actorId,
+      requestedCorrelationId: input.requestedCorrelationId,
+      rootCorrelationId: requireString(input.request.correlation_id),
+      linkedCorrelationIds: [
+        ...input.auditEvents.map((event) => event.correlationId),
+        ...input.applyJobAttempts.map((attempt) => attempt.correlationId),
+      ],
+    });
+  } catch (error) {
+    throwTraceError(getErrorMessage(error));
+  }
 }
 
 function readAuditEvents(
@@ -970,6 +1023,10 @@ function requireNumber(value: unknown): number {
   }
 
   return value;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function throwTraceError(message: string): never {

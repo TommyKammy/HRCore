@@ -69,6 +69,7 @@ export interface OnboardingTransactionRequestWorkEmailExpectation {
 }
 
 export interface OnboardingTransactionRequestPayload {
+  tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding";
   effectiveDate: string;
   employment: OnboardingTransactionRequestEmploymentPayload;
   assignment: OnboardingTransactionRequestAssignmentPayload;
@@ -316,6 +317,7 @@ const onboardingTransactionRequestFields = [
 ];
 const onboardingPersonFields = ["id", "displayName", "createdAt"];
 const onboardingPayloadFields = [
+  "tenantEnvironmentId",
   "effectiveDate",
   "employment",
   "assignment",
@@ -355,6 +357,7 @@ export function createOnboardingTransactionRequestFixture(
     ...personOverrides,
   };
   const payload: OnboardingTransactionRequestPayload = {
+    tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
     effectiveDate: "2026-06-01",
     employment: {
       id: "employment-onboarding-001",
@@ -1286,6 +1289,10 @@ function parsePayload(input: unknown): OnboardingTransactionRequestPayload {
   assertSupportedFields("payload", payload, onboardingPayloadFields);
 
   return {
+    tenantEnvironmentId: requireSyntheticTenantEnvironmentId(
+      "payload.tenantEnvironmentId",
+      payload.tenantEnvironmentId,
+    ),
     effectiveDate: requireDate("payload.effectiveDate", payload.effectiveDate),
     employment: parseEmploymentPayload(payload.employment),
     assignment: parseAssignmentPayload(payload.assignment),
@@ -1392,6 +1399,7 @@ function serializeOnboardingPayload(
   payload: OnboardingTransactionRequestPayload,
 ): string {
   return JSON.stringify({
+    tenantEnvironmentId: payload.tenantEnvironmentId,
     effectiveDate: payload.effectiveDate,
     employment: {
       id: payload.employment.id,
@@ -1411,6 +1419,19 @@ function serializeOnboardingPayload(
       value: payload.workEmailExpectation.value,
     },
   });
+}
+
+function requireSyntheticTenantEnvironmentId(
+  name: string,
+  value: unknown,
+): "repo_owned_synthetic_mvp_a_onboarding" {
+  if (value !== "repo_owned_synthetic_mvp_a_onboarding") {
+    throw new OnboardingTransactionRequestValidationError(
+      `${name} must be repo_owned_synthetic_mvp_a_onboarding`,
+    );
+  }
+
+  return value;
 }
 
 function readOnboardingTransactionRequest(

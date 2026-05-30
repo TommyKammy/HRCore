@@ -40,6 +40,30 @@ roles, real HR user provisioning, and legal acceptance remain out of scope.
 Live personal-data access paths and production authorization policy engines
 also remain out of scope.
 
+## Actor / Subject / Tenant Binding Gate
+
+MVP-A onboarding correlation evidence must also pass the reusable
+`mvp_a_onboarding_actor_subject_tenant_binding_v1` gate before the trace
+verifier returns evidence. The gate is repo-owned synthetic/non-production
+evidence only. It does not prove live identity governance, production RBAC, or
+real tenant authorization.
+
+The gate requires all of these explicit bindings:
+
+| Binding            | MVP-A synthetic source of truth                                                                                                                 | Fail-closed rule                                                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| trusted actor      | approval `audit_event.actor_id` with the trusted synthetic `operator-` prefix                                                                   | Missing, placeholder, sample, fake, anonymous, admin, or non-synthetic actor IDs are rejected.                                                  |
+| effective actor    | every returned onboarding `audit_event.actor_id` and apply-worker `worker_id`, limited to `operator-` or `worker-`                              | Inferred actor context from headers, comments, fixtures, branch names, issue text, or logs is never accepted.                                   |
+| subject employee   | the directly linked `transaction_request.person_id`, carried through lifecycle, apply-job, writeback, and trace rows                            | Missing or cross-subject evidence stays blocked by the existing direct-link verifier joins.                                                     |
+| tenant/environment | persisted onboarding payload `tenantEnvironmentId` with fixed repo-owned synthetic environment `repo_owned_synthetic_mvp_a_onboarding`          | Tenant, account, environment, or legal-entity context inferred from names or nearby metadata is rejected.                                       |
+| request owner      | the same explicit synthetic actor as the approval trusted actor                                                                                 | A different or placeholder owner cannot approve the request-owner binding.                                                                      |
+| correlation        | requested trace correlation plus root `transaction_request.correlation_id` or a directly linked audit / worker-attempt operation correlation ID | Missing, placeholder, or unlinked requested correlations fail closed; operation correlations do not have to equal the root request correlation. |
+
+The binding gate is intentionally limited to repository-owned synthetic
+fixtures and verifier evidence. Live Okta tenant binding, production credential
+custody, real personnel data, enterprise identity governance, production actor
+directory lookup, and production tenant roles remain blocked follow-up work.
+
 ADR 0011 remains Proposed. Permissions that require final DSL grammar, field
 permission matrices, masking rules, raw-payload viewers, audit-log viewers,
 tenant roles, RLS policies, OPA/Rego policy, or real provider/user provisioning
@@ -52,6 +76,11 @@ implementation issue explicitly authorize them.
   `src/mvp-a-onboarding-evidence-authorization.ts`.
 - Trace verifier integration:
   `verifyMvpAOnboardingCorrelationTrace` returns the gate with every trace.
+- Binding verifier integration:
+  `mvp_a_onboarding_actor_subject_tenant_binding_v1` rejects missing,
+  placeholder, inferred, or mismatched actor, subject, tenant/environment,
+  request-owner, and correlation binding evidence before trace evidence is
+  returned.
 - Negative guard:
   `assertMvpAOnboardingEvidenceAuthorizationGate` rejects missing, duplicated,
   unknown, empty, unsupported, or per-surface mismatched evidence
