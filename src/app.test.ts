@@ -480,6 +480,8 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-link
   });
 
   const rootCorrelationId = "correlation-onboarding-audit-lookup-root-002";
+  const approvalCorrelationId =
+    "correlation-onboarding-audit-lookup-approval-002";
   const applyCorrelationId = "correlation-onboarding-audit-lookup-apply-002";
   saveOnboardingTransactionRequest(
     onboardingDb,
@@ -492,7 +494,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-link
     decision: "approve",
     decidedAt: "2026-05-21T01:00:00Z",
     decidedBy: "operator-people-ops-001",
-    correlationId: rootCorrelationId,
+    correlationId: approvalCorrelationId,
   });
   await applyApprovedOnboardingTransactionRequestWithOktaProjection(
     onboardingDb,
@@ -534,7 +536,11 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-link
       "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A00%3A00Z",
     );
 
-  for (const lookupCorrelationId of [rootCorrelationId, applyCorrelationId]) {
+  for (const lookupCorrelationId of [
+    rootCorrelationId,
+    approvalCorrelationId,
+    applyCorrelationId,
+  ]) {
     const response = await app.inject({
       method: "GET",
       url: `/audit/mvp-a/onboarding-correlations/${lookupCorrelationId}`,

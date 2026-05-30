@@ -659,6 +659,8 @@ test("MVP-A onboarding trace accepts directly linked operation correlations", as
 
   try {
     const rootCorrelationId = "correlation-onboarding-linked-root-001";
+    const approvalCorrelationId = "correlation-onboarding-linked-approval-001";
+    const applyCorrelationId = "correlation-onboarding-linked-apply-001";
     saveOnboardingTransactionRequest(
       db,
       createOnboardingTransactionRequestFixture({
@@ -670,27 +672,15 @@ test("MVP-A onboarding trace accepts directly linked operation correlations", as
       decision: "approve",
       decidedAt: "2026-05-21T01:00:00Z",
       decidedBy: "operator-people-ops-001",
-      correlationId: rootCorrelationId,
+      correlationId: approvalCorrelationId,
     });
     await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
       transactionRequestId: "transaction-request-onboarding-001",
       appliedAt: "2026-05-21T02:00:00Z",
       appliedBy: "operator-people-ops-apply-001",
-      correlationId: rootCorrelationId,
+      correlationId: applyCorrelationId,
       oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
     });
-
-    db.prepare(
-      `
-        UPDATE audit_event
-        SET correlation_id = CASE action
-          WHEN 'mvp_a.onboarding.approve' THEN 'correlation-onboarding-linked-approval-001'
-          WHEN 'mvp_a.onboarding.apply' THEN 'correlation-onboarding-linked-apply-001'
-          ELSE correlation_id
-        END
-        WHERE action IN ('mvp_a.onboarding.approve', 'mvp_a.onboarding.apply')
-      `,
-    ).run();
 
     const rootTrace = verifyMvpAOnboardingCorrelationTrace(db, {
       correlationId: rootCorrelationId,
@@ -702,25 +692,27 @@ test("MVP-A onboarding trace accepts directly linked operation correlations", as
     assert.deepEqual(
       rootTrace.auditEvents.map((event) => [event.action, event.correlationId]),
       [
-        [
-          "mvp_a.onboarding.approve",
-          "correlation-onboarding-linked-approval-001",
-        ],
-        ["mvp_a.onboarding.apply", "correlation-onboarding-linked-apply-001"],
+        ["mvp_a.onboarding.approve", approvalCorrelationId],
+        ["mvp_a.onboarding.apply", applyCorrelationId],
       ],
     );
 
-    const operationTrace = verifyMvpAOnboardingCorrelationTrace(db, {
-      correlationId: "correlation-onboarding-linked-approval-001",
-      requireApproval: true,
-      requireApply: true,
-      requireWriteback: false,
-      requireProviderRefresh: false,
-    });
-    assert.equal(
-      operationTrace.transactionRequest.correlationId,
-      rootCorrelationId,
-    );
+    for (const operationCorrelationId of [
+      approvalCorrelationId,
+      applyCorrelationId,
+    ]) {
+      const operationTrace = verifyMvpAOnboardingCorrelationTrace(db, {
+        correlationId: operationCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireWriteback: false,
+        requireProviderRefresh: false,
+      });
+      assert.equal(
+        operationTrace.transactionRequest.correlationId,
+        rootCorrelationId,
+      );
+    }
   } finally {
     db.close();
   }
