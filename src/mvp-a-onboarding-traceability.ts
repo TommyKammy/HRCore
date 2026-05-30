@@ -126,6 +126,7 @@ type TransactionRequestRow = {
 };
 
 type Payload = {
+  tenantEnvironmentId: string;
   effectiveDate: string;
   employment: { employmentCode: string };
   assignment: { legalEntityReference: string };
@@ -259,7 +260,9 @@ export function verifyMvpAOnboardingCorrelationTrace(
   }
 
   assertTraceBindingEvidence({
+    requestedCorrelationId: correlationId,
     request,
+    payload,
     approvalAuditEvent,
     auditEvents,
     applyJobAttempts,
@@ -493,6 +496,7 @@ function parsePayload(row: TransactionRequestRow): Payload {
     ? parsed.workEmailExpectation
     : {};
   if (
+    typeof parsed.tenantEnvironmentId !== "string" ||
     typeof parsed.effectiveDate !== "string" ||
     typeof employment.employmentCode !== "string" ||
     typeof assignment.legalEntityReference !== "string" ||
@@ -503,6 +507,7 @@ function parsePayload(row: TransactionRequestRow): Payload {
   }
 
   return {
+    tenantEnvironmentId: parsed.tenantEnvironmentId,
     effectiveDate: parsed.effectiveDate,
     employment: { employmentCode: employment.employmentCode },
     assignment: { legalEntityReference: assignment.legalEntityReference },
@@ -514,7 +519,9 @@ function parsePayload(row: TransactionRequestRow): Payload {
 }
 
 function assertTraceBindingEvidence(input: {
+  requestedCorrelationId: string;
   request: TransactionRequestRow;
+  payload: Payload;
   approvalAuditEvent: MvpAOnboardingAuditTrace | undefined;
   auditEvents: readonly MvpAOnboardingAuditTrace[];
   applyJobAttempts: readonly MvpAOnboardingApplyJobAttemptTrace[];
@@ -527,9 +534,9 @@ function assertTraceBindingEvidence(input: {
         ...input.applyJobAttempts.map((attempt) => attempt.workerId),
       ],
       subjectEmployeeId: input.request.person_id,
-      tenantEnvironmentId:
-        mvpAOnboardingBindingGate.syntheticTenantEnvironmentId,
+      tenantEnvironmentId: input.payload.tenantEnvironmentId,
       requestOwnerId: input.approvalAuditEvent?.actorId,
+      requestedCorrelationId: input.requestedCorrelationId,
       rootCorrelationId: requireString(input.request.correlation_id),
       linkedCorrelationIds: [
         ...input.auditEvents.map((event) => event.correlationId),

@@ -869,6 +869,7 @@ test("POST /onboarding/new-hire/transaction-requests saves draft edits and submi
       display_name: "MVP-A Onboarding Edited Hire",
       status_code: "submitted",
       payload_json: JSON.stringify({
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
         effectiveDate: "2026-06-01",
         employment: {
           id: "employment-onboarding-001",

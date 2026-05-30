@@ -367,6 +367,7 @@ function createRehearsalFixture(input: {
 }) {
   const employmentCode = `EMP-BACKUP-RESTORE-${input.sequence}`;
   const payload: OnboardingTransactionRequestPayload = {
+    tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
     effectiveDate: "2026-06-01",
     employment: {
       id: `employment-backup-restore-${input.sequence}`,

@@ -25,6 +25,7 @@ export interface MvpAOnboardingBindingGateEvidence {
   subjectEmployeeId: string;
   tenantEnvironmentId: string;
   requestOwnerId: string | undefined;
+  requestedCorrelationId?: string;
   rootCorrelationId: string;
   linkedCorrelationIds: readonly string[];
 }
@@ -145,6 +146,10 @@ export function assertMvpAOnboardingBindingGateEvidence(
     "root correlation",
     evidence.rootCorrelationId,
   );
+  const requestedCorrelationId = requireBoundBinding(
+    "requested correlation",
+    evidence.requestedCorrelationId ?? evidence.rootCorrelationId,
+  );
   const linkedCorrelationIds = evidence.linkedCorrelationIds.map(
     (correlationId) => requireBoundBinding("linked correlation", correlationId),
   );
@@ -154,12 +159,13 @@ export function assertMvpAOnboardingBindingGateEvidence(
     );
   }
   if (
+    requestedCorrelationId !== rootCorrelationId &&
     linkedCorrelationIds.every(
-      (correlationId) => correlationId !== rootCorrelationId,
+      (correlationId) => correlationId !== requestedCorrelationId,
     )
   ) {
     throw new Error(
-      "MVP-A onboarding binding gate requires at least one linked correlation to match the root correlation",
+      "MVP-A onboarding binding gate requires the requested correlation to match root or linked evidence",
     );
   }
 }
