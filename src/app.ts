@@ -411,6 +411,26 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
   if (
     hasAuthorizedMvpAOnboardingTraceEvidence(
       accessDecision,
+      "employment",
+      "employment_status",
+    )
+  ) {
+    summary.employment = buildAuthorizedMvpAOnboardingEmploymentTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "assignment",
+      "assignment_reference",
+    )
+  ) {
+    summary.assignment = buildAuthorizedMvpAOnboardingAssignmentTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
       "audit_event",
       "audit_evidence",
     )
@@ -481,6 +501,38 @@ function buildAuthorizedMvpAOnboardingPersonTrace(
 ): Record<string, string> {
   return {
     id: trace.transactionRequest.personId,
+  };
+}
+
+function buildAuthorizedMvpAOnboardingEmploymentTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string | null> {
+  const employment = trace.employment;
+  if (employment === undefined) return {};
+
+  return {
+    id: employment.id,
+    employmentCode: employment.employmentCode,
+    statusCode: employment.statusCode,
+    startDate: employment.startDate,
+    endDate: employment.endDate,
+  };
+}
+
+function buildAuthorizedMvpAOnboardingAssignmentTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string | null> {
+  const assignment = trace.assignment;
+  if (assignment === undefined) return {};
+
+  return {
+    id: assignment.id,
+    employmentId: assignment.employmentId,
+    assignmentCode: assignment.assignmentCode,
+    organizationCode: assignment.organizationCode,
+    positionCode: assignment.positionCode,
+    startDate: assignment.startDate,
+    endDate: assignment.endDate,
   };
 }
 

@@ -42,6 +42,12 @@ correlation trace evidence. It also validates requested evidence-surface and
 field-scope headers, then confirms the trusted request-owner actor, before the
 full trace verifier can return correlation-specific evidence. The returned trace
 summary is then filtered to the authorized evidence surfaces and field scopes.
+If a request names multiple evidence surfaces but grants field scopes for only a
+subset of those surfaces, the endpoint rejects the request instead of reporting
+or auditing broader access than it can return. Explicit `employment` /
+`employment_status` and `assignment` / `assignment_reference` requests return
+their bounded trace fragments from the directly linked applied onboarding
+records.
 Transaction-request metadata never carries the person identifier; authorized
 `person` / `person_identity` requests receive that identifier only as standalone
 person evidence, and narrower request headers do not receive audit, lifecycle,

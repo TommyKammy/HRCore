@@ -581,6 +581,64 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
     },
   });
 
+  const employmentOnlyResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "employment",
+      "x-hrcore-mvp-a-field-scopes": "employment_status",
+    },
+  });
+
+  assert.equal(employmentOnlyResponse.statusCode, 200);
+  assert.deepEqual(
+    employmentOnlyResponse.json().authorization.evidenceSurfaces,
+    ["employment"],
+  );
+  assert.deepEqual(employmentOnlyResponse.json().authorization.fieldScopes, [
+    "employment_status",
+  ]);
+  assert.deepEqual(employmentOnlyResponse.json().trace, {
+    employment: {
+      id: "employment-onboarding-001",
+      employmentCode: "EMP-ONBOARDING-001",
+      statusCode: "active",
+      startDate: "2026-06-01",
+      endDate: null,
+    },
+  });
+
+  const assignmentOnlyResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "assignment",
+      "x-hrcore-mvp-a-field-scopes": "assignment_reference",
+    },
+  });
+
+  assert.equal(assignmentOnlyResponse.statusCode, 200);
+  assert.deepEqual(
+    assignmentOnlyResponse.json().authorization.evidenceSurfaces,
+    ["assignment"],
+  );
+  assert.deepEqual(assignmentOnlyResponse.json().authorization.fieldScopes, [
+    "assignment_reference",
+  ]);
+  assert.deepEqual(assignmentOnlyResponse.json().trace, {
+    assignment: {
+      id: "assignment-onboarding-001",
+      employmentId: "employment-onboarding-001",
+      assignmentCode: "ASN-ONBOARDING-001",
+      organizationCode: "department-people-ops",
+      positionCode: "position-engineer-001",
+      startDate: "2026-06-01",
+      endDate: null,
+    },
+  });
+
   onboardingDb.exec("DELETE FROM writeback_provider_refresh");
   const wrongOwnerResponse = await app.inject({
     method: "GET",
@@ -773,6 +831,23 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId validates requeste
   assert.deepEqual(forbiddenFieldResponse.json(), {
     error:
       "MVP-A onboarding evidence access rejects forbidden work_email_contact field scope",
+  });
+  assert.equal(traceLookupCount, 0);
+
+  const mismatchedSurfaceFieldResponse = await app.inject({
+    method: "GET",
+    url: "/audit/mvp-a/onboarding-correlations/correlation-before-scope-001",
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "transaction_request,audit_event",
+      "x-hrcore-mvp-a-field-scopes": "request_metadata",
+    },
+  });
+
+  assert.equal(mismatchedSurfaceFieldResponse.statusCode, 403);
+  assert.deepEqual(mismatchedSurfaceFieldResponse.json(), {
+    error:
+      "MVP-A onboarding evidence access requires field scope for audit_event evidence surface",
   });
   assert.equal(traceLookupCount, 0);
 });

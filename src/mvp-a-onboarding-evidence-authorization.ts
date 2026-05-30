@@ -520,6 +520,20 @@ function buildMvpAOnboardingEvidenceScopeRequest(
     authorizedFieldScopes.add(fieldScope as MvpAOnboardingFieldScope);
   }
 
+  for (const evidenceSurface of requestedSurfaceSet) {
+    const classification = classificationsBySurface.get(evidenceSurface);
+    if (
+      classification === undefined ||
+      classification.fieldScopes.some(
+        (fieldScope) => !authorizedFieldScopes.has(fieldScope),
+      )
+    ) {
+      throw new Error(
+        `MVP-A onboarding evidence access requires field scope for ${evidenceSurface} evidence surface`,
+      );
+    }
+  }
+
   return Object.freeze({
     evidenceSurfaces: Object.freeze([...requestedSurfaceSet]),
     fieldScopes: Object.freeze([...authorizedFieldScopes]),

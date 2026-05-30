@@ -40,6 +40,24 @@ export interface MvpAOnboardingTransactionTrace {
   correlationId: string;
 }
 
+export interface MvpAOnboardingEmploymentTrace {
+  id: string;
+  employmentCode: string;
+  statusCode: string;
+  startDate: string;
+  endDate: string | null;
+}
+
+export interface MvpAOnboardingAssignmentTrace {
+  id: string;
+  employmentId: string;
+  assignmentCode: string;
+  organizationCode: string;
+  positionCode: string | null;
+  startDate: string;
+  endDate: string | null;
+}
+
 export interface MvpAOnboardingLifecycleTrace {
   id: string;
   transactionRequestId: string;
@@ -104,6 +122,8 @@ export interface MvpAOnboardingCorrelationTrace {
   transactionRequest: MvpAOnboardingTransactionTrace;
   authorizationGate: MvpAOnboardingEvidenceAuthorizationGate;
   bindingGate: MvpAOnboardingBindingGate;
+  employment?: MvpAOnboardingEmploymentTrace;
+  assignment?: MvpAOnboardingAssignmentTrace;
   approvalAuditEvent?: MvpAOnboardingAuditTrace;
   applyAuditEvent?: MvpAOnboardingAuditTrace;
   auditEvents: MvpAOnboardingAuditTrace[];
@@ -129,7 +149,11 @@ type Payload = {
   tenantEnvironmentId: string;
   effectiveDate: string;
   employment: { employmentCode: string };
-  assignment: { legalEntityReference: string };
+  assignment: {
+    assignmentCode: string;
+    departmentReference: string;
+    legalEntityReference: string;
+  };
   workEmailExpectation: { contactPointId: string; value: string };
 };
 
@@ -148,6 +172,26 @@ type AuditRow = {
   subject_id: string;
   occurred_at: string;
   correlation_id: string | null;
+};
+
+type EmploymentRow = {
+  id: string;
+  person_id: string;
+  employment_code: string;
+  status_code: string;
+  start_date: string;
+  end_date: string | null;
+};
+
+type AssignmentRow = {
+  id: string;
+  person_id: string;
+  employment_id: string;
+  assignment_code: string;
+  organization_code: string;
+  position_code: string | null;
+  start_date: string;
+  end_date: string | null;
 };
 
 type LifecycleRow = {
@@ -262,6 +306,21 @@ export function verifyMvpAOnboardingCorrelationTrace(
       "MVP-A onboarding trace requires apply audit evidence for the root correlation id",
     );
   }
+  const employment = readEmployment(db, request, payload);
+  if (input.requireApply && employment === undefined) {
+    throwTraceError(
+      "MVP-A onboarding trace requires employment status evidence linked to the correlated transaction request",
+    );
+  }
+  const assignment =
+    employment === undefined
+      ? undefined
+      : readAssignment(db, request, payload, employment);
+  if (input.requireApply && assignment === undefined) {
+    throwTraceError(
+      "MVP-A onboarding trace requires assignment reference evidence linked to the correlated transaction request",
+    );
+  }
 
   assertTraceBindingEvidence({
     requestedCorrelationId: correlationId,
@@ -318,6 +377,8 @@ export function verifyMvpAOnboardingCorrelationTrace(
     transactionRequest: mapTransactionRequest(request, rootCorrelationId),
     authorizationGate: mvpAOnboardingEvidenceAuthorizationGate,
     bindingGate: mvpAOnboardingBindingGate,
+    employment,
+    assignment,
     approvalAuditEvent,
     applyAuditEvent,
     auditEvents,
@@ -553,6 +614,8 @@ function parsePayload(row: TransactionRequestRow): Payload {
     typeof parsed.tenantEnvironmentId !== "string" ||
     typeof parsed.effectiveDate !== "string" ||
     typeof employment.employmentCode !== "string" ||
+    typeof assignment.assignmentCode !== "string" ||
+    typeof assignment.departmentReference !== "string" ||
     typeof assignment.legalEntityReference !== "string" ||
     typeof workEmailExpectation.contactPointId !== "string" ||
     typeof workEmailExpectation.value !== "string"
@@ -564,7 +627,11 @@ function parsePayload(row: TransactionRequestRow): Payload {
     tenantEnvironmentId: parsed.tenantEnvironmentId,
     effectiveDate: parsed.effectiveDate,
     employment: { employmentCode: employment.employmentCode },
-    assignment: { legalEntityReference: assignment.legalEntityReference },
+    assignment: {
+      assignmentCode: assignment.assignmentCode,
+      departmentReference: assignment.departmentReference,
+      legalEntityReference: assignment.legalEntityReference,
+    },
     workEmailExpectation: {
       contactPointId: workEmailExpectation.contactPointId,
       value: workEmailExpectation.value,
@@ -706,6 +773,109 @@ function readLifecycleEvent(
     eventType: row.event_type,
     effectiveDate: row.effective_date,
     occurredAt: row.occurred_at,
+  };
+}
+
+function readEmployment(
+  db: MvpAOnboardingTraceabilityDatabase,
+  request: TransactionRequestRow,
+  payload: Payload,
+): MvpAOnboardingEmploymentTrace | undefined {
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          id,
+          person_id,
+          employment_code,
+          status_code,
+          start_date,
+          end_date
+        FROM employment
+        WHERE person_id = ?
+          AND employment_code = ?
+          AND start_date = ?
+        ORDER BY id
+      `,
+    )
+    .all(
+      request.person_id,
+      payload.employment.employmentCode,
+      payload.effectiveDate,
+    )
+    .map(assertEmploymentRow);
+
+  if (rows.length > 1) {
+    throwTraceError(
+      "MVP-A onboarding trace requires a single employment status evidence record",
+    );
+  }
+
+  const row = rows[0];
+  if (!row) return undefined;
+
+  return {
+    id: row.id,
+    employmentCode: row.employment_code,
+    statusCode: row.status_code,
+    startDate: row.start_date,
+    endDate: row.end_date,
+  };
+}
+
+function readAssignment(
+  db: MvpAOnboardingTraceabilityDatabase,
+  request: TransactionRequestRow,
+  payload: Payload,
+  employment: MvpAOnboardingEmploymentTrace,
+): MvpAOnboardingAssignmentTrace | undefined {
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          id,
+          person_id,
+          employment_id,
+          assignment_code,
+          organization_code,
+          position_code,
+          start_date,
+          end_date
+        FROM assignment
+        WHERE person_id = ?
+          AND employment_id = ?
+          AND assignment_code = ?
+          AND organization_code = ?
+          AND start_date = ?
+        ORDER BY id
+      `,
+    )
+    .all(
+      request.person_id,
+      employment.id,
+      payload.assignment.assignmentCode,
+      payload.assignment.departmentReference,
+      payload.effectiveDate,
+    )
+    .map(assertAssignmentRow);
+
+  if (rows.length > 1) {
+    throwTraceError(
+      "MVP-A onboarding trace requires a single assignment reference evidence record",
+    );
+  }
+
+  const row = rows[0];
+  if (!row) return undefined;
+
+  return {
+    id: row.id,
+    employmentId: row.employment_id,
+    assignmentCode: row.assignment_code,
+    organizationCode: row.organization_code,
+    positionCode: row.position_code,
+    startDate: row.start_date,
+    endDate: row.end_date,
   };
 }
 
@@ -980,6 +1150,32 @@ function assertAuditRow(row: unknown): AuditRow {
     subject_id: requireString(row.subject_id),
     occurred_at: requireString(row.occurred_at),
     correlation_id: requireNullableString(row.correlation_id),
+  };
+}
+
+function assertEmploymentRow(row: unknown): EmploymentRow {
+  if (!isRecord(row)) throwTraceError("employment row is malformed");
+  return {
+    id: requireString(row.id),
+    person_id: requireString(row.person_id),
+    employment_code: requireString(row.employment_code),
+    status_code: requireString(row.status_code),
+    start_date: requireString(row.start_date),
+    end_date: requireNullableString(row.end_date),
+  };
+}
+
+function assertAssignmentRow(row: unknown): AssignmentRow {
+  if (!isRecord(row)) throwTraceError("assignment row is malformed");
+  return {
+    id: requireString(row.id),
+    person_id: requireString(row.person_id),
+    employment_id: requireString(row.employment_id),
+    assignment_code: requireString(row.assignment_code),
+    organization_code: requireString(row.organization_code),
+    position_code: requireNullableString(row.position_code),
+    start_date: requireString(row.start_date),
+    end_date: requireNullableString(row.end_date),
   };
 }
 

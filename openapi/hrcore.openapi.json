@@ -628,6 +628,12 @@
           "person": {
             "$ref": "#/components/schemas/MvpAOnboardingPersonTrace"
           },
+          "employment": {
+            "$ref": "#/components/schemas/MvpAOnboardingEmploymentTrace"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/MvpAOnboardingAssignmentTrace"
+          },
           "approvalAuditEvent": {
             "$ref": "#/components/schemas/MvpAOnboardingAuditEventTrace"
           },
@@ -684,6 +690,71 @@
         "properties": {
           "id": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingEmploymentTrace": {
+        "type": "object",
+        "required": [
+          "id",
+          "employmentCode",
+          "statusCode",
+          "startDate",
+          "endDate"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employmentCode": {
+            "type": "string"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["active", "inactive", "terminated"]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": ["string", "null"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingAssignmentTrace": {
+        "type": "object",
+        "required": [
+          "id",
+          "employmentId",
+          "assignmentCode",
+          "organizationCode",
+          "positionCode",
+          "startDate",
+          "endDate"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employmentId": {
+            "type": "string"
+          },
+          "assignmentCode": {
+            "type": "string"
+          },
+          "organizationCode": {
+            "type": "string"
+          },
+          "positionCode": {
+            "type": ["string", "null"]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": ["string", "null"]
           }
         },
         "additionalProperties": false
