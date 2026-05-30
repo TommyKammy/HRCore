@@ -173,6 +173,17 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   );
 
   const onboardingPayload = contract.components.schemas.OnboardingPayload;
+  assert.deepEqual(onboardingPayload.required, [
+    "tenantEnvironmentId",
+    "effectiveDate",
+    "employment",
+    "assignment",
+    "workEmailExpectation",
+  ]);
+  assert.equal(
+    onboardingPayload.properties.tenantEnvironmentId.const,
+    "repo_owned_synthetic_mvp_a_onboarding",
+  );
   assert.equal(
     onboardingPayload.properties.effectiveDate.pattern,
     "^\\d{4}-\\d{2}-\\d{2}$",
@@ -661,6 +672,11 @@ test("GET /onboarding/new-hire renders the MVP-A onboarding wizard surface", asy
   );
   assert.match(response.body, /id="mvp-a-onboarding-wizard"/u);
   assert.match(response.body, /name="person.displayName"/u);
+  assert.match(response.body, /name="payload.tenantEnvironmentId"/u);
+  assert.match(
+    response.body,
+    /tenantEnvironmentId: read\("payload\.tenantEnvironmentId"\)/u,
+  );
   assert.match(response.body, /name="payload.effectiveDate"/u);
   assert.match(response.body, /name="payload.workEmailExpectation.value"/u);
   assert.doesNotMatch(response.body, /myNumber|transfer|termination|CSV/u);

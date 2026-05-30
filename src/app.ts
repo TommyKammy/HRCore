@@ -406,6 +406,7 @@ function renderOnboardingWizard(): string {
             <label>Correlation ID<input name="correlationId" value="correlation-onboarding-001" required></label>
             <label>Requested At<input name="requestedAt" value="2026-05-21T00:00:00Z" required></label>
             <label>Status<input name="statusCode" value="draft" required></label>
+            <label>Tenant Environment<input name="payload.tenantEnvironmentId" value="repo_owned_synthetic_mvp_a_onboarding" readonly required></label>
           </div>
         </fieldset>
         <fieldset>
@@ -467,6 +468,7 @@ function renderOnboardingWizard(): string {
             createdAt: read("person.createdAt")
           },
           payload: {
+            tenantEnvironmentId: read("payload.tenantEnvironmentId"),
             effectiveDate: read("payload.effectiveDate"),
             employment: {
               id: read("payload.employment.id"),
