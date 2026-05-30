@@ -466,7 +466,7 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
   ) {
     summary.workEmailWritebackEventId =
       trace.workEmailWriteback?.eventId ?? null;
-    summary.workEmailConflictId = trace.workEmailConflict?.id ?? null;
+    summary.workEmailConflictId = trace.inboundWorkEmailConflict?.id ?? null;
   }
 
   if (
@@ -476,20 +476,12 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
       "provider_projection",
     )
   ) {
-    const hasAuthorizedWorkEmailEvidence =
-      hasAuthorizedMvpAOnboardingTraceEvidence(
-        accessDecision,
-        "work_email_evidence",
-        "work_email_contact",
-      );
     summary.providerRefreshId = trace.providerRefresh?.id ?? null;
     if (
       trace.providerRefresh === undefined &&
-      trace.workEmailConflict !== undefined &&
-      trace.workEmailConflict.conflictType === "provider_refresh_conflict" &&
-      !hasAuthorizedWorkEmailEvidence
+      trace.providerRefreshConflict !== undefined
     ) {
-      summary.providerRefreshConflictId = trace.workEmailConflict.id;
+      summary.providerRefreshConflictId = trace.providerRefreshConflict.id;
     }
   }
 
@@ -525,6 +517,12 @@ function buildMvpAOnboardingTraceVerificationRequirements(
       "assignment",
       "assignment_reference",
     );
+  const requiresApplyJobAttemptEvidence =
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "apply_job_attempt",
+      "apply_job_attempt_evidence",
+    );
   const requiresWorkEmailEvidence = hasAuthorizedMvpAOnboardingTraceEvidence(
     accessDecision,
     "work_email_evidence",
@@ -542,6 +540,7 @@ function buildMvpAOnboardingTraceVerificationRequirements(
       requiresApplyEvidence ||
       requiresWorkEmailEvidence ||
       requiresProviderProjection,
+    requireApplyJobAttempt: requiresApplyJobAttemptEvidence,
     requireWriteback: requiresWorkEmailEvidence || requiresProviderProjection,
     requireProviderRefresh: requiresProviderProjection,
   };

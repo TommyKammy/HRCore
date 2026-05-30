@@ -26,6 +26,35 @@ const mvpAOnboardingAuditHeaders = {
   "x-hrcore-mvp-a-tenant-environment": "repo_owned_synthetic_mvp_a_onboarding",
 };
 
+function recordSyntheticOnboardingApplyJobAttempt(
+  db: { prepare(sql: string): { run(...values: unknown[]): unknown } },
+  correlationId: string,
+): void {
+  db.prepare(
+    `
+      INSERT INTO onboarding_apply_job_attempt (
+        id,
+        transaction_request_id,
+        person_id,
+        status_code,
+        attempted_at,
+        worker_id,
+        correlation_id,
+        retryable,
+        error_message
+      )
+      VALUES (?, ?, ?, 'applied', ?, ?, ?, 0, NULL)
+    `,
+  ).run(
+    `onboarding-apply-job-attempt-${correlationId}`,
+    "transaction-request-onboarding-001",
+    "person-onboarding-001",
+    "2026-05-21T02:00:00Z",
+    "worker-mvp-a-onboarding-001",
+    correlationId,
+  );
+}
+
 test("GET /health returns the smoke-test health response", async (t) => {
   const app = await buildApp();
   t.after(async () => {
@@ -413,6 +442,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
       oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
     },
   );
+  recordSyntheticOnboardingApplyJobAttempt(onboardingDb, rootCorrelationId);
   onboardingDb
     .prepare(
       `
@@ -522,7 +552,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
       auditEventCount: 2,
       lifecycleEventId:
         "lifecycle-event-transaction-request-onboarding-001-apply",
-      applyJobAttemptCount: 0,
+      applyJobAttemptCount: 1,
       workEmailWritebackEventId:
         "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
       providerRefreshId:
@@ -760,6 +790,57 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId does not require a
   );
 });
 
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId fails closed when apply job evidence is absent", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const rootCorrelationId = "correlation-onboarding-missing-apply-job-001";
+  saveOnboardingTransactionRequest(
+    onboardingDb,
+    createOnboardingTransactionRequestFixture({
+      correlationId: rootCorrelationId,
+    }),
+  );
+  decideOnboardingTransactionRequest(onboardingDb, {
+    transactionRequestId: "transaction-request-onboarding-001",
+    decision: "approve",
+    decidedAt: "2026-05-21T01:00:00Z",
+    decidedBy: "operator-people-ops-001",
+    correlationId: rootCorrelationId,
+  });
+  await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+    onboardingDb,
+    {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    },
+  );
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "apply_job_attempt",
+      "x-hrcore-mvp-a-field-scopes": "apply_job_attempt_evidence",
+    },
+  });
+
+  assert.equal(response.statusCode, 409);
+  assert.deepEqual(response.json(), {
+    error:
+      "MVP-A onboarding trace requires apply job attempt evidence linked to the correlated transaction request",
+  });
+  assert.doesNotMatch(response.body, /applyJobAttemptCount/u);
+});
+
 test("GET /audit/mvp-a/onboarding-correlations/:correlationId fails closed without actor context", async (t) => {
   const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
   const app = await buildApp({ onboardingDb });
@@ -792,6 +873,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId fails closed witho
       oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
     },
   );
+  recordSyntheticOnboardingApplyJobAttempt(onboardingDb, rootCorrelationId);
   onboardingDb
     .prepare(
       `
@@ -979,6 +1061,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-link
       oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
     },
   );
+  recordSyntheticOnboardingApplyJobAttempt(onboardingDb, applyCorrelationId);
   onboardingDb
     .prepare(
       `
@@ -1083,6 +1166,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId summarizes conflic
       oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
     },
   );
+  recordSyntheticOnboardingApplyJobAttempt(onboardingDb, rootCorrelationId);
 
   const defaultResponse = await app.inject({
     method: "GET",
@@ -1138,6 +1222,80 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId summarizes conflic
   assert.doesNotMatch(
     providerOnlyResponse.body,
     /workEmailWritebackEventId|workEmailConflictId|providerRefreshConflictId|inbound_value_conflict/u,
+  );
+
+  onboardingDb
+    .prepare(
+      `
+        INSERT INTO writeback_work_email_conflict (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          conflict_type,
+          current_contact_value,
+          attempted_provider_value,
+          detected_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    )
+    .run(
+      "correlated-provider-refresh-conflict-app-001",
+      "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "provider_refresh_conflict",
+      "manual.override@example.invalid",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T03:15:00Z",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A15%3A00Z:conflict:provider_refresh_conflict",
+    );
+
+  const workEmailOnlyWithProviderConflictResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "work_email_evidence",
+      "x-hrcore-mvp-a-field-scopes": "work_email_contact",
+    },
+  });
+
+  assert.equal(workEmailOnlyWithProviderConflictResponse.statusCode, 200);
+  assert.equal(
+    workEmailOnlyWithProviderConflictResponse.json().trace.workEmailConflictId,
+    "synthetic-work-email-conflict:okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z:inbound_value_conflict",
+  );
+  assert.doesNotMatch(
+    workEmailOnlyWithProviderConflictResponse.body,
+    /providerRefreshId|providerRefreshConflictId|correlated-provider-refresh-conflict-app-001/u,
+  );
+
+  const providerConflictResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "okta_projection",
+      "x-hrcore-mvp-a-field-scopes": "provider_projection",
+    },
+  });
+
+  assert.equal(providerConflictResponse.statusCode, 200);
+  assert.deepEqual(providerConflictResponse.json().trace, {
+    providerRefreshId: null,
+    providerRefreshConflictId: "correlated-provider-refresh-conflict-app-001",
+  });
+  assert.doesNotMatch(
+    providerConflictResponse.body,
+    /workEmailWritebackEventId|workEmailConflictId|inbound_value_conflict/u,
   );
 });
 

@@ -24,6 +24,7 @@ export interface VerifyMvpAOnboardingCorrelationTraceInput {
   correlationId: string;
   requireApproval: boolean;
   requireApply: boolean;
+  requireApplyJobAttempt?: boolean;
   requireWriteback: boolean;
   requireProviderRefresh: boolean;
 }
@@ -131,6 +132,8 @@ export interface MvpAOnboardingCorrelationTrace {
   applyJobAttempts: MvpAOnboardingApplyJobAttemptTrace[];
   workEmailWriteback?: MvpAOnboardingWorkEmailWritebackTrace;
   providerRefresh?: MvpAOnboardingProviderRefreshTrace;
+  providerRefreshConflict?: MvpAOnboardingWorkEmailConflictTrace;
+  inboundWorkEmailConflict?: MvpAOnboardingWorkEmailConflictTrace;
   workEmailConflict?: MvpAOnboardingWorkEmailConflictTrace;
   remainingP2A02Gates: string[];
 }
@@ -322,6 +325,11 @@ export function verifyMvpAOnboardingCorrelationTrace(
       "MVP-A onboarding trace requires assignment reference evidence linked to the correlated transaction request",
     );
   }
+  if (input.requireApplyJobAttempt === true && applyJobAttempts.length === 0) {
+    throwTraceError(
+      "MVP-A onboarding trace requires apply job attempt evidence linked to the correlated transaction request",
+    );
+  }
 
   assertTraceBindingEvidence({
     requestedCorrelationId: correlationId,
@@ -387,6 +395,8 @@ export function verifyMvpAOnboardingCorrelationTrace(
     applyJobAttempts,
     workEmailWriteback,
     providerRefresh,
+    providerRefreshConflict,
+    inboundWorkEmailConflict,
     workEmailConflict,
     remainingP2A02Gates: [...remainingP2A02Gates],
   };
