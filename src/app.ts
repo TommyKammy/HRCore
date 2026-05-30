@@ -121,10 +121,7 @@ export async function buildApp(
         );
         const trace = verifyMvpAOnboardingCorrelationTrace(auditTraceDb, {
           correlationId,
-          requireApproval: true,
-          requireApply: true,
-          requireWriteback: true,
-          requireProviderRefresh: true,
+          ...buildMvpAOnboardingTraceVerificationRequirements(accessDecision),
         });
 
         return reply.send(
@@ -496,6 +493,28 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
   }
 
   return summary;
+}
+
+function buildMvpAOnboardingTraceVerificationRequirements(
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+) {
+  const requiresWorkEmailEvidence = hasAuthorizedMvpAOnboardingTraceEvidence(
+    accessDecision,
+    "work_email_evidence",
+    "work_email_contact",
+  );
+  const requiresProviderProjection = hasAuthorizedMvpAOnboardingTraceEvidence(
+    accessDecision,
+    "okta_projection",
+    "provider_projection",
+  );
+
+  return {
+    requireApproval: true,
+    requireApply: true,
+    requireWriteback: requiresWorkEmailEvidence || requiresProviderProjection,
+    requireProviderRefresh: requiresProviderProjection,
+  };
 }
 
 function buildAuthorizedMvpAOnboardingTransactionRequestTrace(

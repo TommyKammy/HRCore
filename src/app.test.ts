@@ -647,6 +647,32 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
 
   onboardingDb.exec("DELETE FROM writeback_provider_refresh");
+  onboardingDb.exec("DELETE FROM writeback_event");
+  const requestOnlyWithoutWritebackResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "transaction_request",
+      "x-hrcore-mvp-a-field-scopes": "request_metadata",
+    },
+  });
+
+  assert.equal(requestOnlyWithoutWritebackResponse.statusCode, 200);
+  assert.deepEqual(requestOnlyWithoutWritebackResponse.json().trace, {
+    transactionRequest: {
+      id: "transaction-request-onboarding-001",
+      requestType: "hire",
+      statusCode: "completed",
+      correlationId: rootCorrelationId,
+    },
+  });
+  assert.doesNotMatch(
+    requestOnlyWithoutWritebackResponse.body,
+    /workEmailWritebackEventId|providerRefreshId|providerRefreshConflictId|workEmailConflictId/u,
+  );
+
+  onboardingDb.exec("DELETE FROM writeback_provider_refresh");
   const wrongOwnerResponse = await app.inject({
     method: "GET",
     url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
@@ -671,7 +697,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   assert.equal(missingProviderRefreshResponse.statusCode, 409);
   assert.deepEqual(missingProviderRefreshResponse.json(), {
     error:
-      "MVP-A onboarding trace requires provider refresh or conflict evidence linked to the writeback event",
+      "MVP-A onboarding trace requires work_email writeback evidence linked to the correlated onboarding payload",
   });
 });
 
