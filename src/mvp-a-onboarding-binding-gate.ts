@@ -6,6 +6,7 @@ export interface MvpAOnboardingBindingGate {
   readiness: "repo_owned_synthetic_non_production_only";
   requiredBindings: readonly MvpAOnboardingRequiredBinding[];
   trustedSyntheticActorPrefixes: readonly string[];
+  effectiveSyntheticActorPrefixes: readonly string[];
   syntheticTenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding";
   remainingBlockedBoundaries: readonly string[];
 }
@@ -37,7 +38,8 @@ const requiredBindings: readonly MvpAOnboardingRequiredBinding[] = [
   "correlation",
 ];
 
-const trustedSyntheticActorPrefixes = ["operator-", "worker-"] as const;
+const trustedSyntheticActorPrefixes = ["operator-"] as const;
+const effectiveSyntheticActorPrefixes = ["operator-", "worker-"] as const;
 
 const remainingBlockedBoundaries = [
   "live Okta tenant binding",
@@ -55,6 +57,9 @@ export const mvpAOnboardingBindingGate: MvpAOnboardingBindingGate =
     requiredBindings: Object.freeze([...requiredBindings]),
     trustedSyntheticActorPrefixes: Object.freeze([
       ...trustedSyntheticActorPrefixes,
+    ]),
+    effectiveSyntheticActorPrefixes: Object.freeze([
+      ...effectiveSyntheticActorPrefixes,
     ]),
     syntheticTenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
     remainingBlockedBoundaries: Object.freeze([...remainingBlockedBoundaries]),
@@ -76,6 +81,11 @@ export function assertMvpAOnboardingBindingGate(
     "trusted synthetic actor prefix",
     gate.trustedSyntheticActorPrefixes,
     trustedSyntheticActorPrefixes,
+  );
+  assertExactSet(
+    "effective synthetic actor prefix",
+    gate.effectiveSyntheticActorPrefixes,
+    effectiveSyntheticActorPrefixes,
   );
   if (
     gate.syntheticTenantEnvironmentId !==
@@ -121,7 +131,7 @@ export function assertMvpAOnboardingBindingGateEvidence(
     );
   }
   for (const actorId of evidence.effectiveActorIds) {
-    requireTrustedSyntheticActor(gate, actorId);
+    requireEffectiveSyntheticActor(gate, actorId);
   }
 
   requireBoundBinding("subject employee", evidence.subjectEmployeeId);
@@ -135,21 +145,37 @@ export function assertMvpAOnboardingBindingGateEvidence(
     "root correlation",
     evidence.rootCorrelationId,
   );
-  for (const correlationId of evidence.linkedCorrelationIds) {
-    requireBoundBinding("linked correlation", correlationId);
-  }
+  const linkedCorrelationIds = evidence.linkedCorrelationIds.map(
+    (correlationId) => requireBoundBinding("linked correlation", correlationId),
+  );
   if (evidence.linkedCorrelationIds.length === 0) {
     throw new Error(
       "MVP-A onboarding binding gate requires linked correlation evidence",
     );
   }
   if (
-    evidence.linkedCorrelationIds.every(
+    linkedCorrelationIds.every(
       (correlationId) => correlationId !== rootCorrelationId,
     )
   ) {
     throw new Error(
       "MVP-A onboarding binding gate requires at least one linked correlation to match the root correlation",
+    );
+  }
+}
+
+function requireEffectiveSyntheticActor(
+  gate: MvpAOnboardingBindingGate,
+  actorId: string,
+): void {
+  const boundActorId = requireBoundBinding("actor", actorId);
+  if (
+    gate.effectiveSyntheticActorPrefixes.every(
+      (prefix) => !boundActorId.startsWith(prefix),
+    )
+  ) {
+    throw new Error(
+      "MVP-A onboarding binding gate rejects untrusted actor evidence",
     );
   }
 }
@@ -192,17 +218,21 @@ function requireBoundBinding(
 
 function isPlaceholderBinding(value: string): boolean {
   const normalized = value.toLowerCase();
+  const tokens = normalized.split(/[^a-z0-9]+/u).filter(Boolean);
+  const placeholderTokens = new Set([
+    "todo",
+    "tbd",
+    "unknown",
+    "placeholder",
+    "sample",
+    "example",
+    "dummy",
+    "fake",
+    "admin",
+    "anonymous",
+  ]);
   return (
-    normalized === "todo" ||
-    normalized === "tbd" ||
-    normalized === "unknown" ||
-    normalized === "placeholder" ||
-    normalized === "sample" ||
-    normalized === "example" ||
-    normalized === "dummy" ||
-    normalized === "fake" ||
-    normalized === "admin" ||
-    normalized === "anonymous" ||
+    tokens.some((token) => placeholderTokens.has(token)) ||
     normalized.startsWith("todo-") ||
     normalized.startsWith("placeholder-") ||
     normalized.startsWith("sample-") ||

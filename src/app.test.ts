@@ -471,7 +471,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
 });
 
-test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves operation correlation ids", async (t) => {
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-linked operation correlation ids", async (t) => {
   const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
   const app = await buildApp({ onboardingDb });
   t.after(async () => {
@@ -480,8 +480,6 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves operation
   });
 
   const rootCorrelationId = "correlation-onboarding-audit-lookup-root-002";
-  const approvalCorrelationId =
-    "correlation-onboarding-audit-lookup-approval-002";
   const applyCorrelationId = "correlation-onboarding-audit-lookup-apply-002";
   saveOnboardingTransactionRequest(
     onboardingDb,
@@ -494,7 +492,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves operation
     decision: "approve",
     decidedAt: "2026-05-21T01:00:00Z",
     decidedBy: "operator-people-ops-001",
-    correlationId: approvalCorrelationId,
+    correlationId: rootCorrelationId,
   });
   await applyApprovedOnboardingTransactionRequestWithOktaProjection(
     onboardingDb,
@@ -536,10 +534,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves operation
       "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A00%3A00Z",
     );
 
-  for (const lookupCorrelationId of [
-    approvalCorrelationId,
-    applyCorrelationId,
-  ]) {
+  for (const lookupCorrelationId of [rootCorrelationId, applyCorrelationId]) {
     const response = await app.inject({
       method: "GET",
       url: `/audit/mvp-a/onboarding-correlations/${lookupCorrelationId}`,

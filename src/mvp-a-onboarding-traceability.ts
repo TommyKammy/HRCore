@@ -532,7 +532,6 @@ function assertTraceBindingEvidence(input: {
       requestOwnerId: input.approvalAuditEvent?.actorId,
       rootCorrelationId: requireString(input.request.correlation_id),
       linkedCorrelationIds: [
-        requireString(input.request.correlation_id),
         ...input.auditEvents.map((event) => event.correlationId),
         ...input.applyJobAttempts.map((attempt) => attempt.correlationId),
       ],

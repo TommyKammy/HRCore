@@ -50,14 +50,14 @@ real tenant authorization.
 
 The gate requires all of these explicit bindings:
 
-| Binding            | MVP-A synthetic source of truth                                                                                      | Fail-closed rule                                                                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| trusted actor      | approval `audit_event.actor_id` with the trusted synthetic `operator-` prefix                                        | Missing, placeholder, sample, fake, anonymous, admin, or non-synthetic actor IDs are rejected.                |
-| effective actor    | every returned onboarding `audit_event.actor_id` and apply-worker `worker_id`, limited to `operator-` or `worker-`   | Inferred actor context from headers, comments, fixtures, branch names, issue text, or logs is never accepted. |
-| subject employee   | the directly linked `transaction_request.person_id`, carried through lifecycle, apply-job, writeback, and trace rows | Missing or cross-subject evidence stays blocked by the existing direct-link verifier joins.                   |
-| tenant/environment | fixed repo-owned synthetic environment `repo_owned_synthetic_mvp_a_onboarding`                                       | Tenant, account, environment, or legal-entity context inferred from names or nearby metadata is rejected.     |
-| request owner      | the same explicit synthetic actor as the approval trusted actor                                                      | A different or placeholder owner cannot approve the request-owner binding.                                    |
-| correlation        | root `transaction_request.correlation_id` plus linked audit or worker-attempt correlation IDs                        | Missing, placeholder, or entirely mismatched linked correlations fail closed.                                 |
+| Binding            | MVP-A synthetic source of truth                                                                                      | Fail-closed rule                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| trusted actor      | approval `audit_event.actor_id` with the trusted synthetic `operator-` prefix                                        | Missing, placeholder, sample, fake, anonymous, admin, or non-synthetic actor IDs are rejected.                              |
+| effective actor    | every returned onboarding `audit_event.actor_id` and apply-worker `worker_id`, limited to `operator-` or `worker-`   | Inferred actor context from headers, comments, fixtures, branch names, issue text, or logs is never accepted.               |
+| subject employee   | the directly linked `transaction_request.person_id`, carried through lifecycle, apply-job, writeback, and trace rows | Missing or cross-subject evidence stays blocked by the existing direct-link verifier joins.                                 |
+| tenant/environment | fixed repo-owned synthetic environment `repo_owned_synthetic_mvp_a_onboarding`                                       | Tenant, account, environment, or legal-entity context inferred from names or nearby metadata is rejected.                   |
+| request owner      | the same explicit synthetic actor as the approval trusted actor                                                      | A different or placeholder owner cannot approve the request-owner binding.                                                  |
+| correlation        | root `transaction_request.correlation_id` and at least one matching linked audit or worker-attempt correlation ID    | Missing, placeholder, or entirely mismatched linked correlations fail closed; the request row alone is not linked evidence. |
 
 The binding gate is intentionally limited to repository-owned synthetic
 fixtures and verifier evidence. Live Okta tenant binding, production credential
