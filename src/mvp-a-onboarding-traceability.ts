@@ -200,6 +200,10 @@ type ConflictRow = {
   correlation_id: string;
 };
 
+type RequestOwnerActorRow = {
+  actor_id: string;
+};
+
 const remainingP2A02Gates = [
   "WORM / S3 Object Lock audit immutability and archive evidence",
   "broad audit search UI for production support and review",
@@ -324,6 +328,56 @@ export function verifyMvpAOnboardingCorrelationTrace(
     workEmailConflict,
     remainingP2A02Gates: [...remainingP2A02Gates],
   };
+}
+
+export function readMvpAOnboardingCorrelationRequestOwnerActorId(
+  db: MvpAOnboardingTraceabilityDatabase,
+  input: { correlationId: string },
+): string | undefined {
+  const correlationId = requireNonEmptyCorrelationId(input.correlationId);
+  const rows = db
+    .prepare(
+      `
+        WITH candidate_request AS (
+          SELECT transaction_request.id
+          FROM transaction_request
+          WHERE transaction_request.correlation_id = ?
+          UNION
+          SELECT audit_event.subject_id
+          FROM audit_event
+          WHERE audit_event.correlation_id = ?
+            AND audit_event.subject_table = 'transaction_request'
+            AND audit_event.action = 'mvp_a.onboarding.approve'
+          UNION
+          SELECT lifecycle_event.transaction_request_id
+          FROM audit_event
+          JOIN lifecycle_event
+            ON lifecycle_event.id = audit_event.subject_id
+          WHERE audit_event.correlation_id = ?
+            AND audit_event.subject_table = 'lifecycle_event'
+            AND audit_event.action = 'mvp_a.onboarding.apply'
+            AND lifecycle_event.transaction_request_id IS NOT NULL
+          UNION
+          SELECT onboarding_apply_job_attempt.transaction_request_id
+          FROM onboarding_apply_job_attempt
+          WHERE onboarding_apply_job_attempt.correlation_id = ?
+            AND onboarding_apply_job_attempt.status_code = 'applied'
+        )
+        SELECT DISTINCT audit_event.actor_id
+        FROM audit_event
+        WHERE audit_event.subject_table = 'transaction_request'
+          AND audit_event.action = 'mvp_a.onboarding.approve'
+          AND audit_event.subject_id IN (
+            SELECT id
+            FROM candidate_request
+          )
+      `,
+    )
+    .all(correlationId, correlationId, correlationId, correlationId)
+    .map(assertRequestOwnerActorRow);
+
+  if (rows.length !== 1) return undefined;
+  return rows[0].actor_id;
 }
 
 function readApplyEvidenceTimestamp(
@@ -926,6 +980,13 @@ function assertAuditRow(row: unknown): AuditRow {
     subject_id: requireString(row.subject_id),
     occurred_at: requireString(row.occurred_at),
     correlation_id: requireNullableString(row.correlation_id),
+  };
+}
+
+function assertRequestOwnerActorRow(row: unknown): RequestOwnerActorRow {
+  if (!isRecord(row)) throwTraceError("audit_event row is malformed");
+  return {
+    actor_id: requireString(row.actor_id),
   };
 }
 

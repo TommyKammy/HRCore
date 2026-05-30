@@ -18,9 +18,11 @@ import {
   mvpAOnboardingEvidenceAuthorizationGate,
   type MvpAOnboardingEvidenceRuntimeAccessDecision,
   validateMvpAOnboardingEvidenceRuntimeAccessContext,
+  validateMvpAOnboardingEvidenceScopeRequest,
 } from "./mvp-a-onboarding-evidence-authorization.js";
 import {
   MvpAOnboardingCorrelationTraceError,
+  readMvpAOnboardingCorrelationRequestOwnerActorId,
   verifyMvpAOnboardingCorrelationTrace,
   type MvpAOnboardingCorrelationTrace,
   type MvpAOnboardingTraceabilityDatabase,
@@ -88,6 +90,35 @@ export async function buildApp(
             actorId,
             tenantEnvironmentId,
           });
+        const requestedEvidenceSurfaces =
+          readMvpAOnboardingEvidenceSurfacesHeader(
+            request.headers["x-hrcore-mvp-a-evidence-surfaces"],
+          ) ?? defaultMvpAOnboardingTraceSummaryEvidenceSurfaces;
+        const requestedFieldScopes = readMvpAOnboardingFieldScopesHeader(
+          request.headers["x-hrcore-mvp-a-field-scopes"],
+        );
+        const validatedScopeRequest =
+          validateMvpAOnboardingEvidenceScopeRequest(
+            mvpAOnboardingEvidenceAuthorizationGate,
+            {
+              requestedEvidenceSurfaces,
+              requestedFieldScopes,
+            },
+          );
+        const requestOwnerActorId =
+          readMvpAOnboardingCorrelationRequestOwnerActorId(auditTraceDb, {
+            correlationId,
+          });
+        const accessDecision = authorizeMvpAOnboardingEvidenceRuntimeAccess(
+          mvpAOnboardingEvidenceAuthorizationGate,
+          {
+            actorId: runtimeAccessContext.actorId,
+            tenantEnvironmentId: runtimeAccessContext.tenantEnvironmentId,
+            requestOwnerActorId,
+            requestedEvidenceSurfaces: validatedScopeRequest.evidenceSurfaces,
+            requestedFieldScopes: validatedScopeRequest.fieldScopes,
+          },
+        );
         const trace = verifyMvpAOnboardingCorrelationTrace(auditTraceDb, {
           correlationId,
           requireApproval: true,
@@ -95,21 +126,6 @@ export async function buildApp(
           requireWriteback: true,
           requireProviderRefresh: true,
         });
-        const accessDecision = authorizeMvpAOnboardingEvidenceRuntimeAccess(
-          mvpAOnboardingEvidenceAuthorizationGate,
-          {
-            actorId: runtimeAccessContext.actorId,
-            tenantEnvironmentId: runtimeAccessContext.tenantEnvironmentId,
-            requestOwnerActorId: trace.approvalAuditEvent?.actorId,
-            requestedEvidenceSurfaces:
-              readMvpAOnboardingEvidenceSurfacesHeader(
-                request.headers["x-hrcore-mvp-a-evidence-surfaces"],
-              ) ?? defaultMvpAOnboardingTraceSummaryEvidenceSurfaces,
-            requestedFieldScopes: readMvpAOnboardingFieldScopesHeader(
-              request.headers["x-hrcore-mvp-a-field-scopes"],
-            ),
-          },
-        );
 
         return reply.send(
           buildMvpAOnboardingCorrelationTraceResponse(
@@ -331,6 +347,7 @@ export async function buildApp(
 const defaultMvpAOnboardingTraceSummaryEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[] =
   [
     "transaction_request",
+    "person",
     "audit_event",
     "lifecycle_event",
     "apply_job_attempt",
@@ -377,7 +394,11 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
       "request_metadata",
     )
   ) {
-    summary.transactionRequest = trace.transactionRequest;
+    summary.transactionRequest =
+      buildAuthorizedMvpAOnboardingTransactionRequestTrace(
+        trace,
+        accessDecision,
+      );
   }
 
   if (
@@ -435,6 +456,30 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
   }
 
   return summary;
+}
+
+function buildAuthorizedMvpAOnboardingTransactionRequestTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+): Record<string, string> {
+  const transactionRequestTrace: Record<string, string> = {
+    id: trace.transactionRequest.id,
+    requestType: trace.transactionRequest.requestType,
+    statusCode: trace.transactionRequest.statusCode,
+    correlationId: trace.transactionRequest.correlationId,
+  };
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "person",
+      "person_identity",
+    )
+  ) {
+    transactionRequestTrace.personId = trace.transactionRequest.personId;
+  }
+
+  return transactionRequestTrace;
 }
 
 function hasAuthorizedMvpAOnboardingTraceEvidence(

@@ -38,10 +38,12 @@ unclassified evidence surfaces, forbidden field scopes, and cross-owner access
 fail closed before the endpoint returns evidence.
 
 The endpoint validates the actor and tenant/environment headers before loading
-correlation trace evidence. The returned trace summary is then filtered to the
-authorized evidence surfaces and field scopes; narrower request headers do not
-receive audit, lifecycle, apply-job, provider, or work-email fields outside the
-authorization decision.
+correlation trace evidence. It also validates requested evidence-surface and
+field-scope headers, then confirms the trusted request-owner actor, before the
+full trace verifier can return correlation-specific evidence. The returned trace
+summary is then filtered to the authorized evidence surfaces and field scopes;
+narrower request headers do not receive person identifiers, audit, lifecycle,
+apply-job, provider, or work-email fields outside the authorization decision.
 
 ## Boundary
 
@@ -103,7 +105,8 @@ implementation issue explicitly authorize them.
   placeholder, inferred, or mismatched actor, subject, tenant/environment,
   request-owner, and correlation binding evidence before trace evidence is
   returned; the endpoint checks actor and tenant/environment before trace
-  lookup.
+  lookup, validates requested evidence scopes before trace lookup, and checks
+  request-owner binding before returning verifier-specific trace errors.
 - Negative guard:
   `assertMvpAOnboardingEvidenceAuthorizationGate` rejects missing, duplicated,
   unknown, empty, unsupported, or per-surface mismatched evidence

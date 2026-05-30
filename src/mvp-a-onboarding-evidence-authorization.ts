@@ -56,8 +56,8 @@ export interface MvpAOnboardingEvidenceRuntimeAccessInput {
   actorId: string | undefined;
   tenantEnvironmentId: string | undefined;
   requestOwnerActorId: string | undefined;
-  requestedEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
-  requestedFieldScopes?: readonly MvpAOnboardingFieldScope[];
+  requestedEvidenceSurfaces: readonly string[];
+  requestedFieldScopes?: readonly string[];
 }
 
 export interface MvpAOnboardingEvidenceRuntimeAccessContext {
@@ -74,6 +74,17 @@ export interface MvpAOnboardingEvidenceRuntimeAccessDecision {
   fieldScopes: readonly MvpAOnboardingFieldScope[];
   dataScopes: readonly MvpAOnboardingDataScope[];
   auditCorrelation: "same_onboarding_request_or_linked_operation";
+}
+
+export interface MvpAOnboardingEvidenceScopeRequest {
+  requestedEvidenceSurfaces: readonly string[];
+  requestedFieldScopes?: readonly string[];
+}
+
+export interface MvpAOnboardingValidatedEvidenceScopeRequest {
+  evidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
+  fieldScopes: readonly MvpAOnboardingFieldScope[];
+  dataScopes: readonly MvpAOnboardingDataScope[];
 }
 
 export class MvpAOnboardingEvidenceAccessError extends Error {
@@ -403,6 +414,7 @@ export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
 
     const { actorId, tenantEnvironmentId } =
       validateMvpAOnboardingEvidenceRuntimeAccessContext(input);
+    const scopeRequest = buildMvpAOnboardingEvidenceScopeRequest(gate, input);
     const requestOwnerActorId = assertMvpAOnboardingTrustedActorBinding(
       mvpAOnboardingBindingGate,
       input.requestOwnerActorId,
@@ -413,70 +425,14 @@ export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
       );
     }
 
-    if (input.requestedEvidenceSurfaces.length === 0) {
-      throw new Error(
-        "MVP-A onboarding evidence access requires at least one evidence surface",
-      );
-    }
-
-    const classificationsBySurface = new Map(
-      gate.classifications.map((classification) => [
-        classification.evidenceSurface,
-        classification,
-      ]),
-    );
-    const requestedSurfaceSet = new Set<MvpAOnboardingEvidenceSurface>();
-    const allowedFieldScopes = new Set<MvpAOnboardingFieldScope>();
-    const allowedDataScopes = new Set<MvpAOnboardingDataScope>();
-    for (const evidenceSurface of input.requestedEvidenceSurfaces) {
-      if (requestedSurfaceSet.has(evidenceSurface)) {
-        throw new Error(
-          `MVP-A onboarding evidence access duplicates ${evidenceSurface} evidence surface`,
-        );
-      }
-      requestedSurfaceSet.add(evidenceSurface);
-
-      const classification = classificationsBySurface.get(evidenceSurface);
-      if (classification === undefined) {
-        throw new Error(
-          `MVP-A onboarding evidence access rejects unclassified ${evidenceSurface} evidence surface`,
-        );
-      }
-      for (const fieldScope of classification.fieldScopes) {
-        allowedFieldScopes.add(fieldScope);
-      }
-      for (const dataScope of classification.dataScopes) {
-        allowedDataScopes.add(dataScope);
-      }
-    }
-
-    const requestedFieldScopes = input.requestedFieldScopes ?? [
-      ...allowedFieldScopes,
-    ];
-    if (requestedFieldScopes.length === 0) {
-      throw new Error(
-        "MVP-A onboarding evidence access requires at least one field scope",
-      );
-    }
-
-    const authorizedFieldScopes = new Set<MvpAOnboardingFieldScope>();
-    for (const fieldScope of requestedFieldScopes) {
-      if (!allowedFieldScopes.has(fieldScope)) {
-        throw new Error(
-          `MVP-A onboarding evidence access rejects forbidden ${fieldScope} field scope`,
-        );
-      }
-      authorizedFieldScopes.add(fieldScope);
-    }
-
     return Object.freeze({
       decision: "allow" as const,
       gateId: gate.gateId,
       actorId,
       tenantEnvironmentId,
-      evidenceSurfaces: Object.freeze([...requestedSurfaceSet]),
-      fieldScopes: Object.freeze([...authorizedFieldScopes]),
-      dataScopes: Object.freeze([...allowedDataScopes]),
+      evidenceSurfaces: scopeRequest.evidenceSurfaces,
+      fieldScopes: scopeRequest.fieldScopes,
+      dataScopes: scopeRequest.dataScopes,
       auditCorrelation: "same_onboarding_request_or_linked_operation" as const,
     });
   } catch (error) {
@@ -484,6 +440,91 @@ export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
       normalizeMvpAOnboardingEvidenceAccessError(error),
     );
   }
+}
+
+export function validateMvpAOnboardingEvidenceScopeRequest(
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+  input: MvpAOnboardingEvidenceScopeRequest,
+): MvpAOnboardingValidatedEvidenceScopeRequest {
+  try {
+    assertMvpAOnboardingEvidenceAuthorizationGate(gate);
+    return buildMvpAOnboardingEvidenceScopeRequest(gate, input);
+  } catch (error) {
+    throw new MvpAOnboardingEvidenceAccessError(
+      normalizeMvpAOnboardingEvidenceAccessError(error),
+    );
+  }
+}
+
+function buildMvpAOnboardingEvidenceScopeRequest(
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+  input: MvpAOnboardingEvidenceScopeRequest,
+): MvpAOnboardingValidatedEvidenceScopeRequest {
+  if (input.requestedEvidenceSurfaces.length === 0) {
+    throw new Error(
+      "MVP-A onboarding evidence access requires at least one evidence surface",
+    );
+  }
+
+  const classificationsBySurface = new Map(
+    gate.classifications.map((classification) => [
+      classification.evidenceSurface,
+      classification,
+    ]),
+  );
+  const requestedSurfaceSet = new Set<MvpAOnboardingEvidenceSurface>();
+  const allowedFieldScopes = new Set<MvpAOnboardingFieldScope>();
+  const allowedDataScopes = new Set<MvpAOnboardingDataScope>();
+  for (const evidenceSurface of input.requestedEvidenceSurfaces) {
+    if (
+      requestedSurfaceSet.has(evidenceSurface as MvpAOnboardingEvidenceSurface)
+    ) {
+      throw new Error(
+        `MVP-A onboarding evidence access duplicates ${evidenceSurface} evidence surface`,
+      );
+    }
+
+    const classification = classificationsBySurface.get(
+      evidenceSurface as MvpAOnboardingEvidenceSurface,
+    );
+    if (classification === undefined) {
+      throw new Error(
+        `MVP-A onboarding evidence access rejects unclassified ${evidenceSurface} evidence surface`,
+      );
+    }
+    requestedSurfaceSet.add(classification.evidenceSurface);
+    for (const fieldScope of classification.fieldScopes) {
+      allowedFieldScopes.add(fieldScope);
+    }
+    for (const dataScope of classification.dataScopes) {
+      allowedDataScopes.add(dataScope);
+    }
+  }
+
+  const requestedFieldScopes = input.requestedFieldScopes ?? [
+    ...allowedFieldScopes,
+  ];
+  if (requestedFieldScopes.length === 0) {
+    throw new Error(
+      "MVP-A onboarding evidence access requires at least one field scope",
+    );
+  }
+
+  const authorizedFieldScopes = new Set<MvpAOnboardingFieldScope>();
+  for (const fieldScope of requestedFieldScopes) {
+    if (!allowedFieldScopes.has(fieldScope as MvpAOnboardingFieldScope)) {
+      throw new Error(
+        `MVP-A onboarding evidence access rejects forbidden ${fieldScope} field scope`,
+      );
+    }
+    authorizedFieldScopes.add(fieldScope as MvpAOnboardingFieldScope);
+  }
+
+  return Object.freeze({
+    evidenceSurfaces: Object.freeze([...requestedSurfaceSet]),
+    fieldScopes: Object.freeze([...authorizedFieldScopes]),
+    dataScopes: Object.freeze([...allowedDataScopes]),
+  });
 }
 
 function hasSameScopeSet(

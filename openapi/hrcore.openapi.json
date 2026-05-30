@@ -47,7 +47,7 @@
       "get": {
         "operationId": "getMvpAOnboardingCorrelationAuditTrace",
         "summary": "Inspect bounded MVP-A onboarding audit evidence by correlation ID",
-        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID after runtime actor, tenant/environment, field-scope, and data-scope checks. Trace summary fields are filtered to the authorized evidence surfaces and field scopes. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
+        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID after runtime actor, tenant/environment, field-scope, and data-scope checks plus request-owner binding. Requested scope headers and request-owner binding are validated before the full trace verifier returns correlation-specific evidence. Trace summary fields are filtered to the authorized evidence surfaces and field scopes. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
         "parameters": [
           {
             "name": "correlationId",
@@ -656,13 +656,7 @@
       },
       "MvpAOnboardingTransactionTrace": {
         "type": "object",
-        "required": [
-          "id",
-          "personId",
-          "requestType",
-          "statusCode",
-          "correlationId"
-        ],
+        "required": ["id", "requestType", "statusCode", "correlationId"],
         "properties": {
           "id": {
             "type": "string"

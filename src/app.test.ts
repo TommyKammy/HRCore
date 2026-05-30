@@ -452,6 +452,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
       tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
       evidenceSurfaces: [
         "transaction_request",
+        "person",
         "audit_event",
         "lifecycle_event",
         "apply_job_attempt",
@@ -460,6 +461,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
       ],
       fieldScopes: [
         "request_metadata",
+        "person_identity",
         "audit_evidence",
         "lifecycle_evidence",
         "apply_job_attempt_evidence",
@@ -469,8 +471,8 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
       dataScopes: [
         "same_onboarding_request",
         "same_correlation_id",
-        "same_lifecycle_event",
         "same_person",
+        "same_lifecycle_event",
         "same_apply_job_attempt",
         "same_mock_okta_projection",
         "same_work_email_evidence_chain",
@@ -544,7 +546,6 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   assert.deepEqual(limitedResponse.json().trace, {
     transactionRequest: {
       id: "transaction-request-onboarding-001",
-      personId: "person-onboarding-001",
       requestType: "hire",
       statusCode: "completed",
       correlationId: rootCorrelationId,
@@ -552,10 +553,25 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
   assert.doesNotMatch(
     limitedResponse.body,
-    /approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|workEmailWritebackEventId|providerRefreshId|workEmailConflictId/u,
+    /personId|approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|workEmailWritebackEventId|providerRefreshId|workEmailConflictId/u,
   );
 
   onboardingDb.exec("DELETE FROM writeback_provider_refresh");
+  const wrongOwnerResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-actor-id": "operator-people-ops-002",
+    },
+  });
+
+  assert.equal(wrongOwnerResponse.statusCode, 403);
+  assert.deepEqual(wrongOwnerResponse.json(), {
+    error:
+      "MVP-A onboarding evidence access requires actor to match the trusted request owner",
+  });
+
   const missingProviderRefreshResponse = await app.inject({
     method: "GET",
     url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
@@ -684,6 +700,54 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId validates tenant b
   assert.deepEqual(wrongTenantResponse.json(), {
     error:
       "MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment",
+  });
+  assert.equal(traceLookupCount, 0);
+});
+
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId validates requested evidence scopes before trace lookup", async (t) => {
+  let traceLookupCount = 0;
+  const app = await buildApp({
+    auditTraceDb: {
+      prepare() {
+        traceLookupCount += 1;
+        throw new Error("trace lookup ran before scope validation");
+      },
+    },
+  });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const forbiddenSurfaceResponse = await app.inject({
+    method: "GET",
+    url: "/audit/mvp-a/onboarding-correlations/correlation-before-scope-001",
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "payroll_export",
+    },
+  });
+
+  assert.equal(forbiddenSurfaceResponse.statusCode, 403);
+  assert.deepEqual(forbiddenSurfaceResponse.json(), {
+    error:
+      "MVP-A onboarding evidence access rejects unclassified payroll_export evidence surface",
+  });
+  assert.equal(traceLookupCount, 0);
+
+  const forbiddenFieldResponse = await app.inject({
+    method: "GET",
+    url: "/audit/mvp-a/onboarding-correlations/correlation-before-scope-001",
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "transaction_request",
+      "x-hrcore-mvp-a-field-scopes": "work_email_contact",
+    },
+  });
+
+  assert.equal(forbiddenFieldResponse.statusCode, 403);
+  assert.deepEqual(forbiddenFieldResponse.json(), {
+    error:
+      "MVP-A onboarding evidence access rejects forbidden work_email_contact field scope",
   });
   assert.equal(traceLookupCount, 0);
 });
