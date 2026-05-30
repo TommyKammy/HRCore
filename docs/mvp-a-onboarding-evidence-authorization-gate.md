@@ -37,6 +37,12 @@ onboarding evidence set. Missing actor context, mismatched tenant/environment,
 unclassified evidence surfaces, forbidden field scopes, and cross-owner access
 fail closed before the endpoint returns evidence.
 
+The endpoint validates the actor and tenant/environment headers before loading
+correlation trace evidence. The returned trace summary is then filtered to the
+authorized evidence surfaces and field scopes; narrower request headers do not
+receive audit, lifecycle, apply-job, provider, or work-email fields outside the
+authorization decision.
+
 ## Boundary
 
 This gate is anchored to ADR 0011. It preserves application-owned
@@ -89,12 +95,15 @@ implementation issue explicitly authorize them.
 - Audit endpoint integration:
   `GET /audit/mvp-a/onboarding-correlations/{correlationId}` returns an
   authorization decision with the allowed actor, tenant/environment, evidence
-  surfaces, field scopes, data scopes, and audit-correlation binding.
+  surfaces, field scopes, data scopes, and audit-correlation binding, and
+  filters the trace summary to those authorized evidence surfaces and field
+  scopes.
 - Binding verifier integration:
   `mvp_a_onboarding_actor_subject_tenant_binding_v1` rejects missing,
   placeholder, inferred, or mismatched actor, subject, tenant/environment,
   request-owner, and correlation binding evidence before trace evidence is
-  returned.
+  returned; the endpoint checks actor and tenant/environment before trace
+  lookup.
 - Negative guard:
   `assertMvpAOnboardingEvidenceAuthorizationGate` rejects missing, duplicated,
   unknown, empty, unsupported, or per-surface mismatched evidence

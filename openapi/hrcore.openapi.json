@@ -47,7 +47,7 @@
       "get": {
         "operationId": "getMvpAOnboardingCorrelationAuditTrace",
         "summary": "Inspect bounded MVP-A onboarding audit evidence by correlation ID",
-        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID after runtime actor, tenant/environment, field-scope, and data-scope checks. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
+        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID after runtime actor, tenant/environment, field-scope, and data-scope checks. Trace summary fields are filtered to the authorized evidence surfaces and field scopes. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
         "parameters": [
           {
             "name": "correlationId",
@@ -621,17 +621,6 @@
       },
       "MvpAOnboardingCorrelationTraceSummary": {
         "type": "object",
-        "required": [
-          "transactionRequest",
-          "approvalAuditEvent",
-          "applyAuditEvent",
-          "auditEventCount",
-          "lifecycleEventId",
-          "applyJobAttemptCount",
-          "workEmailWritebackEventId",
-          "providerRefreshId",
-          "workEmailConflictId"
-        ],
         "properties": {
           "transactionRequest": {
             "$ref": "#/components/schemas/MvpAOnboardingTransactionTrace"

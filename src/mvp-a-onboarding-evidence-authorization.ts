@@ -60,6 +60,11 @@ export interface MvpAOnboardingEvidenceRuntimeAccessInput {
   requestedFieldScopes?: readonly MvpAOnboardingFieldScope[];
 }
 
+export interface MvpAOnboardingEvidenceRuntimeAccessContext {
+  actorId: string;
+  tenantEnvironmentId: string;
+}
+
 export interface MvpAOnboardingEvidenceRuntimeAccessDecision {
   decision: "allow";
   gateId: MvpAOnboardingEvidenceAuthorizationGate["gateId"];
@@ -367,6 +372,28 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
   }
 }
 
+export function validateMvpAOnboardingEvidenceRuntimeAccessContext(input: {
+  actorId: string | undefined;
+  tenantEnvironmentId: string | undefined;
+}): MvpAOnboardingEvidenceRuntimeAccessContext {
+  try {
+    return Object.freeze({
+      actorId: assertMvpAOnboardingTrustedActorBinding(
+        mvpAOnboardingBindingGate,
+        input.actorId,
+      ),
+      tenantEnvironmentId: assertMvpAOnboardingTenantEnvironmentBinding(
+        mvpAOnboardingBindingGate,
+        input.tenantEnvironmentId,
+      ),
+    });
+  } catch (error) {
+    throw new MvpAOnboardingEvidenceAccessError(
+      normalizeMvpAOnboardingEvidenceAccessError(error),
+    );
+  }
+}
+
 export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
   gate: MvpAOnboardingEvidenceAuthorizationGate,
   input: MvpAOnboardingEvidenceRuntimeAccessInput,
@@ -374,10 +401,8 @@ export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
   try {
     assertMvpAOnboardingEvidenceAuthorizationGate(gate);
 
-    const actorId = assertMvpAOnboardingTrustedActorBinding(
-      mvpAOnboardingBindingGate,
-      input.actorId,
-    );
+    const { actorId, tenantEnvironmentId } =
+      validateMvpAOnboardingEvidenceRuntimeAccessContext(input);
     const requestOwnerActorId = assertMvpAOnboardingTrustedActorBinding(
       mvpAOnboardingBindingGate,
       input.requestOwnerActorId,
@@ -387,11 +412,6 @@ export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
         "MVP-A onboarding evidence access requires actor to match the trusted request owner",
       );
     }
-
-    const tenantEnvironmentId = assertMvpAOnboardingTenantEnvironmentBinding(
-      mvpAOnboardingBindingGate,
-      input.tenantEnvironmentId,
-    );
 
     if (input.requestedEvidenceSurfaces.length === 0) {
       throw new Error(

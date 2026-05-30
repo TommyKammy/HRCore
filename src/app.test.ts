@@ -312,18 +312,9 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     ],
   );
   assert.deepEqual(
-    contract.components.schemas.MvpAOnboardingCorrelationTraceSummary.required,
-    [
-      "transactionRequest",
-      "approvalAuditEvent",
-      "applyAuditEvent",
-      "auditEventCount",
-      "lifecycleEventId",
-      "applyJobAttemptCount",
-      "workEmailWritebackEventId",
-      "providerRefreshId",
-      "workEmailConflictId",
-    ],
+    contract.components.schemas.MvpAOnboardingCorrelationTraceSummary
+      .required ?? [],
+    [],
   );
   assert.deepEqual(
     contract.components.schemas.MvpAOnboardingCorrelationTraceResponse.required,
@@ -533,6 +524,37 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
   assert.doesNotMatch(response.body, /payload_json|payloadJson|rawPayload/u);
 
+  const limitedResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "transaction_request",
+      "x-hrcore-mvp-a-field-scopes": "request_metadata",
+    },
+  });
+
+  assert.equal(limitedResponse.statusCode, 200);
+  assert.deepEqual(limitedResponse.json().authorization.evidenceSurfaces, [
+    "transaction_request",
+  ]);
+  assert.deepEqual(limitedResponse.json().authorization.fieldScopes, [
+    "request_metadata",
+  ]);
+  assert.deepEqual(limitedResponse.json().trace, {
+    transactionRequest: {
+      id: "transaction-request-onboarding-001",
+      personId: "person-onboarding-001",
+      requestType: "hire",
+      statusCode: "completed",
+      correlationId: rootCorrelationId,
+    },
+  });
+  assert.doesNotMatch(
+    limitedResponse.body,
+    /approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|workEmailWritebackEventId|providerRefreshId|workEmailConflictId/u,
+  );
+
   onboardingDb.exec("DELETE FROM writeback_provider_refresh");
   const missingProviderRefreshResponse = await app.inject({
     method: "GET",
@@ -618,6 +640,52 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId fails closed witho
   assert.deepEqual(response.json(), {
     error: "MVP-A onboarding evidence access requires actor context",
   });
+});
+
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId validates tenant before trace lookup", async (t) => {
+  let traceLookupCount = 0;
+  const app = await buildApp({
+    auditTraceDb: {
+      prepare() {
+        traceLookupCount += 1;
+        throw new Error("trace lookup ran before tenant validation");
+      },
+    },
+  });
+  t.after(async () => {
+    await app.close();
+  });
+
+  const missingTenantResponse = await app.inject({
+    method: "GET",
+    url: "/audit/mvp-a/onboarding-correlations/correlation-before-tenant-001",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-people-ops-001",
+    },
+  });
+
+  assert.equal(missingTenantResponse.statusCode, 403);
+  assert.deepEqual(missingTenantResponse.json(), {
+    error:
+      "MVP-A onboarding evidence access requires tenant environment context",
+  });
+  assert.equal(traceLookupCount, 0);
+
+  const wrongTenantResponse = await app.inject({
+    method: "GET",
+    url: "/audit/mvp-a/onboarding-correlations/correlation-before-tenant-001",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-people-ops-001",
+      "x-hrcore-mvp-a-tenant-environment": "prod",
+    },
+  });
+
+  assert.equal(wrongTenantResponse.statusCode, 403);
+  assert.deepEqual(wrongTenantResponse.json(), {
+    error:
+      "MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment",
+  });
+  assert.equal(traceLookupCount, 0);
 });
 
 test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-linked operation correlation ids", async (t) => {

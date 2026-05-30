@@ -17,6 +17,7 @@ import {
   type MvpAOnboardingFieldScope,
   mvpAOnboardingEvidenceAuthorizationGate,
   type MvpAOnboardingEvidenceRuntimeAccessDecision,
+  validateMvpAOnboardingEvidenceRuntimeAccessContext,
 } from "./mvp-a-onboarding-evidence-authorization.js";
 import {
   MvpAOnboardingCorrelationTraceError,
@@ -77,13 +78,16 @@ export async function buildApp(
       const actorId = readSingleHeader(
         request.headers["x-hrcore-mvp-a-actor-id"],
       );
-      if (actorId === undefined || actorId.trim().length === 0) {
-        return reply.code(403).send({
-          error: "MVP-A onboarding evidence access requires actor context",
-        });
-      }
+      const tenantEnvironmentId = readSingleHeader(
+        request.headers["x-hrcore-mvp-a-tenant-environment"],
+      );
 
       try {
+        const runtimeAccessContext =
+          validateMvpAOnboardingEvidenceRuntimeAccessContext({
+            actorId,
+            tenantEnvironmentId,
+          });
         const trace = verifyMvpAOnboardingCorrelationTrace(auditTraceDb, {
           correlationId,
           requireApproval: true,
@@ -94,10 +98,8 @@ export async function buildApp(
         const accessDecision = authorizeMvpAOnboardingEvidenceRuntimeAccess(
           mvpAOnboardingEvidenceAuthorizationGate,
           {
-            actorId,
-            tenantEnvironmentId: readSingleHeader(
-              request.headers["x-hrcore-mvp-a-tenant-environment"],
-            ),
+            actorId: runtimeAccessContext.actorId,
+            tenantEnvironmentId: runtimeAccessContext.tenantEnvironmentId,
             requestOwnerActorId: trace.approvalAuditEvent?.actorId,
             requestedEvidenceSurfaces:
               readMvpAOnboardingEvidenceSurfacesHeader(
@@ -354,19 +356,96 @@ function buildMvpAOnboardingCorrelationTraceResponse(
       dataScopes: accessDecision.dataScopes,
       auditCorrelation: accessDecision.auditCorrelation,
     },
-    trace: {
-      transactionRequest: trace.transactionRequest,
-      approvalAuditEvent: trace.approvalAuditEvent,
-      applyAuditEvent: trace.applyAuditEvent,
-      auditEventCount: trace.auditEvents.length,
-      lifecycleEventId: trace.lifecycleEvent?.id ?? null,
-      applyJobAttemptCount: trace.applyJobAttempts.length,
-      workEmailWritebackEventId: trace.workEmailWriteback?.eventId ?? null,
-      providerRefreshId: trace.providerRefresh?.id ?? null,
-      workEmailConflictId: trace.workEmailConflict?.id ?? null,
-    },
+    trace: buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
+      trace,
+      accessDecision,
+    ),
     deferredProductionGates: trace.remainingP2A02Gates,
   };
+}
+
+function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
+  trace: MvpAOnboardingCorrelationTrace,
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "transaction_request",
+      "request_metadata",
+    )
+  ) {
+    summary.transactionRequest = trace.transactionRequest;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "audit_event",
+      "audit_evidence",
+    )
+  ) {
+    summary.approvalAuditEvent = trace.approvalAuditEvent;
+    summary.applyAuditEvent = trace.applyAuditEvent;
+    summary.auditEventCount = trace.auditEvents.length;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "lifecycle_event",
+      "lifecycle_evidence",
+    )
+  ) {
+    summary.lifecycleEventId = trace.lifecycleEvent?.id ?? null;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "apply_job_attempt",
+      "apply_job_attempt_evidence",
+    )
+  ) {
+    summary.applyJobAttemptCount = trace.applyJobAttempts.length;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "work_email_evidence",
+      "work_email_contact",
+    )
+  ) {
+    summary.workEmailWritebackEventId =
+      trace.workEmailWriteback?.eventId ?? null;
+    summary.workEmailConflictId = trace.workEmailConflict?.id ?? null;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "okta_projection",
+      "provider_projection",
+    )
+  ) {
+    summary.providerRefreshId = trace.providerRefresh?.id ?? null;
+  }
+
+  return summary;
+}
+
+function hasAuthorizedMvpAOnboardingTraceEvidence(
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+  evidenceSurface: MvpAOnboardingEvidenceSurface,
+  fieldScope: MvpAOnboardingFieldScope,
+): boolean {
+  return (
+    accessDecision.evidenceSurfaces.includes(evidenceSurface) &&
+    accessDecision.fieldScopes.includes(fieldScope)
+  );
 }
 
 function readSingleHeader(
