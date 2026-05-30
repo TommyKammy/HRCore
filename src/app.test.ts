@@ -21,6 +21,11 @@ const normalizeRow = <TRow extends Record<string, unknown>>(
   row: TRow | undefined,
 ): Record<string, unknown> | undefined => (row ? { ...row } : row);
 
+const mvpAOnboardingAuditHeaders = {
+  "x-hrcore-mvp-a-actor-id": "operator-people-ops-001",
+  "x-hrcore-mvp-a-tenant-environment": "repo_owned_synthetic_mvp_a_onboarding",
+};
+
 test("GET /health returns the smoke-test health response", async (t) => {
   const app = await buildApp();
   t.after(async () => {
@@ -286,9 +291,25 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       .$ref,
     "#/components/schemas/ErrorResponse",
   );
+  assert.equal(
+    auditTraceOperation.responses["403"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
+  );
   assert.match(
     auditTraceOperation.description,
-    /omits later-wave disclosure, archive, provider-search, and production field-permission behavior/u,
+    /runtime actor, tenant\/environment, field-scope, and data-scope checks/u,
+  );
+  assert.deepEqual(
+    auditTraceOperation.parameters
+      .filter((parameter: { in: string }) => parameter.in === "header")
+      .map((parameter: { name: string }) => parameter.name),
+    [
+      "x-hrcore-mvp-a-actor-id",
+      "x-hrcore-mvp-a-tenant-environment",
+      "x-hrcore-mvp-a-evidence-surfaces",
+      "x-hrcore-mvp-a-field-scopes",
+    ],
   );
   assert.deepEqual(
     contract.components.schemas.MvpAOnboardingCorrelationTraceSummary.required,
@@ -302,6 +323,16 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       "workEmailWritebackEventId",
       "providerRefreshId",
       "workEmailConflictId",
+    ],
+  );
+  assert.deepEqual(
+    contract.components.schemas.MvpAOnboardingCorrelationTraceResponse.required,
+    [
+      "correlationId",
+      "evidenceType",
+      "authorization",
+      "trace",
+      "deferredProductionGates",
     ],
   );
 });
@@ -412,6 +443,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   const response = await app.inject({
     method: "GET",
     url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: mvpAOnboardingAuditHeaders,
   });
 
   assert.equal(response.statusCode, 200);
@@ -422,6 +454,38 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   assert.deepEqual(response.json(), {
     correlationId: rootCorrelationId,
     evidenceType: "mvp_a_onboarding_correlation_trace",
+    authorization: {
+      decision: "allow",
+      gateId: "mvp_a_onboarding_evidence_authorization_v1",
+      actorId: "operator-people-ops-001",
+      tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      evidenceSurfaces: [
+        "transaction_request",
+        "audit_event",
+        "lifecycle_event",
+        "apply_job_attempt",
+        "okta_projection",
+        "work_email_evidence",
+      ],
+      fieldScopes: [
+        "request_metadata",
+        "audit_evidence",
+        "lifecycle_evidence",
+        "apply_job_attempt_evidence",
+        "provider_projection",
+        "work_email_contact",
+      ],
+      dataScopes: [
+        "same_onboarding_request",
+        "same_correlation_id",
+        "same_lifecycle_event",
+        "same_person",
+        "same_apply_job_attempt",
+        "same_mock_okta_projection",
+        "same_work_email_evidence_chain",
+      ],
+      auditCorrelation: "same_onboarding_request_or_linked_operation",
+    },
     trace: {
       transactionRequest: {
         id: "transaction-request-onboarding-001",
@@ -473,12 +537,86 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   const missingProviderRefreshResponse = await app.inject({
     method: "GET",
     url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: mvpAOnboardingAuditHeaders,
   });
 
   assert.equal(missingProviderRefreshResponse.statusCode, 409);
   assert.deepEqual(missingProviderRefreshResponse.json(), {
     error:
       "MVP-A onboarding trace requires provider refresh or conflict evidence linked to the writeback event",
+  });
+});
+
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId fails closed without actor context", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const rootCorrelationId = "correlation-onboarding-audit-missing-actor-001";
+  saveOnboardingTransactionRequest(
+    onboardingDb,
+    createOnboardingTransactionRequestFixture({
+      correlationId: rootCorrelationId,
+    }),
+  );
+  decideOnboardingTransactionRequest(onboardingDb, {
+    transactionRequestId: "transaction-request-onboarding-001",
+    decision: "approve",
+    decidedAt: "2026-05-21T01:00:00Z",
+    decidedBy: "operator-people-ops-001",
+    correlationId: rootCorrelationId,
+  });
+  await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+    onboardingDb,
+    {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    },
+  );
+  onboardingDb
+    .prepare(
+      `
+        INSERT INTO writeback_provider_refresh (
+          id,
+          writeback_event_id,
+          person_id,
+          contact_point_id,
+          provider_name,
+          provider_subject_id,
+          provider_value,
+          refreshed_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synthetic_poc')
+      `,
+    )
+    .run(
+      "synthetic-work-email-provider-refresh-audit-missing-actor-001",
+      "okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z",
+      "person-onboarding-001",
+      "contact-point-onboarding-001",
+      "synthetic_okta",
+      "synthetic-okta-user-person-onboarding-001",
+      "onboarding.hire.001@example.invalid",
+      "2026-05-21T03:00:00Z",
+      "okta:mock:work_email_writeback:create:EMP-ONBOARDING-001:2026-05-21T02%3A00%3A00Z:provider_refresh:2026-05-21T03%3A00%3A00Z",
+    );
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(response.json(), {
+    error: "MVP-A onboarding evidence access requires actor context",
   });
 });
 
@@ -555,6 +693,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId resolves root-link
     const response = await app.inject({
       method: "GET",
       url: `/audit/mvp-a/onboarding-correlations/${lookupCorrelationId}`,
+      headers: mvpAOnboardingAuditHeaders,
     });
 
     assert.equal(response.statusCode, 200);
@@ -624,6 +763,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId summarizes conflic
   const response = await app.inject({
     method: "GET",
     url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: mvpAOnboardingAuditHeaders,
   });
 
   assert.equal(response.statusCode, 200);
@@ -649,6 +789,7 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId does not map datab
   const response = await app.inject({
     method: "GET",
     url: "/audit/mvp-a/onboarding-correlations/correlation-db-failure-001",
+    headers: mvpAOnboardingAuditHeaders,
   });
 
   assert.equal(response.statusCode, 500);

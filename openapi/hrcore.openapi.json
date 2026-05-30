@@ -47,7 +47,7 @@
       "get": {
         "operationId": "getMvpAOnboardingCorrelationAuditTrace",
         "summary": "Inspect bounded MVP-A onboarding audit evidence by correlation ID",
-        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
+        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID after runtime actor, tenant/environment, field-scope, and data-scope checks. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
         "parameters": [
           {
             "name": "correlationId",
@@ -56,6 +56,40 @@
             "schema": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-actor-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-tenant-environment",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "const": "repo_owned_synthetic_mvp_a_onboarding"
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-evidence-surfaces",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-field-scopes",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -66,6 +100,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Runtime actor, tenant/environment, field-scope, or data-scope authorization failed closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -495,6 +539,7 @@
         "required": [
           "correlationId",
           "evidenceType",
+          "authorization",
           "trace",
           "deferredProductionGates"
         ],
@@ -506,6 +551,9 @@
             "type": "string",
             "const": "mvp_a_onboarding_correlation_trace"
           },
+          "authorization": {
+            "$ref": "#/components/schemas/MvpAOnboardingRuntimeAuthorizationDecision"
+          },
           "trace": {
             "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceSummary"
           },
@@ -514,6 +562,59 @@
             "items": {
               "type": "string"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingRuntimeAuthorizationDecision": {
+        "type": "object",
+        "required": [
+          "decision",
+          "gateId",
+          "actorId",
+          "tenantEnvironmentId",
+          "evidenceSurfaces",
+          "fieldScopes",
+          "dataScopes",
+          "auditCorrelation"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "const": "allow"
+          },
+          "gateId": {
+            "type": "string",
+            "const": "mvp_a_onboarding_evidence_authorization_v1"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "tenantEnvironmentId": {
+            "type": "string",
+            "const": "repo_owned_synthetic_mvp_a_onboarding"
+          },
+          "evidenceSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fieldScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auditCorrelation": {
+            "type": "string",
+            "const": "same_onboarding_request_or_linked_operation"
           }
         },
         "additionalProperties": false

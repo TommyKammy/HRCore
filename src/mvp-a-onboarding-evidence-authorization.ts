@@ -1,3 +1,9 @@
+import {
+  assertMvpAOnboardingTenantEnvironmentBinding,
+  assertMvpAOnboardingTrustedActorBinding,
+  mvpAOnboardingBindingGate,
+} from "./mvp-a-onboarding-binding-gate.js";
+
 export type MvpAOnboardingEvidenceSurface =
   | "transaction_request"
   | "person"
@@ -44,6 +50,29 @@ export interface MvpAOnboardingEvidenceAuthorizationGate {
   sourceAdr: "ADR 0011";
   classifications: readonly MvpAOnboardingEvidenceAuthorizationClassification[];
   outOfScope: readonly string[];
+}
+
+export interface MvpAOnboardingEvidenceRuntimeAccessInput {
+  actorId: string | undefined;
+  tenantEnvironmentId: string | undefined;
+  requestOwnerActorId: string | undefined;
+  requestedEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
+  requestedFieldScopes?: readonly MvpAOnboardingFieldScope[];
+}
+
+export interface MvpAOnboardingEvidenceRuntimeAccessDecision {
+  decision: "allow";
+  gateId: MvpAOnboardingEvidenceAuthorizationGate["gateId"];
+  actorId: string;
+  tenantEnvironmentId: string;
+  evidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
+  fieldScopes: readonly MvpAOnboardingFieldScope[];
+  dataScopes: readonly MvpAOnboardingDataScope[];
+  auditCorrelation: "same_onboarding_request_or_linked_operation";
+}
+
+export class MvpAOnboardingEvidenceAccessError extends Error {
+  override name = "MvpAOnboardingEvidenceAccessError";
 }
 
 const allowedFieldScopes: readonly MvpAOnboardingFieldScope[] = [
@@ -338,6 +367,105 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
   }
 }
 
+export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+  input: MvpAOnboardingEvidenceRuntimeAccessInput,
+): MvpAOnboardingEvidenceRuntimeAccessDecision {
+  try {
+    assertMvpAOnboardingEvidenceAuthorizationGate(gate);
+
+    const actorId = assertMvpAOnboardingTrustedActorBinding(
+      mvpAOnboardingBindingGate,
+      input.actorId,
+    );
+    const requestOwnerActorId = assertMvpAOnboardingTrustedActorBinding(
+      mvpAOnboardingBindingGate,
+      input.requestOwnerActorId,
+    );
+    if (actorId !== requestOwnerActorId) {
+      throw new Error(
+        "MVP-A onboarding evidence access requires actor to match the trusted request owner",
+      );
+    }
+
+    const tenantEnvironmentId = assertMvpAOnboardingTenantEnvironmentBinding(
+      mvpAOnboardingBindingGate,
+      input.tenantEnvironmentId,
+    );
+
+    if (input.requestedEvidenceSurfaces.length === 0) {
+      throw new Error(
+        "MVP-A onboarding evidence access requires at least one evidence surface",
+      );
+    }
+
+    const classificationsBySurface = new Map(
+      gate.classifications.map((classification) => [
+        classification.evidenceSurface,
+        classification,
+      ]),
+    );
+    const requestedSurfaceSet = new Set<MvpAOnboardingEvidenceSurface>();
+    const allowedFieldScopes = new Set<MvpAOnboardingFieldScope>();
+    const allowedDataScopes = new Set<MvpAOnboardingDataScope>();
+    for (const evidenceSurface of input.requestedEvidenceSurfaces) {
+      if (requestedSurfaceSet.has(evidenceSurface)) {
+        throw new Error(
+          `MVP-A onboarding evidence access duplicates ${evidenceSurface} evidence surface`,
+        );
+      }
+      requestedSurfaceSet.add(evidenceSurface);
+
+      const classification = classificationsBySurface.get(evidenceSurface);
+      if (classification === undefined) {
+        throw new Error(
+          `MVP-A onboarding evidence access rejects unclassified ${evidenceSurface} evidence surface`,
+        );
+      }
+      for (const fieldScope of classification.fieldScopes) {
+        allowedFieldScopes.add(fieldScope);
+      }
+      for (const dataScope of classification.dataScopes) {
+        allowedDataScopes.add(dataScope);
+      }
+    }
+
+    const requestedFieldScopes = input.requestedFieldScopes ?? [
+      ...allowedFieldScopes,
+    ];
+    if (requestedFieldScopes.length === 0) {
+      throw new Error(
+        "MVP-A onboarding evidence access requires at least one field scope",
+      );
+    }
+
+    const authorizedFieldScopes = new Set<MvpAOnboardingFieldScope>();
+    for (const fieldScope of requestedFieldScopes) {
+      if (!allowedFieldScopes.has(fieldScope)) {
+        throw new Error(
+          `MVP-A onboarding evidence access rejects forbidden ${fieldScope} field scope`,
+        );
+      }
+      authorizedFieldScopes.add(fieldScope);
+    }
+
+    return Object.freeze({
+      decision: "allow" as const,
+      gateId: gate.gateId,
+      actorId,
+      tenantEnvironmentId,
+      evidenceSurfaces: Object.freeze([...requestedSurfaceSet]),
+      fieldScopes: Object.freeze([...authorizedFieldScopes]),
+      dataScopes: Object.freeze([...allowedDataScopes]),
+      auditCorrelation: "same_onboarding_request_or_linked_operation" as const,
+    });
+  } catch (error) {
+    throw new MvpAOnboardingEvidenceAccessError(
+      normalizeMvpAOnboardingEvidenceAccessError(error),
+    );
+  }
+}
+
 function hasSameScopeSet(
   actualScopes: readonly string[],
   expectedScopes: readonly string[],
@@ -349,4 +477,22 @@ function hasSameScopeSet(
   if (actualScopeSet.size !== actualScopes.length) return false;
 
   return actualScopes.every((scope) => expectedScopeSet.has(scope));
+}
+
+function normalizeMvpAOnboardingEvidenceAccessError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message ===
+    "MVP-A onboarding binding gate requires explicit trusted actor evidence"
+  ) {
+    return "MVP-A onboarding evidence access requires actor context";
+  }
+  if (
+    message ===
+    "MVP-A onboarding binding gate requires explicit tenant environment evidence"
+  ) {
+    return "MVP-A onboarding evidence access requires tenant environment context";
+  }
+
+  return message;
 }

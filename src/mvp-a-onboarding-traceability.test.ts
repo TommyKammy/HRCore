@@ -6,6 +6,7 @@ import test from "node:test";
 import { buildOktaMasteringAdapter } from "./okta-mastering-adapter.js";
 import {
   assertMvpAOnboardingEvidenceAuthorizationGate,
+  authorizeMvpAOnboardingEvidenceRuntimeAccess,
   mvpAOnboardingEvidenceAuthorizationGate,
 } from "./mvp-a-onboarding-evidence-authorization.js";
 import {
@@ -38,6 +39,11 @@ const unsafeMvpAOnboardingEvidenceAuthorizationGate = (
   gate: unknown,
 ): Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0] =>
   gate as Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0];
+
+const unsafeMvpAOnboardingEvidenceRuntimeAccessInput = (
+  input: unknown,
+): Parameters<typeof authorizeMvpAOnboardingEvidenceRuntimeAccess>[1] =>
+  input as Parameters<typeof authorizeMvpAOnboardingEvidenceRuntimeAccess>[1];
 
 const readCommittedMigrationSql = async (): Promise<string> => {
   const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
@@ -1193,6 +1199,86 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
   );
   assertMvpAOnboardingEvidenceAuthorizationGate(
     mvpAOnboardingEvidenceAuthorizationGate,
+  );
+});
+
+test("MVP-A onboarding evidence runtime access rejects missing scope and forbidden fields", () => {
+  const baseAccessInput = {
+    actorId: "operator-people-ops-001",
+    tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+    requestOwnerActorId: "operator-people-ops-001",
+    requestedEvidenceSurfaces: ["transaction_request", "audit_event"],
+  } as const;
+
+  assert.deepEqual(
+    authorizeMvpAOnboardingEvidenceRuntimeAccess(
+      mvpAOnboardingEvidenceAuthorizationGate,
+      baseAccessInput,
+    ),
+    {
+      decision: "allow",
+      gateId: "mvp_a_onboarding_evidence_authorization_v1",
+      actorId: "operator-people-ops-001",
+      tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      evidenceSurfaces: ["transaction_request", "audit_event"],
+      fieldScopes: ["request_metadata", "audit_evidence"],
+      dataScopes: ["same_onboarding_request", "same_correlation_id"],
+      auditCorrelation: "same_onboarding_request_or_linked_operation",
+    },
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        { ...baseAccessInput, actorId: undefined },
+      ),
+    /MVP-A onboarding evidence access requires actor context/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        { ...baseAccessInput, actorId: "operator-people-ops-002" },
+      ),
+    /MVP-A onboarding evidence access requires actor to match the trusted request owner/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        {
+          ...baseAccessInput,
+          tenantEnvironmentId: "tenant-from-branch-name",
+        },
+      ),
+    /MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        unsafeMvpAOnboardingEvidenceRuntimeAccessInput({
+          ...baseAccessInput,
+          requestedEvidenceSurfaces: ["transaction_request", "payroll_export"],
+        }),
+      ),
+    /MVP-A onboarding evidence access rejects unclassified payroll_export evidence surface/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        unsafeMvpAOnboardingEvidenceRuntimeAccessInput({
+          ...baseAccessInput,
+          requestedFieldScopes: ["request_metadata", "work_email_contact"],
+        }),
+      ),
+    /MVP-A onboarding evidence access rejects forbidden work_email_contact field scope/u,
   );
 });
 

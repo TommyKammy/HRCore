@@ -11,6 +11,14 @@ import {
 import { loadOpenApiContract } from "./openapi.js";
 import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import {
+  authorizeMvpAOnboardingEvidenceRuntimeAccess,
+  MvpAOnboardingEvidenceAccessError,
+  type MvpAOnboardingEvidenceSurface,
+  type MvpAOnboardingFieldScope,
+  mvpAOnboardingEvidenceAuthorizationGate,
+  type MvpAOnboardingEvidenceRuntimeAccessDecision,
+} from "./mvp-a-onboarding-evidence-authorization.js";
+import {
   MvpAOnboardingCorrelationTraceError,
   verifyMvpAOnboardingCorrelationTrace,
   type MvpAOnboardingCorrelationTrace,
@@ -66,6 +74,14 @@ export async function buildApp(
 
       const params = request.params as { correlationId?: string };
       const correlationId = params.correlationId ?? "";
+      const actorId = readSingleHeader(
+        request.headers["x-hrcore-mvp-a-actor-id"],
+      );
+      if (actorId === undefined || actorId.trim().length === 0) {
+        return reply.code(403).send({
+          error: "MVP-A onboarding evidence access requires actor context",
+        });
+      }
 
       try {
         const trace = verifyMvpAOnboardingCorrelationTrace(auditTraceDb, {
@@ -75,11 +91,36 @@ export async function buildApp(
           requireWriteback: true,
           requireProviderRefresh: true,
         });
+        const accessDecision = authorizeMvpAOnboardingEvidenceRuntimeAccess(
+          mvpAOnboardingEvidenceAuthorizationGate,
+          {
+            actorId,
+            tenantEnvironmentId: readSingleHeader(
+              request.headers["x-hrcore-mvp-a-tenant-environment"],
+            ),
+            requestOwnerActorId: trace.approvalAuditEvent?.actorId,
+            requestedEvidenceSurfaces:
+              readMvpAOnboardingEvidenceSurfacesHeader(
+                request.headers["x-hrcore-mvp-a-evidence-surfaces"],
+              ) ?? defaultMvpAOnboardingTraceSummaryEvidenceSurfaces,
+            requestedFieldScopes: readMvpAOnboardingFieldScopesHeader(
+              request.headers["x-hrcore-mvp-a-field-scopes"],
+            ),
+          },
+        );
 
         return reply.send(
-          buildMvpAOnboardingCorrelationTraceResponse(correlationId, trace),
+          buildMvpAOnboardingCorrelationTraceResponse(
+            correlationId,
+            trace,
+            accessDecision,
+          ),
         );
       } catch (error) {
+        if (error instanceof MvpAOnboardingEvidenceAccessError) {
+          return reply.code(403).send({ error: error.message });
+        }
+
         if (error instanceof MvpAOnboardingCorrelationTraceError) {
           return reply.code(409).send({ error: error.message });
         }
@@ -285,13 +326,34 @@ export async function buildApp(
   return app;
 }
 
+const defaultMvpAOnboardingTraceSummaryEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[] =
+  [
+    "transaction_request",
+    "audit_event",
+    "lifecycle_event",
+    "apply_job_attempt",
+    "okta_projection",
+    "work_email_evidence",
+  ];
+
 function buildMvpAOnboardingCorrelationTraceResponse(
   correlationId: string,
   trace: MvpAOnboardingCorrelationTrace,
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
 ) {
   return {
     correlationId,
     evidenceType: "mvp_a_onboarding_correlation_trace" as const,
+    authorization: {
+      decision: accessDecision.decision,
+      gateId: accessDecision.gateId,
+      actorId: accessDecision.actorId,
+      tenantEnvironmentId: accessDecision.tenantEnvironmentId,
+      evidenceSurfaces: accessDecision.evidenceSurfaces,
+      fieldScopes: accessDecision.fieldScopes,
+      dataScopes: accessDecision.dataScopes,
+      auditCorrelation: accessDecision.auditCorrelation,
+    },
     trace: {
       transactionRequest: trace.transactionRequest,
       approvalAuditEvent: trace.approvalAuditEvent,
@@ -305,6 +367,36 @@ function buildMvpAOnboardingCorrelationTraceResponse(
     },
     deferredProductionGates: trace.remainingP2A02Gates,
   };
+}
+
+function readSingleHeader(
+  value: string | string[] | undefined,
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function readMvpAOnboardingEvidenceSurfacesHeader(
+  value: string | string[] | undefined,
+): MvpAOnboardingEvidenceSurface[] | undefined {
+  return readCsvHeader(value) as MvpAOnboardingEvidenceSurface[] | undefined;
+}
+
+function readMvpAOnboardingFieldScopesHeader(
+  value: string | string[] | undefined,
+): MvpAOnboardingFieldScope[] | undefined {
+  return readCsvHeader(value) as MvpAOnboardingFieldScope[] | undefined;
+}
+
+function readCsvHeader(
+  value: string | string[] | undefined,
+): string[] | undefined {
+  const rawValue = readSingleHeader(value);
+  if (rawValue === undefined) return undefined;
+
+  return rawValue
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 }
 
 function renderOnboardingWizard(): string {
