@@ -11,7 +11,18 @@ import {
 import { loadOpenApiContract } from "./openapi.js";
 import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import {
+  authorizeMvpAOnboardingEvidenceRuntimeAccess,
+  MvpAOnboardingEvidenceAccessError,
+  type MvpAOnboardingEvidenceSurface,
+  type MvpAOnboardingFieldScope,
+  mvpAOnboardingEvidenceAuthorizationGate,
+  type MvpAOnboardingEvidenceRuntimeAccessDecision,
+  validateMvpAOnboardingEvidenceRuntimeAccessContext,
+  validateMvpAOnboardingEvidenceScopeRequest,
+} from "./mvp-a-onboarding-evidence-authorization.js";
+import {
   MvpAOnboardingCorrelationTraceError,
+  readMvpAOnboardingCorrelationRequestOwnerActorId,
   verifyMvpAOnboardingCorrelationTrace,
   type MvpAOnboardingCorrelationTrace,
   type MvpAOnboardingTraceabilityDatabase,
@@ -66,20 +77,65 @@ export async function buildApp(
 
       const params = request.params as { correlationId?: string };
       const correlationId = params.correlationId ?? "";
+      const actorId = readSingleHeader(
+        request.headers["x-hrcore-mvp-a-actor-id"],
+      );
+      const tenantEnvironmentId = readSingleHeader(
+        request.headers["x-hrcore-mvp-a-tenant-environment"],
+      );
 
       try {
+        const runtimeAccessContext =
+          validateMvpAOnboardingEvidenceRuntimeAccessContext({
+            actorId,
+            tenantEnvironmentId,
+          });
+        const requestedEvidenceSurfaces =
+          readMvpAOnboardingEvidenceSurfacesHeader(
+            request.headers["x-hrcore-mvp-a-evidence-surfaces"],
+          ) ?? defaultMvpAOnboardingTraceSummaryEvidenceSurfaces;
+        const requestedFieldScopes = readMvpAOnboardingFieldScopesHeader(
+          request.headers["x-hrcore-mvp-a-field-scopes"],
+        );
+        const validatedScopeRequest =
+          validateMvpAOnboardingEvidenceScopeRequest(
+            mvpAOnboardingEvidenceAuthorizationGate,
+            {
+              requestedEvidenceSurfaces,
+              requestedFieldScopes,
+            },
+          );
+        const requestOwnerActorId =
+          readMvpAOnboardingCorrelationRequestOwnerActorId(auditTraceDb, {
+            correlationId,
+          });
+        const accessDecision = authorizeMvpAOnboardingEvidenceRuntimeAccess(
+          mvpAOnboardingEvidenceAuthorizationGate,
+          {
+            actorId: runtimeAccessContext.actorId,
+            tenantEnvironmentId: runtimeAccessContext.tenantEnvironmentId,
+            requestOwnerActorId,
+            requestedEvidenceSurfaces: validatedScopeRequest.evidenceSurfaces,
+            requestedFieldScopes: validatedScopeRequest.fieldScopes,
+          },
+        );
         const trace = verifyMvpAOnboardingCorrelationTrace(auditTraceDb, {
           correlationId,
-          requireApproval: true,
-          requireApply: true,
-          requireWriteback: true,
-          requireProviderRefresh: true,
+          ...buildMvpAOnboardingTraceVerificationRequirements(accessDecision),
         });
 
         return reply.send(
-          buildMvpAOnboardingCorrelationTraceResponse(correlationId, trace),
+          buildMvpAOnboardingCorrelationTraceResponse(
+            correlationId,
+            trace,
+            accessDecision,
+          ),
         );
       } catch (error) {
+        if (error instanceof MvpAOnboardingEvidenceAccessError) {
+          return reply.code(403).send({ error: error.message });
+        }
+
         if (error instanceof MvpAOnboardingCorrelationTraceError) {
           return reply.code(409).send({ error: error.message });
         }
@@ -285,26 +341,301 @@ export async function buildApp(
   return app;
 }
 
+const defaultMvpAOnboardingTraceSummaryEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[] =
+  [
+    "transaction_request",
+    "person",
+    "audit_event",
+    "lifecycle_event",
+    "apply_job_attempt",
+    "okta_projection",
+    "work_email_evidence",
+  ];
+
 function buildMvpAOnboardingCorrelationTraceResponse(
   correlationId: string,
   trace: MvpAOnboardingCorrelationTrace,
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
 ) {
   return {
     correlationId,
     evidenceType: "mvp_a_onboarding_correlation_trace" as const,
-    trace: {
-      transactionRequest: trace.transactionRequest,
-      approvalAuditEvent: trace.approvalAuditEvent,
-      applyAuditEvent: trace.applyAuditEvent,
-      auditEventCount: trace.auditEvents.length,
-      lifecycleEventId: trace.lifecycleEvent?.id ?? null,
-      applyJobAttemptCount: trace.applyJobAttempts.length,
-      workEmailWritebackEventId: trace.workEmailWriteback?.eventId ?? null,
-      providerRefreshId: trace.providerRefresh?.id ?? null,
-      workEmailConflictId: trace.workEmailConflict?.id ?? null,
+    authorization: {
+      decision: accessDecision.decision,
+      gateId: accessDecision.gateId,
+      actorId: accessDecision.actorId,
+      tenantEnvironmentId: accessDecision.tenantEnvironmentId,
+      evidenceSurfaces: accessDecision.evidenceSurfaces,
+      fieldScopes: accessDecision.fieldScopes,
+      dataScopes: accessDecision.dataScopes,
+      auditCorrelation: accessDecision.auditCorrelation,
     },
+    trace: buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
+      trace,
+      accessDecision,
+    ),
     deferredProductionGates: trace.remainingP2A02Gates,
   };
+}
+
+function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
+  trace: MvpAOnboardingCorrelationTrace,
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "transaction_request",
+      "request_metadata",
+    )
+  ) {
+    summary.transactionRequest =
+      buildAuthorizedMvpAOnboardingTransactionRequestTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "person",
+      "person_identity",
+    )
+  ) {
+    summary.person = buildAuthorizedMvpAOnboardingPersonTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "employment",
+      "employment_status",
+    )
+  ) {
+    summary.employment = buildAuthorizedMvpAOnboardingEmploymentTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "assignment",
+      "assignment_reference",
+    )
+  ) {
+    summary.assignment = buildAuthorizedMvpAOnboardingAssignmentTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "audit_event",
+      "audit_evidence",
+    )
+  ) {
+    summary.approvalAuditEvent = trace.approvalAuditEvent;
+    summary.applyAuditEvent = trace.applyAuditEvent;
+    summary.auditEventCount = trace.auditEvents.length;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "lifecycle_event",
+      "lifecycle_evidence",
+    )
+  ) {
+    summary.lifecycleEventId = trace.lifecycleEvent?.id ?? null;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "apply_job_attempt",
+      "apply_job_attempt_evidence",
+    )
+  ) {
+    summary.applyJobAttemptCount = trace.applyJobAttempts.length;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "work_email_evidence",
+      "work_email_contact",
+    )
+  ) {
+    summary.workEmailWritebackEventId =
+      trace.workEmailWriteback?.eventId ?? null;
+    summary.workEmailConflictId = trace.inboundWorkEmailConflict?.id ?? null;
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "okta_projection",
+      "provider_projection",
+    )
+  ) {
+    summary.providerRefreshId = trace.providerRefresh?.id ?? null;
+    if (
+      trace.providerRefresh === undefined &&
+      trace.providerRefreshConflict !== undefined
+    ) {
+      summary.providerRefreshConflictId = trace.providerRefreshConflict.id;
+    }
+  }
+
+  return summary;
+}
+
+function buildMvpAOnboardingTraceVerificationRequirements(
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+) {
+  const requiresApplyEvidence =
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "audit_event",
+      "audit_evidence",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "lifecycle_event",
+      "lifecycle_evidence",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "apply_job_attempt",
+      "apply_job_attempt_evidence",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "employment",
+      "employment_status",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "assignment",
+      "assignment_reference",
+    );
+  const requiresApplyJobAttemptEvidence =
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "apply_job_attempt",
+      "apply_job_attempt_evidence",
+    );
+  const requiresWorkEmailEvidence = hasAuthorizedMvpAOnboardingTraceEvidence(
+    accessDecision,
+    "work_email_evidence",
+    "work_email_contact",
+  );
+  const requiresProviderProjection = hasAuthorizedMvpAOnboardingTraceEvidence(
+    accessDecision,
+    "okta_projection",
+    "provider_projection",
+  );
+
+  return {
+    requireApproval: true,
+    requireApply:
+      requiresApplyEvidence ||
+      requiresWorkEmailEvidence ||
+      requiresProviderProjection,
+    requireApplyJobAttempt: requiresApplyJobAttemptEvidence,
+    requireWriteback: requiresWorkEmailEvidence || requiresProviderProjection,
+    requireProviderRefresh: requiresProviderProjection,
+  };
+}
+
+function buildAuthorizedMvpAOnboardingTransactionRequestTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string> {
+  return {
+    id: trace.transactionRequest.id,
+    requestType: trace.transactionRequest.requestType,
+    statusCode: trace.transactionRequest.statusCode,
+    correlationId: trace.transactionRequest.correlationId,
+  };
+}
+
+function buildAuthorizedMvpAOnboardingPersonTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string> {
+  return {
+    id: trace.transactionRequest.personId,
+  };
+}
+
+function buildAuthorizedMvpAOnboardingEmploymentTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string | null> {
+  const employment = trace.employment;
+  if (employment === undefined) return {};
+
+  return {
+    id: employment.id,
+    employmentCode: employment.employmentCode,
+    statusCode: employment.statusCode,
+    startDate: employment.startDate,
+    endDate: employment.endDate,
+  };
+}
+
+function buildAuthorizedMvpAOnboardingAssignmentTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string | null> {
+  const assignment = trace.assignment;
+  if (assignment === undefined) return {};
+
+  return {
+    id: assignment.id,
+    employmentId: assignment.employmentId,
+    assignmentCode: assignment.assignmentCode,
+    organizationCode: assignment.organizationCode,
+    positionCode: assignment.positionCode,
+    startDate: assignment.startDate,
+    endDate: assignment.endDate,
+  };
+}
+
+function hasAuthorizedMvpAOnboardingTraceEvidence(
+  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+  evidenceSurface: MvpAOnboardingEvidenceSurface,
+  fieldScope: MvpAOnboardingFieldScope,
+): boolean {
+  return (
+    accessDecision.evidenceSurfaces.includes(evidenceSurface) &&
+    accessDecision.fieldScopes.includes(fieldScope)
+  );
+}
+
+function readSingleHeader(
+  value: string | string[] | undefined,
+): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function readMvpAOnboardingEvidenceSurfacesHeader(
+  value: string | string[] | undefined,
+): MvpAOnboardingEvidenceSurface[] | undefined {
+  return readCsvHeader(value) as MvpAOnboardingEvidenceSurface[] | undefined;
+}
+
+function readMvpAOnboardingFieldScopesHeader(
+  value: string | string[] | undefined,
+): MvpAOnboardingFieldScope[] | undefined {
+  return readCsvHeader(value) as MvpAOnboardingFieldScope[] | undefined;
+}
+
+function readCsvHeader(
+  value: string | string[] | undefined,
+): string[] | undefined {
+  const rawValue = readSingleHeader(value);
+  if (rawValue === undefined) return undefined;
+
+  return rawValue
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 }
 
 function renderOnboardingWizard(): string {

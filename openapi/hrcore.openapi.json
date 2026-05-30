@@ -47,7 +47,7 @@
       "get": {
         "operationId": "getMvpAOnboardingCorrelationAuditTrace",
         "summary": "Inspect bounded MVP-A onboarding audit evidence by correlation ID",
-        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
+        "description": "Returns the repo-owned MVP-A onboarding correlation trace summary for one explicit correlation ID after runtime actor, tenant/environment, field-scope, and data-scope checks plus request-owner binding. Requested scope headers and request-owner binding are validated before the full trace verifier returns correlation-specific evidence. Trace summary fields are filtered to the authorized evidence surfaces and field scopes. This bounded surface fails closed when required linked evidence is missing and omits later-wave disclosure, archive, provider-search, and production field-permission behavior.",
         "parameters": [
           {
             "name": "correlationId",
@@ -56,6 +56,40 @@
             "schema": {
               "type": "string",
               "minLength": 1
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-actor-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-tenant-environment",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "const": "repo_owned_synthetic_mvp_a_onboarding"
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-evidence-surfaces",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-field-scopes",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -66,6 +100,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Runtime actor, tenant/environment, field-scope, or data-scope authorization failed closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -495,6 +539,7 @@
         "required": [
           "correlationId",
           "evidenceType",
+          "authorization",
           "trace",
           "deferredProductionGates"
         ],
@@ -505,6 +550,9 @@
           "evidenceType": {
             "type": "string",
             "const": "mvp_a_onboarding_correlation_trace"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/MvpAOnboardingRuntimeAuthorizationDecision"
           },
           "trace": {
             "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceSummary"
@@ -518,22 +566,73 @@
         },
         "additionalProperties": false
       },
-      "MvpAOnboardingCorrelationTraceSummary": {
+      "MvpAOnboardingRuntimeAuthorizationDecision": {
         "type": "object",
         "required": [
-          "transactionRequest",
-          "approvalAuditEvent",
-          "applyAuditEvent",
-          "auditEventCount",
-          "lifecycleEventId",
-          "applyJobAttemptCount",
-          "workEmailWritebackEventId",
-          "providerRefreshId",
-          "workEmailConflictId"
+          "decision",
+          "gateId",
+          "actorId",
+          "tenantEnvironmentId",
+          "evidenceSurfaces",
+          "fieldScopes",
+          "dataScopes",
+          "auditCorrelation"
         ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "const": "allow"
+          },
+          "gateId": {
+            "type": "string",
+            "const": "mvp_a_onboarding_evidence_authorization_v1"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "tenantEnvironmentId": {
+            "type": "string",
+            "const": "repo_owned_synthetic_mvp_a_onboarding"
+          },
+          "evidenceSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fieldScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auditCorrelation": {
+            "type": "string",
+            "const": "same_onboarding_request_or_linked_operation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingCorrelationTraceSummary": {
+        "type": "object",
         "properties": {
           "transactionRequest": {
             "$ref": "#/components/schemas/MvpAOnboardingTransactionTrace"
+          },
+          "person": {
+            "$ref": "#/components/schemas/MvpAOnboardingPersonTrace"
+          },
+          "employment": {
+            "$ref": "#/components/schemas/MvpAOnboardingEmploymentTrace"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/MvpAOnboardingAssignmentTrace"
           },
           "approvalAuditEvent": {
             "$ref": "#/components/schemas/MvpAOnboardingAuditEventTrace"
@@ -558,6 +657,9 @@
           "providerRefreshId": {
             "type": ["string", "null"]
           },
+          "providerRefreshConflictId": {
+            "type": ["string", "null"]
+          },
           "workEmailConflictId": {
             "type": ["string", "null"]
           }
@@ -566,18 +668,9 @@
       },
       "MvpAOnboardingTransactionTrace": {
         "type": "object",
-        "required": [
-          "id",
-          "personId",
-          "requestType",
-          "statusCode",
-          "correlationId"
-        ],
+        "required": ["id", "requestType", "statusCode", "correlationId"],
         "properties": {
           "id": {
-            "type": "string"
-          },
-          "personId": {
             "type": "string"
           },
           "requestType": {
@@ -586,10 +679,85 @@
           },
           "statusCode": {
             "type": "string",
-            "const": "completed"
+            "enum": ["approved", "completed"]
           },
           "correlationId": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingPersonTrace": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingEmploymentTrace": {
+        "type": "object",
+        "required": [
+          "id",
+          "employmentCode",
+          "statusCode",
+          "startDate",
+          "endDate"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employmentCode": {
+            "type": "string"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["active", "inactive", "terminated"]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": ["string", "null"]
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingAssignmentTrace": {
+        "type": "object",
+        "required": [
+          "id",
+          "employmentId",
+          "assignmentCode",
+          "organizationCode",
+          "positionCode",
+          "startDate",
+          "endDate"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "employmentId": {
+            "type": "string"
+          },
+          "assignmentCode": {
+            "type": "string"
+          },
+          "organizationCode": {
+            "type": "string"
+          },
+          "positionCode": {
+            "type": ["string", "null"]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": ["string", "null"]
           }
         },
         "additionalProperties": false

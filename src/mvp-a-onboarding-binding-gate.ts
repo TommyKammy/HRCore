@@ -183,6 +183,34 @@ export function assertMvpAOnboardingBindingGateEvidence(
   }
 }
 
+export function assertMvpAOnboardingTrustedActorBinding(
+  gate: MvpAOnboardingBindingGate,
+  actorId: string | undefined,
+): string {
+  assertMvpAOnboardingBindingGate(gate);
+  const trustedActorId = requireBoundBinding("trusted actor", actorId);
+  requireTrustedSyntheticActor(gate, trustedActorId);
+  return trustedActorId;
+}
+
+export function assertMvpAOnboardingTenantEnvironmentBinding(
+  gate: MvpAOnboardingBindingGate,
+  tenantEnvironmentId: string | undefined,
+): string {
+  assertMvpAOnboardingBindingGate(gate);
+  const boundTenantEnvironmentId = requireBoundBinding(
+    "tenant environment",
+    tenantEnvironmentId,
+  );
+  if (boundTenantEnvironmentId !== gate.syntheticTenantEnvironmentId) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment",
+    );
+  }
+
+  return boundTenantEnvironmentId;
+}
+
 function requireEffectiveSyntheticActor(
   gate: MvpAOnboardingBindingGate,
   actorId: string,

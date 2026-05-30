@@ -6,6 +6,7 @@ import test from "node:test";
 import { buildOktaMasteringAdapter } from "./okta-mastering-adapter.js";
 import {
   assertMvpAOnboardingEvidenceAuthorizationGate,
+  authorizeMvpAOnboardingEvidenceRuntimeAccess,
   mvpAOnboardingEvidenceAuthorizationGate,
 } from "./mvp-a-onboarding-evidence-authorization.js";
 import {
@@ -38,6 +39,11 @@ const unsafeMvpAOnboardingEvidenceAuthorizationGate = (
   gate: unknown,
 ): Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0] =>
   gate as Parameters<typeof assertMvpAOnboardingEvidenceAuthorizationGate>[0];
+
+const unsafeMvpAOnboardingEvidenceRuntimeAccessInput = (
+  input: unknown,
+): Parameters<typeof authorizeMvpAOnboardingEvidenceRuntimeAccess>[1] =>
+  input as Parameters<typeof authorizeMvpAOnboardingEvidenceRuntimeAccess>[1];
 
 const readCommittedMigrationSql = async (): Promise<string> => {
   const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
@@ -392,18 +398,17 @@ test("MVP-A onboarding trace includes representative failure and partial-success
       "inbound_value_conflict",
     );
     assert.equal(conflictTrace.providerRefresh, undefined);
-    const inboundConflictTrace = verifyMvpAOnboardingCorrelationTrace(db, {
-      correlationId: "correlation-onboarding-writeback-conflict-001",
-      requireApproval: true,
-      requireApply: true,
-      requireWriteback: true,
-      requireProviderRefresh: true,
-    });
-    assert.equal(
-      inboundConflictTrace.workEmailConflict?.conflictType,
-      "inbound_value_conflict",
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: "correlation-onboarding-writeback-conflict-001",
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: true,
+          requireProviderRefresh: true,
+        }),
+      /MVP-A onboarding trace requires provider refresh or provider refresh conflict evidence linked to the writeback event/u,
     );
-    assert.equal(inboundConflictTrace.providerRefresh, undefined);
     db.prepare(
       `
         INSERT INTO writeback_work_email_conflict (
@@ -513,6 +518,98 @@ test("MVP-A onboarding trace fails closed when required apply evidence is missin
           requireProviderRefresh: false,
         }),
       /MVP-A onboarding trace requires lifecycle apply evidence/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-A onboarding trace selects applied employment and assignment evidence by payload ids", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-onboarding-payload-id-link-001";
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: rootCorrelationId,
+    });
+    await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    });
+
+    assert.doesNotThrow(() =>
+      verifyMvpAOnboardingCorrelationTrace(db, {
+        correlationId: rootCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireWriteback: false,
+        requireProviderRefresh: false,
+      }),
+    );
+
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = json_set(payload_json, '$.employment.id', ?)
+        WHERE id = ?
+      `,
+    ).run(
+      "employment-onboarding-payload-mismatch-001",
+      "transaction-request-onboarding-001",
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires employment status evidence linked to the correlated transaction request/u,
+    );
+
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = json_set(
+          payload_json,
+          '$.employment.id',
+          ?,
+          '$.assignment.id',
+          ?
+        )
+        WHERE id = ?
+      `,
+    ).run(
+      "employment-onboarding-001",
+      "assignment-onboarding-payload-mismatch-001",
+      "transaction-request-onboarding-001",
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires assignment reference evidence linked to the correlated transaction request/u,
     );
   } finally {
     db.close();
@@ -1193,6 +1290,86 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
   );
   assertMvpAOnboardingEvidenceAuthorizationGate(
     mvpAOnboardingEvidenceAuthorizationGate,
+  );
+});
+
+test("MVP-A onboarding evidence runtime access rejects missing scope and forbidden fields", () => {
+  const baseAccessInput = {
+    actorId: "operator-people-ops-001",
+    tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+    requestOwnerActorId: "operator-people-ops-001",
+    requestedEvidenceSurfaces: ["transaction_request", "audit_event"],
+  } as const;
+
+  assert.deepEqual(
+    authorizeMvpAOnboardingEvidenceRuntimeAccess(
+      mvpAOnboardingEvidenceAuthorizationGate,
+      baseAccessInput,
+    ),
+    {
+      decision: "allow",
+      gateId: "mvp_a_onboarding_evidence_authorization_v1",
+      actorId: "operator-people-ops-001",
+      tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      evidenceSurfaces: ["transaction_request", "audit_event"],
+      fieldScopes: ["request_metadata", "audit_evidence"],
+      dataScopes: ["same_onboarding_request", "same_correlation_id"],
+      auditCorrelation: "same_onboarding_request_or_linked_operation",
+    },
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        { ...baseAccessInput, actorId: undefined },
+      ),
+    /MVP-A onboarding evidence access requires actor context/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        { ...baseAccessInput, actorId: "operator-people-ops-002" },
+      ),
+    /MVP-A onboarding evidence access requires actor to match the trusted request owner/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        {
+          ...baseAccessInput,
+          tenantEnvironmentId: "tenant-from-branch-name",
+        },
+      ),
+    /MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        unsafeMvpAOnboardingEvidenceRuntimeAccessInput({
+          ...baseAccessInput,
+          requestedEvidenceSurfaces: ["transaction_request", "payroll_export"],
+        }),
+      ),
+    /MVP-A onboarding evidence access rejects unclassified payroll_export evidence surface/u,
+  );
+
+  assert.throws(
+    () =>
+      authorizeMvpAOnboardingEvidenceRuntimeAccess(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        unsafeMvpAOnboardingEvidenceRuntimeAccessInput({
+          ...baseAccessInput,
+          requestedFieldScopes: ["request_metadata", "work_email_contact"],
+        }),
+      ),
+    /MVP-A onboarding evidence access rejects forbidden work_email_contact field scope/u,
   );
 });
 

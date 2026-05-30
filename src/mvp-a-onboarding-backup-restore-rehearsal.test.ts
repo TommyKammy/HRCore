@@ -50,6 +50,18 @@ test("MVP-A onboarding backup/restore rehearsal re-verifies restored synthetic e
     providerFailure: "completed",
     writebackConflict: "completed",
   });
+  assert.equal(
+    restoredDb
+      .prepare(
+        `
+          SELECT count(*) AS count
+          FROM writeback_work_email_conflict
+          WHERE conflict_type = 'inbound_value_conflict'
+        `,
+      )
+      .get()?.count,
+    1,
+  );
   assert.deepEqual(result.remainingBackupReadinessGaps, [
     "production RTO/RPO acceptance",
     "cloud snapshot or PITR integration",

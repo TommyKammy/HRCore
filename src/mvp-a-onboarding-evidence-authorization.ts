@@ -1,3 +1,9 @@
+import {
+  assertMvpAOnboardingTenantEnvironmentBinding,
+  assertMvpAOnboardingTrustedActorBinding,
+  mvpAOnboardingBindingGate,
+} from "./mvp-a-onboarding-binding-gate.js";
+
 export type MvpAOnboardingEvidenceSurface =
   | "transaction_request"
   | "person"
@@ -44,6 +50,45 @@ export interface MvpAOnboardingEvidenceAuthorizationGate {
   sourceAdr: "ADR 0011";
   classifications: readonly MvpAOnboardingEvidenceAuthorizationClassification[];
   outOfScope: readonly string[];
+}
+
+export interface MvpAOnboardingEvidenceRuntimeAccessInput {
+  actorId: string | undefined;
+  tenantEnvironmentId: string | undefined;
+  requestOwnerActorId: string | undefined;
+  requestedEvidenceSurfaces: readonly string[];
+  requestedFieldScopes?: readonly string[];
+}
+
+export interface MvpAOnboardingEvidenceRuntimeAccessContext {
+  actorId: string;
+  tenantEnvironmentId: string;
+}
+
+export interface MvpAOnboardingEvidenceRuntimeAccessDecision {
+  decision: "allow";
+  gateId: MvpAOnboardingEvidenceAuthorizationGate["gateId"];
+  actorId: string;
+  tenantEnvironmentId: string;
+  evidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
+  fieldScopes: readonly MvpAOnboardingFieldScope[];
+  dataScopes: readonly MvpAOnboardingDataScope[];
+  auditCorrelation: "same_onboarding_request_or_linked_operation";
+}
+
+export interface MvpAOnboardingEvidenceScopeRequest {
+  requestedEvidenceSurfaces: readonly string[];
+  requestedFieldScopes?: readonly string[];
+}
+
+export interface MvpAOnboardingValidatedEvidenceScopeRequest {
+  evidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
+  fieldScopes: readonly MvpAOnboardingFieldScope[];
+  dataScopes: readonly MvpAOnboardingDataScope[];
+}
+
+export class MvpAOnboardingEvidenceAccessError extends Error {
+  override name = "MvpAOnboardingEvidenceAccessError";
 }
 
 const allowedFieldScopes: readonly MvpAOnboardingFieldScope[] = [
@@ -338,6 +383,164 @@ export function assertMvpAOnboardingEvidenceAuthorizationGate(
   }
 }
 
+export function validateMvpAOnboardingEvidenceRuntimeAccessContext(input: {
+  actorId: string | undefined;
+  tenantEnvironmentId: string | undefined;
+}): MvpAOnboardingEvidenceRuntimeAccessContext {
+  try {
+    return Object.freeze({
+      actorId: assertMvpAOnboardingTrustedActorBinding(
+        mvpAOnboardingBindingGate,
+        input.actorId,
+      ),
+      tenantEnvironmentId: assertMvpAOnboardingTenantEnvironmentBinding(
+        mvpAOnboardingBindingGate,
+        input.tenantEnvironmentId,
+      ),
+    });
+  } catch (error) {
+    throw new MvpAOnboardingEvidenceAccessError(
+      normalizeMvpAOnboardingEvidenceAccessError(error),
+    );
+  }
+}
+
+export function authorizeMvpAOnboardingEvidenceRuntimeAccess(
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+  input: MvpAOnboardingEvidenceRuntimeAccessInput,
+): MvpAOnboardingEvidenceRuntimeAccessDecision {
+  try {
+    assertMvpAOnboardingEvidenceAuthorizationGate(gate);
+
+    const { actorId, tenantEnvironmentId } =
+      validateMvpAOnboardingEvidenceRuntimeAccessContext(input);
+    const scopeRequest = buildMvpAOnboardingEvidenceScopeRequest(gate, input);
+    const requestOwnerActorId = assertMvpAOnboardingTrustedActorBinding(
+      mvpAOnboardingBindingGate,
+      input.requestOwnerActorId,
+    );
+    if (actorId !== requestOwnerActorId) {
+      throw new Error(
+        "MVP-A onboarding evidence access requires actor to match the trusted request owner",
+      );
+    }
+
+    return Object.freeze({
+      decision: "allow" as const,
+      gateId: gate.gateId,
+      actorId,
+      tenantEnvironmentId,
+      evidenceSurfaces: scopeRequest.evidenceSurfaces,
+      fieldScopes: scopeRequest.fieldScopes,
+      dataScopes: scopeRequest.dataScopes,
+      auditCorrelation: "same_onboarding_request_or_linked_operation" as const,
+    });
+  } catch (error) {
+    throw new MvpAOnboardingEvidenceAccessError(
+      normalizeMvpAOnboardingEvidenceAccessError(error),
+    );
+  }
+}
+
+export function validateMvpAOnboardingEvidenceScopeRequest(
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+  input: MvpAOnboardingEvidenceScopeRequest,
+): MvpAOnboardingValidatedEvidenceScopeRequest {
+  try {
+    assertMvpAOnboardingEvidenceAuthorizationGate(gate);
+    return buildMvpAOnboardingEvidenceScopeRequest(gate, input);
+  } catch (error) {
+    throw new MvpAOnboardingEvidenceAccessError(
+      normalizeMvpAOnboardingEvidenceAccessError(error),
+    );
+  }
+}
+
+function buildMvpAOnboardingEvidenceScopeRequest(
+  gate: MvpAOnboardingEvidenceAuthorizationGate,
+  input: MvpAOnboardingEvidenceScopeRequest,
+): MvpAOnboardingValidatedEvidenceScopeRequest {
+  if (input.requestedEvidenceSurfaces.length === 0) {
+    throw new Error(
+      "MVP-A onboarding evidence access requires at least one evidence surface",
+    );
+  }
+
+  const classificationsBySurface = new Map(
+    gate.classifications.map((classification) => [
+      classification.evidenceSurface,
+      classification,
+    ]),
+  );
+  const requestedSurfaceSet = new Set<MvpAOnboardingEvidenceSurface>();
+  const allowedFieldScopes = new Set<MvpAOnboardingFieldScope>();
+  const allowedDataScopes = new Set<MvpAOnboardingDataScope>();
+  for (const evidenceSurface of input.requestedEvidenceSurfaces) {
+    if (
+      requestedSurfaceSet.has(evidenceSurface as MvpAOnboardingEvidenceSurface)
+    ) {
+      throw new Error(
+        `MVP-A onboarding evidence access duplicates ${evidenceSurface} evidence surface`,
+      );
+    }
+
+    const classification = classificationsBySurface.get(
+      evidenceSurface as MvpAOnboardingEvidenceSurface,
+    );
+    if (classification === undefined) {
+      throw new Error(
+        `MVP-A onboarding evidence access rejects unclassified ${evidenceSurface} evidence surface`,
+      );
+    }
+    requestedSurfaceSet.add(classification.evidenceSurface);
+    for (const fieldScope of classification.fieldScopes) {
+      allowedFieldScopes.add(fieldScope);
+    }
+    for (const dataScope of classification.dataScopes) {
+      allowedDataScopes.add(dataScope);
+    }
+  }
+
+  const requestedFieldScopes = input.requestedFieldScopes ?? [
+    ...allowedFieldScopes,
+  ];
+  if (requestedFieldScopes.length === 0) {
+    throw new Error(
+      "MVP-A onboarding evidence access requires at least one field scope",
+    );
+  }
+
+  const authorizedFieldScopes = new Set<MvpAOnboardingFieldScope>();
+  for (const fieldScope of requestedFieldScopes) {
+    if (!allowedFieldScopes.has(fieldScope as MvpAOnboardingFieldScope)) {
+      throw new Error(
+        `MVP-A onboarding evidence access rejects forbidden ${fieldScope} field scope`,
+      );
+    }
+    authorizedFieldScopes.add(fieldScope as MvpAOnboardingFieldScope);
+  }
+
+  for (const evidenceSurface of requestedSurfaceSet) {
+    const classification = classificationsBySurface.get(evidenceSurface);
+    if (
+      classification === undefined ||
+      classification.fieldScopes.some(
+        (fieldScope) => !authorizedFieldScopes.has(fieldScope),
+      )
+    ) {
+      throw new Error(
+        `MVP-A onboarding evidence access requires field scope for ${evidenceSurface} evidence surface`,
+      );
+    }
+  }
+
+  return Object.freeze({
+    evidenceSurfaces: Object.freeze([...requestedSurfaceSet]),
+    fieldScopes: Object.freeze([...authorizedFieldScopes]),
+    dataScopes: Object.freeze([...allowedDataScopes]),
+  });
+}
+
 function hasSameScopeSet(
   actualScopes: readonly string[],
   expectedScopes: readonly string[],
@@ -349,4 +552,22 @@ function hasSameScopeSet(
   if (actualScopeSet.size !== actualScopes.length) return false;
 
   return actualScopes.every((scope) => expectedScopeSet.has(scope));
+}
+
+function normalizeMvpAOnboardingEvidenceAccessError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message ===
+    "MVP-A onboarding binding gate requires explicit trusted actor evidence"
+  ) {
+    return "MVP-A onboarding evidence access requires actor context";
+  }
+  if (
+    message ===
+    "MVP-A onboarding binding gate requires explicit tenant environment evidence"
+  ) {
+    return "MVP-A onboarding evidence access requires tenant environment context";
+  }
+
+  return message;
 }

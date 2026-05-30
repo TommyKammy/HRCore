@@ -1,14 +1,15 @@
 # MVP-A Onboarding Evidence Authorization Gate
 
 This document defines the bounded MVP-A field-level and data-scope gate for
-onboarding evidence. It is a classification gate for PoC-depth evidence
-exposure, not a production authorization policy engine.
+onboarding evidence. It is a runtime-enforced synthetic MVP-A evidence gate for
+PoC-depth evidence exposure, not a production authorization policy engine.
 
 ## Contract
 
-Evidence surfaces may be exposed by the MVP-A onboarding trace verifier only
-when they have an explicit field-scope and data-scope classification in the
-repo-owned gate `mvp_a_onboarding_evidence_authorization_v1`.
+Evidence surfaces may be exposed by the MVP-A onboarding trace verifier and
+audit endpoint only when the request passes explicit actor, subject,
+tenant/environment, field-scope, and data-scope checks in the repo-owned gate
+`mvp_a_onboarding_evidence_authorization_v1`.
 
 | Evidence surface    | Field scope                | Data scope                                                                        | Readiness      |
 | ------------------- | -------------------------- | --------------------------------------------------------------------------------- | -------------- |
@@ -26,6 +27,34 @@ Unknown, omitted, duplicated, or empty classifications must fail closed in the
 repository verifier. A generic role name, admin flag, route permission, raw JSON
 blob, memo, fixture, seed, log, forwarded header, or operator comment is not an
 authorization substitute for this explicit classification.
+
+At runtime, `GET /audit/mvp-a/onboarding-correlations/{correlationId}` requires
+`x-hrcore-mvp-a-actor-id` and `x-hrcore-mvp-a-tenant-environment` headers. The
+actor must be the trusted synthetic request owner, the tenant/environment must
+match `repo_owned_synthetic_mvp_a_onboarding`, and optional requested evidence
+surface or field-scope headers must stay inside the directly classified MVP-A
+onboarding evidence set. Missing actor context, mismatched tenant/environment,
+unclassified evidence surfaces, forbidden field scopes, and cross-owner access
+fail closed before the endpoint returns evidence.
+
+The endpoint validates the actor and tenant/environment headers before loading
+correlation trace evidence. It also validates requested evidence-surface and
+field-scope headers, then confirms the trusted request-owner actor, before the
+full trace verifier can return correlation-specific evidence. The returned trace
+summary is then filtered to the authorized evidence surfaces and field scopes.
+If a request names multiple evidence surfaces but grants field scopes for only a
+subset of those surfaces, the endpoint rejects the request instead of reporting
+or auditing broader access than it can return. Explicit `employment` /
+`employment_status` and `assignment` / `assignment_reference` requests return
+their bounded trace fragments from the directly linked applied onboarding
+records.
+Transaction-request metadata never carries the person identifier; authorized
+`person` / `person_identity` requests receive that identifier only as standalone
+person evidence, and narrower request headers do not receive audit, lifecycle,
+apply-job, provider, or work-email fields outside the authorization decision.
+Inbound work-email conflicts stay under `work_email_evidence` /
+`work_email_contact`; an `okta_projection` / `provider_projection`-only request
+must find a real provider refresh or provider-refresh conflict evidence record.
 
 ## Boundary
 
@@ -72,16 +101,28 @@ implementation issue explicitly authorize them.
 
 ## Verification
 
-- Runtime classification artifact:
+- Runtime classification and enforcement artifact:
   `src/mvp-a-onboarding-evidence-authorization.ts`.
 - Trace verifier integration:
   `verifyMvpAOnboardingCorrelationTrace` returns the gate with every trace.
+- Audit endpoint integration:
+  `GET /audit/mvp-a/onboarding-correlations/{correlationId}` returns an
+  authorization decision with the allowed actor, tenant/environment, evidence
+  surfaces, field scopes, data scopes, and audit-correlation binding, and
+  filters the trace summary to those authorized evidence surfaces and field
+  scopes.
 - Binding verifier integration:
   `mvp_a_onboarding_actor_subject_tenant_binding_v1` rejects missing,
   placeholder, inferred, or mismatched actor, subject, tenant/environment,
   request-owner, and correlation binding evidence before trace evidence is
-  returned.
+  returned; the endpoint checks actor and tenant/environment before trace
+  lookup, validates requested evidence scopes before trace lookup, and checks
+  request-owner binding before returning verifier-specific trace errors.
 - Negative guard:
   `assertMvpAOnboardingEvidenceAuthorizationGate` rejects missing, duplicated,
   unknown, empty, unsupported, or per-surface mismatched evidence
   classifications.
+- Runtime negative guard:
+  `authorizeMvpAOnboardingEvidenceRuntimeAccess` rejects missing actor context,
+  cross-owner actors, mismatched tenant/environment values, unclassified
+  evidence surfaces, forbidden field scopes, and empty runtime requests.
