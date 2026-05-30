@@ -427,7 +427,9 @@ function isMvpAOnboardingRoute(route: string): boolean {
     route === "/onboarding" ||
     route.startsWith("/onboarding/") ||
     route === "/audit/mvp-a/onboarding-correlations" ||
-    route.startsWith("/audit/mvp-a/onboarding-correlations/")
+    route.startsWith("/audit/mvp-a/onboarding-correlations/") ||
+    route === "/support/mvp-a/onboarding-reviews" ||
+    route.startsWith("/support/mvp-a/onboarding-reviews/")
   );
 }
 

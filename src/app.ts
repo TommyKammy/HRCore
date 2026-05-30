@@ -41,6 +41,25 @@ export interface BuildAppOptions {
   writebackDb?: SyntheticWritebackDatabase;
 }
 
+interface MvpAOnboardingSupportReviewDatabase extends MvpAOnboardingTraceabilityDatabase {
+  prepare(sql: string): MvpAOnboardingSupportReviewSqlStatement;
+}
+
+interface MvpAOnboardingSupportReviewSqlStatement {
+  get(...values: unknown[]): unknown;
+  all(...values: unknown[]): unknown[];
+  run(...values: unknown[]): unknown;
+}
+
+type MvpAOnboardingTraceEvidenceAuthorization = Pick<
+  MvpAOnboardingEvidenceRuntimeAccessDecision,
+  "evidenceSurfaces" | "fieldScopes"
+>;
+
+class MvpAOnboardingSupportReviewAccessError extends Error {
+  override name = "MvpAOnboardingSupportReviewAccessError";
+}
+
 export async function buildApp(
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
@@ -144,6 +163,91 @@ export async function buildApp(
       }
     },
   );
+
+  app.post("/support/mvp-a/onboarding-reviews", async (request, reply) => {
+    const supportReviewDb = options.onboardingDb as
+      | MvpAOnboardingSupportReviewDatabase
+      | undefined;
+    if (!supportReviewDb) {
+      return reply.code(503).send({
+        error: "MVP-A onboarding support review database is not configured",
+      });
+    }
+
+    const actorId = readSingleHeader(
+      request.headers["x-hrcore-mvp-a-actor-id"],
+    );
+    const tenantEnvironmentId = readSingleHeader(
+      request.headers["x-hrcore-mvp-a-tenant-environment"],
+    );
+
+    try {
+      const runtimeAccessContext =
+        validateMvpAOnboardingEvidenceRuntimeAccessContext({
+          actorId,
+          tenantEnvironmentId,
+        });
+      const input = parseMvpAOnboardingSupportReviewInput(request.body);
+      assertMvpAOnboardingSupportReviewer(runtimeAccessContext.actorId);
+      const validatedScopeRequest = validateMvpAOnboardingEvidenceScopeRequest(
+        mvpAOnboardingEvidenceAuthorizationGate,
+        {
+          requestedEvidenceSurfaces: input.requestedEvidenceSurfaces,
+          requestedFieldScopes: input.requestedFieldScopes,
+        },
+      );
+      const accessDecision = {
+        decision: "allow" as const,
+        gateId: "mvp_a_onboarding_support_review_v1" as const,
+        actorId: runtimeAccessContext.actorId,
+        tenantEnvironmentId: runtimeAccessContext.tenantEnvironmentId,
+        evidenceSurfaces: validatedScopeRequest.evidenceSurfaces,
+        fieldScopes: validatedScopeRequest.fieldScopes,
+        dataScopes: validatedScopeRequest.dataScopes,
+        auditCorrelation: "direct_onboarding_correlation_with_reason" as const,
+      };
+      const trace = verifyMvpAOnboardingCorrelationTrace(supportReviewDb, {
+        correlationId: input.correlationId,
+        ...buildMvpAOnboardingTraceVerificationRequirements(accessDecision),
+      });
+      const auditEvidence = recordMvpAOnboardingSupportReviewAuditEvidence(
+        supportReviewDb,
+        {
+          actorId: runtimeAccessContext.actorId,
+          reviewCorrelationId: input.reviewCorrelationId,
+          reasonCode: input.reasonCode,
+          transactionRequestId: trace.transactionRequest.id,
+        },
+      );
+
+      return reply.code(201).send({
+        reviewType: "mvp_a_onboarding_support_review" as const,
+        correlationId: input.correlationId,
+        reviewCorrelationId: input.reviewCorrelationId,
+        reasonCode: input.reasonCode,
+        authorization: accessDecision,
+        trace: buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
+          trace,
+          accessDecision,
+        ),
+        reviewAuditEvidence: auditEvidence,
+        deferredProductionGates: [...mvpAOnboardingSupportReviewBlockedGates],
+      });
+    } catch (error) {
+      if (
+        error instanceof MvpAOnboardingSupportReviewAccessError ||
+        error instanceof MvpAOnboardingEvidenceAccessError
+      ) {
+        return reply.code(403).send({ error: error.message });
+      }
+
+      if (error instanceof MvpAOnboardingCorrelationTraceError) {
+        return reply.code(409).send({ error: error.message });
+      }
+
+      throw error;
+    }
+  });
 
   app.get("/onboarding/new-hire", async (_request, reply) => {
     return reply
@@ -352,6 +456,24 @@ const defaultMvpAOnboardingTraceSummaryEvidenceSurfaces: readonly MvpAOnboarding
     "work_email_evidence",
   ];
 
+const mvpAOnboardingSupportReviewBlockedGates = [
+  "WORM / S3 Object Lock audit immutability and archive evidence",
+  "hash-chain archive verification for production audit storage",
+  "provider audit search for live Okta or other external tenants",
+  "compliance restore evidence beyond the local synthetic rehearsal",
+  "production support procedures, custody, ticket binding, and post-use review",
+] as const;
+
+type MvpAOnboardingSupportReviewReasonCode = "onboarding_evidence_review";
+
+interface MvpAOnboardingSupportReviewInput {
+  correlationId: string;
+  reviewCorrelationId: string;
+  reasonCode: MvpAOnboardingSupportReviewReasonCode;
+  requestedEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[];
+  requestedFieldScopes?: readonly MvpAOnboardingFieldScope[];
+}
+
 function buildMvpAOnboardingCorrelationTraceResponse(
   correlationId: string,
   trace: MvpAOnboardingCorrelationTrace,
@@ -380,7 +502,7 @@ function buildMvpAOnboardingCorrelationTraceResponse(
 
 function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
   trace: MvpAOnboardingCorrelationTrace,
-  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+  accessDecision: MvpAOnboardingTraceEvidenceAuthorization,
 ): Record<string, unknown> {
   const summary: Record<string, unknown> = {};
 
@@ -489,7 +611,7 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
 }
 
 function buildMvpAOnboardingTraceVerificationRequirements(
-  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+  accessDecision: MvpAOnboardingTraceEvidenceAuthorization,
 ) {
   const requiresApplyEvidence =
     hasAuthorizedMvpAOnboardingTraceEvidence(
@@ -598,7 +720,7 @@ function buildAuthorizedMvpAOnboardingAssignmentTrace(
 }
 
 function hasAuthorizedMvpAOnboardingTraceEvidence(
-  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
+  accessDecision: MvpAOnboardingTraceEvidenceAuthorization,
   evidenceSurface: MvpAOnboardingEvidenceSurface,
   fieldScope: MvpAOnboardingFieldScope,
 ): boolean {
@@ -606,6 +728,159 @@ function hasAuthorizedMvpAOnboardingTraceEvidence(
     accessDecision.evidenceSurfaces.includes(evidenceSurface) &&
     accessDecision.fieldScopes.includes(fieldScope)
   );
+}
+
+function parseMvpAOnboardingSupportReviewInput(
+  body: unknown,
+): MvpAOnboardingSupportReviewInput {
+  if (!isRecord(body)) {
+    throw new MvpAOnboardingSupportReviewAccessError(
+      "MVP-A onboarding support review requires an object request body",
+    );
+  }
+
+  const correlationId = requireMvpAOnboardingSupportReviewText(
+    body.correlationId,
+    "correlation id",
+  );
+  const reviewCorrelationId = requireMvpAOnboardingSupportReviewText(
+    body.reviewCorrelationId,
+    "review correlation id",
+  );
+  const reasonCode = parseMvpAOnboardingSupportReviewReasonCode(
+    body.reasonCode,
+  );
+
+  return {
+    correlationId,
+    reviewCorrelationId,
+    reasonCode,
+    requestedEvidenceSurfaces:
+      (parseMvpAOnboardingSupportReviewStringArray(
+        body.requestedEvidenceSurfaces,
+        "evidence surface",
+      ) as MvpAOnboardingEvidenceSurface[] | undefined) ??
+      defaultMvpAOnboardingTraceSummaryEvidenceSurfaces,
+    requestedFieldScopes: parseMvpAOnboardingSupportReviewStringArray(
+      body.requestedFieldScopes,
+      "field scope",
+    ) as MvpAOnboardingFieldScope[] | undefined,
+  };
+}
+
+function parseMvpAOnboardingSupportReviewReasonCode(
+  value: unknown,
+): MvpAOnboardingSupportReviewReasonCode {
+  const reasonCode = requireMvpAOnboardingSupportReviewText(
+    value,
+    "reason code",
+  );
+  if (reasonCode !== "onboarding_evidence_review") {
+    throw new MvpAOnboardingSupportReviewAccessError(
+      "MVP-A onboarding support review rejects unsupported reason code",
+    );
+  }
+
+  return reasonCode;
+}
+
+function parseMvpAOnboardingSupportReviewStringArray(
+  value: unknown,
+  label: string,
+): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new MvpAOnboardingSupportReviewAccessError(
+      `MVP-A onboarding support review requires at least one ${label}`,
+    );
+  }
+
+  return value.map((item) =>
+    requireMvpAOnboardingSupportReviewText(item, label),
+  );
+}
+
+function requireMvpAOnboardingSupportReviewText(
+  value: unknown,
+  label: string,
+): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new MvpAOnboardingSupportReviewAccessError(
+      `MVP-A onboarding support review requires explicit ${label}`,
+    );
+  }
+
+  const trimmed = value.trim();
+  if (
+    /(?:^|[^a-z0-9])(todo|tbd|unknown|placeholder|sample|example|dummy|fake|admin|anonymous)(?:$|[^a-z0-9])/iu.test(
+      trimmed,
+    )
+  ) {
+    throw new MvpAOnboardingSupportReviewAccessError(
+      `MVP-A onboarding support review rejects placeholder ${label}`,
+    );
+  }
+
+  return trimmed;
+}
+
+function assertMvpAOnboardingSupportReviewer(actorId: string): void {
+  if (!actorId.startsWith("operator-support-")) {
+    throw new MvpAOnboardingSupportReviewAccessError(
+      "MVP-A onboarding support review requires a bound support actor",
+    );
+  }
+}
+
+function recordMvpAOnboardingSupportReviewAuditEvidence(
+  db: MvpAOnboardingSupportReviewDatabase,
+  input: {
+    actorId: string;
+    reviewCorrelationId: string;
+    reasonCode: MvpAOnboardingSupportReviewReasonCode;
+    transactionRequestId: string;
+  },
+) {
+  const auditEventId = `audit-event-support-review-${encodeURIComponent(
+    input.reviewCorrelationId,
+  )}`;
+  const action = `mvp_a.support_review.inspect.reason.${input.reasonCode}`;
+
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id,
+        actor_id,
+        action,
+        subject_table,
+        subject_id,
+        occurred_at,
+        correlation_id,
+        poc_marker
+      )
+      VALUES (?, ?, ?, 'transaction_request', ?, ?, ?, 'synthetic_poc')
+    `,
+  ).run(
+    auditEventId,
+    input.actorId,
+    action,
+    input.transactionRequestId,
+    new Date().toISOString(),
+    input.reviewCorrelationId,
+  );
+
+  return {
+    auditEventId,
+    actorId: input.actorId,
+    action,
+    subjectTable: "transaction_request" as const,
+    subjectId: input.transactionRequestId,
+    correlationId: input.reviewCorrelationId,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readSingleHeader(

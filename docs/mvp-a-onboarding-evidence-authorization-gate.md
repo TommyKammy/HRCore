@@ -69,6 +69,29 @@ roles, real HR user provisioning, and legal acceptance remain out of scope.
 Live personal-data access paths and production authorization policy engines
 also remain out of scope.
 
+## Support Review Workflow
+
+`POST /support/mvp-a/onboarding-reviews` adds the practical support workflow for
+MVP-A onboarding evidence. The workflow is intentionally narrower than broad
+audit search: it accepts only one explicit onboarding `correlationId`, a support
+review `reviewCorrelationId`, the fixed `onboarding_evidence_review` reason,
+the repo-owned synthetic tenant/environment, and a bound `operator-support-`
+actor. Requested evidence surfaces and field scopes still pass through the
+MVP-A onboarding evidence authorization gate before trace evidence is returned.
+
+Accepted support reviews record durable local audit evidence with action
+`mvp_a.support_review.inspect.reason.onboarding_evidence_review`, subject table
+`transaction_request`, the directly traced onboarding request id, and the support
+review correlation id. Missing reason, missing support actor binding,
+tenant/environment mismatch, broad audit lookup, raw request-body disclosure,
+and unsupported provider-side audit lookup fail closed before the support-review
+audit event is written.
+
+Remaining production blockers for this workflow are tracked in
+`docs/mvp-a-onboarding-support-review-workflow.md`: WORM / S3 Object Lock,
+hash-chain archive verification, provider audit search, compliance restore, and
+production support procedures with custody, ticket binding, and post-use review.
+
 ## Actor / Subject / Tenant Binding Gate
 
 MVP-A onboarding correlation evidence must also pass the reusable

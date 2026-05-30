@@ -95,6 +95,7 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.ok(
     contract.paths["/audit/mvp-a/onboarding-correlations/{correlationId}"],
   );
+  assert.ok(contract.paths["/support/mvp-a/onboarding-reviews"]);
   assert.ok(contract.paths["/onboarding/new-hire"]);
   assert.ok(contract.paths["/onboarding/new-hire/transaction-requests"]);
   assert.ok(
@@ -364,6 +365,44 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       "evidenceType",
       "authorization",
       "trace",
+      "deferredProductionGates",
+    ],
+  );
+  const supportReviewOperation =
+    contract.paths["/support/mvp-a/onboarding-reviews"].post;
+  assert.equal(
+    supportReviewOperation.requestBody.content["application/json"].schema.$ref,
+    "#/components/schemas/MvpAOnboardingSupportReviewInput",
+  );
+  assert.equal(
+    supportReviewOperation.responses["201"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/MvpAOnboardingSupportReviewResponse",
+  );
+  assert.match(
+    supportReviewOperation.description,
+    /keeps unredacted request-body disclosure, broad audit lookup, provider-side audit lookup/u,
+  );
+  assert.equal(
+    contract.components.schemas.MvpAOnboardingSupportReviewInput.properties
+      .reasonCode.const,
+    "onboarding_evidence_review",
+  );
+  assert.equal(
+    contract.components.schemas.MvpAOnboardingSupportReviewAuthorizationDecision
+      .properties.gateId.const,
+    "mvp_a_onboarding_support_review_v1",
+  );
+  assert.deepEqual(
+    contract.components.schemas.MvpAOnboardingSupportReviewResponse.required,
+    [
+      "reviewType",
+      "correlationId",
+      "reviewCorrelationId",
+      "reasonCode",
+      "authorization",
+      "trace",
+      "reviewAuditEvidence",
       "deferredProductionGates",
     ],
   );
@@ -787,6 +826,195 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId does not require a
   assert.doesNotMatch(
     response.body,
     /approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|employment|assignment|workEmailWritebackEventId|providerRefreshId|providerRefreshConflictId|workEmailConflictId/u,
+  );
+});
+
+test("POST /support/mvp-a/onboarding-reviews records reasoned bounded support review evidence", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const rootCorrelationId = "correlation-onboarding-support-review-001";
+  const reviewCorrelationId = "correlation-support-review-001";
+  saveOnboardingTransactionRequest(
+    onboardingDb,
+    createOnboardingTransactionRequestFixture({
+      correlationId: rootCorrelationId,
+    }),
+  );
+  decideOnboardingTransactionRequest(onboardingDb, {
+    transactionRequestId: "transaction-request-onboarding-001",
+    decision: "approve",
+    decidedAt: "2026-05-21T01:00:00Z",
+    decidedBy: "operator-people-ops-001",
+    correlationId: rootCorrelationId,
+  });
+  await applyApprovedOnboardingTransactionRequestWithOktaProjection(
+    onboardingDb,
+    {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    },
+  );
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/support/mvp-a/onboarding-reviews",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-support-001",
+      "x-hrcore-mvp-a-tenant-environment":
+        "repo_owned_synthetic_mvp_a_onboarding",
+    },
+    payload: {
+      correlationId: rootCorrelationId,
+      reviewCorrelationId,
+      reasonCode: "onboarding_evidence_review",
+      requestedEvidenceSurfaces: ["transaction_request", "audit_event"],
+      requestedFieldScopes: ["request_metadata", "audit_evidence"],
+    },
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.deepEqual(response.json(), {
+    reviewType: "mvp_a_onboarding_support_review",
+    correlationId: rootCorrelationId,
+    reviewCorrelationId,
+    reasonCode: "onboarding_evidence_review",
+    authorization: {
+      decision: "allow",
+      gateId: "mvp_a_onboarding_support_review_v1",
+      actorId: "operator-support-001",
+      tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      evidenceSurfaces: ["transaction_request", "audit_event"],
+      fieldScopes: ["request_metadata", "audit_evidence"],
+      dataScopes: ["same_onboarding_request", "same_correlation_id"],
+      auditCorrelation: "direct_onboarding_correlation_with_reason",
+    },
+    trace: {
+      transactionRequest: {
+        id: "transaction-request-onboarding-001",
+        requestType: "hire",
+        statusCode: "completed",
+        correlationId: rootCorrelationId,
+      },
+      approvalAuditEvent: {
+        id: "audit-event-transaction-request-onboarding-001-approve-correlation-onboarding-support-review-001",
+        actorId: "operator-people-ops-001",
+        action: "mvp_a.onboarding.approve",
+        subjectTable: "transaction_request",
+        subjectId: "transaction-request-onboarding-001",
+        occurredAt: "2026-05-21T01:00:00Z",
+        correlationId: rootCorrelationId,
+      },
+      applyAuditEvent: {
+        id: "audit-event-lifecycle-event-transaction-request-onboarding-001-apply-applied",
+        actorId: "operator-people-ops-apply-001",
+        action: "mvp_a.onboarding.apply",
+        subjectTable: "lifecycle_event",
+        subjectId: "lifecycle-event-transaction-request-onboarding-001-apply",
+        occurredAt: "2026-05-21T02:00:00Z",
+        correlationId: rootCorrelationId,
+      },
+      auditEventCount: 2,
+    },
+    reviewAuditEvidence: {
+      auditEventId: "audit-event-support-review-correlation-support-review-001",
+      actorId: "operator-support-001",
+      action: "mvp_a.support_review.inspect.reason.onboarding_evidence_review",
+      subjectTable: "transaction_request",
+      subjectId: "transaction-request-onboarding-001",
+      correlationId: reviewCorrelationId,
+    },
+    deferredProductionGates: [
+      "WORM / S3 Object Lock audit immutability and archive evidence",
+      "hash-chain archive verification for production audit storage",
+      "provider audit search for live Okta or other external tenants",
+      "compliance restore evidence beyond the local synthetic rehearsal",
+      "production support procedures, custody, ticket binding, and post-use review",
+    ],
+  });
+  assert.doesNotMatch(response.body, /payload_json|payloadJson|rawPayload/u);
+
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT actor_id, action, subject_table, subject_id, correlation_id
+            FROM audit_event
+            WHERE id = ?
+          `,
+        )
+        .get("audit-event-support-review-correlation-support-review-001") as
+        | Record<string, unknown>
+        | undefined,
+    ),
+    {
+      actor_id: "operator-support-001",
+      action: "mvp_a.support_review.inspect.reason.onboarding_evidence_review",
+      subject_table: "transaction_request",
+      subject_id: "transaction-request-onboarding-001",
+      correlation_id: reviewCorrelationId,
+    },
+  );
+
+  for (const payload of [
+    {
+      reviewCorrelationId: "correlation-support-review-missing-reason-001",
+      correlationId: rootCorrelationId,
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
+    },
+    {
+      reasonCode: "onboarding_evidence_review",
+      reviewCorrelationId: "correlation-support-review-broad-001",
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
+    },
+    {
+      reasonCode: "onboarding_evidence_review",
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "correlation-support-review-raw-001",
+      requestedEvidenceSurfaces: ["raw_payload"],
+      requestedFieldScopes: ["request_metadata"],
+    },
+    {
+      reasonCode: "provider_audit_search",
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "correlation-support-review-provider-001",
+      requestedEvidenceSurfaces: ["okta_projection"],
+      requestedFieldScopes: ["provider_projection"],
+    },
+  ]) {
+    const rejectedResponse = await app.inject({
+      method: "POST",
+      url: "/support/mvp-a/onboarding-reviews",
+      headers: {
+        "x-hrcore-mvp-a-actor-id": "operator-support-001",
+        "x-hrcore-mvp-a-tenant-environment":
+          "repo_owned_synthetic_mvp_a_onboarding",
+      },
+      payload,
+    });
+
+    assert.equal(rejectedResponse.statusCode, 403);
+  }
+
+  assert.equal(
+    (
+      onboardingDb
+        .prepare(
+          "SELECT COUNT(*) AS count FROM audit_event WHERE action LIKE 'mvp_a.support_review.%'",
+        )
+        .get() as { count: number }
+    ).count,
+    1,
   );
 });
 
