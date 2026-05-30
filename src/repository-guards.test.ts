@@ -1986,6 +1986,65 @@ test("MVP-A P2A-02 independent review closeout records bounded readiness", async
   );
 });
 
+test("MVP-A P2A-03 practical-use readiness review closeout keeps stronger gates blocked", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile(
+      "docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md",
+    ),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A P2A-03 Practical-Use Readiness Review Closeout",
+    "Issue: #204",
+    "Part of: #199",
+    "Depends on: #203",
+    "Readiness Verdict",
+    "bounded/non-production MVP-A onboarding E2E: Go",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "Reviewed Artifacts",
+    "P2A-02 blocker review",
+    "P2A-03 follow-up evidence",
+    "MVP-A Go/No-Go checklist",
+    "ADR 0000",
+    "ADR 0002",
+    "ADR 0003",
+    "ADR 0011",
+    "ADR 0014",
+    "ADR 0020",
+    "No Silent Surface Openings",
+    "real-data",
+    "live-provider",
+    "broad audit search",
+    "raw payload",
+    "CSV/export",
+    "production operations",
+    "Verification Commands",
+    "npm run policy:mvp-a",
+    "npm run verify:pre-pr",
+    "Residual Blockers",
+    "<follow-up-provider-binding>",
+    "<follow-up-production-audit-immutability>",
+    "<follow-up-pii-masking-export>",
+    "<follow-up-production-backup-readiness>",
+    "<follow-up-operations-dlq-replay>",
+    "<follow-up-legal-privacy-two-key-acceptance>",
+    "Final Approval Boundary",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2A-03 practical-use readiness closeout text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-A P2A-03 Practical-Use Readiness Review Closeout\]\(docs\/mvp-a-p2a-03-practical-use-readiness-review-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
