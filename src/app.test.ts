@@ -1141,6 +1141,22 @@ test("POST /support/mvp-a/onboarding-reviews records reasoned bounded support re
       requestedEvidenceSurfaces: ["transaction_request"],
       requestedFieldScopes: ["request_metadata"],
     },
+    {
+      reasonCode: "onboarding_evidence_review",
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "correlation-support-review-raw-field-001",
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
+      rawPayload: { blocked: true },
+    },
+    {
+      reasonCode: "onboarding_evidence_review",
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "correlation-support-review-provider-field-001",
+      requestedEvidenceSurfaces: ["transaction_request"],
+      requestedFieldScopes: ["request_metadata"],
+      providerAuditSearch: { provider: "synthetic_okta" },
+    },
   ]) {
     const rejectedResponse = await app.inject({
       method: "POST",
@@ -1165,6 +1181,86 @@ test("POST /support/mvp-a/onboarding-reviews records reasoned bounded support re
         .get() as { count: number }
     ).count,
     1,
+  );
+});
+
+test("POST /support/mvp-a/onboarding-reviews defaults to public apply evidence", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const rootCorrelationId =
+    "correlation-onboarding-support-review-public-apply-001";
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests",
+    payload: createOnboardingTransactionRequestFixture({
+      correlationId: rootCorrelationId,
+    }),
+  });
+  assert.equal(submitResponse.statusCode, 201);
+
+  const decisionResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/decisions",
+    payload: {
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: rootCorrelationId,
+    },
+  });
+  assert.equal(decisionResponse.statusCode, 200);
+
+  const applyResponse = await app.inject({
+    method: "POST",
+    url: "/onboarding/new-hire/transaction-requests/transaction-request-onboarding-001/apply",
+    payload: {
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+    },
+  });
+  assert.equal(applyResponse.statusCode, 200);
+
+  const reviewResponse = await app.inject({
+    method: "POST",
+    url: "/support/mvp-a/onboarding-reviews",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-support-001",
+      "x-hrcore-mvp-a-tenant-environment":
+        "repo_owned_synthetic_mvp_a_onboarding",
+    },
+    payload: {
+      correlationId: rootCorrelationId,
+      reviewCorrelationId: "correlation-support-review-public-apply-001",
+      reasonCode: "onboarding_evidence_review",
+    },
+  });
+
+  assert.equal(reviewResponse.statusCode, 201);
+  assert.deepEqual(reviewResponse.json().authorization.evidenceSurfaces, [
+    "transaction_request",
+    "person",
+    "employment",
+    "assignment",
+    "audit_event",
+    "lifecycle_event",
+  ]);
+  assert.deepEqual(reviewResponse.json().authorization.fieldScopes, [
+    "request_metadata",
+    "person_identity",
+    "employment_status",
+    "assignment_reference",
+    "audit_evidence",
+    "lifecycle_evidence",
+  ]);
+  assert.doesNotMatch(
+    reviewResponse.body,
+    /applyJobAttemptCount|providerRefresh|workEmail/u,
   );
 });
 

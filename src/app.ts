@@ -464,6 +464,16 @@ const defaultMvpAOnboardingTraceSummaryEvidenceSurfaces: readonly MvpAOnboarding
     "work_email_evidence",
   ];
 
+const defaultMvpAOnboardingSupportReviewEvidenceSurfaces: readonly MvpAOnboardingEvidenceSurface[] =
+  [
+    "transaction_request",
+    "person",
+    "employment",
+    "assignment",
+    "audit_event",
+    "lifecycle_event",
+  ];
+
 const mvpAOnboardingSupportReviewBlockedGates = [
   "WORM / S3 Object Lock audit immutability and archive evidence",
   "hash-chain archive verification for production audit storage",
@@ -473,6 +483,14 @@ const mvpAOnboardingSupportReviewBlockedGates = [
 ] as const;
 
 const mvpAOnboardingSupportActorPrefix = "operator-support-";
+
+const mvpAOnboardingSupportReviewInputKeys = new Set([
+  "correlationId",
+  "reviewCorrelationId",
+  "reasonCode",
+  "requestedEvidenceSurfaces",
+  "requestedFieldScopes",
+]);
 
 const mvpAOnboardingSupportReviewPlaceholderTokens = new Set([
   "todo",
@@ -761,6 +779,7 @@ function parseMvpAOnboardingSupportReviewInput(
       "MVP-A onboarding support review requires an object request body",
     );
   }
+  assertMvpAOnboardingSupportReviewInputKeys(body);
 
   const correlationId = requireMvpAOnboardingSupportReviewText(
     body.correlationId,
@@ -783,12 +802,24 @@ function parseMvpAOnboardingSupportReviewInput(
         body.requestedEvidenceSurfaces,
         "evidence surface",
       ) as MvpAOnboardingEvidenceSurface[] | undefined) ??
-      defaultMvpAOnboardingTraceSummaryEvidenceSurfaces,
+      defaultMvpAOnboardingSupportReviewEvidenceSurfaces,
     requestedFieldScopes: parseMvpAOnboardingSupportReviewStringArray(
       body.requestedFieldScopes,
       "field scope",
     ) as MvpAOnboardingFieldScope[] | undefined,
   };
+}
+
+function assertMvpAOnboardingSupportReviewInputKeys(
+  body: Record<string, unknown>,
+): void {
+  for (const key of Object.keys(body)) {
+    if (!mvpAOnboardingSupportReviewInputKeys.has(key)) {
+      throw new MvpAOnboardingSupportReviewAccessError(
+        `MVP-A onboarding support review rejects unsupported request field ${key}`,
+      );
+    }
+  }
 }
 
 function parseMvpAOnboardingSupportReviewReasonCode(
