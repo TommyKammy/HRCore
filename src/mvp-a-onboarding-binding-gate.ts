@@ -1,0 +1,235 @@
+export type MvpAOnboardingBindingGateId =
+  "mvp_a_onboarding_actor_subject_tenant_binding_v1";
+
+export interface MvpAOnboardingBindingGate {
+  gateId: MvpAOnboardingBindingGateId;
+  readiness: "repo_owned_synthetic_non_production_only";
+  requiredBindings: readonly MvpAOnboardingRequiredBinding[];
+  trustedSyntheticActorPrefixes: readonly string[];
+  syntheticTenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding";
+  remainingBlockedBoundaries: readonly string[];
+}
+
+export type MvpAOnboardingRequiredBinding =
+  | "trusted_actor"
+  | "effective_actor"
+  | "subject_employee"
+  | "tenant_environment"
+  | "request_owner"
+  | "correlation";
+
+export interface MvpAOnboardingBindingGateEvidence {
+  trustedActorId: string | undefined;
+  effectiveActorIds: readonly string[];
+  subjectEmployeeId: string;
+  tenantEnvironmentId: string;
+  requestOwnerId: string | undefined;
+  rootCorrelationId: string;
+  linkedCorrelationIds: readonly string[];
+}
+
+const requiredBindings: readonly MvpAOnboardingRequiredBinding[] = [
+  "trusted_actor",
+  "effective_actor",
+  "subject_employee",
+  "tenant_environment",
+  "request_owner",
+  "correlation",
+];
+
+const trustedSyntheticActorPrefixes = ["operator-", "worker-"] as const;
+
+const remainingBlockedBoundaries = [
+  "live Okta tenant binding",
+  "production credential custody",
+  "real personnel data",
+  "enterprise identity governance",
+  "production actor directory",
+  "production tenant roles",
+] as const;
+
+export const mvpAOnboardingBindingGate: MvpAOnboardingBindingGate =
+  Object.freeze({
+    gateId: "mvp_a_onboarding_actor_subject_tenant_binding_v1",
+    readiness: "repo_owned_synthetic_non_production_only",
+    requiredBindings: Object.freeze([...requiredBindings]),
+    trustedSyntheticActorPrefixes: Object.freeze([
+      ...trustedSyntheticActorPrefixes,
+    ]),
+    syntheticTenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+    remainingBlockedBoundaries: Object.freeze([...remainingBlockedBoundaries]),
+  });
+
+export function assertMvpAOnboardingBindingGate(
+  gate: MvpAOnboardingBindingGate,
+): void {
+  if (gate.gateId !== "mvp_a_onboarding_actor_subject_tenant_binding_v1") {
+    throw new Error("MVP-A onboarding binding gate has an unsupported id");
+  }
+  if (gate.readiness !== "repo_owned_synthetic_non_production_only") {
+    throw new Error(
+      "MVP-A onboarding binding gate must stay synthetic non-production only",
+    );
+  }
+  assertExactSet("required binding", gate.requiredBindings, requiredBindings);
+  assertExactSet(
+    "trusted synthetic actor prefix",
+    gate.trustedSyntheticActorPrefixes,
+    trustedSyntheticActorPrefixes,
+  );
+  if (
+    gate.syntheticTenantEnvironmentId !==
+    "repo_owned_synthetic_mvp_a_onboarding"
+  ) {
+    throw new Error(
+      "MVP-A onboarding binding gate must use the repo-owned synthetic tenant environment",
+    );
+  }
+  assertExactSet(
+    "remaining blocked boundary",
+    gate.remainingBlockedBoundaries,
+    remainingBlockedBoundaries,
+  );
+}
+
+export function assertMvpAOnboardingBindingGateEvidence(
+  gate: MvpAOnboardingBindingGate,
+  evidence: MvpAOnboardingBindingGateEvidence,
+): void {
+  assertMvpAOnboardingBindingGate(gate);
+
+  const trustedActorId = requireBoundBinding(
+    "trusted actor",
+    evidence.trustedActorId,
+  );
+  requireTrustedSyntheticActor(gate, trustedActorId);
+
+  const requestOwnerId = requireBoundBinding(
+    "request owner",
+    evidence.requestOwnerId,
+  );
+  requireTrustedSyntheticActor(gate, requestOwnerId);
+  if (requestOwnerId !== trustedActorId) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires request owner to match the trusted actor",
+    );
+  }
+
+  if (evidence.effectiveActorIds.length === 0) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires at least one effective actor",
+    );
+  }
+  for (const actorId of evidence.effectiveActorIds) {
+    requireTrustedSyntheticActor(gate, actorId);
+  }
+
+  requireBoundBinding("subject employee", evidence.subjectEmployeeId);
+  if (evidence.tenantEnvironmentId !== gate.syntheticTenantEnvironmentId) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment",
+    );
+  }
+
+  const rootCorrelationId = requireBoundBinding(
+    "root correlation",
+    evidence.rootCorrelationId,
+  );
+  for (const correlationId of evidence.linkedCorrelationIds) {
+    requireBoundBinding("linked correlation", correlationId);
+  }
+  if (evidence.linkedCorrelationIds.length === 0) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires linked correlation evidence",
+    );
+  }
+  if (
+    evidence.linkedCorrelationIds.every(
+      (correlationId) => correlationId !== rootCorrelationId,
+    )
+  ) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires at least one linked correlation to match the root correlation",
+    );
+  }
+}
+
+function requireTrustedSyntheticActor(
+  gate: MvpAOnboardingBindingGate,
+  actorId: string,
+): void {
+  const boundActorId = requireBoundBinding("actor", actorId);
+  if (
+    gate.trustedSyntheticActorPrefixes.every(
+      (prefix) => !boundActorId.startsWith(prefix),
+    )
+  ) {
+    throw new Error(
+      "MVP-A onboarding binding gate rejects untrusted actor evidence",
+    );
+  }
+}
+
+function requireBoundBinding(
+  bindingName: string,
+  value: string | undefined,
+): string {
+  if (value === undefined || value.trim().length === 0) {
+    throw new Error(
+      `MVP-A onboarding binding gate requires explicit ${bindingName} evidence`,
+    );
+  }
+
+  const boundValue = value.trim();
+  if (isPlaceholderBinding(boundValue)) {
+    throw new Error(
+      `MVP-A onboarding binding gate rejects placeholder ${bindingName} evidence`,
+    );
+  }
+
+  return boundValue;
+}
+
+function isPlaceholderBinding(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    normalized === "todo" ||
+    normalized === "tbd" ||
+    normalized === "unknown" ||
+    normalized === "placeholder" ||
+    normalized === "sample" ||
+    normalized === "example" ||
+    normalized === "dummy" ||
+    normalized === "fake" ||
+    normalized === "admin" ||
+    normalized === "anonymous" ||
+    normalized.startsWith("todo-") ||
+    normalized.startsWith("placeholder-") ||
+    normalized.startsWith("sample-") ||
+    normalized.startsWith("example-") ||
+    normalized.startsWith("fake-")
+  );
+}
+
+function assertExactSet(
+  name: string,
+  actualValues: readonly string[],
+  expectedValues: readonly string[],
+): void {
+  if (actualValues.length !== expectedValues.length) {
+    throw new Error(`MVP-A onboarding binding gate has incomplete ${name}s`);
+  }
+
+  const actualSet = new Set(actualValues);
+  if (actualSet.size !== actualValues.length) {
+    throw new Error(`MVP-A onboarding binding gate duplicates ${name}s`);
+  }
+
+  for (const expectedValue of expectedValues) {
+    if (!actualSet.has(expectedValue)) {
+      throw new Error(
+        `MVP-A onboarding binding gate is missing ${expectedValue} ${name}`,
+      );
+    }
+  }
+}

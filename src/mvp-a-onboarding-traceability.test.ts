@@ -9,6 +9,11 @@ import {
   mvpAOnboardingEvidenceAuthorizationGate,
 } from "./mvp-a-onboarding-evidence-authorization.js";
 import {
+  assertMvpAOnboardingBindingGate,
+  assertMvpAOnboardingBindingGateEvidence,
+  mvpAOnboardingBindingGate,
+} from "./mvp-a-onboarding-binding-gate.js";
+import {
   applyApprovedOnboardingTransactionRequestWithOktaProjection,
   applyDueOnboardingTransactionRequests,
   createOnboardingTransactionRequestFixture,
@@ -514,6 +519,57 @@ test("MVP-A onboarding trace fails closed when required apply evidence is missin
   }
 });
 
+test("MVP-A onboarding trace rejects placeholder actor binding evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-onboarding-placeholder-actor-001";
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: rootCorrelationId,
+    });
+    await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    });
+
+    db.prepare(
+      `
+        UPDATE audit_event
+        SET actor_id = 'TODO'
+        WHERE action = 'mvp_a.onboarding.approve'
+      `,
+    ).run();
+
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding binding gate rejects placeholder trusted actor evidence/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding trace follows scheduled worker apply audit correlation", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -984,5 +1040,77 @@ test("MVP-A onboarding evidence authorization gate classifies every exposed evid
   );
   assertMvpAOnboardingEvidenceAuthorizationGate(
     mvpAOnboardingEvidenceAuthorizationGate,
+  );
+});
+
+test("MVP-A onboarding binding gate rejects missing inferred or mismatched bindings", async () => {
+  const gateDoc = await readRepoFile(
+    "docs/mvp-a-onboarding-evidence-authorization-gate.md",
+  );
+  const validEvidence = {
+    trustedActorId: "operator-people-ops-001",
+    effectiveActorIds: [
+      "operator-people-ops-001",
+      "operator-people-ops-apply-001",
+    ],
+    subjectEmployeeId: "person-onboarding-001",
+    tenantEnvironmentId: mvpAOnboardingBindingGate.syntheticTenantEnvironmentId,
+    requestOwnerId: "operator-people-ops-001",
+    rootCorrelationId: "correlation-onboarding-binding-001",
+    linkedCorrelationIds: ["correlation-onboarding-binding-001"],
+  };
+
+  assertMvpAOnboardingBindingGate(mvpAOnboardingBindingGate);
+  assertMvpAOnboardingBindingGateEvidence(
+    mvpAOnboardingBindingGate,
+    validEvidence,
+  );
+  assert.equal(
+    mvpAOnboardingBindingGate.readiness,
+    "repo_owned_synthetic_non_production_only",
+  );
+  assert.match(gateDoc, /Actor \/ Subject \/ Tenant Binding Gate/u);
+  assert.match(gateDoc, /repo_owned_synthetic_mvp_a_onboarding/u);
+  assert.match(gateDoc, /Live Okta tenant binding/u);
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        trustedActorId: "TODO",
+      }),
+    /MVP-A onboarding binding gate rejects placeholder trusted actor evidence/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        effectiveActorIds: ["admin"],
+      }),
+    /MVP-A onboarding binding gate rejects placeholder actor evidence/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        tenantEnvironmentId: "tenant-from-branch-name",
+      }),
+    /MVP-A onboarding binding gate requires the explicit repo-owned synthetic tenant environment/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        requestOwnerId: "operator-other-owner-001",
+      }),
+    /MVP-A onboarding binding gate requires request owner to match the trusted actor/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        linkedCorrelationIds: ["correlation-from-comment-001"],
+      }),
+    /MVP-A onboarding binding gate requires at least one linked correlation to match the root correlation/u,
   );
 });
