@@ -28,6 +28,7 @@ The final MVP-A Go/No-Go recommendation is recorded in [MVP-A Go/No-Go Decision]
 The MVP-A onboarding traceability closeout is recorded in [MVP-A Onboarding Traceability Closeout](docs/mvp-a-onboarding-traceability-closeout.md).
 The bounded MVP-A onboarding evidence authorization gate is recorded in [MVP-A Onboarding Evidence Authorization Gate](docs/mvp-a-onboarding-evidence-authorization-gate.md).
 The MVP-A onboarding PII masking, raw payload, and CSV/export closed gate is recorded in [MVP-A Onboarding PII Masking and Export Gate](docs/mvp-a-onboarding-pii-export-gate.md).
+The MVP-A onboarding non-production data handling gate is recorded in [MVP-A Onboarding Non-Production Data Handling Gate](docs/mvp-a-onboarding-non-production-data-gate.md).
 The MVP-A onboarding local synthetic backup / restore rehearsal gate is recorded in [MVP-A Onboarding Backup / Restore Rehearsal Gate](docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md).
 The final bounded/non-production MVP-A onboarding gate review checklist is recorded in [MVP-A Onboarding Go/No-Go Checklist](docs/mvp-a-onboarding-go-no-go-checklist.md).
 The final P2A-02 independent implementation review closeout is recorded in [MVP-A P2A-02 Independent Review Closeout](docs/mvp-a-p2a-02-independent-review-closeout.md).
@@ -85,6 +86,10 @@ The final P2A-02 independent implementation review closeout is recorded in [MVP-
   masking, raw payload, and CSV/export closed gate plus the remaining two-key
   ADR, masking, export-permission, watermark, download-log, and real-data
   dependencies.
+- `docs/mvp-a-onboarding-non-production-data-gate.md` records the MVP-A
+  onboarding non-production data handling gate, accepted evidence shapes,
+  masking expectations, prohibited payload/API/fixture/seed drift checks, and
+  the remaining #203 legal/privacy, data-owner, and two-key approval blockers.
 - `docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md` records the local
   synthetic backup / restore rehearsal gate, restored correlation verification,
   failed-restore rollback behavior, and remaining production backup-readiness

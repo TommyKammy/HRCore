@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
@@ -10,6 +10,13 @@ import {
   mvpAOnboardingEvidenceAuthorizationGate,
 } from "./mvp-a-onboarding-evidence-authorization.js";
 import {
+  assertMvpAOnboardingFixtureSeedText,
+  assertMvpAOnboardingNonProductionApiResponseField,
+  assertMvpAOnboardingNonProductionDataGate,
+  type MvpAOnboardingNonProductionDataGate,
+  mvpAOnboardingNonProductionDataGate,
+} from "./mvp-a-onboarding-non-production-data-gate.js";
+import {
   assertMvpAOnboardingPiiExportGate,
   type MvpAOnboardingPiiExportGate,
   mvpAOnboardingPiiExportGate,
@@ -19,13 +26,22 @@ import * as schema from "./persistence/schema.js";
 export interface MvpAPolicyAsCodeInputs {
   piiExportGate: MvpAOnboardingPiiExportGate;
   evidenceAuthorizationGate: MvpAOnboardingEvidenceAuthorizationGate;
+  nonProductionDataGate: MvpAOnboardingNonProductionDataGate;
   schemaTables: readonly SQLiteTable[];
   migrationSqlByPath: ReadonlyMap<string, string>;
   openApiContract: OpenApiContract;
+  fixtureSeedTextByPath: ReadonlyMap<string, string>;
+  documentationTextByPath: ReadonlyMap<string, string>;
 }
 
 export interface MvpAPolicyAsCodeFinding {
-  surface: "gate" | "schema" | "migration" | "openapi";
+  surface:
+    | "gate"
+    | "schema"
+    | "migration"
+    | "openapi"
+    | "fixture-seed"
+    | "documentation";
   path: string;
   subject: string;
   message: string;
@@ -68,6 +84,25 @@ const openApiOperationMetadataKeys = [
   "summary",
   "description",
 ] as const;
+const fixtureSeedFileNamePattern =
+  /(?:^|[-_.])(fixture|fixtures|seed|seeds)(?:[-_.]|$)/iu;
+const fixtureSeedTextExtensions = new Set([
+  ".cjs",
+  ".cts",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".mts",
+  ".sql",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml",
+]);
+const fixtureSeedIgnoredNamePattern =
+  /(?:^|[-_.])(test|spec|snap)(?:[-_.]|$)/iu;
 
 export function checkMvpAPolicyAsCode(
   inputs: MvpAPolicyAsCodeInputs,
@@ -77,6 +112,8 @@ export function checkMvpAPolicyAsCode(
     ...collectSchemaFindings(inputs),
     ...collectMigrationFindings(inputs),
     ...collectOpenApiFindings(inputs),
+    ...collectFixtureSeedFindings(inputs),
+    ...collectDocumentationFindings(inputs),
   ];
 }
 
@@ -101,11 +138,17 @@ export async function loadCurrentMvpAPolicyAsCodeInputs(
   return {
     piiExportGate: mvpAOnboardingPiiExportGate,
     evidenceAuthorizationGate: mvpAOnboardingEvidenceAuthorizationGate,
+    nonProductionDataGate: mvpAOnboardingNonProductionDataGate,
     schemaTables: collectCurrentSchemaTables(),
     migrationSqlByPath: await readCommittedMigrationSqlByPath(cwd),
     openApiContract: JSON.parse(
       await readFile(join(cwd, "openapi/hrcore.openapi.json"), "utf8"),
     ) as OpenApiContract,
+    fixtureSeedTextByPath: await readDiscoveredFixtureSeedTextByPath(cwd),
+    documentationTextByPath: await readRepoTextFilesByPath(cwd, [
+      "README.md",
+      "docs/mvp-a-onboarding-non-production-data-gate.md",
+    ]),
   };
 }
 
@@ -124,6 +167,11 @@ function collectGateFindings(
         assertMvpAOnboardingEvidenceAuthorizationGate(
           inputs.evidenceAuthorizationGate,
         ),
+    ],
+    [
+      inputs.nonProductionDataGate.gateId,
+      () =>
+        assertMvpAOnboardingNonProductionDataGate(inputs.nonProductionDataGate),
     ],
   ] as const) {
     try {
@@ -158,6 +206,17 @@ function collectSchemaFindings(
       if (finding !== undefined) {
         findings.push(finding);
       }
+
+      const nonProductionFinding = checkNonProductionApiResponseField(
+        inputs.nonProductionDataGate,
+        "schema",
+        "src/persistence/schema.ts",
+        `${tableConfig.name}.${column.name}`,
+        column.name,
+      );
+      if (nonProductionFinding !== undefined) {
+        findings.push(nonProductionFinding);
+      }
     }
   }
 
@@ -179,6 +238,17 @@ function collectMigrationFindings(
       );
       if (finding !== undefined) {
         findings.push(finding);
+      }
+
+      const nonProductionFinding = checkNonProductionApiResponseField(
+        inputs.nonProductionDataGate,
+        "migration",
+        path,
+        `${tableName}.${columnName}`,
+        columnName,
+      );
+      if (nonProductionFinding !== undefined) {
+        findings.push(nonProductionFinding);
       }
     }
   }
@@ -251,6 +321,17 @@ function collectOpenApiFindings(
       if (finding !== undefined) {
         findings.push(finding);
       }
+
+      const nonProductionFinding = checkNonProductionApiResponseField(
+        inputs.nonProductionDataGate,
+        "openapi",
+        "openapi/hrcore.openapi.json",
+        `${route}.${propertyName}`,
+        propertyName,
+      );
+      if (nonProductionFinding !== undefined) {
+        findings.push(nonProductionFinding);
+      }
     }
   }
 
@@ -284,6 +365,78 @@ function collectOpenApiFindings(
       if (finding !== undefined) {
         findings.push(finding);
       }
+
+      const nonProductionFinding = checkNonProductionApiResponseField(
+        inputs.nonProductionDataGate,
+        "openapi",
+        "openapi/hrcore.openapi.json",
+        `${schemaName}.${propertyName}`,
+        propertyName,
+      );
+      if (nonProductionFinding !== undefined) {
+        findings.push(nonProductionFinding);
+      }
+    }
+  }
+
+  return findings;
+}
+
+function collectFixtureSeedFindings(
+  inputs: MvpAPolicyAsCodeInputs,
+): MvpAPolicyAsCodeFinding[] {
+  const findings: MvpAPolicyAsCodeFinding[] = [];
+  for (const [path, text] of inputs.fixtureSeedTextByPath) {
+    try {
+      assertMvpAOnboardingFixtureSeedText(
+        inputs.nonProductionDataGate,
+        path,
+        text,
+      );
+    } catch (error) {
+      findings.push({
+        surface: "fixture-seed",
+        path,
+        subject: "fixture-seed text",
+        message: getErrorMessage(error),
+      });
+    }
+  }
+
+  return findings;
+}
+
+function collectDocumentationFindings(
+  inputs: MvpAPolicyAsCodeInputs,
+): MvpAPolicyAsCodeFinding[] {
+  const requiredDocumentationText = [
+    "mvp_a_onboarding_non_production_data_handling_v1",
+    "repo_owned_synthetic_fixture",
+    "approved_non_production_dataset",
+    "mvp_a_onboarding_pii_export_closed_v1",
+    "#202",
+    "#203 legal/privacy approval evidence placeholder",
+    "#203 independent data-owner approval placeholder",
+    "#203 two-key approval record placeholder",
+    "does not approve legal approval, privacy approval, real-data processing, production-like data processing, raw payload viewing, CSV/export, download logs, watermark/manifest behavior, My Number, Specific Personal Information, or sensitive personal information",
+  ];
+  const combinedDocumentation = [...inputs.documentationTextByPath.values()]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const findings: MvpAPolicyAsCodeFinding[] = [];
+
+  for (const requiredText of requiredDocumentationText) {
+    if (
+      !combinedDocumentation.includes(requiredText.replace(/\s+/gu, " ").trim())
+    ) {
+      findings.push({
+        surface: "documentation",
+        path: "README.md docs/mvp-a-onboarding-non-production-data-gate.md",
+        subject: requiredText,
+        message:
+          "MVP-A non-production data gate documentation is missing required blocker or boundary text",
+      });
     }
   }
 
@@ -302,6 +455,27 @@ function checkPiiExportSurface(
     assertMvpAOnboardingPiiExportGate(gate, {
       ...(checkKind === "route" ? { route: value } : { fieldName: value }),
     });
+  } catch (error) {
+    return {
+      surface,
+      path,
+      subject,
+      message: getErrorMessage(error),
+    };
+  }
+
+  return undefined;
+}
+
+function checkNonProductionApiResponseField(
+  gate: MvpAOnboardingNonProductionDataGate,
+  surface: MvpAPolicyAsCodeFinding["surface"],
+  path: string,
+  subject: string,
+  value: string,
+): MvpAPolicyAsCodeFinding | undefined {
+  try {
+    assertMvpAOnboardingNonProductionApiResponseField(gate, value);
   } catch (error) {
     return {
       surface,
@@ -346,6 +520,90 @@ async function readCommittedMigrationSqlByPath(
   }
 
   return migrationSqlByPath;
+}
+
+async function readRepoTextFilesByPath(
+  cwd: string,
+  paths: readonly string[],
+): Promise<Map<string, string>> {
+  const textByPath = new Map<string, string>();
+  for (const path of paths) {
+    textByPath.set(path, await readFile(join(cwd, path), "utf8"));
+  }
+
+  return textByPath;
+}
+
+async function readDiscoveredFixtureSeedTextByPath(
+  cwd: string,
+): Promise<Map<string, string>> {
+  const discoveredPaths = [
+    ...(await discoverFixtureSeedRootFiles(cwd)),
+    ...(await discoverFixtureSeedFilesUnder(cwd, "src")),
+    ...(await discoverFixtureSeedFilesUnder(cwd, "docs")),
+  ].sort();
+  return readRepoTextFilesByPath(cwd, discoveredPaths);
+}
+
+async function discoverFixtureSeedRootFiles(cwd: string): Promise<string[]> {
+  const rootEntries = await readdir(cwd, { withFileTypes: true });
+  return rootEntries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter(isFixtureSeedTextPath);
+}
+
+async function discoverFixtureSeedFilesUnder(
+  cwd: string,
+  rootPath: string,
+): Promise<string[]> {
+  const discoveredPaths: string[] = [];
+  const walk = async (relativeDirectory: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(join(cwd, relativeDirectory), {
+        withFileTypes: true,
+      });
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return;
+      }
+
+      throw error;
+    }
+
+    for (const entry of entries) {
+      const relativePath = join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(relativePath);
+        continue;
+      }
+
+      if (entry.isFile() && isFixtureSeedTextPath(relativePath)) {
+        discoveredPaths.push(relativePath);
+      }
+    }
+  };
+
+  await walk(rootPath);
+  return discoveredPaths;
+}
+
+function isFixtureSeedTextPath(path: string): boolean {
+  const fileName = basename(path);
+  const directorySegments = path.split(/[\\/]+/u).slice(0, -1);
+  return (
+    fixtureSeedTextExtensions.has(extname(fileName).toLowerCase()) &&
+    (fixtureSeedFileNamePattern.test(fileName) ||
+      directorySegments.some((segment) =>
+        fixtureSeedFileNamePattern.test(segment),
+      )) &&
+    !fixtureSeedIgnoredNamePattern.test(fileName)
+  );
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function collectMigrationColumnNames(
