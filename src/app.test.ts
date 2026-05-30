@@ -150,6 +150,11 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     "completed",
   );
   assert.deepEqual(
+    contract.components.schemas.MvpAOnboardingTransactionTrace.properties
+      .statusCode.enum,
+    ["approved", "completed"],
+  );
+  assert.deepEqual(
     contract.components.schemas.OnboardingApprovalDecisionInput.properties
       .decision.enum,
     ["approve", "return", "reject", "cancel"],

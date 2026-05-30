@@ -679,7 +679,7 @@
           },
           "statusCode": {
             "type": "string",
-            "const": "completed"
+            "enum": ["approved", "completed"]
           },
           "correlationId": {
             "type": "string"
