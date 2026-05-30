@@ -92,7 +92,7 @@ test("MVP-A practical-use data evidence accepts only synthetic or fully approved
   );
 });
 
-test("MVP-A approved non-production evidence rejects placeholder approval and stale dates", () => {
+test("MVP-A approved non-production evidence rejects placeholder approval and invalid dates", () => {
   const approvedEvidence = {
     evidenceType: "approved_non_production_dataset",
     datasetReference: "masked-non-production-review-fixture",
@@ -108,20 +108,74 @@ test("MVP-A approved non-production evidence rejects placeholder approval and st
     productionLikeSource: false,
   } as const;
 
-  for (const evidence of [
-    {
-      ...approvedEvidence,
-      approvalReference: "approval-placeholder-203",
-    },
-    {
-      ...approvedEvidence,
-      approvedAt: "not-a-date",
-    },
-    {
-      ...approvedEvidence,
-      expiresAt: "2000-01-01T00:00:00Z",
-    },
-  ]) {
+  for (const fieldName of [
+    "datasetReference",
+    "tenantEnvironmentId",
+    "maskingProfileReference",
+    "approvalReference",
+    "privacyReviewReference",
+    "dataOwnerApprovalReference",
+  ] as const) {
+    assert.throws(
+      () =>
+        assertMvpAOnboardingPracticalUseDataEvidence(
+          mvpAOnboardingNonProductionDataGate,
+          {
+            ...approvedEvidence,
+            [fieldName]: `${fieldName}-placeholder-203`,
+          },
+        ),
+      /approved_non_production_dataset evidence/u,
+      `expected ${fieldName} placeholder to fail closed`,
+    );
+  }
+
+  for (const [caseName, evidence] of [
+    [
+      "malformed approvedAt",
+      {
+        ...approvedEvidence,
+        approvedAt: "not-a-date",
+      },
+    ],
+    [
+      "malformed expiresAt",
+      {
+        ...approvedEvidence,
+        expiresAt: "not-a-date",
+      },
+    ],
+    [
+      "expired evidence",
+      {
+        ...approvedEvidence,
+        approvedAt: "1999-01-01T00:00:00Z",
+        expiresAt: "2000-01-01T00:00:00Z",
+      },
+    ],
+    [
+      "expiresAt equal to approvedAt",
+      {
+        ...approvedEvidence,
+        expiresAt: approvedEvidence.approvedAt,
+      },
+    ],
+    [
+      "expiresAt before approvedAt",
+      {
+        ...approvedEvidence,
+        expiresAt: "2026-05-29T00:00:00Z",
+      },
+    ],
+    [
+      "future approvedAt",
+      {
+        ...approvedEvidence,
+        approvedAt: "2099-05-30T00:00:00Z",
+        expiresAt: "2100-05-30T00:00:00Z",
+      },
+    ],
+  ] as const) {
     assert.throws(
       () =>
         assertMvpAOnboardingPracticalUseDataEvidence(
@@ -129,6 +183,7 @@ test("MVP-A approved non-production evidence rejects placeholder approval and st
           evidence,
         ),
       /approved_non_production_dataset evidence/u,
+      `expected ${caseName} to fail closed`,
     );
   }
 });

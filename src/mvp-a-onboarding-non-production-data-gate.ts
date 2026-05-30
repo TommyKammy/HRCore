@@ -365,6 +365,12 @@ function assertApprovedNonProductionEvidence(
 
   const approvedAt = parseEvidenceInstant(evidence.approvedAt, "approvedAt");
   const expiresAt = parseEvidenceInstant(evidence.expiresAt, "expiresAt");
+  if (approvedAt.getTime() > Date.now()) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      "MVP-A approved_non_production_dataset evidence approvedAt must not be in the future",
+    );
+  }
+
   if (expiresAt.getTime() <= approvedAt.getTime()) {
     throw new MvpAOnboardingNonProductionDataGateError(
       "MVP-A approved_non_production_dataset evidence expiresAt must be after approvedAt",
