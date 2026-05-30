@@ -148,8 +148,9 @@ type TransactionRequestRow = {
 type Payload = {
   tenantEnvironmentId: string;
   effectiveDate: string;
-  employment: { employmentCode: string };
+  employment: { id: string; employmentCode: string };
   assignment: {
+    id: string;
     assignmentCode: string;
     departmentReference: string;
     legalEntityReference: string;
@@ -613,7 +614,9 @@ function parsePayload(row: TransactionRequestRow): Payload {
   if (
     typeof parsed.tenantEnvironmentId !== "string" ||
     typeof parsed.effectiveDate !== "string" ||
+    typeof employment.id !== "string" ||
     typeof employment.employmentCode !== "string" ||
+    typeof assignment.id !== "string" ||
     typeof assignment.assignmentCode !== "string" ||
     typeof assignment.departmentReference !== "string" ||
     typeof assignment.legalEntityReference !== "string" ||
@@ -626,8 +629,12 @@ function parsePayload(row: TransactionRequestRow): Payload {
   return {
     tenantEnvironmentId: parsed.tenantEnvironmentId,
     effectiveDate: parsed.effectiveDate,
-    employment: { employmentCode: employment.employmentCode },
+    employment: {
+      id: employment.id,
+      employmentCode: employment.employmentCode,
+    },
     assignment: {
+      id: assignment.id,
       assignmentCode: assignment.assignmentCode,
       departmentReference: assignment.departmentReference,
       legalEntityReference: assignment.legalEntityReference,
@@ -792,13 +799,15 @@ function readEmployment(
           start_date,
           end_date
         FROM employment
-        WHERE person_id = ?
+        WHERE id = ?
+          AND person_id = ?
           AND employment_code = ?
           AND start_date = ?
         ORDER BY id
       `,
     )
     .all(
+      payload.employment.id,
       request.person_id,
       payload.employment.employmentCode,
       payload.effectiveDate,
@@ -842,7 +851,8 @@ function readAssignment(
           start_date,
           end_date
         FROM assignment
-        WHERE person_id = ?
+        WHERE id = ?
+          AND person_id = ?
           AND employment_id = ?
           AND assignment_code = ?
           AND organization_code = ?
@@ -851,6 +861,7 @@ function readAssignment(
       `,
     )
     .all(
+      payload.assignment.id,
       request.person_id,
       employment.id,
       payload.assignment.assignmentCode,

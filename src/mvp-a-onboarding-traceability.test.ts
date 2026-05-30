@@ -525,6 +525,98 @@ test("MVP-A onboarding trace fails closed when required apply evidence is missin
   }
 });
 
+test("MVP-A onboarding trace selects applied employment and assignment evidence by payload ids", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-onboarding-payload-id-link-001";
+    saveOnboardingTransactionRequest(
+      db,
+      createOnboardingTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+      }),
+    );
+    decideOnboardingTransactionRequest(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      decision: "approve",
+      decidedAt: "2026-05-21T01:00:00Z",
+      decidedBy: "operator-people-ops-001",
+      correlationId: rootCorrelationId,
+    });
+    await applyApprovedOnboardingTransactionRequestWithOktaProjection(db, {
+      transactionRequestId: "transaction-request-onboarding-001",
+      appliedAt: "2026-05-21T02:00:00Z",
+      appliedBy: "operator-people-ops-apply-001",
+      correlationId: rootCorrelationId,
+      oktaAdapter: buildOktaMasteringAdapter({ mode: "mock" }),
+    });
+
+    assert.doesNotThrow(() =>
+      verifyMvpAOnboardingCorrelationTrace(db, {
+        correlationId: rootCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireWriteback: false,
+        requireProviderRefresh: false,
+      }),
+    );
+
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = json_set(payload_json, '$.employment.id', ?)
+        WHERE id = ?
+      `,
+    ).run(
+      "employment-onboarding-payload-mismatch-001",
+      "transaction-request-onboarding-001",
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires employment status evidence linked to the correlated transaction request/u,
+    );
+
+    db.prepare(
+      `
+        UPDATE transaction_request
+        SET payload_json = json_set(
+          payload_json,
+          '$.employment.id',
+          ?,
+          '$.assignment.id',
+          ?
+        )
+        WHERE id = ?
+      `,
+    ).run(
+      "employment-onboarding-001",
+      "assignment-onboarding-payload-mismatch-001",
+      "transaction-request-onboarding-001",
+    );
+    assert.throws(
+      () =>
+        verifyMvpAOnboardingCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireWriteback: false,
+          requireProviderRefresh: false,
+        }),
+      /MVP-A onboarding trace requires assignment reference evidence linked to the correlated transaction request/u,
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("MVP-A onboarding trace rejects placeholder actor binding evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;

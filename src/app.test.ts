@@ -1004,6 +1004,30 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId summarizes conflic
     response.json().trace.workEmailConflictId,
     "synthetic-work-email-conflict:okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z:inbound_value_conflict",
   );
+
+  const providerOnlyResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "okta_projection",
+      "x-hrcore-mvp-a-field-scopes": "provider_projection",
+    },
+  });
+
+  assert.equal(providerOnlyResponse.statusCode, 200);
+  assert.deepEqual(providerOnlyResponse.json().authorization.evidenceSurfaces, [
+    "okta_projection",
+  ]);
+  assert.deepEqual(providerOnlyResponse.json().trace, {
+    providerRefreshId: null,
+    providerRefreshConflictId:
+      "synthetic-work-email-conflict:okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z:inbound_value_conflict",
+  });
+  assert.doesNotMatch(
+    providerOnlyResponse.body,
+    /workEmailWritebackEventId|workEmailConflictId/u,
+  );
 });
 
 test("GET /audit/mvp-a/onboarding-correlations/:correlationId does not map database errors to audit conflicts", async (t) => {

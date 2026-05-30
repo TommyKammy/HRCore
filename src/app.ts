@@ -479,7 +479,20 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
       "provider_projection",
     )
   ) {
+    const hasAuthorizedWorkEmailEvidence =
+      hasAuthorizedMvpAOnboardingTraceEvidence(
+        accessDecision,
+        "work_email_evidence",
+        "work_email_contact",
+      );
     summary.providerRefreshId = trace.providerRefresh?.id ?? null;
+    if (
+      trace.providerRefresh === undefined &&
+      trace.workEmailConflict !== undefined &&
+      !hasAuthorizedWorkEmailEvidence
+    ) {
+      summary.providerRefreshConflictId = trace.workEmailConflict.id;
+    }
   }
 
   return summary;
