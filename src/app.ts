@@ -498,6 +498,32 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
 function buildMvpAOnboardingTraceVerificationRequirements(
   accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
 ) {
+  const requiresApplyEvidence =
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "audit_event",
+      "audit_evidence",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "lifecycle_event",
+      "lifecycle_evidence",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "apply_job_attempt",
+      "apply_job_attempt_evidence",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "employment",
+      "employment_status",
+    ) ||
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "assignment",
+      "assignment_reference",
+    );
   const requiresWorkEmailEvidence = hasAuthorizedMvpAOnboardingTraceEvidence(
     accessDecision,
     "work_email_evidence",
@@ -511,7 +537,10 @@ function buildMvpAOnboardingTraceVerificationRequirements(
 
   return {
     requireApproval: true,
-    requireApply: true,
+    requireApply:
+      requiresApplyEvidence ||
+      requiresWorkEmailEvidence ||
+      requiresProviderProjection,
     requireWriteback: requiresWorkEmailEvidence || requiresProviderProjection,
     requireProviderRefresh: requiresProviderProjection,
   };

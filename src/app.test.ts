@@ -701,6 +701,60 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
   });
 });
 
+test("GET /audit/mvp-a/onboarding-correlations/:correlationId does not require apply evidence for request metadata scope", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const rootCorrelationId = "correlation-onboarding-request-metadata-only-001";
+  saveOnboardingTransactionRequest(
+    onboardingDb,
+    createOnboardingTransactionRequestFixture({
+      correlationId: rootCorrelationId,
+    }),
+  );
+  decideOnboardingTransactionRequest(onboardingDb, {
+    transactionRequestId: "transaction-request-onboarding-001",
+    decision: "approve",
+    decidedAt: "2026-05-21T01:00:00Z",
+    decidedBy: "operator-people-ops-001",
+    correlationId: rootCorrelationId,
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "transaction_request",
+      "x-hrcore-mvp-a-field-scopes": "request_metadata",
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().authorization.evidenceSurfaces, [
+    "transaction_request",
+  ]);
+  assert.deepEqual(response.json().authorization.fieldScopes, [
+    "request_metadata",
+  ]);
+  assert.deepEqual(response.json().trace, {
+    transactionRequest: {
+      id: "transaction-request-onboarding-001",
+      requestType: "hire",
+      statusCode: "approved",
+      correlationId: rootCorrelationId,
+    },
+  });
+  assert.doesNotMatch(
+    response.body,
+    /approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|employment|assignment|workEmailWritebackEventId|providerRefreshId|providerRefreshConflictId|workEmailConflictId/u,
+  );
+});
+
 test("GET /audit/mvp-a/onboarding-correlations/:correlationId fails closed without actor context", async (t) => {
   const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
   const app = await buildApp({ onboardingDb });
