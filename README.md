@@ -32,6 +32,7 @@ The MVP-A onboarding non-production data handling gate is recorded in [MVP-A Onb
 The MVP-A onboarding local synthetic backup / restore rehearsal gate is recorded in [MVP-A Onboarding Backup / Restore Rehearsal Gate](docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md).
 The final bounded/non-production MVP-A onboarding gate review checklist is recorded in [MVP-A Onboarding Go/No-Go Checklist](docs/mvp-a-onboarding-go-no-go-checklist.md).
 The final P2A-02 independent implementation review closeout is recorded in [MVP-A P2A-02 Independent Review Closeout](docs/mvp-a-p2a-02-independent-review-closeout.md).
+The final P2A-03 practical-use readiness review closeout is recorded in [MVP-A P2A-03 Practical-Use Readiness Review Closeout](docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md).
 
 ## Baseline structure
 
@@ -101,6 +102,10 @@ The final P2A-02 independent implementation review closeout is recorded in [MVP-
 - `docs/mvp-a-p2a-02-independent-review-closeout.md` records the independent
   MVP-A P2A-02 implementation review, R08/core-stability evidence, verification
   commands, residual risks, and bounded/non-production readiness verdict.
+- `docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md` records the
+  independent P2A-03 practical-use readiness review, verification commands,
+  residual blockers, and bounded/non-production-only verdict after the
+  non-production data handling follow-up wave.
 
 ## Local verification
 
