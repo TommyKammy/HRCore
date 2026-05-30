@@ -14,6 +14,7 @@ import {
 } from "./onboarding-transaction-request.js";
 import {
   verifyMvpAOnboardingCorrelationTrace,
+  type MvpAOnboardingCorrelationTrace,
   type MvpAOnboardingTraceabilityDatabase,
 } from "./mvp-a-onboarding-traceability.js";
 
@@ -156,6 +157,7 @@ export async function runMvpAOnboardingBackupRestoreRehearsal(
       requireProviderRefresh: false,
     },
   );
+  assertRestoredWritebackConflictEvidence(writebackConflictTrace);
 
   return {
     gate: mvpAOnboardingBackupRestoreRehearsalGate,
@@ -171,6 +173,16 @@ export async function runMvpAOnboardingBackupRestoreRehearsal(
     },
     remainingBackupReadinessGaps: [...remainingBackupReadinessGaps],
   };
+}
+
+function assertRestoredWritebackConflictEvidence(
+  trace: MvpAOnboardingCorrelationTrace,
+): void {
+  if (trace.workEmailConflict?.conflictType !== "inbound_value_conflict") {
+    throw new Error(
+      "MVP-A onboarding backup/restore rehearsal requires restored writeback conflict evidence",
+    );
+  }
 }
 
 export async function prepareMvpAOnboardingRehearsalDatabase(

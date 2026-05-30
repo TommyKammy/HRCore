@@ -543,8 +543,7 @@ function buildMvpAOnboardingTraceVerificationRequirements(
       requiresWorkEmailEvidence ||
       requiresProviderProjection,
     requireWriteback: requiresWorkEmailEvidence || requiresProviderProjection,
-    requireProviderRefresh:
-      requiresProviderProjection && !requiresWorkEmailEvidence,
+    requireProviderRefresh: requiresProviderProjection,
   };
 }
 

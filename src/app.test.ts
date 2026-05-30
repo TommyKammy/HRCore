@@ -1084,17 +1084,40 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId summarizes conflic
     },
   );
 
-  const response = await app.inject({
+  const defaultResponse = await app.inject({
     method: "GET",
     url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
     headers: mvpAOnboardingAuditHeaders,
   });
 
+  assert.equal(defaultResponse.statusCode, 409);
+  assert.deepEqual(defaultResponse.json(), {
+    error:
+      "MVP-A onboarding trace requires provider refresh or provider refresh conflict evidence linked to the writeback event",
+  });
+  assert.doesNotMatch(
+    defaultResponse.body,
+    /workEmailWritebackEventId|workEmailConflictId|providerRefreshConflictId|inbound_value_conflict/u,
+  );
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "work_email_evidence",
+      "x-hrcore-mvp-a-field-scopes": "work_email_contact",
+    },
+  });
+
   assert.equal(response.statusCode, 200);
-  assert.equal(response.json().trace.providerRefreshId, null);
   assert.equal(
     response.json().trace.workEmailConflictId,
     "synthetic-work-email-conflict:okta-work-email-writeback-create-EMP-ONBOARDING-001-2026-05-21T02%3A00%3A00Z:inbound_value_conflict",
+  );
+  assert.doesNotMatch(
+    response.body,
+    /providerRefreshId|providerRefreshConflictId/u,
   );
 
   const providerOnlyResponse = await app.inject({
