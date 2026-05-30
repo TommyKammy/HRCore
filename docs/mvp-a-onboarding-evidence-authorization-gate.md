@@ -41,8 +41,10 @@ The endpoint validates the actor and tenant/environment headers before loading
 correlation trace evidence. It also validates requested evidence-surface and
 field-scope headers, then confirms the trusted request-owner actor, before the
 full trace verifier can return correlation-specific evidence. The returned trace
-summary is then filtered to the authorized evidence surfaces and field scopes;
-narrower request headers do not receive person identifiers, audit, lifecycle,
+summary is then filtered to the authorized evidence surfaces and field scopes.
+Transaction-request metadata never carries the person identifier; authorized
+`person` / `person_identity` requests receive that identifier only as standalone
+person evidence, and narrower request headers do not receive audit, lifecycle,
 apply-job, provider, or work-email fields outside the authorization decision.
 
 ## Boundary

@@ -625,6 +625,9 @@
           "transactionRequest": {
             "$ref": "#/components/schemas/MvpAOnboardingTransactionTrace"
           },
+          "person": {
+            "$ref": "#/components/schemas/MvpAOnboardingPersonTrace"
+          },
           "approvalAuditEvent": {
             "$ref": "#/components/schemas/MvpAOnboardingAuditEventTrace"
           },
@@ -661,9 +664,6 @@
           "id": {
             "type": "string"
           },
-          "personId": {
-            "type": "string"
-          },
           "requestType": {
             "type": "string",
             "const": "hire"
@@ -673,6 +673,16 @@
             "const": "completed"
           },
           "correlationId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingPersonTrace": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
             "type": "string"
           }
         },

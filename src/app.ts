@@ -395,10 +395,17 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
     )
   ) {
     summary.transactionRequest =
-      buildAuthorizedMvpAOnboardingTransactionRequestTrace(
-        trace,
-        accessDecision,
-      );
+      buildAuthorizedMvpAOnboardingTransactionRequestTrace(trace);
+  }
+
+  if (
+    hasAuthorizedMvpAOnboardingTraceEvidence(
+      accessDecision,
+      "person",
+      "person_identity",
+    )
+  ) {
+    summary.person = buildAuthorizedMvpAOnboardingPersonTrace(trace);
   }
 
   if (
@@ -460,26 +467,21 @@ function buildAuthorizedMvpAOnboardingCorrelationTraceSummary(
 
 function buildAuthorizedMvpAOnboardingTransactionRequestTrace(
   trace: MvpAOnboardingCorrelationTrace,
-  accessDecision: MvpAOnboardingEvidenceRuntimeAccessDecision,
 ): Record<string, string> {
-  const transactionRequestTrace: Record<string, string> = {
+  return {
     id: trace.transactionRequest.id,
     requestType: trace.transactionRequest.requestType,
     statusCode: trace.transactionRequest.statusCode,
     correlationId: trace.transactionRequest.correlationId,
   };
+}
 
-  if (
-    hasAuthorizedMvpAOnboardingTraceEvidence(
-      accessDecision,
-      "person",
-      "person_identity",
-    )
-  ) {
-    transactionRequestTrace.personId = trace.transactionRequest.personId;
-  }
-
-  return transactionRequestTrace;
+function buildAuthorizedMvpAOnboardingPersonTrace(
+  trace: MvpAOnboardingCorrelationTrace,
+): Record<string, string> {
+  return {
+    id: trace.transactionRequest.personId,
+  };
 }
 
 function hasAuthorizedMvpAOnboardingTraceEvidence(

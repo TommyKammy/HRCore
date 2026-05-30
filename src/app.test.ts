@@ -482,10 +482,12 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
     trace: {
       transactionRequest: {
         id: "transaction-request-onboarding-001",
-        personId: "person-onboarding-001",
         requestType: "hire",
         statusCode: "completed",
         correlationId: rootCorrelationId,
+      },
+      person: {
+        id: "person-onboarding-001",
       },
       approvalAuditEvent: {
         id: "audit-event-transaction-request-onboarding-001-approve-correlation-onboarding-audit-lookup-001",
@@ -555,6 +557,29 @@ test("GET /audit/mvp-a/onboarding-correlations/:correlationId exposes bounded on
     limitedResponse.body,
     /personId|approvalAuditEvent|applyAuditEvent|lifecycleEventId|applyJobAttemptCount|workEmailWritebackEventId|providerRefreshId|workEmailConflictId/u,
   );
+
+  const personOnlyResponse = await app.inject({
+    method: "GET",
+    url: `/audit/mvp-a/onboarding-correlations/${rootCorrelationId}`,
+    headers: {
+      ...mvpAOnboardingAuditHeaders,
+      "x-hrcore-mvp-a-evidence-surfaces": "person",
+      "x-hrcore-mvp-a-field-scopes": "person_identity",
+    },
+  });
+
+  assert.equal(personOnlyResponse.statusCode, 200);
+  assert.deepEqual(personOnlyResponse.json().authorization.evidenceSurfaces, [
+    "person",
+  ]);
+  assert.deepEqual(personOnlyResponse.json().authorization.fieldScopes, [
+    "person_identity",
+  ]);
+  assert.deepEqual(personOnlyResponse.json().trace, {
+    person: {
+      id: "person-onboarding-001",
+    },
+  });
 
   onboardingDb.exec("DELETE FROM writeback_provider_refresh");
   const wrongOwnerResponse = await app.inject({
