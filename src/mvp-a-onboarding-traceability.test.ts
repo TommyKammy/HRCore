@@ -1142,6 +1142,22 @@ test("MVP-A onboarding binding gate rejects missing inferred or mismatched bindi
     () =>
       assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
         ...validEvidence,
+        trustedActorId: "operator-placeholder",
+      }),
+    /MVP-A onboarding binding gate rejects placeholder trusted actor evidence/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        trustedActorId: "operator-sample-001",
+      }),
+    /MVP-A onboarding binding gate rejects placeholder trusted actor evidence/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
         trustedActorId: "worker-onboarding-apply-001",
       }),
     /MVP-A onboarding binding gate rejects untrusted actor evidence/u,
@@ -1153,6 +1169,14 @@ test("MVP-A onboarding binding gate rejects missing inferred or mismatched bindi
         requestOwnerId: "worker-onboarding-apply-001",
       }),
     /MVP-A onboarding binding gate rejects untrusted actor evidence/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        requestOwnerId: "operator-sample-001",
+      }),
+    /MVP-A onboarding binding gate rejects placeholder request owner evidence/u,
   );
   assert.throws(
     () =>

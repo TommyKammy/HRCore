@@ -231,14 +231,7 @@ function isPlaceholderBinding(value: string): boolean {
     "admin",
     "anonymous",
   ]);
-  return (
-    tokens.some((token) => placeholderTokens.has(token)) ||
-    normalized.startsWith("todo-") ||
-    normalized.startsWith("placeholder-") ||
-    normalized.startsWith("sample-") ||
-    normalized.startsWith("example-") ||
-    normalized.startsWith("fake-")
-  );
+  return tokens.some((token) => placeholderTokens.has(token));
 }
 
 function assertExactSet(
