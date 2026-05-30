@@ -1934,6 +1934,58 @@ test("MVP-A onboarding Go/No-Go checklist separates bounded and stronger readine
   );
 });
 
+test("MVP-A P2A-02 independent review closeout records bounded readiness", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-p2a-02-independent-review-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A P2A-02 Independent Review Closeout",
+    "Issue: #191",
+    "Part of: #184",
+    "Depends on: #190",
+    "Readiness Verdict",
+    "bounded/non-production MVP-A onboarding E2E: Go",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "Reviewed Artifacts",
+    "P2A-01 implementation evidence",
+    "P2A-02 traceability",
+    "authorization and data scope",
+    "audit and backup",
+    "privacy, export, and R08",
+    "policy-as-code",
+    "Obsidian Phase2A progress notes",
+    "R08 and Core-Stability Evidence",
+    "R08 prohibited surface: clean in current repo evidence",
+    "Core-stability boundary: clean in current repo evidence",
+    "Migration check: clean in current repo evidence",
+    "Verification Commands",
+    "npm run policy:mvp-a",
+    "npm run verify:pre-pr",
+    "Residual Risks and Required Follow-Ups",
+    "#11-class authorization and data-scope follow-up",
+    "#12-class audit immutability follow-up",
+    "#14-class raw/export/prohibited-payload follow-up",
+    "Implementation and Design Mismatches",
+    "No mismatch blocks the bounded/non-production MVP-A review claim",
+    "Closeout",
+    "P2A-02 can close for bounded/non-production MVP-A onboarding review evidence",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2A-02 independent review closeout text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-A P2A-02 Independent Review Closeout\]\(docs\/mvp-a-p2a-02-independent-review-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
