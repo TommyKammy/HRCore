@@ -92,6 +92,47 @@ test("MVP-A practical-use data evidence accepts only synthetic or fully approved
   );
 });
 
+test("MVP-A synthetic practical-use evidence requires concrete string references", () => {
+  for (const [caseName, evidence] of [
+    [
+      "boolean dataset reference",
+      {
+        evidenceType: "repo_owned_synthetic_fixture",
+        datasetReference: true,
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      },
+    ],
+    [
+      "object dataset reference",
+      {
+        evidenceType: "repo_owned_synthetic_fixture",
+        datasetReference: { fixture: "repo-owned-onboarding-fixture" },
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      },
+    ],
+    [
+      "object tenant environment",
+      {
+        evidenceType: "repo_owned_synthetic_fixture",
+        datasetReference: "repo-owned-onboarding-fixture",
+        tenantEnvironmentId: {
+          tenant: "repo_owned_synthetic_mvp_a_onboarding",
+        },
+      },
+    ],
+  ] as const) {
+    assert.throws(
+      () =>
+        assertMvpAOnboardingPracticalUseDataEvidence(
+          mvpAOnboardingNonProductionDataGate,
+          evidence as never,
+        ),
+      /missing required repo_owned_synthetic_fixture evidence/u,
+      `expected ${caseName} to fail closed`,
+    );
+  }
+});
+
 test("MVP-A approved non-production evidence rejects placeholder approval and invalid dates", () => {
   const approvedEvidence = {
     evidenceType: "approved_non_production_dataset",

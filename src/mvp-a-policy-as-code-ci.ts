@@ -591,9 +591,13 @@ async function discoverFixtureSeedFilesUnder(
 
 function isFixtureSeedTextPath(path: string): boolean {
   const fileName = basename(path);
+  const directorySegments = path.split(/[\\/]+/u).slice(0, -1);
   return (
     fixtureSeedTextExtensions.has(extname(fileName).toLowerCase()) &&
-    fixtureSeedFileNamePattern.test(fileName) &&
+    (fixtureSeedFileNamePattern.test(fileName) ||
+      directorySegments.some((segment) =>
+        fixtureSeedFileNamePattern.test(segment),
+      )) &&
     !fixtureSeedIgnoredNamePattern.test(fileName)
   );
 }

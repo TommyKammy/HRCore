@@ -151,7 +151,9 @@ test("MVP-A policy-as-code input loader discovers fixture and seed files", async
   await mkdir(join(fixtureCwd, "drizzle"));
   await mkdir(join(fixtureCwd, "openapi"));
   await mkdir(join(fixtureCwd, "src"));
+  await mkdir(join(fixtureCwd, "src", "seeds"));
   await mkdir(join(fixtureCwd, "docs"));
+  await mkdir(join(fixtureCwd, "docs", "fixtures"));
   await writeFile(join(fixtureCwd, "drizzle", "0000_fixture.sql"), "");
   await writeFile(
     join(fixtureCwd, "openapi", "hrcore.openapi.json"),
@@ -175,6 +177,14 @@ test("MVP-A policy-as-code input loader discovers fixture and seed files", async
     "export const fixtureName = 'real employee';",
   );
   await writeFile(
+    join(fixtureCwd, "src", "seeds", "users.json"),
+    JSON.stringify({ name: "production employee" }),
+  );
+  await writeFile(
+    join(fixtureCwd, "docs", "fixtures", "personas.yaml"),
+    "persona: actual personnel\n",
+  );
+  await writeFile(
     join(fixtureCwd, "root-seed.json"),
     JSON.stringify({ seed: "live personnel" }),
   );
@@ -192,6 +202,14 @@ test("MVP-A policy-as-code input loader discovers fixture and seed files", async
   assert.equal(
     inputs.fixtureSeedTextByPath.get("root-seed.json"),
     JSON.stringify({ seed: "live personnel" }),
+  );
+  assert.equal(
+    inputs.fixtureSeedTextByPath.get("src/seeds/users.json"),
+    JSON.stringify({ name: "production employee" }),
+  );
+  assert.equal(
+    inputs.fixtureSeedTextByPath.get("docs/fixtures/personas.yaml"),
+    "persona: actual personnel\n",
   );
   assert.equal(
     inputs.fixtureSeedTextByPath.has("src/not-a-fixture.test.ts"),
@@ -216,6 +234,22 @@ test("MVP-A policy-as-code input loader discovers fixture and seed files", async
         finding.surface === "fixture-seed" && finding.path === "root-seed.json",
     ),
     "expected discovered root seed file to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "fixture-seed" &&
+        finding.path === "src/seeds/users.json",
+    ),
+    "expected discovered source seed directory file to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "fixture-seed" &&
+        finding.path === "docs/fixtures/personas.yaml",
+    ),
+    "expected discovered docs fixture directory file to fail the policy gate",
   );
 });
 

@@ -120,6 +120,11 @@ const concreteEvidenceFields = [
   "dataOwnerApprovalReference",
 ] as const;
 
+const booleanEvidenceFields = new Set([
+  "containsRealPersonnelData",
+  "productionLikeSource",
+]);
+
 const placeholderEvidenceTokens = [
   "placeholder",
   "todo",
@@ -349,11 +354,15 @@ function hasRequiredEvidenceValue(
   field: string,
 ): boolean {
   const value = evidence[field as keyof MvpAOnboardingPracticalUseDataEvidence];
+  if (booleanEvidenceFields.has(field)) {
+    return typeof value === "boolean";
+  }
+
   if (typeof value === "string") {
     return value.trim().length > 0;
   }
 
-  return value !== undefined;
+  return false;
 }
 
 function assertApprovedNonProductionEvidence(
