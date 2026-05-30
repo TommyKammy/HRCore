@@ -30,6 +30,7 @@ The bounded MVP-A onboarding evidence authorization gate is recorded in [MVP-A O
 The MVP-A onboarding PII masking, raw payload, and CSV/export closed gate is recorded in [MVP-A Onboarding PII Masking and Export Gate](docs/mvp-a-onboarding-pii-export-gate.md).
 The MVP-A onboarding local synthetic backup / restore rehearsal gate is recorded in [MVP-A Onboarding Backup / Restore Rehearsal Gate](docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md).
 The final bounded/non-production MVP-A onboarding gate review checklist is recorded in [MVP-A Onboarding Go/No-Go Checklist](docs/mvp-a-onboarding-go-no-go-checklist.md).
+The final P2A-02 independent implementation review closeout is recorded in [MVP-A P2A-02 Independent Review Closeout](docs/mvp-a-p2a-02-independent-review-closeout.md).
 
 ## Baseline structure
 
@@ -92,6 +93,9 @@ The final bounded/non-production MVP-A onboarding gate review checklist is recor
   bounded/non-production MVP-A onboarding Go/No-Go checklist, stronger-readiness
   blockers, and follow-up placeholders before practical-use or production-like
   claims.
+- `docs/mvp-a-p2a-02-independent-review-closeout.md` records the independent
+  MVP-A P2A-02 implementation review, R08/core-stability evidence, verification
+  commands, residual risks, and bounded/non-production readiness verdict.
 
 ## Local verification
 
