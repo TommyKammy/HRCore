@@ -987,6 +987,96 @@ test("POST /support/mvp-a/onboarding-reviews records reasoned bounded support re
     /duplicate review correlation id/u,
   );
 
+  const duplicateConstraintDb = new Proxy(onboardingDb, {
+    get(target, property, receiver) {
+      if (property !== "prepare") {
+        return Reflect.get(target, property, receiver);
+      }
+
+      return (sql: string) => {
+        const statement = target.prepare(sql);
+        if (
+          sql.includes("SELECT id") &&
+          sql.includes("FROM audit_event") &&
+          sql.includes("mvp_a.support_review.%")
+        ) {
+          return {
+            get: () => undefined,
+            run: (...values: Parameters<typeof statement.run>) =>
+              statement.run(...values),
+          };
+        }
+
+        if (sql.includes("INSERT INTO audit_event")) {
+          return {
+            get: (...values: Parameters<typeof statement.get>) =>
+              statement.get(...values),
+            run: (...values: Parameters<typeof statement.run>) => {
+              if (
+                values[0] ===
+                "audit-event-support-review-correlation-support-review-001"
+              ) {
+                const error = new Error(
+                  "UNIQUE constraint failed: audit_event.id",
+                ) as Error & { code: string };
+                error.code = "SQLITE_CONSTRAINT_PRIMARYKEY";
+                throw error;
+              }
+
+              return statement.run(...values);
+            },
+          };
+        }
+
+        return statement;
+      };
+    },
+  });
+  const duplicateConstraintApp = await buildApp({
+    onboardingDb: duplicateConstraintDb,
+  });
+  t.after(async () => {
+    await duplicateConstraintApp.close();
+  });
+  const duplicateConstraintResponse = await duplicateConstraintApp.inject({
+    method: "POST",
+    url: "/support/mvp-a/onboarding-reviews",
+    headers: {
+      "x-hrcore-mvp-a-actor-id": "operator-support-001",
+      "x-hrcore-mvp-a-tenant-environment":
+        "repo_owned_synthetic_mvp_a_onboarding",
+    },
+    payload: {
+      correlationId: rootCorrelationId,
+      reviewCorrelationId,
+      reasonCode: "onboarding_evidence_review",
+      requestedEvidenceSurfaces: ["transaction_request", "audit_event"],
+      requestedFieldScopes: ["request_metadata", "audit_evidence"],
+    },
+  });
+
+  assert.equal(duplicateConstraintResponse.statusCode, 409);
+  assert.match(
+    duplicateConstraintResponse.body,
+    /duplicate review correlation id/u,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM audit_event
+            WHERE id = ?
+          `,
+        )
+        .get("audit-event-support-review-correlation-support-review-001") as
+        | Record<string, unknown>
+        | undefined,
+    ),
+    { count: 1 },
+  );
+
   const unboundSupportActorResponse = await app.inject({
     method: "POST",
     url: "/support/mvp-a/onboarding-reviews",

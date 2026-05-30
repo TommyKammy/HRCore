@@ -917,28 +917,38 @@ function recordMvpAOnboardingSupportReviewAuditEvidence(
     );
   }
 
-  db.prepare(
-    `
-      INSERT INTO audit_event (
-        id,
-        actor_id,
-        action,
-        subject_table,
-        subject_id,
-        occurred_at,
-        correlation_id,
-        poc_marker
-      )
-      VALUES (?, ?, ?, 'transaction_request', ?, ?, ?, 'synthetic_poc')
-    `,
-  ).run(
-    auditEventId,
-    input.actorId,
-    action,
-    input.transactionRequestId,
-    new Date().toISOString(),
-    input.reviewCorrelationId,
-  );
+  try {
+    db.prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          correlation_id,
+          poc_marker
+        )
+        VALUES (?, ?, ?, 'transaction_request', ?, ?, ?, 'synthetic_poc')
+      `,
+    ).run(
+      auditEventId,
+      input.actorId,
+      action,
+      input.transactionRequestId,
+      new Date().toISOString(),
+      input.reviewCorrelationId,
+    );
+  } catch (error) {
+    if (isMvpAOnboardingSupportReviewDuplicateAuditConstraint(error)) {
+      throw new MvpAOnboardingSupportReviewConflictError(
+        "MVP-A onboarding support review rejects duplicate review correlation id",
+      );
+    }
+
+    throw error;
+  }
 
   return {
     auditEventId,
@@ -1219,6 +1229,34 @@ function isApprovedOnboardingApplyConflict(error: unknown): error is Error {
   return (
     error instanceof Error &&
     error.message.startsWith("approved onboarding apply ")
+  );
+}
+
+function isMvpAOnboardingSupportReviewDuplicateAuditConstraint(
+  error: unknown,
+): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const sqliteCode =
+    "code" in error && typeof error.code === "string" ? error.code : "";
+  const sqliteErrno =
+    "sqliteCode" in error && typeof error.sqliteCode === "string"
+      ? error.sqliteCode
+      : "";
+  const message = error.message;
+
+  return (
+    (sqliteCode === "SQLITE_CONSTRAINT" ||
+      sqliteCode === "SQLITE_CONSTRAINT_PRIMARYKEY" ||
+      sqliteCode === "SQLITE_CONSTRAINT_UNIQUE" ||
+      sqliteErrno === "SQLITE_CONSTRAINT" ||
+      sqliteErrno === "SQLITE_CONSTRAINT_PRIMARYKEY" ||
+      sqliteErrno === "SQLITE_CONSTRAINT_UNIQUE") &&
+    (message.includes("audit_event.id") ||
+      message.includes("PRIMARY KEY") ||
+      message.includes("UNIQUE constraint failed"))
   );
 }
 
