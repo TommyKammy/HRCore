@@ -1158,6 +1158,14 @@ test("MVP-A onboarding binding gate rejects missing inferred or mismatched bindi
     () =>
       assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
         ...validEvidence,
+        trustedActorId: "operator-",
+      }),
+    /MVP-A onboarding binding gate requires concrete actor evidence after the synthetic prefix/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
         trustedActorId: "worker-onboarding-apply-001",
       }),
     /MVP-A onboarding binding gate rejects untrusted actor evidence/u,
@@ -1182,6 +1190,14 @@ test("MVP-A onboarding binding gate rejects missing inferred or mismatched bindi
     () =>
       assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
         ...validEvidence,
+        requestOwnerId: "operator-",
+      }),
+    /MVP-A onboarding binding gate requires concrete actor evidence after the synthetic prefix/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
         effectiveActorIds: ["admin"],
       }),
     /MVP-A onboarding binding gate rejects placeholder actor evidence/u,
@@ -1201,6 +1217,14 @@ test("MVP-A onboarding binding gate rejects missing inferred or mismatched bindi
         effectiveActorIds: ["worker-fake-001"],
       }),
     /MVP-A onboarding binding gate rejects placeholder actor evidence/u,
+  );
+  assert.throws(
+    () =>
+      assertMvpAOnboardingBindingGateEvidence(mvpAOnboardingBindingGate, {
+        ...validEvidence,
+        effectiveActorIds: ["worker-"],
+      }),
+    /MVP-A onboarding binding gate requires concrete actor evidence after the synthetic prefix/u,
   );
   assert.throws(
     () =>

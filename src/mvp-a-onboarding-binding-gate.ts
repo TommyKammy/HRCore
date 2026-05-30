@@ -169,15 +169,15 @@ function requireEffectiveSyntheticActor(
   actorId: string,
 ): void {
   const boundActorId = requireBoundBinding("actor", actorId);
-  if (
-    gate.effectiveSyntheticActorPrefixes.every(
-      (prefix) => !boundActorId.startsWith(prefix),
-    )
-  ) {
+  const matchedPrefix = gate.effectiveSyntheticActorPrefixes.find((prefix) =>
+    boundActorId.startsWith(prefix),
+  );
+  if (!matchedPrefix) {
     throw new Error(
       "MVP-A onboarding binding gate rejects untrusted actor evidence",
     );
   }
+  requireConcreteActorSuffix(boundActorId, matchedPrefix);
 }
 
 function requireTrustedSyntheticActor(
@@ -185,13 +185,22 @@ function requireTrustedSyntheticActor(
   actorId: string,
 ): void {
   const boundActorId = requireBoundBinding("actor", actorId);
-  if (
-    gate.trustedSyntheticActorPrefixes.every(
-      (prefix) => !boundActorId.startsWith(prefix),
-    )
-  ) {
+  const matchedPrefix = gate.trustedSyntheticActorPrefixes.find((prefix) =>
+    boundActorId.startsWith(prefix),
+  );
+  if (!matchedPrefix) {
     throw new Error(
       "MVP-A onboarding binding gate rejects untrusted actor evidence",
+    );
+  }
+  requireConcreteActorSuffix(boundActorId, matchedPrefix);
+}
+
+function requireConcreteActorSuffix(actorId: string, prefix: string): void {
+  const suffix = actorId.slice(prefix.length);
+  if (!/[a-z0-9]/iu.test(suffix)) {
+    throw new Error(
+      "MVP-A onboarding binding gate requires concrete actor evidence after the synthetic prefix",
     );
   }
 }
