@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import { text, sqliteTable } from "drizzle-orm/sqlite-core";
@@ -140,6 +143,79 @@ test("MVP-A policy-as-code gate fails closed for non-production data drift", asy
   assert.ok(
     findings.some((finding) => finding.surface === "documentation"),
     "expected missing documentation blockers to fail the policy gate",
+  );
+});
+
+test("MVP-A policy-as-code input loader discovers fixture and seed files", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await mkdir(join(fixtureCwd, "drizzle"));
+  await mkdir(join(fixtureCwd, "openapi"));
+  await mkdir(join(fixtureCwd, "src"));
+  await mkdir(join(fixtureCwd, "docs"));
+  await writeFile(join(fixtureCwd, "drizzle", "0000_fixture.sql"), "");
+  await writeFile(
+    join(fixtureCwd, "openapi", "hrcore.openapi.json"),
+    JSON.stringify({
+      paths: {
+        "/onboarding/new-hire": {
+          get: {
+            operationId: "getOnboardingNewHire",
+          },
+        },
+      },
+    }),
+  );
+  await writeFile(join(fixtureCwd, "README.md"), "fixture policy root");
+  await writeFile(
+    join(fixtureCwd, "docs", "mvp-a-onboarding-non-production-data-gate.md"),
+    "fixture policy docs",
+  );
+  await writeFile(
+    join(fixtureCwd, "src", "review-fixture.ts"),
+    "export const fixtureName = 'real employee';",
+  );
+  await writeFile(
+    join(fixtureCwd, "root-seed.json"),
+    JSON.stringify({ seed: "live personnel" }),
+  );
+  await writeFile(
+    join(fixtureCwd, "src", "not-a-fixture.test.ts"),
+    "const fixtureName = 'real employee';",
+  );
+
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd);
+
+  assert.equal(
+    inputs.fixtureSeedTextByPath.get("src/review-fixture.ts"),
+    "export const fixtureName = 'real employee';",
+  );
+  assert.equal(
+    inputs.fixtureSeedTextByPath.get("root-seed.json"),
+    JSON.stringify({ seed: "live personnel" }),
+  );
+  assert.equal(
+    inputs.fixtureSeedTextByPath.has("src/not-a-fixture.test.ts"),
+    false,
+  );
+
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map(),
+  });
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "fixture-seed" &&
+        finding.path === "src/review-fixture.ts",
+    ),
+    "expected discovered source fixture file to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "fixture-seed" && finding.path === "root-seed.json",
+    ),
+    "expected discovered root seed file to fail the policy gate",
   );
 });
 

@@ -55,13 +55,14 @@ test("MVP-A practical-use data evidence accepts only synthetic or fully approved
       {
         evidenceType: "approved_non_production_dataset",
         datasetReference: "masked-non-production-review-fixture",
-        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
-        maskingProfileReference: "masking-profile-placeholder-203",
-        approvalReference: "approval-placeholder-203",
-        privacyReviewReference: "privacy-placeholder-203",
-        dataOwnerApprovalReference: "data-owner-placeholder-203",
+        tenantEnvironmentId: "approved_non_production_review_lab_203",
+        maskingProfileReference: "masking-profile://mvp-a/non-production/203",
+        approvalReference: "approval://mvp-a/non-production/203",
+        privacyReviewReference: "privacy-review://mvp-a/non-production/203",
+        dataOwnerApprovalReference:
+          "data-owner-approval://mvp-a/non-production/203",
         approvedAt: "2026-05-30T00:00:00Z",
-        expiresAt: "2026-06-30T00:00:00Z",
+        expiresAt: "2099-06-30T00:00:00Z",
         containsRealPersonnelData: false,
         productionLikeSource: false,
       },
@@ -75,19 +76,61 @@ test("MVP-A practical-use data evidence accepts only synthetic or fully approved
         {
           evidenceType: "approved_non_production_dataset",
           datasetReference: "masked-non-production-review-fixture",
-          tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
-          maskingProfileReference: "masking-profile-placeholder-203",
-          approvalReference: "approval-placeholder-203",
-          privacyReviewReference: "privacy-placeholder-203",
-          dataOwnerApprovalReference: "data-owner-placeholder-203",
+          tenantEnvironmentId: "approved_non_production_review_lab_203",
+          maskingProfileReference: "masking-profile://mvp-a/non-production/203",
+          approvalReference: "approval://mvp-a/non-production/203",
+          privacyReviewReference: "privacy-review://mvp-a/non-production/203",
+          dataOwnerApprovalReference:
+            "data-owner-approval://mvp-a/non-production/203",
           approvedAt: "2026-05-30T00:00:00Z",
-          expiresAt: "2026-06-30T00:00:00Z",
+          expiresAt: "2099-06-30T00:00:00Z",
           containsRealPersonnelData: true,
           productionLikeSource: false,
         },
       ),
     /must not approve real personnel or production-like data/u,
   );
+});
+
+test("MVP-A approved non-production evidence rejects placeholder approval and stale dates", () => {
+  const approvedEvidence = {
+    evidenceType: "approved_non_production_dataset",
+    datasetReference: "masked-non-production-review-fixture",
+    tenantEnvironmentId: "approved_non_production_review_lab_203",
+    maskingProfileReference: "masking-profile://mvp-a/non-production/203",
+    approvalReference: "approval://mvp-a/non-production/203",
+    privacyReviewReference: "privacy-review://mvp-a/non-production/203",
+    dataOwnerApprovalReference:
+      "data-owner-approval://mvp-a/non-production/203",
+    approvedAt: "2026-05-30T00:00:00Z",
+    expiresAt: "2099-06-30T00:00:00Z",
+    containsRealPersonnelData: false,
+    productionLikeSource: false,
+  } as const;
+
+  for (const evidence of [
+    {
+      ...approvedEvidence,
+      approvalReference: "approval-placeholder-203",
+    },
+    {
+      ...approvedEvidence,
+      approvedAt: "not-a-date",
+    },
+    {
+      ...approvedEvidence,
+      expiresAt: "2000-01-01T00:00:00Z",
+    },
+  ]) {
+    assert.throws(
+      () =>
+        assertMvpAOnboardingPracticalUseDataEvidence(
+          mvpAOnboardingNonProductionDataGate,
+          evidence,
+        ),
+      /approved_non_production_dataset evidence/u,
+    );
+  }
 });
 
 test("MVP-A onboarding parser rejects non-production data payload drift", () => {

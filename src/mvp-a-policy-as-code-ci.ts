@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
@@ -84,6 +84,25 @@ const openApiOperationMetadataKeys = [
   "summary",
   "description",
 ] as const;
+const fixtureSeedFileNamePattern =
+  /(?:^|[-_.])(fixture|fixtures|seed|seeds)(?:[-_.]|$)/iu;
+const fixtureSeedTextExtensions = new Set([
+  ".cjs",
+  ".cts",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".mts",
+  ".sql",
+  ".ts",
+  ".tsx",
+  ".txt",
+  ".yaml",
+  ".yml",
+]);
+const fixtureSeedIgnoredNamePattern =
+  /(?:^|[-_.])(test|spec|snap)(?:[-_.]|$)/iu;
 
 export function checkMvpAPolicyAsCode(
   inputs: MvpAPolicyAsCodeInputs,
@@ -125,13 +144,7 @@ export async function loadCurrentMvpAPolicyAsCodeInputs(
     openApiContract: JSON.parse(
       await readFile(join(cwd, "openapi/hrcore.openapi.json"), "utf8"),
     ) as OpenApiContract,
-    fixtureSeedTextByPath: await readRepoTextFilesByPath(cwd, [
-      "src/onboarding-transaction-request.ts",
-      "src/synthetic-hire.ts",
-      "src/okta-mastering-adapter.ts",
-      "src/mvp-a-onboarding-backup-restore-rehearsal.ts",
-      "openapi/hrcore.openapi.json",
-    ]),
+    fixtureSeedTextByPath: await readDiscoveredFixtureSeedTextByPath(cwd),
     documentationTextByPath: await readRepoTextFilesByPath(cwd, [
       "README.md",
       "docs/mvp-a-onboarding-non-production-data-gate.md",
@@ -519,6 +532,74 @@ async function readRepoTextFilesByPath(
   }
 
   return textByPath;
+}
+
+async function readDiscoveredFixtureSeedTextByPath(
+  cwd: string,
+): Promise<Map<string, string>> {
+  const discoveredPaths = [
+    ...(await discoverFixtureSeedRootFiles(cwd)),
+    ...(await discoverFixtureSeedFilesUnder(cwd, "src")),
+    ...(await discoverFixtureSeedFilesUnder(cwd, "docs")),
+  ].sort();
+  return readRepoTextFilesByPath(cwd, discoveredPaths);
+}
+
+async function discoverFixtureSeedRootFiles(cwd: string): Promise<string[]> {
+  const rootEntries = await readdir(cwd, { withFileTypes: true });
+  return rootEntries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter(isFixtureSeedTextPath);
+}
+
+async function discoverFixtureSeedFilesUnder(
+  cwd: string,
+  rootPath: string,
+): Promise<string[]> {
+  const discoveredPaths: string[] = [];
+  const walk = async (relativeDirectory: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(join(cwd, relativeDirectory), {
+        withFileTypes: true,
+      });
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return;
+      }
+
+      throw error;
+    }
+
+    for (const entry of entries) {
+      const relativePath = join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(relativePath);
+        continue;
+      }
+
+      if (entry.isFile() && isFixtureSeedTextPath(relativePath)) {
+        discoveredPaths.push(relativePath);
+      }
+    }
+  };
+
+  await walk(rootPath);
+  return discoveredPaths;
+}
+
+function isFixtureSeedTextPath(path: string): boolean {
+  const fileName = basename(path);
+  return (
+    fixtureSeedTextExtensions.has(extname(fileName).toLowerCase()) &&
+    fixtureSeedFileNamePattern.test(fileName) &&
+    !fixtureSeedIgnoredNamePattern.test(fileName)
+  );
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function collectMigrationColumnNames(

@@ -111,6 +111,28 @@ const prohibitedApiResponseFields = [
   "original_value",
 ] as const;
 
+const concreteEvidenceFields = [
+  "datasetReference",
+  "tenantEnvironmentId",
+  "maskingProfileReference",
+  "approvalReference",
+  "privacyReviewReference",
+  "dataOwnerApprovalReference",
+] as const;
+
+const placeholderEvidenceTokens = [
+  "placeholder",
+  "todo",
+  "tbd",
+  "sample",
+  "fake",
+  "dummy",
+  "example",
+  "changeme",
+  "replace-me",
+  "redacted",
+] as const;
+
 const remainingApprovalBlockers = [
   "#202 P2A-02 bounded/non-production gate remains authoritative",
   "#203 legal/privacy approval evidence placeholder",
@@ -245,11 +267,16 @@ export function assertMvpAOnboardingPracticalUseDataEvidence(
   }
 
   if (
+    evidence.evidenceType === "repo_owned_synthetic_fixture" &&
     evidence.tenantEnvironmentId !== "repo_owned_synthetic_mvp_a_onboarding"
   ) {
     throw new MvpAOnboardingNonProductionDataGateError(
       "MVP-A practical-use data evidence must bind to the repo-owned synthetic onboarding tenant/environment",
     );
+  }
+
+  if (evidence.evidenceType === "approved_non_production_dataset") {
+    assertApprovedNonProductionEvidence(evidence);
   }
 
   if (
@@ -327,6 +354,69 @@ function hasRequiredEvidenceValue(
   }
 
   return value !== undefined;
+}
+
+function assertApprovedNonProductionEvidence(
+  evidence: MvpAOnboardingPracticalUseDataEvidence,
+): void {
+  for (const field of concreteEvidenceFields) {
+    assertConcreteEvidenceReference(evidence, field);
+  }
+
+  const approvedAt = parseEvidenceInstant(evidence.approvedAt, "approvedAt");
+  const expiresAt = parseEvidenceInstant(evidence.expiresAt, "expiresAt");
+  if (expiresAt.getTime() <= approvedAt.getTime()) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      "MVP-A approved_non_production_dataset evidence expiresAt must be after approvedAt",
+    );
+  }
+
+  if (expiresAt.getTime() <= Date.now()) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      "MVP-A approved_non_production_dataset evidence expiresAt must be in the future",
+    );
+  }
+}
+
+function assertConcreteEvidenceReference(
+  evidence: MvpAOnboardingPracticalUseDataEvidence,
+  field: (typeof concreteEvidenceFields)[number],
+): void {
+  const value = evidence[field];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      `MVP-A approved_non_production_dataset evidence ${field} must be present`,
+    );
+  }
+
+  const normalizedValue = normalizeSurfaceName(value);
+  for (const placeholderToken of placeholderEvidenceTokens) {
+    if (normalizedValue.includes(normalizeSurfaceName(placeholderToken))) {
+      throw new MvpAOnboardingNonProductionDataGateError(
+        `MVP-A approved_non_production_dataset evidence ${field} must not be placeholder-only approval evidence`,
+      );
+    }
+  }
+}
+
+function parseEvidenceInstant(value: unknown, field: string): Date {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value)
+  ) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      `MVP-A approved_non_production_dataset evidence ${field} must be a valid ISO-8601 UTC instant`,
+    );
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new MvpAOnboardingNonProductionDataGateError(
+      `MVP-A approved_non_production_dataset evidence ${field} must be a valid ISO-8601 UTC instant`,
+    );
+  }
+
+  return parsed;
 }
 
 function assertExactSet(
