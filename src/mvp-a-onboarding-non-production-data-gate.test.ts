@@ -1,0 +1,153 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  assertMvpAOnboardingFixtureSeedText,
+  assertMvpAOnboardingNonProductionApiResponseField,
+  assertMvpAOnboardingNonProductionDataGate,
+  assertMvpAOnboardingNonProductionPayloadKey,
+  assertMvpAOnboardingPracticalUseDataEvidence,
+  mvpAOnboardingNonProductionDataGate,
+} from "./mvp-a-onboarding-non-production-data-gate.js";
+import {
+  createOnboardingTransactionRequestFixture,
+  OnboardingTransactionRequestValidationError,
+  parseOnboardingTransactionRequestInput,
+} from "./onboarding-transaction-request.js";
+
+test("MVP-A onboarding non-production data handling gate is explicit and fail-closed", () => {
+  assert.doesNotThrow(() =>
+    assertMvpAOnboardingNonProductionDataGate(
+      mvpAOnboardingNonProductionDataGate,
+    ),
+  );
+});
+
+test("MVP-A practical-use data evidence rejects missing approval shape", () => {
+  assert.throws(
+    () =>
+      assertMvpAOnboardingPracticalUseDataEvidence(
+        mvpAOnboardingNonProductionDataGate,
+        {
+          evidenceType: "approved_non_production_dataset",
+          datasetReference: "masked-non-production-review-fixture",
+        },
+      ),
+    /missing required approved_non_production_dataset evidence/u,
+  );
+});
+
+test("MVP-A practical-use data evidence accepts only synthetic or fully approved non-production shape", () => {
+  assert.doesNotThrow(() =>
+    assertMvpAOnboardingPracticalUseDataEvidence(
+      mvpAOnboardingNonProductionDataGate,
+      {
+        evidenceType: "repo_owned_synthetic_fixture",
+        datasetReference: "repo-owned-onboarding-fixture",
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+      },
+    ),
+  );
+
+  assert.doesNotThrow(() =>
+    assertMvpAOnboardingPracticalUseDataEvidence(
+      mvpAOnboardingNonProductionDataGate,
+      {
+        evidenceType: "approved_non_production_dataset",
+        datasetReference: "masked-non-production-review-fixture",
+        tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+        maskingProfileReference: "masking-profile-placeholder-203",
+        approvalReference: "approval-placeholder-203",
+        privacyReviewReference: "privacy-placeholder-203",
+        dataOwnerApprovalReference: "data-owner-placeholder-203",
+        approvedAt: "2026-05-30T00:00:00Z",
+        expiresAt: "2026-06-30T00:00:00Z",
+        containsRealPersonnelData: false,
+        productionLikeSource: false,
+      },
+    ),
+  );
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingPracticalUseDataEvidence(
+        mvpAOnboardingNonProductionDataGate,
+        {
+          evidenceType: "approved_non_production_dataset",
+          datasetReference: "masked-non-production-review-fixture",
+          tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
+          maskingProfileReference: "masking-profile-placeholder-203",
+          approvalReference: "approval-placeholder-203",
+          privacyReviewReference: "privacy-placeholder-203",
+          dataOwnerApprovalReference: "data-owner-placeholder-203",
+          approvedAt: "2026-05-30T00:00:00Z",
+          expiresAt: "2026-06-30T00:00:00Z",
+          containsRealPersonnelData: true,
+          productionLikeSource: false,
+        },
+      ),
+    /must not approve real personnel or production-like data/u,
+  );
+});
+
+test("MVP-A onboarding parser rejects non-production data payload drift", () => {
+  for (const prohibitedKey of [
+    ...mvpAOnboardingNonProductionDataGate.prohibitedPayloadKeys,
+  ]) {
+    const fixture = createOnboardingTransactionRequestFixture();
+    assert.throws(
+      () =>
+        parseOnboardingTransactionRequestInput({
+          ...fixture,
+          payload: {
+            ...fixture.payload,
+            [prohibitedKey]: "blocked",
+          },
+        }),
+      (error) =>
+        error instanceof OnboardingTransactionRequestValidationError &&
+        error instanceof Error &&
+        error.message ===
+          `payload contains unsupported fields: ${prohibitedKey}`,
+      `expected payload.${prohibitedKey} to be rejected`,
+    );
+
+    assert.throws(
+      () =>
+        assertMvpAOnboardingNonProductionPayloadKey(
+          mvpAOnboardingNonProductionDataGate,
+          prohibitedKey,
+        ),
+      /exposes prohibited non-production data surface/u,
+      `expected gate to reject ${prohibitedKey}`,
+    );
+  }
+});
+
+test("MVP-A onboarding non-production gate rejects API and fixture or seed drift", () => {
+  for (const fieldName of [
+    "productionLikeData",
+    "unmaskedEmail",
+    "originalValue",
+  ]) {
+    assert.throws(
+      () =>
+        assertMvpAOnboardingNonProductionApiResponseField(
+          mvpAOnboardingNonProductionDataGate,
+          fieldName,
+        ),
+      /exposes prohibited non-production data surface/u,
+      `expected API response field ${fieldName} to be rejected`,
+    );
+  }
+
+  assert.throws(
+    () =>
+      assertMvpAOnboardingFixtureSeedText(
+        mvpAOnboardingNonProductionDataGate,
+        "src/fixture-seed.ts",
+        "const fixture = 'real employee';",
+      ),
+    /contains prohibited non-production data token/u,
+  );
+});

@@ -74,6 +74,75 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
   );
 });
 
+test("MVP-A policy-as-code gate fails closed for non-production data drift", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    migrationSqlByPath: new Map([
+      [
+        "drizzle/fixture-non-production.sql",
+        "CREATE TABLE `fixture_onboarding` (`id` text PRIMARY KEY, `production_like_data` text);",
+      ],
+    ]),
+    openApiContract: {
+      paths: {
+        "/onboarding/new-hire": {
+          get: {
+            operationId: "getOnboardingNewHire",
+            responses: {
+              200: {
+                description: "Blocked fixture",
+                content: {
+                  "application/json": {
+                    schema: {
+                      properties: {
+                        unmaskedEmail: {
+                          type: "string",
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    fixtureSeedTextByPath: new Map([
+      ["src/fixture-seed.ts", "const fixtureName = 'real employee';"],
+    ]),
+    documentationTextByPath: new Map([
+      ["docs/mvp-a-onboarding-non-production-data-gate.md", "incomplete"],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "migration" &&
+        finding.subject === "fixture_onboarding.production_like_data",
+    ),
+    "expected production_like_data migration column to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "openapi" &&
+        finding.subject === "/onboarding/new-hire.unmaskedEmail",
+    ),
+    "expected unmaskedEmail OpenAPI response field to fail the policy gate",
+  );
+  assert.ok(
+    findings.some((finding) => finding.surface === "fixture-seed"),
+    "expected fixture or seed text to fail the policy gate",
+  );
+  assert.ok(
+    findings.some((finding) => finding.surface === "documentation"),
+    "expected missing documentation blockers to fail the policy gate",
+  );
+});
+
 test("MVP-A policy-as-code gate fails closed for prohibited onboarding OpenAPI surfaces", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
