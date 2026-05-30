@@ -51,6 +51,19 @@ const remainingBlockedBoundaries = [
   "production tenant roles",
 ] as const;
 
+const placeholderBindingTokens = new Set([
+  "todo",
+  "tbd",
+  "unknown",
+  "placeholder",
+  "sample",
+  "example",
+  "dummy",
+  "fake",
+  "admin",
+  "anonymous",
+]);
+
 export const mvpAOnboardingBindingGate: MvpAOnboardingBindingGate =
   Object.freeze({
     gateId: "mvp_a_onboarding_actor_subject_tenant_binding_v1",
@@ -234,19 +247,25 @@ function requireBoundBinding(
 function isPlaceholderBinding(value: string): boolean {
   const normalized = value.toLowerCase();
   const tokens = normalized.split(/[^a-z0-9]+/u).filter(Boolean);
-  const placeholderTokens = new Set([
-    "todo",
-    "tbd",
-    "unknown",
-    "placeholder",
-    "sample",
-    "example",
-    "dummy",
-    "fake",
-    "admin",
-    "anonymous",
-  ]);
-  return tokens.some((token) => placeholderTokens.has(token));
+  return tokens.some((token) => isPlaceholderBindingToken(token));
+}
+
+function isPlaceholderBindingToken(token: string): boolean {
+  if (placeholderBindingTokens.has(token)) {
+    return true;
+  }
+
+  for (const placeholderToken of placeholderBindingTokens) {
+    const suffix = token.slice(placeholderToken.length);
+    if (
+      token.startsWith(placeholderToken) &&
+      suffix.length > 0 &&
+      /^\d+$/u.test(suffix)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function assertExactSet(
