@@ -137,6 +137,85 @@
         }
       }
     },
+    "/support/mvp-a/onboarding-reviews": {
+      "post": {
+        "operationId": "createMvpAOnboardingSupportReview",
+        "summary": "Record a bounded MVP-A onboarding support review",
+        "description": "Creates a reasoned support review for one explicit MVP-A onboarding correlation ID. The support actor, tenant/environment, reason, evidence surfaces, and field scopes fail closed before trace evidence is returned. The operation records local audit/correlation evidence and keeps unredacted request-body disclosure, broad audit lookup, provider-side audit lookup, production WORM/Object Lock, hash-chain archive, compliance restore, and production support procedure readiness blocked.",
+        "parameters": [
+          {
+            "name": "x-hrcore-mvp-a-actor-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^operator-support-.+"
+            }
+          },
+          {
+            "name": "x-hrcore-mvp-a-tenant-environment",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "const": "repo_owned_synthetic_mvp_a_onboarding"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MvpAOnboardingSupportReviewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Reasoned support review evidence was recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MvpAOnboardingSupportReviewResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Support actor, reason, tenant/environment, or requested evidence scope failed closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Required directly linked onboarding evidence was missing or inconsistent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local MVP-A onboarding support review database was not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/onboarding/new-hire": {
       "get": {
         "operationId": "renderMvpAOnboardingWizard",
@@ -615,6 +694,195 @@
           "auditCorrelation": {
             "type": "string",
             "const": "same_onboarding_request_or_linked_operation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingSupportReviewInput": {
+        "type": "object",
+        "required": ["correlationId", "reviewCorrelationId", "reasonCode"],
+        "properties": {
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewCorrelationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reasonCode": {
+            "type": "string",
+            "const": "onboarding_evidence_review"
+          },
+          "requestedEvidenceSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "transaction_request",
+                "person",
+                "employment",
+                "assignment",
+                "lifecycle_event",
+                "apply_job_attempt",
+                "audit_event",
+                "okta_projection",
+                "work_email_evidence"
+              ]
+            },
+            "minItems": 1
+          },
+          "requestedFieldScopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "request_metadata",
+                "person_identity",
+                "employment_status",
+                "assignment_reference",
+                "lifecycle_evidence",
+                "apply_job_attempt_evidence",
+                "audit_evidence",
+                "provider_projection",
+                "work_email_contact"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingSupportReviewResponse": {
+        "type": "object",
+        "required": [
+          "reviewType",
+          "correlationId",
+          "reviewCorrelationId",
+          "reasonCode",
+          "authorization",
+          "trace",
+          "reviewAuditEvidence",
+          "deferredProductionGates"
+        ],
+        "properties": {
+          "reviewType": {
+            "type": "string",
+            "const": "mvp_a_onboarding_support_review"
+          },
+          "correlationId": {
+            "type": "string"
+          },
+          "reviewCorrelationId": {
+            "type": "string"
+          },
+          "reasonCode": {
+            "type": "string",
+            "const": "onboarding_evidence_review"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/MvpAOnboardingSupportReviewAuthorizationDecision"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/MvpAOnboardingCorrelationTraceSummary"
+          },
+          "reviewAuditEvidence": {
+            "$ref": "#/components/schemas/MvpAOnboardingSupportReviewAuditEvidence"
+          },
+          "deferredProductionGates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingSupportReviewAuthorizationDecision": {
+        "type": "object",
+        "required": [
+          "decision",
+          "gateId",
+          "actorId",
+          "tenantEnvironmentId",
+          "evidenceSurfaces",
+          "fieldScopes",
+          "dataScopes",
+          "auditCorrelation"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "const": "allow"
+          },
+          "gateId": {
+            "type": "string",
+            "const": "mvp_a_onboarding_support_review_v1"
+          },
+          "actorId": {
+            "type": "string",
+            "pattern": "^operator-support-.+"
+          },
+          "tenantEnvironmentId": {
+            "type": "string",
+            "const": "repo_owned_synthetic_mvp_a_onboarding"
+          },
+          "evidenceSurfaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fieldScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auditCorrelation": {
+            "type": "string",
+            "const": "direct_onboarding_correlation_with_reason"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MvpAOnboardingSupportReviewAuditEvidence": {
+        "type": "object",
+        "required": [
+          "auditEventId",
+          "actorId",
+          "action",
+          "subjectTable",
+          "subjectId",
+          "correlationId"
+        ],
+        "properties": {
+          "auditEventId": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string",
+            "pattern": "^operator-support-.+"
+          },
+          "action": {
+            "type": "string",
+            "const": "mvp_a.support_review.inspect.reason.onboarding_evidence_review"
+          },
+          "subjectTable": {
+            "type": "string",
+            "const": "transaction_request"
+          },
+          "subjectId": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
           }
         },
         "additionalProperties": false
