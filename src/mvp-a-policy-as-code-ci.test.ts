@@ -471,6 +471,62 @@ test("MVP-A policy-as-code input loader scans affected companion gate docs", asy
   }
 });
 
+test("MVP-A policy-as-code gate covers current readiness review probes", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  await writeFile(
+    join(fixtureCwd, "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md"),
+    [
+      "# ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary",
+      "",
+      "## Status",
+      "",
+      "- Accepted",
+      "",
+      "## Decision owners",
+      "",
+      "- Author: TommyKammy",
+      "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+      "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+      "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, "docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md"),
+    [
+      "P0-R06 / #12: production-like ready.",
+      "| Gate | Readiness |",
+      "| --- | --- |",
+      "| P0-R06 / #12 | production-like-ready |",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected bullet Accepted ADR status to fail via ADR document identity",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md" &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected companion-doc shorthand production-like readiness claims to fail",
+  );
+});
+
 test("MVP-A policy-as-code gate scopes independent approval to each readiness claim", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
