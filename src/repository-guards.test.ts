@@ -2348,6 +2348,11 @@ test("MVP-A P2A-05 refactor wave closeout records behavior-preserving review", a
     );
   }
 
+  assert.ok(
+    !normalizedCloseout.includes("src/onboarding-transaction-request.test.ts"),
+    "P2A-05 closeout must not cite the removed monolithic onboarding transaction test file",
+  );
+
   assert.match(
     readme,
     /\[MVP-A P2A-05 Refactor Wave Closeout\]\(docs\/mvp-a-p2a-05-refactor-wave-closeout\.md\)/,
