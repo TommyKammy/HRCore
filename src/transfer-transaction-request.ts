@@ -921,7 +921,6 @@ function assertNoTransferAssignmentCollision(
         WHERE person_id = ?
           AND employment_id = ?
           AND id != ?
-          AND start_date <= ?
           AND (end_date IS NULL OR end_date >= ?)
         LIMIT 1
       `,
@@ -930,7 +929,6 @@ function assertNoTransferAssignmentCollision(
       currentAssignment.person_id,
       currentAssignment.employment_id,
       currentAssignment.id,
-      payload.effectiveDate,
       payload.effectiveDate,
     );
 

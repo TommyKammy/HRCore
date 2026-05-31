@@ -181,7 +181,7 @@ test("MVP-B transfer apply closes the current assignment and records determinist
   }
 });
 
-test("MVP-B transfer apply fails closed when another assignment overlaps the target effective date", async (t) => {
+test("MVP-B transfer apply fails closed when a future assignment would overlap the open target assignment", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
 
@@ -240,7 +240,7 @@ test("MVP-B transfer apply fails closed when another assignment overlaps the tar
             'ASN-OVERLAP-TRANSFER-001',
             'department-shadow',
             'position-engineer-002',
-            '2026-07-01',
+            '2026-08-01',
             NULL
           )
       `,
