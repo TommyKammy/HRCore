@@ -12,6 +12,67 @@ import {
   type MvpAPolicyAsCodeInputs,
 } from "./mvp-a-policy-as-code-ci.js";
 
+test("MVP-A policy-as-code exposes focused helper entry points", async () => {
+  const openApiModulePath = "./mvp-a-policy-as-code-openapi.js";
+  const repositoryModulePath = "./mvp-a-policy-as-code-repository.js";
+  const repositorySurfacesModulePath =
+    "./mvp-a-policy-as-code-repository-surfaces.js";
+  const gateModulePath = "./mvp-a-policy-as-code-gates.js";
+  const fixtureSeedModulePath = "./mvp-a-policy-as-code-fixture-seed.js";
+  const documentationModulePath = "./mvp-a-policy-as-code-documentation.js";
+
+  const openApiHelpers = (await import(openApiModulePath)) as Record<
+    string,
+    unknown
+  >;
+  const repositoryHelpers = (await import(repositoryModulePath)) as Record<
+    string,
+    unknown
+  >;
+  const repositorySurfaceHelpers = (await import(
+    repositorySurfacesModulePath
+  )) as Record<string, unknown>;
+  const gateHelpers = (await import(gateModulePath)) as Record<string, unknown>;
+  const fixtureSeedHelpers = (await import(fixtureSeedModulePath)) as Record<
+    string,
+    unknown
+  >;
+  const documentationHelpers = (await import(
+    documentationModulePath
+  )) as Record<string, unknown>;
+
+  assert.equal(
+    typeof openApiHelpers.collectOpenApiOperationSurfaces,
+    "function",
+  );
+  assert.equal(
+    typeof openApiHelpers.collectOpenApiSchemaPropertyNamesFromValue,
+    "function",
+  );
+  assert.equal(typeof repositoryHelpers.readRepoTextFilesByPath, "function");
+  assert.equal(
+    typeof repositoryHelpers.readDiscoveredFixtureSeedTextByPath,
+    "function",
+  );
+  assert.equal(
+    typeof repositorySurfaceHelpers.collectSchemaFindings,
+    "function",
+  );
+  assert.equal(
+    typeof repositorySurfaceHelpers.collectMigrationFindings,
+    "function",
+  );
+  assert.equal(typeof gateHelpers.collectGateFindings, "function");
+  assert.equal(
+    typeof fixtureSeedHelpers.collectFixtureSeedFindings,
+    "function",
+  );
+  assert.equal(
+    typeof documentationHelpers.collectDocumentationFindings,
+    "function",
+  );
+});
+
 test("MVP-A policy-as-code gate passes for current repository surfaces", async () => {
   assert.deepEqual(
     checkMvpAPolicyAsCode(await loadCurrentMvpAPolicyAsCodeInputs()),
