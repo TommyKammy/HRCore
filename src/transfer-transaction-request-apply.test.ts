@@ -3,10 +3,15 @@ import test from "node:test";
 
 import {
   applyApprovedTransferTransactionRequest,
+  applyApprovedTransferTransactionRequestWithOktaProjection,
   createTransferTransactionRequestFixture,
   decideTransferTransactionRequest,
   saveTransferTransactionRequest,
 } from "./transfer-transaction-request.js";
+import {
+  buildOktaMasteringAdapter,
+  createSyntheticOktaUserFixture,
+} from "./okta-mastering-adapter.js";
 import {
   normalizeRow,
   normalizeRows,
@@ -181,6 +186,227 @@ test("MVP-B transfer apply closes the current assignment and records determinist
   }
 });
 
+test("MVP-B transfer apply records deterministic mock Okta profile and non-authoritative group projection impact evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveTransferTransactionRequest(
+      db,
+      createTransferTransactionRequestFixture(),
+    );
+    seedOpenTransferAssignment(db);
+    decideTransferTransactionRequest(db, {
+      transactionRequestId: "transaction-request-transfer-001",
+      decision: "approve",
+      decidedAt: "2026-06-15T01:00:00Z",
+      decidedBy: "operator-people-ops-transfer-001",
+      correlationId: "correlation-transfer-approval-001",
+    });
+
+    const oktaAdapter = buildOktaMasteringAdapter({
+      mode: "mock",
+      initialUsers: [
+        createSyntheticOktaUserFixture({
+          externalId: "synthetic-okta-user-person-transfer-001",
+          employeeNumber: "EMP-TRANSFER-001",
+          email: "mvp-b-transfer-one@example.invalid",
+          displayName: "MVP-B Transfer One",
+          givenName: "MVP-B",
+          familyName: "Transfer One",
+          status: "active",
+          departmentCode: "department-platform",
+          managerExternalId: "manager-platform-001",
+          effectiveAt: "2026-06-01T00:00:00Z",
+        }),
+      ],
+      initialGroups: [
+        {
+          externalId: "synthetic-okta-group-organization-engineering",
+          groupKey: "ORG-organization-engineering",
+          displayName: "Synthetic Organization Engineering",
+          purpose: "poc_identity_lifecycle_membership",
+          effectiveAt: "2026-06-01T00:00:00Z",
+        },
+        {
+          externalId: "synthetic-okta-group-department-product",
+          groupKey: "DEPT-department-product",
+          displayName: "Synthetic Department Product",
+          purpose: "poc_identity_lifecycle_membership",
+          effectiveAt: "2026-06-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const applyInput = {
+      transactionRequestId: "transaction-request-transfer-001",
+      appliedAt: "2026-06-15T02:00:00Z",
+      appliedBy: "operator-people-ops-transfer-apply-001",
+      correlationId: "correlation-transfer-apply-001",
+      oktaAdapter,
+    };
+    const result =
+      await applyApprovedTransferTransactionRequestWithOktaProjection(
+        db,
+        applyInput,
+      );
+    const retryResult =
+      await applyApprovedTransferTransactionRequestWithOktaProjection(
+        db,
+        applyInput,
+      );
+
+    assert.deepEqual(
+      {
+        ...retryResult,
+        oktaProjection: undefined,
+      },
+      {
+        ...result,
+        oktaProjection: undefined,
+      },
+    );
+    assert.equal(
+      retryResult.oktaProjection.groups.status,
+      "already_projected",
+      "same-correlation retry should expose deterministic no-op group evidence",
+    );
+    assert.deepEqual(result.oktaProjection, {
+      provider: "okta",
+      adapterMode: "mock",
+      synthetic: true,
+      authoritativeForRbac: false,
+      transactionRequestId: "transaction-request-transfer-001",
+      lifecycleEventId:
+        "lifecycle-event-transaction-request-transfer-001-apply",
+      applyCorrelationId: "correlation-transfer-apply-001",
+      profile: {
+        status: "projected",
+        result: {
+          outcome: "success",
+          operation: "update",
+          employeeNumber: "EMP-TRANSFER-001",
+          externalId: "synthetic-okta-user-person-transfer-001",
+          effectiveAt: "2026-06-15T02:00:00Z",
+          metadata: {
+            provider: "okta",
+            adapterMode: "mock",
+            projectionKey:
+              "okta:mock:update:EMP-TRANSFER-001:2026-06-15T02%3A00%3A00Z",
+            synthetic: true,
+          },
+        },
+      },
+      groups: {
+        status: "projected",
+        result: {
+          outcome: "success",
+          operation: "replace_user_groups",
+          employeeNumber: "EMP-TRANSFER-001",
+          groupKeys: [
+            "DEPT-department-product",
+            "ORG-organization-engineering",
+          ],
+          effectiveAt: "2026-06-15T02:00:00Z",
+          metadata: {
+            provider: "okta",
+            adapterMode: "mock",
+            projectionKey:
+              "okta:mock:replace_user_groups:EMP-TRANSFER-001:%5B%22DEPT-department-product%22%2C%22ORG-organization-engineering%22%5D:2026-06-15T02%3A00%3A00Z",
+            synthetic: true,
+          },
+        },
+      },
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-B transfer Okta impact skips groups after non-successful profile projection outcomes", async (t) => {
+  for (const projectionCase of [
+    {
+      name: "missing profile user",
+      forcedFailures: undefined,
+      expectedProfileStatus: "skipped",
+      expectedOutcome: "skipped",
+    },
+    {
+      name: "retryable profile projection",
+      forcedFailures: {
+        "EMP-TRANSFER-001": {
+          outcome: "retryable_failure",
+          errorCode: "mock_retryable_timeout",
+          message: "Synthetic retryable Okta timeout.",
+          retryAfterSeconds: 30,
+        },
+      },
+      expectedProfileStatus: "retryable_failure",
+      expectedOutcome: "retryable_failure",
+    },
+    {
+      name: "permanent profile projection",
+      forcedFailures: {
+        "EMP-TRANSFER-001": {
+          outcome: "permanent_failure",
+          errorCode: "mock_permanent_profile_rejected",
+          message: "Synthetic permanent Okta profile rejection.",
+        },
+      },
+      expectedProfileStatus: "failed",
+      expectedOutcome: "permanent_failure",
+    },
+  ] as const) {
+    await t.test(projectionCase.name, async (t) => {
+      const db = await openSchemaBackedDatabase(t);
+      if (!db) return;
+
+      try {
+        saveTransferTransactionRequest(
+          db,
+          createTransferTransactionRequestFixture(),
+        );
+        seedOpenTransferAssignment(db);
+        decideTransferTransactionRequest(db, {
+          transactionRequestId: "transaction-request-transfer-001",
+          decision: "approve",
+          decidedAt: "2026-06-15T01:00:00Z",
+          decidedBy: "operator-people-ops-transfer-001",
+          correlationId: "correlation-transfer-approval-001",
+        });
+
+        const result =
+          await applyApprovedTransferTransactionRequestWithOktaProjection(db, {
+            transactionRequestId: "transaction-request-transfer-001",
+            appliedAt: "2026-06-15T02:00:00Z",
+            appliedBy: "operator-people-ops-transfer-apply-001",
+            correlationId: "correlation-transfer-apply-001",
+            oktaAdapter: buildOktaMasteringAdapter({
+              mode: "mock",
+              forcedFailures: projectionCase.forcedFailures,
+            }),
+          });
+
+        assert.equal(
+          result.oktaProjection.profile.status,
+          projectionCase.expectedProfileStatus,
+        );
+        assert.equal(
+          result.oktaProjection.profile.result.outcome,
+          projectionCase.expectedOutcome,
+        );
+        assert.deepEqual(result.oktaProjection.groups, {
+          status: "skipped",
+          skippedReason: "profile_projection_not_successful",
+        });
+        assert.equal(result.statusCode, "completed");
+      } finally {
+        db.close();
+      }
+    });
+  }
+});
+
 test("MVP-B transfer apply fails closed when a future assignment would overlap the open target assignment", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
@@ -336,3 +562,52 @@ test("MVP-B transfer apply fails closed when a future assignment would overlap t
     db.close();
   }
 });
+
+function seedOpenTransferAssignment(
+  db: NonNullable<Awaited<ReturnType<typeof openSchemaBackedDatabase>>>,
+): void {
+  db.prepare(
+    `
+      INSERT INTO employment (
+        id,
+        person_id,
+        employment_code,
+        status_code,
+        start_date,
+        end_date
+      )
+      VALUES (
+        'employment-transfer-001',
+        'person-transfer-001',
+        'EMP-TRANSFER-001',
+        'active',
+        '2026-06-01',
+        NULL
+      )
+    `,
+  ).run();
+  db.prepare(
+    `
+      INSERT INTO assignment (
+        id,
+        person_id,
+        employment_id,
+        assignment_code,
+        organization_code,
+        position_code,
+        start_date,
+        end_date
+      )
+      VALUES (
+        'assignment-current-transfer-001',
+        'person-transfer-001',
+        'employment-transfer-001',
+        'ASN-CURRENT-TRANSFER-001',
+        'department-platform',
+        'position-engineer-001',
+        '2026-06-01',
+        NULL
+      )
+    `,
+  ).run();
+}
