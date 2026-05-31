@@ -106,29 +106,26 @@ function collectAffectedReadinessGateFindings(
         continue;
       }
 
-      const mentionedGates = affectedReadinessGateClaims.filter((gate) =>
-        mentionsAffectedGate(segment, gate.aliases),
-      );
       for (const gate of affectedReadinessGateClaims) {
-        const gateClaimSegment = getGateScopedClaimSegment(segment, gate);
+        const gateIsMentioned = mentionsAffectedGate(segment, gate.aliases);
+        const rawGateClaimSegment = gateIsMentioned
+          ? getGateScopedClaimSegment(segment, gate)
+          : segment;
+        const gateClaimSegment = stripReviewMetadata(rawGateClaimSegment);
         const claimBelongsToDocumentGate =
           documentGate?.subject === gate.subject &&
           hasDocumentScopedReadinessOverclaim(claimSegment);
-        if (
-          !claimBelongsToDocumentGate &&
-          !mentionedGates.some(
-            (mentionedGate) => mentionedGate.subject === gate.subject,
-          )
-        ) {
+        const gateHasOverclaim =
+          gateIsMentioned && hasAffectedReadinessOverclaim(gateClaimSegment);
+        if (!claimBelongsToDocumentGate && !gateHasOverclaim) {
           continue;
         }
 
         const claimHasIndependentApproval =
-          mentionedGates.length === 1 &&
-          mentionedGates[0].subject === gate.subject &&
+          gateHasOverclaim &&
           hasDocumentedIndependentReadinessApproval(segment);
         if (
-          isExplicitlyBlockedOrDeferred(gateClaimSegment) ||
+          isExplicitlyBlockedOrDeferred(rawGateClaimSegment) ||
           claimHasIndependentApproval ||
           (claimBelongsToDocumentGate && documentHasIndependentApproval)
         ) {
@@ -185,25 +182,57 @@ function escapeRegExp(value: string): string {
 
 function splitClaimSegments(text: string): string[] {
   const segments: string[] = [];
+  let pendingProseLines: string[] = [];
 
-  for (const line of text.split(/\r?\n/u)) {
-    const normalizedLine = line.replace(/\s+/gu, " ").trim();
-    if (normalizedLine.length === 0) {
-      continue;
+  const flushPendingProse = (): void => {
+    if (pendingProseLines.length === 0) {
+      return;
     }
 
-    if (normalizedLine.includes("|")) {
-      segments.push(normalizedLine);
-      continue;
+    const normalizedProse = pendingProseLines
+      .join(" ")
+      .replace(/\s+/gu, " ")
+      .trim();
+    pendingProseLines = [];
+    if (normalizedProse.length === 0) {
+      return;
     }
 
     segments.push(
-      ...normalizedLine
+      ...normalizedProse
         .split(/\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
         .map((segment) => segment.replace(/\s+/gu, " ").trim())
         .filter((segment) => segment.length > 0),
     );
+  };
+
+  for (const line of text.split(/\r?\n/u)) {
+    const normalizedLine = line.replace(/\s+/gu, " ").trim();
+    if (normalizedLine.length === 0) {
+      flushPendingProse();
+      continue;
+    }
+
+    if (normalizedLine.includes("|")) {
+      flushPendingProse();
+      segments.push(normalizedLine);
+      continue;
+    }
+
+    if (/^#{1,6}\s+/u.test(normalizedLine)) {
+      flushPendingProse();
+      segments.push(normalizedLine);
+      continue;
+    }
+
+    if (/^(?:[-*+]\s+|\d+\.\s+)/u.test(normalizedLine)) {
+      flushPendingProse();
+    }
+
+    pendingProseLines.push(normalizedLine);
   }
+
+  flushPendingProse();
 
   return segments;
 }
@@ -248,7 +277,7 @@ function findFirstAliasIndex(
 
 function stripReviewMetadata(segment: string): string {
   const metadataPattern = new RegExp(
-    `\\b${reviewMetadataLabels}:\\s*[^|]+`,
+    `\\b${reviewMetadataLabels}:\\s*[^|;\\r\\n]+\\s*(?:;\\s*)?`,
     "giu",
   );
   return segment.replace(metadataPattern, "");
@@ -351,7 +380,7 @@ function readReviewMetadataValue(
 function hasConcreteReviewMetadataValue(value: string): boolean {
   return (
     value.length > 0 &&
-    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder)\b/iu.test(
+    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder|missing|absent|unavailable|unknown|unrecorded)\b|not\s+recorded/iu.test(
       value,
     )
   );

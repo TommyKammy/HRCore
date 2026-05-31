@@ -914,6 +914,82 @@ test("MVP-A policy-as-code gate covers latest readiness review probes", async ()
   );
 });
 
+test("MVP-A policy-as-code gate covers follow-up readiness review probes", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const wrappedPath = "docs/fixture-wrapped-readiness-claim.md";
+  const metadataBeforeClaimPath =
+    "docs/fixture-metadata-before-readiness-claim.md";
+  const approvedDependencyPath =
+    "docs/fixture-approved-readiness-dependency.md";
+  const missingApprovalPath = "docs/fixture-missing-readiness-approval.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        wrappedPath,
+        [
+          "The solo-maintainer governance boundary keeps P0-R05 / #11 data-scope and RLS",
+          "are Accepted.",
+        ].join("\n"),
+      ],
+      [
+        metadataBeforeClaimPath,
+        "Approver: Required before Accepted; Counter-approver: Required before Accepted; P0-R06 / #12 is Accepted.",
+      ],
+      [
+        approvedDependencyPath,
+        [
+          "| Gate | Readiness | Dependency | Independent approval |",
+          "| --- | --- | --- | --- |",
+          "| P0-R08 / #14 | Accepted | depends on ADR 0011 | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+        ].join("\n"),
+      ],
+      [
+        missingApprovalPath,
+        "P0-R05 / #11 is Accepted; Independent approver: missing; Independent counter-approver: absent; Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === wrappedPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected wrapped prose aliases and Accepted wording to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === metadataBeforeClaimPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected metadata-before-claim placeholders not to hide Accepted wording",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === approvedDependencyPath,
+    ),
+    false,
+    "expected same-row approval to stay scoped to the claimed gate despite dependency aliases",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === missingApprovalPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected missing or absent approval metadata not to satisfy two-key approval",
+  );
+});
+
 test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
 
