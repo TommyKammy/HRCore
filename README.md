@@ -19,6 +19,7 @@ The Proposed retiree retention, anonymization, deletion-job, and retention-log e
 The Proposed legal-entity, timezone, business-calendar, and future-date apply worker extension boundary is recorded in [ADR 0019: Legal Entity Timezone and Business Calendar Extension Boundary](docs/adr/0019-legal-entity-timezone-business-calendar-extension-boundary.md).
 The Proposed R08 prohibited column and prohibited payload policy boundary is recorded in [ADR 0020: R08 Prohibited Column and Payload Policy Boundary](docs/adr/0020-r08-prohibited-column-payload-policy-boundary.md).
 The current solo-maintainer / owner-acknowledged governance posture for Proposed two-key ADR anchors is recorded in [Solo-Maintainer Governance Posture](docs/solo-maintainer-governance.md).
+The final solo-maintainer governance closeout is recorded in [P0-GOV-01 Solo-Maintainer Governance Closeout](docs/p0-gov-01-solo-maintainer-governance-closeout.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
@@ -68,6 +69,10 @@ The final P2A-05 high / medium priority behavior-preserving refactor wave closeo
 - `docs/solo-maintainer-governance.md` records the solo-maintainer /
   owner-acknowledged governance posture for Proposed two-key ADR anchors and
   stronger-readiness blockers.
+- `docs/p0-gov-01-solo-maintainer-governance-closeout.md` records the final
+  P0-GOV-01 closeout posture: #11, #12, and #14 remain
+  owner-acknowledged defer / production-like blocked until genuine independent
+  or two-key authority is recorded.
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.
