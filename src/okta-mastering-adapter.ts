@@ -196,6 +196,9 @@ export type OktaMasteringProjectionResult =
   };
 
 export interface OktaMasteringAdapter {
+  readSyntheticUserByEmployeeNumber(
+    employeeNumber: string,
+  ): SyntheticOktaUserFixture | undefined;
   project(
     projection: OktaMasteringProjection,
   ): Promise<OktaMasteringProjectionResult>;
@@ -283,6 +286,13 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
       this.groupsByKey.set(group.groupKey, { ...group });
     }
     this.forcedFailures = config.forcedFailures ?? {};
+  }
+
+  readSyntheticUserByEmployeeNumber(
+    employeeNumber: string,
+  ): SyntheticOktaUserFixture | undefined {
+    const user = this.usersByEmployeeNumber.get(employeeNumber);
+    return user === undefined ? undefined : { ...user };
   }
 
   async project(

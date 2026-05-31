@@ -318,6 +318,28 @@ test("MVP-B transfer apply records deterministic mock Okta profile and non-autho
         },
       },
     });
+    assert.deepEqual(
+      await oktaAdapter.refreshWorkEmailWriteback({
+        providerSubjectId: "synthetic-okta-user-person-transfer-001",
+        refreshedAt: "2026-06-15T02:05:00Z",
+        projectionEvidence: result.oktaProjection.profile.result.metadata,
+      }),
+      {
+        providerName: "synthetic_okta",
+        providerSubjectId: "synthetic-okta-user-person-transfer-001",
+        providerValue: "mvp-b-transfer-one@example.invalid",
+        refreshedAt: "2026-06-15T02:05:00Z",
+        metadata: {
+          provider: "okta",
+          adapterMode: "mock",
+          eventType: "work_email_refresh",
+          projectionKey:
+            "okta:mock:update:EMP-TRANSFER-001:2026-06-15T02%3A00%3A00Z",
+          synthetic: true,
+        },
+      },
+      "transfer profile projection must preserve the existing provider email",
+    );
   } finally {
     db.close();
   }

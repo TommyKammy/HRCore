@@ -778,6 +778,8 @@ export async function applyApprovedTransferTransactionRequestWithOktaProjection(
 
   const payload = parsePersistedTransferApplyPayload(existing);
   const employmentCode = readTransferEmploymentCode(db, applied.employmentId);
+  const currentUser =
+    oktaAdapter.readSyntheticUserByEmployeeNumber(employmentCode);
   const profileResult = await oktaAdapter.project({
     operation: "update",
     desiredUser: buildMvpBTransferOktaUserProjection({
@@ -785,6 +787,7 @@ export async function applyApprovedTransferTransactionRequestWithOktaProjection(
       payload,
       employmentCode,
       effectiveAt: input.appliedAt,
+      currentUser,
     }),
   });
   const profileStatus = toOktaTransferProfileProjectionStatus(profileResult);
@@ -1084,19 +1087,23 @@ function buildMvpBTransferOktaUserProjection(input: {
   payload: TransferTransactionRequestPayload;
   employmentCode: string;
   effectiveAt: string;
+  currentUser?: SyntheticOktaUserFixture | undefined;
 }): SyntheticOktaUserFixture {
   const { givenName, familyName } = splitSyntheticDisplayName(
     input.existing.display_name,
   );
 
   return {
-    externalId: `synthetic-okta-user-${input.existing.person_id}`,
+    externalId:
+      input.currentUser?.externalId ??
+      `synthetic-okta-user-${input.existing.person_id}`,
     employeeNumber: input.employmentCode,
-    email: `${input.existing.person_id}@example.invalid`,
+    email:
+      input.currentUser?.email ?? `${input.existing.person_id}@example.invalid`,
     displayName: input.existing.display_name,
     givenName,
     familyName,
-    status: "active",
+    status: input.currentUser?.status ?? "active",
     departmentCode: input.payload.targetAssignment.departmentReference,
     managerExternalId: input.payload.targetAssignment.managerReference,
     effectiveAt: input.effectiveAt,
