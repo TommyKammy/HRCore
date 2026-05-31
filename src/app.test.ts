@@ -15,45 +15,15 @@ import {
 } from "./onboarding-transaction-request.js";
 import { loadOpenApiContract } from "./openapi.js";
 import { buildServerApp, resolvePort } from "./server.js";
+import {
+  mvpAOnboardingAuditHeaders,
+  recordSyntheticOnboardingApplyJobAttempt,
+} from "./test-helpers/onboarding.js";
 import { createSyntheticWorkEmailWritebackFixture } from "./writeback-ingest.js";
 
 const normalizeRow = <TRow extends Record<string, unknown>>(
   row: TRow | undefined,
 ): Record<string, unknown> | undefined => (row ? { ...row } : row);
-
-const mvpAOnboardingAuditHeaders = {
-  "x-hrcore-mvp-a-actor-id": "operator-people-ops-001",
-  "x-hrcore-mvp-a-tenant-environment": "repo_owned_synthetic_mvp_a_onboarding",
-};
-
-function recordSyntheticOnboardingApplyJobAttempt(
-  db: { prepare(sql: string): { run(...values: unknown[]): unknown } },
-  correlationId: string,
-): void {
-  db.prepare(
-    `
-      INSERT INTO onboarding_apply_job_attempt (
-        id,
-        transaction_request_id,
-        person_id,
-        status_code,
-        attempted_at,
-        worker_id,
-        correlation_id,
-        retryable,
-        error_message
-      )
-      VALUES (?, ?, ?, 'applied', ?, ?, ?, 0, NULL)
-    `,
-  ).run(
-    `onboarding-apply-job-attempt-${correlationId}`,
-    "transaction-request-onboarding-001",
-    "person-onboarding-001",
-    "2026-05-21T02:00:00Z",
-    "worker-mvp-a-onboarding-001",
-    correlationId,
-  );
-}
 
 test("GET /health returns the smoke-test health response", async (t) => {
   const app = await buildApp();

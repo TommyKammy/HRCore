@@ -43,6 +43,80 @@ test("runtime node:sqlite usage keeps the supported Node engine floor aligned", 
   assert.equal(packageLockJson.packages?.[""]?.engines?.node, ">=22.5.0");
 });
 
+test("large onboarding tests use shared database and evidence fixture helpers", async () => {
+  const [
+    appTestSource,
+    onboardingTestSource,
+    traceabilityTestSource,
+    syntheticHireTestSource,
+    writebackTestSource,
+    databaseHelpers,
+    onboardingHelpers,
+  ] = await Promise.all([
+    readRepoFile("src/app.test.ts"),
+    readRepoFile("src/onboarding-transaction-request.test.ts"),
+    readRepoFile("src/mvp-a-onboarding-traceability.test.ts"),
+    readRepoFile("src/synthetic-hire.test.ts"),
+    readRepoFile("src/writeback-ingest.test.ts"),
+    readRepoFile("src/test-helpers/database.ts"),
+    readRepoFile("src/test-helpers/onboarding.ts"),
+  ]);
+
+  assert.match(databaseHelpers, /export const openSchemaBackedDatabase/u);
+  assert.match(databaseHelpers, /export const readCommittedMigrationSql/u);
+  assert.match(onboardingHelpers, /export const workerAttemptCorrelationId/u);
+  assert.match(
+    onboardingHelpers,
+    /export function recordSyntheticOnboardingApplyJobAttempt/u,
+  );
+
+  for (const [path, source] of [
+    ["src/onboarding-transaction-request.test.ts", onboardingTestSource],
+    ["src/mvp-a-onboarding-traceability.test.ts", traceabilityTestSource],
+    ["src/synthetic-hire.test.ts", syntheticHireTestSource],
+    ["src/writeback-ingest.test.ts", writebackTestSource],
+  ] as const) {
+    assert.match(
+      source,
+      /from "\.\/test-helpers\/database\.js"/u,
+      `${path} must import schema-backed database helpers`,
+    );
+    assert.doesNotMatch(
+      source,
+      /const openSchemaBackedDatabase = async/u,
+      `${path} must not carry a local schema database helper copy`,
+    );
+    assert.doesNotMatch(
+      source,
+      /const readCommittedMigrationSql = async/u,
+      `${path} must not carry a local migration SQL reader copy`,
+    );
+  }
+
+  for (const [path, source] of [
+    ["src/onboarding-transaction-request.test.ts", onboardingTestSource],
+    ["src/mvp-a-onboarding-traceability.test.ts", traceabilityTestSource],
+  ] as const) {
+    assert.match(
+      source,
+      /from "\.\/test-helpers\/onboarding\.js"/u,
+      `${path} must import onboarding helper fixtures`,
+    );
+    assert.doesNotMatch(
+      source,
+      /const workerAttemptCorrelationId = \(/u,
+      `${path} must not carry a local worker correlation helper copy`,
+    );
+  }
+
+  assert.match(appTestSource, /from "\.\/test-helpers\/onboarding\.js"/u);
+  assert.doesNotMatch(appTestSource, /const mvpAOnboardingAuditHeaders =/u);
+  assert.doesNotMatch(
+    appTestSource,
+    /function recordSyntheticOnboardingApplyJobAttempt/u,
+  );
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
