@@ -201,6 +201,71 @@ test("synthetic work email writeback ingest stays split by responsibility", asyn
   );
 });
 
+test("synthetic hire behavior stays split by responsibility", async () => {
+  const modulePaths = [
+    "src/synthetic-hire.ts",
+    "src/synthetic-hire-types.ts",
+    "src/synthetic-hire-fixtures.ts",
+    "src/synthetic-hire-validation.ts",
+    "src/synthetic-hire-persistence.ts",
+    "src/synthetic-hire-apply.ts",
+    "src/synthetic-hire-future-date.ts",
+  ] as const;
+  const testPaths = [
+    "src/synthetic-hire.test.ts",
+    "src/synthetic-hire-request-persistence.test.ts",
+    "src/synthetic-hire-apply.test.ts",
+    "src/synthetic-hire-future-date.test.ts",
+    "src/synthetic-hire-validation.test.ts",
+  ] as const;
+  const sources = Object.fromEntries(
+    await Promise.all(
+      [...modulePaths, ...testPaths].map(async (path) => [
+        path,
+        await readRepoFile(path),
+      ]),
+    ),
+  ) as Record<
+    (typeof modulePaths)[number] | (typeof testPaths)[number],
+    string
+  >;
+
+  assert.match(sources["src/synthetic-hire.ts"], /export \* from/u);
+  assert.doesNotMatch(
+    sources["src/synthetic-hire.ts"],
+    /db\.prepare|SAVEPOINT|ROLLBACK TO SAVEPOINT/u,
+    "public synthetic hire module must remain a stable export surface",
+  );
+  assert.match(
+    sources["src/synthetic-hire-fixtures.ts"],
+    /export function createSyntheticHireFixture/u,
+  );
+  assert.match(
+    sources["src/synthetic-hire-validation.ts"],
+    /export function validateApplySyntheticHireRequest/u,
+  );
+  assert.match(
+    sources["src/synthetic-hire-persistence.ts"],
+    /export function saveSyntheticHireRequest/u,
+  );
+  assert.match(
+    sources["src/synthetic-hire-apply.ts"],
+    /export function applySyntheticHireRequest/u,
+  );
+  assert.match(
+    sources["src/synthetic-hire-future-date.ts"],
+    /export function applySyntheticFutureDateHireJob/u,
+  );
+
+  for (const path of testPaths) {
+    assert.match(
+      sources[path],
+      /from "\.\/test-helpers\/database\.js"/u,
+      `${path} must import schema-backed database helpers`,
+    );
+  }
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
