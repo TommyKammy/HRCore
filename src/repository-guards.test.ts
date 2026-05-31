@@ -43,10 +43,18 @@ test("runtime node:sqlite usage keeps the supported Node engine floor aligned", 
   assert.equal(packageLockJson.packages?.[""]?.engines?.node, ">=22.5.0");
 });
 
-test("large onboarding tests use shared database and evidence fixture helpers", async () => {
+test("large onboarding tests use focused boundary files and shared helpers", async () => {
+  const onboardingBoundaryTestPaths = [
+    "src/onboarding-transaction-request-apply.test.ts",
+    "src/onboarding-transaction-request-contract.test.ts",
+    "src/onboarding-transaction-request-decision.test.ts",
+    "src/onboarding-transaction-request-persistence.test.ts",
+    "src/onboarding-transaction-request-worker.test.ts",
+    "src/onboarding-transaction-request-writeback-retry.test.ts",
+  ] as const;
   const [
     appTestSource,
-    onboardingTestSource,
+    onboardingBoundaryTestSources,
     traceabilityTestSource,
     syntheticHireTestSource,
     writebackTestSource,
@@ -54,7 +62,7 @@ test("large onboarding tests use shared database and evidence fixture helpers", 
     onboardingHelpers,
   ] = await Promise.all([
     readRepoFile("src/app.test.ts"),
-    readRepoFile("src/onboarding-transaction-request.test.ts"),
+    Promise.all(onboardingBoundaryTestPaths.map((path) => readRepoFile(path))),
     readRepoFile("src/mvp-a-onboarding-traceability.test.ts"),
     readRepoFile("src/synthetic-hire.test.ts"),
     readRepoFile("src/writeback-ingest.test.ts"),
@@ -71,7 +79,9 @@ test("large onboarding tests use shared database and evidence fixture helpers", 
   );
 
   for (const [path, source] of [
-    ["src/onboarding-transaction-request.test.ts", onboardingTestSource],
+    ...onboardingBoundaryTestPaths.map(
+      (path, index) => [path, onboardingBoundaryTestSources[index]] as const,
+    ),
     ["src/mvp-a-onboarding-traceability.test.ts", traceabilityTestSource],
     ["src/synthetic-hire.test.ts", syntheticHireTestSource],
     ["src/writeback-ingest.test.ts", writebackTestSource],
@@ -94,7 +104,9 @@ test("large onboarding tests use shared database and evidence fixture helpers", 
   }
 
   for (const [path, source] of [
-    ["src/onboarding-transaction-request.test.ts", onboardingTestSource],
+    ...onboardingBoundaryTestPaths.map(
+      (path, index) => [path, onboardingBoundaryTestSources[index]] as const,
+    ),
     ["src/mvp-a-onboarding-traceability.test.ts", traceabilityTestSource],
   ] as const) {
     assert.match(
