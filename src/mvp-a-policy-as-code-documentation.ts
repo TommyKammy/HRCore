@@ -138,7 +138,8 @@ function collectAffectedReadinessGateFindings(
           if (
             isExplicitlyBlockedOrDeferred(rawGateClaimSegment) ||
             claimHasIndependentApproval ||
-            (claimBelongsToDocumentGate && documentHasIndependentApproval)
+            (documentGate?.subject === gate.subject &&
+              documentHasIndependentApproval)
           ) {
             continue;
           }
@@ -564,7 +565,8 @@ function stripReviewMetadata(segment: string): string {
 
 function hasAffectedReadinessOverclaim(segment: string): boolean {
   return (
-    /\baccepted\b/iu.test(segment) ||
+    hasAcceptedStatusClaim(segment) ||
+    hasAcceptedReadinessClaim(segment) ||
     hasProductionLikeReadinessOverclaim(segment)
   );
 }
@@ -629,21 +631,48 @@ function hasUnblockedReadinessOverclaim(segment: string): boolean {
 }
 
 function hasUnblockedAcceptedReadinessOccurrence(segment: string): boolean {
-  for (const match of segment.matchAll(/\baccepted\b/giu)) {
+  const normalizedSegment = normalizeAcceptedReadinessClaimText(segment);
+  for (const match of normalizedSegment.matchAll(/\baccepted\b/giu)) {
     const index = match.index;
     if (index === undefined) {
       continue;
     }
 
     if (
-      isAcceptedReadinessClaimShape(segment, index, match[0].length) &&
-      !isReadinessOccurrenceBlocked(segment.slice(0, index))
+      isAcceptedReadinessClaimShape(
+        normalizedSegment,
+        index,
+        match[0].length,
+      ) &&
+      !isReadinessOccurrenceBlocked(normalizedSegment.slice(0, index))
     ) {
       return true;
     }
   }
 
   return false;
+}
+
+function hasAcceptedReadinessClaim(segment: string): boolean {
+  const normalizedSegment = normalizeAcceptedReadinessClaimText(segment);
+  for (const match of normalizedSegment.matchAll(/\baccepted\b/giu)) {
+    const index = match.index;
+    if (index === undefined) {
+      continue;
+    }
+
+    if (
+      isAcceptedReadinessClaimShape(normalizedSegment, index, match[0].length)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function normalizeAcceptedReadinessClaimText(segment: string): string {
+  return segment.replace(/\*/gu, "");
 }
 
 function isAcceptedReadinessClaimShape(
@@ -708,45 +737,57 @@ function hasBareReadinessTableCell(segment: string): boolean {
 }
 
 function hasDocumentedIndependentReadinessApproval(text: string): boolean {
-  const author = readReviewMetadataValue(text, ["Author"]);
-  const approver = readReviewMetadataValue(text, [
+  const authorValues = readReviewMetadataValues(text, ["Author"]);
+  const approverValues = readReviewMetadataValues(text, [
     "Independent\\s+approver",
     "Approver",
   ]);
-  const counterApprover = readReviewMetadataValue(text, [
+  const counterApproverValues = readReviewMetadataValues(text, [
     "Independent\\s+counter-approver",
     "Counter-approver",
   ]);
-  const reviewWindow = readReviewMetadataValue(text, [
+  const reviewWindowValues = readReviewMetadataValues(text, [
     "Time-locked\\s+review\\s+window",
   ]);
 
-  return (
-    approver !== undefined &&
-    counterApprover !== undefined &&
-    reviewWindow !== undefined &&
-    hasConcreteReviewMetadataValue(approver) &&
-    hasConcreteReviewMetadataValue(counterApprover) &&
-    (author === undefined ||
-      (hasConcreteReviewMetadataValue(author) &&
-        !sameReviewMetadataValue(author, approver) &&
-        !sameReviewMetadataValue(author, counterApprover))) &&
-    !sameReviewMetadataValue(approver, counterApprover) &&
-    hasCompletedReviewWindow(reviewWindow)
+  const concreteAuthors = authorValues.filter(hasConcreteReviewMetadataValue);
+  const concreteApprovers = approverValues.filter(
+    hasConcreteReviewMetadataValue,
+  );
+  const concreteCounterApprovers = counterApproverValues.filter(
+    hasConcreteReviewMetadataValue,
+  );
+  const completedReviewWindows = reviewWindowValues.filter(
+    hasCompletedReviewWindow,
+  );
+
+  return concreteApprovers.some((approver) =>
+    concreteCounterApprovers.some(
+      (counterApprover) =>
+        !sameReviewMetadataValue(approver, counterApprover) &&
+        completedReviewWindows.length > 0 &&
+        (authorValues.length === 0 ||
+          concreteAuthors.some(
+            (author) =>
+              !sameReviewMetadataValue(author, approver) &&
+              !sameReviewMetadataValue(author, counterApprover),
+          )),
+    ),
   );
 }
 
-function readReviewMetadataValue(
+function readReviewMetadataValues(
   text: string,
   labels: readonly string[],
-): string | undefined {
+): string[] {
   const labelPattern = labels.join("|");
   const metadataValuePattern = new RegExp(
     `(?:^|[|;,\\r\\n])\\s*(?:[-*]\\s+)?(?:${labelPattern}):\\s*(.*?)(?=\\s*(?:[,;]\\s*)?${reviewMetadataLabels}:|[|\\r\\n]|$)`,
-    "iu",
+    "giu",
   );
-  const match = metadataValuePattern.exec(text);
-  return match?.[1].replace(/\s+/gu, " ").trim();
+  return Array.from(text.matchAll(metadataValuePattern), (match) =>
+    match[1].replace(/\s+/gu, " ").trim(),
+  );
 }
 
 function hasConcreteReviewMetadataValue(value: string): boolean {

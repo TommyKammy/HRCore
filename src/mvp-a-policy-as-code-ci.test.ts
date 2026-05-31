@@ -1451,6 +1451,73 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
   );
 });
 
+test("MVP-A policy-as-code gate ignores unrelated accepted prose for affected gates", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-unrelated-accepted-prose.md";
+
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        [
+          "P0-R05 / #11 evidence was accepted by the audit archive.",
+          "P0-R06 / #12 follow-up ticket was accepted into backlog.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.equal(
+    findings.some(
+      (finding) => finding.surface === "documentation" && finding.path === path,
+    ),
+    false,
+    "expected unrelated accepted prose not to fail as readiness status",
+  );
+});
+
+test("MVP-A policy-as-code gate scans past placeholder approval metadata", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md";
+
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        [
+          "# ADR 0011: Data scope policy DSL and RLS boundary",
+          "",
+          "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+          "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+          "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+          "",
+          "## Status",
+          "",
+          "Status: Accepted",
+          "",
+          "## Independent review",
+          "",
+          "- Independent approver: Alice",
+          "- Independent counter-approver: Bob",
+          "- Time-locked review window: 2026-05-01 to 2026-05-02 completed",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.equal(
+    findings.some(
+      (finding) => finding.surface === "documentation" && finding.path === path,
+    ),
+    false,
+    "expected later concrete approval metadata to satisfy document-scoped Accepted status",
+  );
+});
+
 test("MVP-A policy-as-code input loader discovers readiness documentation", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
