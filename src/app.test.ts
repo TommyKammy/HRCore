@@ -2426,6 +2426,9 @@ test("GET /transfers/assignment-change renders the bounded MVP-B transfer wizard
     response.body,
     /tenantEnvironmentId: read\("payload\.tenantEnvironmentId"\)/u,
   );
+  assert.match(response.body, /form\.addEventListener\("submit"/u);
+  assert.match(response.body, /event\.preventDefault\(\)/u);
+  assert.match(response.body, /send\(read\("statusCode"\) \|\| "submitted"\)/u);
   assert.match(response.body, /name="payload.effectiveDate"/u);
   assert.match(response.body, /name="payload.currentAssignment.assignmentId"/u);
   assert.match(

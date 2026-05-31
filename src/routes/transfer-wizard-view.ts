@@ -180,9 +180,7 @@ export function renderTransferWizard(): string {
             }
           }
         });
-        form.addEventListener("click", async (event) => {
-          const action = event.target?.dataset?.action;
-          if (!action) return;
+        const send = async (action) => {
           statusOutput.value = "Loading";
           const isValidation = action === "validate";
           const response = await fetch(isValidation ? "/transfers/assignment-change/transaction-requests/validate" : form.action, {
@@ -192,6 +190,15 @@ export function renderTransferWizard(): string {
           });
           const body = await response.json();
           statusOutput.value = response.ok ? "Success" : body.error;
+        };
+        form.addEventListener("click", async (event) => {
+          const action = event.target?.dataset?.action;
+          if (!action) return;
+          await send(action);
+        });
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          await send(read("statusCode") || "submitted");
         });
       </script>
     </main>
