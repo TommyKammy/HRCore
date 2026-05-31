@@ -1123,7 +1123,11 @@ export function verifyMvpBTransferCorrelationTrace(
           payload,
           closedAssignment,
         );
-  const applyJobAttempts = readTransferTraceApplyJobAttempts(db, request);
+  const applyJobAttempts = readTransferTraceApplyJobAttempts(
+    db,
+    request,
+    applyAuditEvent,
+  );
 
   if (input.requireApproval && approvalAuditEvent === undefined) {
     throwTransferTraceError(
@@ -1150,12 +1154,6 @@ export function verifyMvpBTransferCorrelationTrace(
       "MVP-B transfer trace requires target assignment evidence linked to the transfer payload",
     );
   }
-  if (input.requireApplyJobAttempt === true && applyJobAttempts.length === 0) {
-    throwTransferTraceError(
-      "MVP-B transfer trace requires apply job attempt evidence linked to the transfer request",
-    );
-  }
-
   assertTransferTraceBindings({
     requestedCorrelationId: correlationId,
     request,
@@ -1430,7 +1428,10 @@ function readTransferTraceTargetAssignment(
 function readTransferTraceApplyJobAttempts(
   db: OnboardingTransactionRequestDatabase,
   request: ExistingTransferTransactionRequestRow,
+  applyAuditEvent?: MvpBTransferAuditTrace,
 ): MvpBTransferApplyJobAttemptTrace[] {
+  if (applyAuditEvent === undefined) return [];
+
   return transferTraceAll<ExistingTransferApplyJobAttemptRow>(
     db.prepare(
       `
@@ -1447,11 +1448,14 @@ function readTransferTraceApplyJobAttempts(
           FROM onboarding_apply_job_attempt
           WHERE transaction_request_id = ?
             AND person_id = ?
+            AND status_code = 'applied'
+            AND correlation_id = ?
           ORDER BY attempted_at, id
         `,
     ),
     request.transaction_request_id,
     request.person_id,
+    applyAuditEvent.correlationId,
   ).map((row) => ({
     id: row.id,
     transactionRequestId: row.transaction_request_id,

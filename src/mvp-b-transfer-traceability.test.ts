@@ -134,13 +134,54 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
     assert.equal(trace.remainingProductionReadinessGates.length, 4);
     db.prepare(
       `
+        INSERT INTO onboarding_apply_job_attempt (
+          id,
+          transaction_request_id,
+          person_id,
+          status_code,
+          attempted_at,
+          worker_id,
+          correlation_id,
+          retryable,
+          error_message
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      "onboarding-apply-job-attempt-unrelated-transfer-trace-001",
+      "transaction-request-transfer-001",
+      "person-transfer-001",
+      "retryable_failure",
+      "2026-07-01T00:01:00Z",
+      "worker-unrelated-transfer-trace-001",
+      workerAttemptCorrelationId(
+        "correlation-unrelated-transfer-worker-retry",
+        "transaction-request-transfer-001",
+      ),
+      1,
+      "synthetic unrelated retry failure",
+    );
+    const mixedTrace = verifyMvpBTransferCorrelationTrace(db, {
+      correlationId: rootCorrelationId,
+      requireApproval: true,
+      requireApply: true,
+      requireApplyJobAttempt: true,
+      requireOktaProjection: true,
+      oktaProjection: oktaProjection.oktaProjection,
+    });
+    assert.deepEqual(
+      mixedTrace.applyJobAttempts.map((attempt) => attempt.id),
+      [applyJobAttempt.id],
+    );
+    db.prepare(
+      `
         UPDATE onboarding_apply_job_attempt
         SET correlation_id = ?
         WHERE id = ?
       `,
     ).run(
       workerAttemptCorrelationId(
-        "correlation-unrelated-transfer-worker",
+        "correlation-unrelated-transfer-worker-tampered",
         "transaction-request-transfer-001",
       ),
       applyJobAttempt.id,
