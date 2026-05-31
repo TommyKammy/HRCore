@@ -1165,6 +1165,7 @@ export function verifyMvpBTransferCorrelationTrace(
     closedAssignment,
     targetAssignment,
     applyJobAttempts,
+    requireApplyJobAttempt: input.requireApplyJobAttempt === true,
     oktaProjection: input.oktaProjection,
     requireOktaProjection: input.requireOktaProjection === true,
   });
@@ -1473,6 +1474,7 @@ function assertTransferTraceBindings(input: {
   closedAssignment?: MvpBTransferAssignmentTrace;
   targetAssignment?: MvpBTransferAssignmentTrace;
   applyJobAttempts: MvpBTransferApplyJobAttemptTrace[];
+  requireApplyJobAttempt: boolean;
   oktaProjection?: OktaTransferProjectionImpactEvidence;
   requireOktaProjection: boolean;
 }): void {
@@ -1526,6 +1528,21 @@ function assertTransferTraceBindings(input: {
       );
     }
   }
+  if (
+    input.requireApplyJobAttempt &&
+    !input.applyJobAttempts.some((attempt) =>
+      isRootLinkedTransferTraceApplyJobAttempt({
+        attempt,
+        requestedCorrelationId: input.requestedCorrelationId,
+        request: input.request,
+        applyAuditEvent: input.applyAuditEvent,
+      }),
+    )
+  ) {
+    throwTransferTraceError(
+      "MVP-B transfer trace requires an applied job attempt rooted in the transfer correlation and linked to the apply audit evidence",
+    );
+  }
   if (input.requireOktaProjection && input.oktaProjection === undefined) {
     throwTransferTraceError(
       "MVP-B transfer trace requires mock Okta projection evidence linked to the transfer apply evidence",
@@ -1548,6 +1565,76 @@ function assertTransferTraceBindings(input: {
       );
     }
   }
+}
+
+function isRootLinkedTransferTraceApplyJobAttempt(input: {
+  attempt: MvpBTransferApplyJobAttemptTrace;
+  requestedCorrelationId: string;
+  request: ExistingTransferTransactionRequestRow;
+  applyAuditEvent?: MvpBTransferAuditTrace;
+}): boolean {
+  if (
+    input.applyAuditEvent === undefined ||
+    input.attempt.statusCode !== "applied" ||
+    input.attempt.correlationId !== input.applyAuditEvent.correlationId
+  ) {
+    return false;
+  }
+
+  const parsedAttemptCorrelation = parseTransferTraceWorkerAttemptCorrelationId(
+    input.attempt.correlationId,
+  );
+  return (
+    parsedAttemptCorrelation !== undefined &&
+    parsedAttemptCorrelation.transactionRequestId ===
+      input.request.transaction_request_id &&
+    isRootTransferTraceWorkerCorrelation(
+      parsedAttemptCorrelation.workerCorrelationId,
+      input.requestedCorrelationId,
+    )
+  );
+}
+
+function parseTransferTraceWorkerAttemptCorrelationId(
+  correlationId: string,
+): { workerCorrelationId: string; transactionRequestId: string } | undefined {
+  const prefix = "onboarding-apply-worker-attempt-";
+  if (!correlationId.startsWith(prefix)) return undefined;
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(correlationId.slice(prefix.length), "base64url").toString(
+        "utf8",
+      ),
+    ) as unknown;
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      typeof parsed[0] === "string" &&
+      parsed[0].length > 0 &&
+      typeof parsed[1] === "string" &&
+      parsed[1].length > 0
+    ) {
+      return {
+        workerCorrelationId: parsed[0],
+        transactionRequestId: parsed[1],
+      };
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function isRootTransferTraceWorkerCorrelation(
+  workerCorrelationId: string,
+  requestedCorrelationId: string,
+): boolean {
+  return (
+    workerCorrelationId === requestedCorrelationId ||
+    workerCorrelationId.startsWith(`${requestedCorrelationId}:`)
+  );
 }
 
 function mapTransferTraceAuditRow(

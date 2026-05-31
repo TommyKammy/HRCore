@@ -127,9 +127,43 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
       "assignment-transaction-request-transfer-001-transfer-target",
     );
     assert.equal(trace.applyJobAttempts.length, 1);
+    const applyJobAttempt = trace.applyJobAttempts[0];
+    assert.ok(applyJobAttempt);
     assert.equal(trace.oktaProjection?.profile.status, "projected");
     assert.equal(trace.oktaProjection?.groups.status, "projected");
     assert.equal(trace.remainingProductionReadinessGates.length, 4);
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET correlation_id = ?
+        WHERE id = ?
+      `,
+    ).run(
+      workerAttemptCorrelationId(
+        "correlation-unrelated-transfer-worker",
+        "transaction-request-transfer-001",
+      ),
+      applyJobAttempt.id,
+    );
+    assert.throws(
+      () =>
+        verifyMvpBTransferCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-B transfer trace requires an applied job attempt rooted in the transfer correlation and linked to the apply audit evidence/,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET correlation_id = ?
+        WHERE id = ?
+      `,
+    ).run(applyJobAttempt.correlationId, applyJobAttempt.id);
     assert.throws(
       () =>
         verifyMvpBTransferCorrelationTrace(db, {
