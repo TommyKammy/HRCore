@@ -129,6 +129,78 @@ test("large onboarding tests use focused boundary files and shared helpers", asy
   );
 });
 
+test("synthetic work email writeback ingest stays split by responsibility", async () => {
+  const modulePaths = [
+    "src/writeback-ingest.ts",
+    "src/writeback-ingest-types.ts",
+    "src/writeback-ingest-input.ts",
+    "src/writeback-ingest-provider-refresh.ts",
+    "src/writeback-ingest-conflict-resolution.ts",
+    "src/writeback-ingest-conflict-evidence.ts",
+    "src/writeback-ingest-ids.ts",
+    "src/writeback-ingest-sql.ts",
+    "src/writeback-ingest-row-guards.ts",
+    "src/writeback-ingest-validation.ts",
+  ] as const;
+  const sources = Object.fromEntries(
+    await Promise.all(
+      modulePaths.map(async (path) => [path, await readRepoFile(path)]),
+    ),
+  ) as Record<(typeof modulePaths)[number], string>;
+
+  assert.match(sources["src/writeback-ingest.ts"], /export \{[\s\S]*\} from/u);
+  assert.doesNotMatch(
+    sources["src/writeback-ingest.ts"],
+    /db\.prepare|SAVEPOINT|ROLLBACK TO SAVEPOINT/u,
+    "public writeback ingest module must remain a stable export surface",
+  );
+
+  assert.match(
+    sources["src/writeback-ingest-input.ts"],
+    /export function ingestSyntheticWorkEmailWriteback/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-provider-refresh.ts"],
+    /export function refreshSyntheticWorkEmailFromProvider/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-conflict-resolution.ts"],
+    /export function resolveSyntheticWorkEmailConflict/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-validation.ts"],
+    /export function parseSyntheticWorkEmailWritebackInput/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-validation.ts"],
+    /export function parseSyntheticWorkEmailProviderRefreshInput/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-validation.ts"],
+    /export function parseSyntheticWorkEmailConflictResolutionInput/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-sql.ts"],
+    /export function insertSyntheticWorkEmailWritebackEvent/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-sql.ts"],
+    /export function rollbackNamedSavepoint/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-row-guards.ts"],
+    /export function isWritebackEventRefreshRow/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-conflict-evidence.ts"],
+    /export function createSyntheticWorkEmailConflictEvidence/u,
+  );
+  assert.match(
+    sources["src/writeback-ingest-ids.ts"],
+    /export function createSyntheticWorkEmailProviderRefreshId/u,
+  );
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
