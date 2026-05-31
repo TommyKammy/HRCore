@@ -1,363 +1,95 @@
-type SqlValue = string | number | bigint | null;
-type SqlRunResult = {
-  changes?: number | bigint;
-};
+import { OnboardingTransactionRequestValidationError } from "./onboarding-transaction-request-error.js";
+import {
+  buildOnboardingApplyAuditEventId,
+  buildOnboardingApplyJobAttemptId,
+  buildOnboardingApplyJobRunId,
+  buildOnboardingApplyLifecycleEventId,
+  buildOnboardingApplyLifecycleEventIdForRequest,
+  buildOnboardingDecisionAuditEventId,
+  buildWorkerAttemptCorrelationId,
+} from "./onboarding-transaction-request-ids.js";
+import {
+  parseApplyApprovedOnboardingTransactionRequestInput,
+  parseApplyDueOnboardingTransactionRequestsInput,
+  parseOnboardingApprovalDecisionInput,
+  parseOnboardingTransactionRequestInput,
+  parsePersistedOnboardingApplyPayload,
+  serializeOnboardingPayload,
+} from "./onboarding-transaction-request-parser.js";
+import {
+  readAuditEventById,
+  readCompletedOnboardingApply,
+  readDueOnboardingApplyCandidates,
+  readOnboardingApplyJobAttemptByCorrelation,
+  readOnboardingApplyJobAttemptsForWorkerCorrelation,
+  readOnboardingApplyJobRun,
+  readOnboardingTransactionRequest,
+  readOnboardingTransactionRequestById,
+} from "./onboarding-transaction-request-readers.js";
+import type {
+  ApplyApprovedOnboardingTransactionRequestInput,
+  AppliedOnboardingTransactionRequestResult,
+  ApplyDueOnboardingTransactionRequestsInput,
+  ApplyDueOnboardingTransactionRequestsItemResult,
+  ApplyDueOnboardingTransactionRequestsResult,
+  ApplyDueOnboardingTransactionRequestsStatus,
+  EditableOnboardingTransactionRequestPersistenceResult,
+  ExistingAppliedOnboardingTransactionRequestRow,
+  ExistingAuditEventRow,
+  ExistingOnboardingApplyJobAttemptRow,
+  ExistingOnboardingApplyJobRunRow,
+  ExistingOnboardingTransactionRequestRow,
+  OnboardingApprovalDecision,
+  OnboardingApprovalDecisionInput,
+  OnboardingApprovalDecisionResult,
+  OnboardingTransactionRequestDatabase,
+  OnboardingTransactionRequestInput,
+  OnboardingTransactionRequestPayload,
+  OnboardingTransactionRequestPersistedStatus,
+  OnboardingTransactionRequestPersistenceResult,
+  SqlRunResult,
+} from "./onboarding-transaction-request-types.js";
+import {
+  isRecord,
+  isValidIsoDate,
+} from "./onboarding-transaction-request-validation.js";
 
-export interface SqlStatement {
-  get(...values: SqlValue[]): Record<string, unknown> | undefined;
-  all?(...values: SqlValue[]): Record<string, unknown>[];
-  run(...values: SqlValue[]): unknown;
-}
-
-export interface OnboardingTransactionRequestDatabase {
-  exec(sql: string): unknown;
-  prepare(sql: string): SqlStatement;
-}
-
-export type OnboardingTransactionRequestStatus = "draft" | "submitted";
-export type OnboardingApprovalDecision =
-  | "approve"
-  | "return"
-  | "reject"
-  | "cancel";
-export type OnboardingTransactionRequestPersistedStatus =
-  | OnboardingTransactionRequestStatus
-  | "returned"
-  | "rejected"
-  | "cancelled"
-  | "approved"
-  | "completed";
-
-export interface OnboardingTransactionRequestPersonInput {
-  id: string;
-  displayName: string;
-  createdAt: string;
-}
-
-export interface OnboardingTransactionRequestEmploymentPayload {
-  id: string;
-  employmentCode: string;
-  startDate: string;
-}
-
-export interface OnboardingTransactionRequestAssignmentPayload {
-  id: string;
-  assignmentCode: string;
-  departmentReference: string;
-  legalEntityReference: string;
-  managerReference: string;
-  positionCode?: string | null;
-}
-
-export interface OnboardingTransactionRequestWorkEmailExpectation {
-  contactPointId: string;
-  value: string;
-}
-
-export interface OnboardingTransactionRequestPayload {
-  tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding";
-  effectiveDate: string;
-  employment: OnboardingTransactionRequestEmploymentPayload;
-  assignment: OnboardingTransactionRequestAssignmentPayload;
-  workEmailExpectation: OnboardingTransactionRequestWorkEmailExpectation;
-}
-
-export interface OnboardingTransactionRequestInput {
-  id: string;
-  person: OnboardingTransactionRequestPersonInput;
-  requestType: "hire";
-  statusCode: OnboardingTransactionRequestStatus;
-  requestedAt: string;
-  correlationId: string;
-  payloadVersion: "mvp_a_onboarding_v1";
-  payload: OnboardingTransactionRequestPayload;
-}
-
-export interface OnboardingTransactionRequestPersistenceResult {
-  personId: string;
-  transactionRequestId: string;
-  statusCode: OnboardingTransactionRequestPersistedStatus;
-  correlationId: string;
-}
-
-export interface EditableOnboardingTransactionRequestPersistenceResult extends OnboardingTransactionRequestPersistenceResult {
-  operation: "created" | "updated" | "idempotent";
-}
-
-export interface OnboardingApprovalDecisionInput {
-  transactionRequestId: string;
-  decision: OnboardingApprovalDecision;
-  decidedAt: string;
-  decidedBy: string;
-  correlationId: string;
-}
-
-export interface OnboardingApprovalDecisionResult {
-  personId: string;
-  transactionRequestId: string;
-  statusCode: Exclude<
-    OnboardingTransactionRequestPersistedStatus,
-    "draft" | "submitted" | "completed"
-  >;
-  decision: OnboardingApprovalDecision;
-  auditEventId: string;
-  correlationId: string;
-}
-
-export interface ApplyApprovedOnboardingTransactionRequestInput {
-  transactionRequestId: string;
-  appliedAt: string;
-  appliedBy: string;
-  correlationId: string;
-}
-
-export interface AppliedOnboardingTransactionRequestResult {
-  personId: string;
-  employmentId: string;
-  assignmentId: string;
-  transactionRequestId: string;
-  lifecycleEventId: string;
-  statusCode: "completed";
-  correlationId: string;
-}
-
-export interface ApplyDueOnboardingTransactionRequestsInput {
-  now: string;
-  workerId: string;
-  correlationId: string;
-  batchLimit?: number;
-}
-
-export type ApplyDueOnboardingTransactionRequestsStatus =
-  | "applied"
-  | "retryable_failure"
-  | "non_retryable_failure";
-
-export interface ApplyDueOnboardingTransactionRequestsItemResult {
-  transactionRequestId: string;
-  status: ApplyDueOnboardingTransactionRequestsStatus;
-  lifecycleEventId?: string;
-  errorMessage?: string;
-}
-
-export interface ApplyDueOnboardingTransactionRequestsResult {
-  attempted: number;
-  applied: number;
-  failed: number;
-  skipped: number;
-  correlationId: string;
-  results: ApplyDueOnboardingTransactionRequestsItemResult[];
-}
-
-type OnboardingTransactionRequestFixtureOverrides = {
-  person?: Partial<OnboardingTransactionRequestPersonInput>;
-  payload?: Partial<Record<string, unknown>>;
-} & Partial<Omit<OnboardingTransactionRequestInput, "person" | "payload">>;
-
-export type ExistingOnboardingTransactionRequestRow = {
-  person_id: string;
-  transaction_request_id: string;
-  display_name: string;
-  created_at: string;
-  request_type: string;
-  status_code: string;
-  requested_at: string;
-  correlation_id: string | null;
-  payload_version: string | null;
-  payload_json: string | null;
-};
+export { OnboardingTransactionRequestValidationError } from "./onboarding-transaction-request-error.js";
+export {
+  createOnboardingTransactionRequestFixture,
+  parseOnboardingTransactionRequestInput,
+  parsePersistedOnboardingApplyPayload,
+} from "./onboarding-transaction-request-parser.js";
+export { readOnboardingTransactionRequestById } from "./onboarding-transaction-request-readers.js";
+export type {
+  ApplyApprovedOnboardingTransactionRequestInput,
+  AppliedOnboardingTransactionRequestResult,
+  ApplyDueOnboardingTransactionRequestsInput,
+  ApplyDueOnboardingTransactionRequestsItemResult,
+  ApplyDueOnboardingTransactionRequestsResult,
+  ApplyDueOnboardingTransactionRequestsStatus,
+  EditableOnboardingTransactionRequestPersistenceResult,
+  ExistingOnboardingTransactionRequestRow,
+  OnboardingApprovalDecision,
+  OnboardingApprovalDecisionInput,
+  OnboardingApprovalDecisionResult,
+  OnboardingTransactionRequestAssignmentPayload,
+  OnboardingTransactionRequestDatabase,
+  OnboardingTransactionRequestEmploymentPayload,
+  OnboardingTransactionRequestInput,
+  OnboardingTransactionRequestPayload,
+  OnboardingTransactionRequestPersistedStatus,
+  OnboardingTransactionRequestPersistenceResult,
+  OnboardingTransactionRequestPersonInput,
+  OnboardingTransactionRequestStatus,
+  OnboardingTransactionRequestWorkEmailExpectation,
+  SqlStatement,
+} from "./onboarding-transaction-request-types.js";
 
 type OnboardingDecisionTarget = {
   statusCode: OnboardingApprovalDecisionResult["statusCode"];
   auditAction: string;
 };
-
-type ExistingAuditEventRow = {
-  id: string;
-  actor_id: string;
-  action: string;
-  subject_table: string;
-  subject_id: string;
-  occurred_at: string;
-  correlation_id: string | null;
-};
-
-type ExistingAppliedOnboardingTransactionRequestRow = {
-  transaction_status_code: string;
-  request_type: string;
-  person_id: string;
-  payload_version: string | null;
-  payload_json: string | null;
-  lifecycle_event_id: string | null;
-  lifecycle_event_type: string | null;
-  lifecycle_effective_date: string | null;
-  lifecycle_occurred_at: string | null;
-  employment_id: string | null;
-  employment_code: string | null;
-  employment_status_code: string | null;
-  employment_start_date: string | null;
-  employment_end_date: string | null;
-  assignment_id: string | null;
-  assignment_code: string | null;
-  organization_code: string | null;
-  position_code: string | null;
-  assignment_start_date: string | null;
-  assignment_end_date: string | null;
-  audit_event_id: string | null;
-  audit_actor_id: string | null;
-  audit_action: string | null;
-  audit_subject_table: string | null;
-  audit_subject_id: string | null;
-  audit_occurred_at: string | null;
-  audit_correlation_id: string | null;
-};
-
-type DueOnboardingApplyCandidateRow = ExistingOnboardingTransactionRequestRow;
-
-type ExistingOnboardingApplyJobAttemptRow = {
-  transaction_request_id: string;
-  status_code: string;
-  error_message: string | null;
-};
-
-type ExistingOnboardingApplyJobRunRow = {
-  attempted: number;
-  applied: number;
-  failed: number;
-  skipped: number;
-};
-
-const onboardingTransactionRequestFields = [
-  "id",
-  "person",
-  "requestType",
-  "statusCode",
-  "requestedAt",
-  "correlationId",
-  "payloadVersion",
-  "payload",
-];
-const onboardingPersonFields = ["id", "displayName", "createdAt"];
-const onboardingPayloadFields = [
-  "tenantEnvironmentId",
-  "effectiveDate",
-  "employment",
-  "assignment",
-  "workEmailExpectation",
-];
-const onboardingEmploymentFields = ["id", "employmentCode", "startDate"];
-const onboardingAssignmentFields = [
-  "id",
-  "assignmentCode",
-  "departmentReference",
-  "legalEntityReference",
-  "managerReference",
-  "positionCode",
-];
-const onboardingWorkEmailExpectationFields = ["contactPointId", "value"];
-
-const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/u;
-const timestampPattern =
-  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
-
-export class OnboardingTransactionRequestValidationError extends Error {
-  override name = "OnboardingTransactionRequestValidationError";
-}
-
-export function createOnboardingTransactionRequestFixture(
-  overrides: OnboardingTransactionRequestFixtureOverrides = {},
-): OnboardingTransactionRequestInput {
-  const {
-    person: personOverrides,
-    payload: payloadOverrides,
-    ...requestOverrides
-  } = overrides;
-  const person = {
-    id: "person-onboarding-001",
-    displayName: "MVP-A Onboarding Hire One",
-    createdAt: "2026-05-21T00:00:00Z",
-    ...personOverrides,
-  };
-  const payload: OnboardingTransactionRequestPayload = {
-    tenantEnvironmentId: "repo_owned_synthetic_mvp_a_onboarding",
-    effectiveDate: "2026-06-01",
-    employment: {
-      id: "employment-onboarding-001",
-      employmentCode: "EMP-ONBOARDING-001",
-      startDate: "2026-06-01",
-    },
-    assignment: {
-      id: "assignment-onboarding-001",
-      assignmentCode: "ASN-ONBOARDING-001",
-      departmentReference: "department-people-ops",
-      legalEntityReference: "legal-entity-jp-001",
-      managerReference: "manager-001",
-      positionCode: "position-engineer-001",
-    },
-    workEmailExpectation: {
-      contactPointId: "contact-point-onboarding-001",
-      value: "onboarding.hire.001@example.invalid",
-    },
-    ...payloadOverrides,
-  } as OnboardingTransactionRequestPayload;
-
-  return {
-    id: "transaction-request-onboarding-001",
-    requestType: "hire",
-    statusCode: "submitted",
-    requestedAt: "2026-05-21T00:00:00Z",
-    correlationId: "correlation-onboarding-001",
-    payloadVersion: "mvp_a_onboarding_v1",
-    ...requestOverrides,
-    person,
-    payload,
-  };
-}
-
-export function parseOnboardingTransactionRequestInput(
-  input: unknown,
-): OnboardingTransactionRequestInput {
-  const request = requireRecord("request", input);
-  assertSupportedFields("request", request, onboardingTransactionRequestFields);
-
-  const id = requireNonEmpty("id", request.id);
-  const person = parsePerson(request.person);
-  if (request.requestType !== "hire") {
-    throw new OnboardingTransactionRequestValidationError(
-      "requestType must be hire",
-    );
-  }
-  if (request.statusCode !== "draft" && request.statusCode !== "submitted") {
-    throw new OnboardingTransactionRequestValidationError(
-      "statusCode must be draft or submitted",
-    );
-  }
-  const requestedAt = requireTimestamp("requestedAt", request.requestedAt);
-  const correlationId = requireNonEmpty("correlationId", request.correlationId);
-  if (request.payloadVersion !== "mvp_a_onboarding_v1") {
-    throw new OnboardingTransactionRequestValidationError(
-      "payloadVersion must be mvp_a_onboarding_v1",
-    );
-  }
-  const payload = parsePayload(request.payload);
-
-  if (payload.effectiveDate !== payload.employment.startDate) {
-    throw new OnboardingTransactionRequestValidationError(
-      "payload.employment.startDate must match payload.effectiveDate",
-    );
-  }
-
-  return {
-    id,
-    person,
-    requestType: request.requestType,
-    statusCode: request.statusCode,
-    requestedAt,
-    correlationId,
-    payloadVersion: request.payloadVersion,
-    payload,
-  };
-}
 
 export function saveOnboardingTransactionRequest(
   db: OnboardingTransactionRequestDatabase,
@@ -1016,87 +748,6 @@ function isSingleSqlChange(result: unknown): boolean {
   );
 }
 
-function parseOnboardingApprovalDecisionInput(
-  input: unknown,
-): OnboardingApprovalDecisionInput {
-  const decision = requireRecord("decision", input);
-  assertSupportedFields("decision", decision, [
-    "transactionRequestId",
-    "decision",
-    "decidedAt",
-    "decidedBy",
-    "correlationId",
-  ]);
-
-  const transactionRequestId = requireNonEmpty(
-    "transactionRequestId",
-    decision.transactionRequestId,
-  );
-  const decisionCode = requireNonEmpty("decision", decision.decision);
-  if (
-    decisionCode !== "approve" &&
-    decisionCode !== "return" &&
-    decisionCode !== "reject" &&
-    decisionCode !== "cancel"
-  ) {
-    throw new OnboardingTransactionRequestValidationError(
-      "decision must be approve, return, reject, or cancel",
-    );
-  }
-
-  return {
-    transactionRequestId,
-    decision: decisionCode,
-    decidedAt: requireTimestamp("decidedAt", decision.decidedAt),
-    decidedBy: requireNonEmpty("decidedBy", decision.decidedBy),
-    correlationId: requireNonEmpty("correlationId", decision.correlationId),
-  };
-}
-
-function parseApplyApprovedOnboardingTransactionRequestInput(
-  input: unknown,
-): ApplyApprovedOnboardingTransactionRequestInput {
-  const apply = requireRecord("apply", input);
-  assertSupportedFields("apply", apply, [
-    "transactionRequestId",
-    "appliedAt",
-    "appliedBy",
-    "correlationId",
-  ]);
-
-  return {
-    transactionRequestId: requireNonEmpty(
-      "transactionRequestId",
-      apply.transactionRequestId,
-    ),
-    appliedAt: requireTimestamp("appliedAt", apply.appliedAt),
-    appliedBy: requireNonEmpty("appliedBy", apply.appliedBy),
-    correlationId: requireNonEmpty("correlationId", apply.correlationId),
-  };
-}
-
-function parseApplyDueOnboardingTransactionRequestsInput(
-  input: unknown,
-): ApplyDueOnboardingTransactionRequestsInput {
-  const worker = requireRecord("worker", input);
-  assertSupportedFields("worker", worker, [
-    "now",
-    "workerId",
-    "correlationId",
-    "batchLimit",
-  ]);
-
-  return {
-    now: requireTimestamp("now", worker.now),
-    workerId: requireNonEmpty("workerId", worker.workerId),
-    correlationId: requireNonEmpty("correlationId", worker.correlationId),
-    batchLimit:
-      worker.batchLimit === undefined
-        ? 100
-        : requirePositiveInteger("batchLimit", worker.batchLimit),
-  };
-}
-
 function getOnboardingDecisionTarget(
   decision: OnboardingApprovalDecision,
 ): OnboardingDecisionTarget {
@@ -1150,387 +801,6 @@ function isSqlRunResult(result: unknown): result is SqlRunResult {
   return (
     typeof result.changes === "number" || typeof result.changes === "bigint"
   );
-}
-
-function parsePerson(input: unknown): OnboardingTransactionRequestPersonInput {
-  const person = requireRecord("person", input);
-  assertSupportedFields("person", person, onboardingPersonFields);
-
-  return {
-    id: requireNonEmpty("person.id", person.id),
-    displayName: requireNonEmpty("person.displayName", person.displayName),
-    createdAt: requireTimestamp("person.createdAt", person.createdAt),
-  };
-}
-
-function parsePayload(input: unknown): OnboardingTransactionRequestPayload {
-  const payload = requireRecord("payload", input);
-  assertSupportedFields("payload", payload, onboardingPayloadFields);
-
-  return {
-    tenantEnvironmentId: requireSyntheticTenantEnvironmentId(
-      "payload.tenantEnvironmentId",
-      payload.tenantEnvironmentId,
-    ),
-    effectiveDate: requireDate("payload.effectiveDate", payload.effectiveDate),
-    employment: parseEmploymentPayload(payload.employment),
-    assignment: parseAssignmentPayload(payload.assignment),
-    workEmailExpectation: parseWorkEmailExpectation(
-      payload.workEmailExpectation,
-    ),
-  };
-}
-
-function parseEmploymentPayload(
-  input: unknown,
-): OnboardingTransactionRequestEmploymentPayload {
-  const employment = requireRecord("payload.employment", input);
-  assertSupportedFields(
-    "payload.employment",
-    employment,
-    onboardingEmploymentFields,
-  );
-
-  return {
-    id: requireNonEmpty("payload.employment.id", employment.id),
-    employmentCode: requireNonEmpty(
-      "payload.employment.employmentCode",
-      employment.employmentCode,
-    ),
-    startDate: requireDate(
-      "payload.employment.startDate",
-      employment.startDate,
-    ),
-  };
-}
-
-function parseAssignmentPayload(
-  input: unknown,
-): OnboardingTransactionRequestAssignmentPayload {
-  const assignment = requireRecord("payload.assignment", input);
-  assertSupportedFields(
-    "payload.assignment",
-    assignment,
-    onboardingAssignmentFields,
-  );
-
-  return {
-    id: requireNonEmpty("payload.assignment.id", assignment.id),
-    assignmentCode: requireNonEmpty(
-      "payload.assignment.assignmentCode",
-      assignment.assignmentCode,
-    ),
-    departmentReference: requireNonEmpty(
-      "payload.assignment.departmentReference",
-      assignment.departmentReference,
-    ),
-    legalEntityReference: requireNonEmpty(
-      "payload.assignment.legalEntityReference",
-      assignment.legalEntityReference,
-    ),
-    managerReference: requireNonEmpty(
-      "payload.assignment.managerReference",
-      assignment.managerReference,
-    ),
-    positionCode:
-      assignment.positionCode === undefined || assignment.positionCode === null
-        ? null
-        : requireNonEmpty(
-            "payload.assignment.positionCode",
-            assignment.positionCode,
-          ),
-  };
-}
-
-function parseWorkEmailExpectation(
-  input: unknown,
-): OnboardingTransactionRequestWorkEmailExpectation {
-  const workEmailExpectation = requireRecord(
-    "payload.workEmailExpectation",
-    input,
-  );
-  assertSupportedFields(
-    "payload.workEmailExpectation",
-    workEmailExpectation,
-    onboardingWorkEmailExpectationFields,
-  );
-
-  const value = requireNonEmpty(
-    "payload.workEmailExpectation.value",
-    workEmailExpectation.value,
-  );
-  if (value.indexOf("@") <= 0) {
-    throw new OnboardingTransactionRequestValidationError(
-      "payload.workEmailExpectation.value must be a skeleton work email",
-    );
-  }
-
-  return {
-    contactPointId: requireNonEmpty(
-      "payload.workEmailExpectation.contactPointId",
-      workEmailExpectation.contactPointId,
-    ),
-    value,
-  };
-}
-
-function serializeOnboardingPayload(
-  payload: OnboardingTransactionRequestPayload,
-): string {
-  return JSON.stringify({
-    tenantEnvironmentId: payload.tenantEnvironmentId,
-    effectiveDate: payload.effectiveDate,
-    employment: {
-      id: payload.employment.id,
-      employmentCode: payload.employment.employmentCode,
-      startDate: payload.employment.startDate,
-    },
-    assignment: {
-      id: payload.assignment.id,
-      assignmentCode: payload.assignment.assignmentCode,
-      departmentReference: payload.assignment.departmentReference,
-      legalEntityReference: payload.assignment.legalEntityReference,
-      managerReference: payload.assignment.managerReference,
-      positionCode: payload.assignment.positionCode ?? null,
-    },
-    workEmailExpectation: {
-      contactPointId: payload.workEmailExpectation.contactPointId,
-      value: payload.workEmailExpectation.value,
-    },
-  });
-}
-
-function requireSyntheticTenantEnvironmentId(
-  name: string,
-  value: unknown,
-): "repo_owned_synthetic_mvp_a_onboarding" {
-  if (value !== "repo_owned_synthetic_mvp_a_onboarding") {
-    throw new OnboardingTransactionRequestValidationError(
-      `${name} must be repo_owned_synthetic_mvp_a_onboarding`,
-    );
-  }
-
-  return value;
-}
-
-function readOnboardingTransactionRequest(
-  db: OnboardingTransactionRequestDatabase,
-  input: OnboardingTransactionRequestInput,
-): ExistingOnboardingTransactionRequestRow | undefined {
-  const statement = db.prepare(
-    `
-      SELECT
-        person.id AS person_id,
-        transaction_request.id AS transaction_request_id,
-        person.display_name,
-        person.created_at,
-        transaction_request.request_type,
-        transaction_request.status_code,
-        transaction_request.requested_at,
-        transaction_request.correlation_id,
-        transaction_request.payload_version,
-        transaction_request.payload_json
-      FROM transaction_request
-      JOIN person ON person.id = transaction_request.person_id
-      WHERE transaction_request.correlation_id = ?
-         OR (
-           transaction_request.id = ?
-           AND transaction_request.person_id = ?
-         )
-      ORDER BY
-        CASE
-          WHEN transaction_request.correlation_id = ? THEN 0
-          WHEN transaction_request.id = ?
-            AND transaction_request.person_id = ? THEN 1
-          ELSE 2
-        END,
-        transaction_request.id
-      LIMIT 1
-    `,
-  );
-
-  return statement.get(
-    input.correlationId,
-    input.id,
-    input.person.id,
-    input.correlationId,
-    input.id,
-    input.person.id,
-  ) as ExistingOnboardingTransactionRequestRow | undefined;
-}
-
-export function readOnboardingTransactionRequestById(
-  db: OnboardingTransactionRequestDatabase,
-  transactionRequestId: string,
-): ExistingOnboardingTransactionRequestRow | undefined {
-  return db
-    .prepare(
-      `
-        SELECT
-          person.id AS person_id,
-          transaction_request.id AS transaction_request_id,
-          person.display_name,
-          person.created_at,
-          transaction_request.request_type,
-          transaction_request.status_code,
-          transaction_request.requested_at,
-          transaction_request.correlation_id,
-          transaction_request.payload_version,
-          transaction_request.payload_json
-        FROM transaction_request
-        JOIN person ON person.id = transaction_request.person_id
-        WHERE transaction_request.id = ?
-        LIMIT 1
-      `,
-    )
-    .get(transactionRequestId) as
-    | ExistingOnboardingTransactionRequestRow
-    | undefined;
-}
-
-function readAuditEventById(
-  db: OnboardingTransactionRequestDatabase,
-  auditEventId: string,
-): ExistingAuditEventRow | undefined {
-  return db
-    .prepare(
-      `
-        SELECT
-          id,
-          actor_id,
-          action,
-          subject_table,
-          subject_id,
-          occurred_at,
-          correlation_id
-        FROM audit_event
-        WHERE id = ?
-        LIMIT 1
-      `,
-    )
-    .get(auditEventId) as ExistingAuditEventRow | undefined;
-}
-
-function readCompletedOnboardingApply(
-  db: OnboardingTransactionRequestDatabase,
-  apply: ApplyApprovedOnboardingTransactionRequestInput,
-  lifecycleEventId: string,
-  auditEventId: string,
-  payload: OnboardingTransactionRequestPayload,
-): ExistingAppliedOnboardingTransactionRequestRow | undefined {
-  return db
-    .prepare(
-      `
-        SELECT
-          transaction_request.status_code AS transaction_status_code,
-          transaction_request.request_type,
-          transaction_request.person_id,
-          transaction_request.payload_version,
-          transaction_request.payload_json,
-          lifecycle_event.id AS lifecycle_event_id,
-          lifecycle_event.event_type AS lifecycle_event_type,
-          lifecycle_event.effective_date AS lifecycle_effective_date,
-          lifecycle_event.occurred_at AS lifecycle_occurred_at,
-          employment.id AS employment_id,
-          employment.employment_code,
-          employment.status_code AS employment_status_code,
-          employment.start_date AS employment_start_date,
-          employment.end_date AS employment_end_date,
-          assignment.id AS assignment_id,
-          assignment.assignment_code,
-          assignment.organization_code,
-          assignment.position_code,
-          assignment.start_date AS assignment_start_date,
-          assignment.end_date AS assignment_end_date,
-          audit_event.id AS audit_event_id,
-          audit_event.actor_id AS audit_actor_id,
-          audit_event.action AS audit_action,
-          audit_event.subject_table AS audit_subject_table,
-          audit_event.subject_id AS audit_subject_id,
-          audit_event.occurred_at AS audit_occurred_at,
-          audit_event.correlation_id AS audit_correlation_id
-        FROM transaction_request
-        LEFT JOIN lifecycle_event
-          ON lifecycle_event.id = ?
-         AND lifecycle_event.transaction_request_id = transaction_request.id
-         AND lifecycle_event.person_id = transaction_request.person_id
-        LEFT JOIN audit_event
-          ON audit_event.id = ?
-        LEFT JOIN employment
-          ON employment.id = ?
-         AND employment.person_id = transaction_request.person_id
-        LEFT JOIN assignment
-          ON assignment.id = ?
-         AND assignment.person_id = transaction_request.person_id
-         AND assignment.employment_id = employment.id
-        WHERE transaction_request.id = ?
-          AND transaction_request.status_code = 'completed'
-        LIMIT 1
-      `,
-    )
-    .get(
-      lifecycleEventId,
-      auditEventId,
-      payload.employment.id,
-      payload.assignment.id,
-      apply.transactionRequestId,
-    ) as ExistingAppliedOnboardingTransactionRequestRow | undefined;
-}
-
-function readDueOnboardingApplyCandidates(
-  db: OnboardingTransactionRequestDatabase,
-  batchLimit: number,
-  effectiveDate: string,
-): DueOnboardingApplyCandidateRow[] {
-  const statement = db.prepare(
-    `
-      SELECT
-        person.id AS person_id,
-        transaction_request.id AS transaction_request_id,
-        person.display_name,
-        person.created_at,
-        transaction_request.request_type,
-        transaction_request.status_code,
-        transaction_request.requested_at,
-        transaction_request.correlation_id,
-        transaction_request.payload_version,
-        transaction_request.payload_json
-      FROM transaction_request
-      JOIN person ON person.id = transaction_request.person_id
-      WHERE transaction_request.request_type = 'hire'
-        AND transaction_request.status_code = 'approved'
-        AND transaction_request.payload_version = 'mvp_a_onboarding_v1'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM onboarding_apply_job_attempt
-          WHERE onboarding_apply_job_attempt.transaction_request_id = transaction_request.id
-            AND onboarding_apply_job_attempt.status_code = 'non_retryable_failure'
-        )
-      ORDER BY
-        CASE
-          WHEN json_valid(transaction_request.payload_json) = 1
-            AND json_type(transaction_request.payload_json, '$.effectiveDate') = 'text'
-            AND json_extract(transaction_request.payload_json, '$.effectiveDate') GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
-            AND date(json_extract(transaction_request.payload_json, '$.effectiveDate')) = json_extract(transaction_request.payload_json, '$.effectiveDate')
-            AND json_extract(transaction_request.payload_json, '$.effectiveDate') <= ? THEN 0
-          WHEN json_valid(transaction_request.payload_json) = 0 THEN 1
-          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') IS NULL THEN 1
-          WHEN json_type(transaction_request.payload_json, '$.effectiveDate') != 'text' THEN 1
-          ELSE 2
-        END,
-        transaction_request.requested_at,
-        transaction_request.id
-      LIMIT ?
-    `,
-  );
-  if (!statement.all) {
-    throw new Error("onboarding apply worker requires query-all support");
-  }
-
-  return statement.all(
-    effectiveDate,
-    batchLimit,
-  ) as DueOnboardingApplyCandidateRow[];
 }
 
 function recordOnboardingApplyJobRun(
@@ -1658,34 +928,6 @@ function buildCompletedOnboardingApplyRetryResult(
     statusCode: "completed",
     correlationId: apply.correlationId,
   };
-}
-
-export function parsePersistedOnboardingApplyPayload(
-  existing:
-    | ExistingOnboardingTransactionRequestRow
-    | ExistingAppliedOnboardingTransactionRequestRow,
-): OnboardingTransactionRequestPayload {
-  if (
-    existing.payload_version !== "mvp_a_onboarding_v1" ||
-    typeof existing.payload_json !== "string"
-  ) {
-    throw new Error("persisted onboarding apply requires MVP-A payload");
-  }
-
-  let payload: OnboardingTransactionRequestPayload;
-  try {
-    payload = parsePayload(JSON.parse(existing.payload_json));
-  } catch {
-    throw new Error("persisted onboarding apply payload is malformed");
-  }
-
-  if (payload.effectiveDate !== payload.employment.startDate) {
-    throw new Error(
-      "persisted onboarding apply payload violates date invariants",
-    );
-  }
-
-  return payload;
 }
 
 function assertCompletedOnboardingApplyMatchesInput(
@@ -1822,103 +1064,6 @@ function recordOnboardingApplyJobAttempt(
   return recorded;
 }
 
-function readOnboardingApplyJobAttemptByCorrelation(
-  db: OnboardingTransactionRequestDatabase,
-  correlationId: string,
-): ExistingOnboardingApplyJobAttemptRow | undefined {
-  return db
-    .prepare(
-      `
-        SELECT
-          transaction_request_id,
-          status_code,
-          error_message
-        FROM onboarding_apply_job_attempt
-        WHERE correlation_id = ?
-        LIMIT 1
-      `,
-    )
-    .get(correlationId) as ExistingOnboardingApplyJobAttemptRow | undefined;
-}
-
-function readOnboardingApplyJobRun(
-  db: OnboardingTransactionRequestDatabase,
-  correlationId: string,
-): ExistingOnboardingApplyJobRunRow | undefined {
-  return db
-    .prepare(
-      `
-        SELECT
-          attempted,
-          applied,
-          failed,
-          skipped
-        FROM onboarding_apply_job_run
-        WHERE correlation_id = ?
-        LIMIT 1
-      `,
-    )
-    .get(correlationId) as ExistingOnboardingApplyJobRunRow | undefined;
-}
-
-function readOnboardingApplyJobAttemptsForWorkerCorrelation(
-  db: OnboardingTransactionRequestDatabase,
-  workerCorrelationId: string,
-): ExistingOnboardingApplyJobAttemptRow[] {
-  const correlationPrefix =
-    buildWorkerAttemptCorrelationIdSearchPrefix(workerCorrelationId);
-  const statement = db.prepare(
-    `
-      SELECT
-        transaction_request_id,
-        status_code,
-        error_message,
-        correlation_id
-      FROM onboarding_apply_job_attempt
-      WHERE correlation_id >= ?
-        AND correlation_id < ?
-      ORDER BY attempted_at, transaction_request_id
-    `,
-  );
-  if (!statement.all) {
-    throw new Error("onboarding apply worker requires query-all support");
-  }
-
-  return (
-    statement.all(
-      correlationPrefix,
-      `${correlationPrefix}\uffff`,
-    ) as (ExistingOnboardingApplyJobAttemptRow & {
-      correlation_id: string;
-    })[]
-  )
-    .filter(
-      (attempt) =>
-        attempt.correlation_id ===
-        buildWorkerAttemptCorrelationId(
-          workerCorrelationId,
-          attempt.transaction_request_id,
-        ),
-    )
-    .map(({ transaction_request_id, status_code, error_message }) => ({
-      transaction_request_id,
-      status_code,
-      error_message,
-    }));
-}
-
-function buildWorkerAttemptCorrelationIdSearchPrefix(
-  workerCorrelationId: string,
-): string {
-  const rawPrefix = JSON.stringify([workerCorrelationId, ""]).slice(0, -2);
-  const rawPrefixBytes = Buffer.from(rawPrefix, "utf8");
-  const alignedPrefixBytes = rawPrefixBytes.subarray(
-    0,
-    rawPrefixBytes.length - (rawPrefixBytes.length % 3),
-  );
-  return `onboarding-apply-worker-attempt-${alignedPrefixBytes.toString("base64url")}`;
-}
-
 function buildOnboardingApplyJobAttemptResult(
   existing: ExistingOnboardingApplyJobAttemptRow,
 ): ApplyDueOnboardingTransactionRequestsItemResult {
@@ -1945,24 +1090,6 @@ function buildOnboardingApplyJobAttemptResult(
     errorMessage:
       existing.error_message ?? "unknown onboarding apply attempt failure",
   };
-}
-
-function buildOnboardingApplyLifecycleEventId(
-  apply: ApplyApprovedOnboardingTransactionRequestInput,
-): string {
-  return buildOnboardingApplyLifecycleEventIdForRequest(
-    apply.transactionRequestId,
-  );
-}
-
-function buildOnboardingApplyLifecycleEventIdForRequest(
-  transactionRequestId: string,
-): string {
-  return `lifecycle-event-${transactionRequestId}-apply`;
-}
-
-function buildOnboardingApplyAuditEventId(lifecycleEventId: string): string {
-  return `audit-event-${lifecycleEventId}-applied`;
 }
 
 function buildOnboardingDecisionRetryResultAfterConflict(
@@ -1993,36 +1120,6 @@ function buildOnboardingDecisionRetryResultAfterConflict(
     target,
   );
   return buildOnboardingDecisionResult(latest, decision, target, auditEventId);
-}
-
-function buildOnboardingDecisionAuditEventId(
-  decision: OnboardingApprovalDecisionInput,
-): string {
-  return `audit-event-${decision.transactionRequestId}-${decision.decision}-${decision.correlationId}`;
-}
-
-function buildWorkerAttemptCorrelationId(
-  workerCorrelationId: string,
-  transactionRequestId: string,
-): string {
-  return `onboarding-apply-worker-attempt-${encodeStableKey([
-    workerCorrelationId,
-    transactionRequestId,
-  ])}`;
-}
-
-function buildOnboardingApplyJobAttemptId(
-  transactionRequestId: string,
-  correlationId: string,
-): string {
-  return `onboarding-apply-job-attempt-${encodeStableKey([
-    transactionRequestId,
-    correlationId,
-  ])}`;
-}
-
-function buildOnboardingApplyJobRunId(correlationId: string): string {
-  return `onboarding-apply-job-run-${encodeStableKey([correlationId])}`;
 }
 
 function getMvpWorkerEffectiveDate(now: string): string {
@@ -2105,105 +1202,6 @@ function assertEditableDraftBinding(
       "onboarding transaction request can only be edited while draft or returned",
     );
   }
-}
-
-function assertSupportedFields(
-  objectName: string,
-  input: Record<string, unknown>,
-  supportedFields: readonly string[],
-): void {
-  const unsupportedFields = Object.keys(input).filter(
-    (field) => !supportedFields.includes(field),
-  );
-  if (unsupportedFields.length > 0) {
-    throw new OnboardingTransactionRequestValidationError(
-      `${objectName} contains unsupported fields: ${unsupportedFields.join(
-        ", ",
-      )}`,
-    );
-  }
-}
-
-function requireRecord(
-  fieldName: string,
-  value: unknown,
-): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new OnboardingTransactionRequestValidationError(
-      `${fieldName} must be an object`,
-    );
-  }
-
-  return value;
-}
-
-function requireNonEmpty(fieldName: string, value: unknown): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new OnboardingTransactionRequestValidationError(
-      `${fieldName} must be a non-empty string`,
-    );
-  }
-
-  return value;
-}
-
-function requireDate(fieldName: string, value: unknown): string {
-  const text = requireNonEmpty(fieldName, value);
-  if (!isValidIsoDate(text)) {
-    throw new OnboardingTransactionRequestValidationError(
-      `${fieldName} must be an ISO date`,
-    );
-  }
-
-  return text;
-}
-
-function requireTimestamp(fieldName: string, value: unknown): string {
-  const text = requireNonEmpty(fieldName, value);
-  const match = timestampPattern.exec(text);
-  if (!match || !isValidIsoDateParts(match[1], match[2], match[3])) {
-    throw new OnboardingTransactionRequestValidationError(
-      `${fieldName} must be an ISO timestamp`,
-    );
-  }
-
-  return text;
-}
-
-function requirePositiveInteger(fieldName: string, value: unknown): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new OnboardingTransactionRequestValidationError(
-      `${fieldName} must be a positive integer`,
-    );
-  }
-
-  return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isValidIsoDate(value: string): boolean {
-  const match = datePattern.exec(value);
-  return Boolean(match && isValidIsoDateParts(match[1], match[2], match[3]));
-}
-
-function isValidIsoDateParts(
-  yearText: string,
-  monthText: string,
-  dayText: string,
-): boolean {
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-
-  return (
-    candidate.getUTCFullYear() === year &&
-    candidate.getUTCMonth() === month - 1 &&
-    candidate.getUTCDate() === day
-  );
 }
 
 function rollbackNamedSavepoint(
