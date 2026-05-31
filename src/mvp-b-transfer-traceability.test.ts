@@ -175,6 +175,32 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
     );
     db.prepare(
       `
+        UPDATE assignment
+        SET end_date = ?
+        WHERE id = ?
+      `,
+    ).run(
+      "2026-08-31",
+      "assignment-transaction-request-transfer-001-transfer-target",
+    );
+    const historicalTrace = verifyMvpBTransferCorrelationTrace(db, {
+      correlationId: rootCorrelationId,
+      requireApproval: true,
+      requireApply: true,
+      requireApplyJobAttempt: true,
+      requireOktaProjection: true,
+      oktaProjection: oktaProjection.oktaProjection,
+    });
+    assert.equal(historicalTrace.targetAssignment?.endDate, "2026-08-31");
+    db.prepare(
+      `
+        UPDATE assignment
+        SET end_date = NULL
+        WHERE id = ?
+      `,
+    ).run("assignment-transaction-request-transfer-001-transfer-target");
+    db.prepare(
+      `
         UPDATE transaction_request
         SET status_code = 'approved'
         WHERE id = ?
@@ -229,11 +255,83 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
     ).run(applyJobAttempt.correlationId);
     db.prepare(
       `
+        UPDATE lifecycle_event
+        SET occurred_at = ?
+        WHERE id = ?
+      `,
+    ).run(
+      "2026-06-30T23:59:59Z",
+      "lifecycle-event-transaction-request-transfer-001-apply",
+    );
+    db.prepare(
+      `
+        UPDATE audit_event
+        SET occurred_at = ?
+        WHERE action = 'mvp_b.transfer.apply'
+      `,
+    ).run("2026-06-30T23:59:59Z");
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET attempted_at = ?
+        WHERE id = ?
+      `,
+    ).run("2026-07-01T00:01:00Z", applyJobAttempt.id);
+    assert.throws(
+      () =>
+        verifyMvpBTransferCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-B transfer trace apply timing must not predate the transfer effective date/,
+    );
+    db.prepare(
+      `
+        UPDATE lifecycle_event
+        SET occurred_at = ?
+        WHERE id = ?
+      `,
+    ).run(
+      "2026-07-01T00:00:00Z",
+      "lifecycle-event-transaction-request-transfer-001-apply",
+    );
+    db.prepare(
+      `
+        UPDATE audit_event
+        SET occurred_at = ?
+        WHERE action = 'mvp_b.transfer.apply'
+      `,
+    ).run("2026-07-01T00:00:00Z");
+    db.prepare(
+      `
         UPDATE onboarding_apply_job_attempt
         SET attempted_at = ?
         WHERE id = ?
       `,
     ).run("2026-06-30T23:59:59Z", applyJobAttempt.id);
+    assert.throws(
+      () =>
+        verifyMvpBTransferCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-B transfer trace applied job attempt timing must not predate the transfer effective date/,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET attempted_at = ?
+        WHERE id = ?
+      `,
+    ).run("2026-07-01T00:01:00Z", applyJobAttempt.id);
     assert.throws(
       () =>
         verifyMvpBTransferCorrelationTrace(db, {

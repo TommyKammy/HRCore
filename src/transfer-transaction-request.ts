@@ -1162,6 +1162,7 @@ export function verifyMvpBTransferCorrelationTrace(
   assertTransferTraceBindings({
     requestedCorrelationId: correlationId,
     request,
+    payloadEffectiveDate: payload.effectiveDate,
     approvalAuditEvent,
     applyAuditEvent,
     lifecycleEvent,
@@ -1420,7 +1421,6 @@ function readTransferTraceTargetAssignment(
           AND organization_code = ?
           AND position_code IS ?
           AND start_date = ?
-          AND end_date IS NULL
         ORDER BY id
       `,
     ),
@@ -1489,6 +1489,7 @@ function readTransferTraceApplyJobAttempts(
 function assertTransferTraceBindings(input: {
   requestedCorrelationId: string;
   request: ExistingTransferTransactionRequestRow;
+  payloadEffectiveDate: string;
   approvalAuditEvent?: MvpBTransferAuditTrace;
   applyAuditEvent?: MvpBTransferAuditTrace;
   lifecycleEvent?: MvpBTransferLifecycleTrace;
@@ -1519,6 +1520,25 @@ function assertTransferTraceBindings(input: {
   ) {
     throwTransferTraceError(
       "MVP-B transfer trace apply audit evidence must be linked to the lifecycle event",
+    );
+  }
+  if (
+    input.applyAuditEvent !== undefined &&
+    input.lifecycleEvent !== undefined &&
+    input.applyAuditEvent.occurredAt !== input.lifecycleEvent.occurredAt
+  ) {
+    throwTransferTraceError(
+      "MVP-B transfer trace apply audit timing must match the lifecycle evidence",
+    );
+  }
+  if (
+    input.applyAuditEvent !== undefined &&
+    input.lifecycleEvent !== undefined &&
+    transferTraceTimestampDate(input.applyAuditEvent.occurredAt) <
+      input.payloadEffectiveDate
+  ) {
+    throwTransferTraceError(
+      "MVP-B transfer trace apply timing must not predate the transfer effective date",
     );
   }
   if (
@@ -1577,6 +1597,18 @@ function assertTransferTraceBindings(input: {
   if (
     input.requireApplyJobAttempt &&
     input.applyAuditEvent !== undefined &&
+    input.lifecycleEvent !== undefined &&
+    rootLinkedApplyJobAttempt !== undefined &&
+    transferTraceTimestampDate(rootLinkedApplyJobAttempt.attemptedAt) <
+      input.lifecycleEvent.effectiveDate
+  ) {
+    throwTransferTraceError(
+      "MVP-B transfer trace applied job attempt timing must not predate the transfer effective date",
+    );
+  }
+  if (
+    input.requireApplyJobAttempt &&
+    input.applyAuditEvent !== undefined &&
     rootLinkedApplyJobAttempt !== undefined &&
     rootLinkedApplyJobAttempt.attemptedAt !== input.applyAuditEvent.occurredAt
   ) {
@@ -1606,6 +1638,16 @@ function assertTransferTraceBindings(input: {
       );
     }
   }
+}
+
+function transferTraceTimestampDate(timestamp: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}/u.test(timestamp)) {
+    throwTransferTraceError(
+      "MVP-B transfer trace timing evidence must include an ISO date prefix",
+    );
+  }
+
+  return timestamp.slice(0, 10);
 }
 
 function isRootLinkedTransferTraceApplyJobAttempt(input: {
