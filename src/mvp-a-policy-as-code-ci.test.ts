@@ -1060,6 +1060,17 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
     "docs/fixture-approved-dependency-label-readiness.md";
   const adrStatusVariantPath =
     "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md";
+  const approvedMultiGateRowPath =
+    "docs/fixture-approved-multi-gate-row-readiness.md";
+  const commaSeparatedApprovalPath =
+    "docs/fixture-comma-separated-approval-readiness.md";
+  const boldStandaloneAdrStatusPath =
+    "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md";
+  const futureReviewWindowPath =
+    "docs/fixture-future-review-window-readiness.md";
+  const statusBeforeGatePath = "docs/fixture-status-before-gate-readiness.md";
+  const dependencyOnlyAliasPath =
+    "docs/fixture-dependency-only-alias-readiness.md";
   const findings = checkMvpAPolicyAsCode({
     ...inputs,
     documentationTextByPath: new Map([
@@ -1100,6 +1111,44 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
           "",
           "**Status:** Accepted with follow-ups",
         ].join("\n"),
+      ],
+      [
+        approvedMultiGateRowPath,
+        [
+          "| Gate A | Gate B | Readiness | Independent approval |",
+          "| --- | --- | --- | --- |",
+          "| P0-R05 / #11 | P0-R06 / #12 | Accepted | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+        ].join("\n"),
+      ],
+      [
+        commaSeparatedApprovalPath,
+        "P0-R05 / #11 is Accepted; Independent approver: Alice, Independent counter-approver: Bob, Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
+      ],
+      [
+        boldStandaloneAdrStatusPath,
+        [
+          "# ADR 0012: Audit event hash chain and WORM object-lock boundary",
+          "",
+          "## Status",
+          "",
+          "**Accepted**",
+        ].join("\n"),
+      ],
+      [
+        futureReviewWindowPath,
+        "P0-R06 / #12 is Accepted; Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: scheduled to be completed after merge.",
+      ],
+      [
+        statusBeforeGatePath,
+        [
+          "| Readiness | Gate |",
+          "| --- | --- |",
+          "| production-like ready | P0-R06 / #12 |",
+        ].join("\n"),
+      ],
+      [
+        dependencyOnlyAliasPath,
+        "P0-R08 / #14 depends on ADR 0011 and is Accepted.",
       ],
     ]),
   });
@@ -1194,6 +1243,70 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
         finding.subject === "P0-R05 / #11",
     ),
     "expected ADR status variants containing Accepted to fail via document identity",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === approvedMultiGateRowPath,
+    ),
+    false,
+    "expected same-row approval evidence to cover comma-separated multi-gate claims",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === commaSeparatedApprovalPath,
+    ),
+    false,
+    "expected comma-separated independent approval metadata to satisfy the same claim",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === boldStandaloneAdrStatusPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected bold standalone Accepted ADR status to fail via document identity",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === futureReviewWindowPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected future review windows not to satisfy independent approval",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === statusBeforeGatePath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected readiness cells before gate aliases to fail",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === dependencyOnlyAliasPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    false,
+    "expected dependency-only ADR 0011 aliases not to create P0-R05 claims",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === dependencyOnlyAliasPath &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected dependency rows to preserve the actual P0-R08 Accepted claim",
   );
 });
 

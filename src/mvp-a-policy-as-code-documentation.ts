@@ -117,7 +117,7 @@ function collectAffectedReadinessGateFindings(
       }
 
       for (const gate of affectedReadinessGateClaims) {
-        const gateIsMentioned = mentionsAffectedGate(segment, gate.aliases);
+        const gateIsMentioned = hasClaimGateMention(segment, gate.aliases);
         const rawGateClaimSegments = gateIsMentioned
           ? getGateScopedClaimSegments(segment, gate)
           : [segment];
@@ -169,6 +169,15 @@ function mentionsAffectedGate(
   aliases: readonly string[],
 ): boolean {
   return aliases.some((alias) => findAliasIndex(segment, alias) !== -1);
+}
+
+function hasClaimGateMention(
+  segment: string,
+  aliases: readonly string[],
+): boolean {
+  return findAliasIndexes(segment, aliases).some(
+    (index) => !isDependencyGateMention(segment, index),
+  );
 }
 
 function findAliasIndex(segment: string, alias: string): number {
@@ -298,7 +307,13 @@ function getGateScopedClaimSegments(
   segment: string,
   gate: (typeof affectedReadinessGateClaims)[number],
 ): string[] {
-  const gatePositions = findAliasIndexes(segment, gate.aliases);
+  if (isTableRowSegment(segment)) {
+    return [segment];
+  }
+
+  const gatePositions = findAliasIndexes(segment, gate.aliases).filter(
+    (gatePosition) => !isDependencyGateMention(segment, gatePosition),
+  );
   const affectedGatePositions = findAffectedGateAliasIndexes(segment);
   const scopedSegments = gatePositions
     .map((gatePosition) => {
@@ -311,6 +326,10 @@ function getGateScopedClaimSegments(
     })
     .filter((scopedSegment) => scopedSegment.length > 0);
   return scopedSegments.length === 0 ? [segment] : scopedSegments;
+}
+
+function isTableRowSegment(segment: string): boolean {
+  return /^\s*\|.*\|\s*$/u.test(segment);
 }
 
 function findAffectedGateAliasIndexes(segment: string): number[] {
@@ -388,7 +407,7 @@ function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
 function hasAcceptedStatusClaim(segment: string): boolean {
   const normalizedSegment = segment.replace(/\s+/gu, " ").trim();
   return (
-    /^(?:[-*+]|\d+\.)?\s*Accepted\b/iu.test(normalizedSegment) ||
+    /^(?:[-*+]|\d+\.)?\s*\*{0,2}Accepted\*{0,2}\b/iu.test(normalizedSegment) ||
     /^\*{0,2}Status\*{0,2}\s*:\s*Accepted\b/iu.test(normalizedSegment) ||
     /^\*{0,2}Status\s*:\*{0,2}\s*Accepted\b/iu.test(normalizedSegment) ||
     /^\|?\s*\*{0,2}Status\*{0,2}\s*\|\s*Accepted\b/iu.test(normalizedSegment)
@@ -548,7 +567,7 @@ function readReviewMetadataValue(
 ): string | undefined {
   const labelPattern = labels.join("|");
   const metadataValuePattern = new RegExp(
-    `(?:^|[|;\\r\\n])\\s*(?:[-*]\\s+)?(?:${labelPattern}):\\s*(.*?)(?=\\s*(?:;\\s*)?${reviewMetadataLabels}:|[|\\r\\n]|$)`,
+    `(?:^|[|;,\\r\\n])\\s*(?:[-*]\\s+)?(?:${labelPattern}):\\s*(.*?)(?=\\s*(?:[,;]\\s*)?${reviewMetadataLabels}:|[|\\r\\n]|$)`,
     "iu",
   );
   const match = metadataValuePattern.exec(text);
@@ -578,7 +597,7 @@ function hasCompletedReviewWindow(value: string): boolean {
   return (
     hasConcreteReviewMetadataValue(value) &&
     /\bcompleted\b/iu.test(value) &&
-    !/(?:\b(?:not|no|without|pending|incomplete|uncompleted)\b[^|;\n\r]{0,80}\bcompleted\b|\bcompleted\b[^|;\n\r]{0,40}\b(?:no|false|pending|not|required)\b)/iu.test(
+    !/(?:\b(?:not|no|without|pending|incomplete|uncompleted)\b[^|;\n\r]{0,80}\bcompleted\b|\b(?:scheduled|planned|expected|will)\b[^|;\n\r]{0,40}\bcompleted\b|\bto\s+be\s+completed\b|\bcompleted\b[^|;\n\r]{0,40}\b(?:no|false|pending|not|required)\b)/iu.test(
       value,
     )
   );
