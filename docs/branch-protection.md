@@ -17,7 +17,8 @@ fully enforced by files committed in a pull request.
 HRCore currently runs in single-maintainer mode. In this mode, GitHub cannot
 technically enforce both Code Owner review and latest-push self-approval
 prevention without creating a merge deadlock for PRs authored or pushed by the
-sole maintainer.
+sole maintainer. The repository-level ADR/readiness consequence of this posture
+is recorded in [Solo-Maintainer Governance Posture](solo-maintainer-governance.md).
 
 Configure `main` so every merge requires:
 

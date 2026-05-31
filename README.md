@@ -18,6 +18,7 @@ The Proposed employment-status-period and work-arrangement-period extension boun
 The Proposed retiree retention, anonymization, deletion-job, and retention-log extension boundary is recorded in [ADR 0018: Retiree Retention, Anonymization, Deletion Job, and Retention Log Extension Boundary](docs/adr/0018-retiree-retention-anonymization-deletion-job-retention-log-extension-boundary.md).
 The Proposed legal-entity, timezone, business-calendar, and future-date apply worker extension boundary is recorded in [ADR 0019: Legal Entity Timezone and Business Calendar Extension Boundary](docs/adr/0019-legal-entity-timezone-business-calendar-extension-boundary.md).
 The Proposed R08 prohibited column and prohibited payload policy boundary is recorded in [ADR 0020: R08 Prohibited Column and Payload Policy Boundary](docs/adr/0020-r08-prohibited-column-payload-policy-boundary.md).
+The current solo-maintainer / owner-acknowledged governance posture for Proposed two-key ADR anchors is recorded in [Solo-Maintainer Governance Posture](docs/solo-maintainer-governance.md).
 Planning-note body merge procedure is defined in [Text-Merge Pass Procedure](docs/text-merge-pass.md).
 The #82 text-merge evidence record is [Text-Merge Pass Closeout](docs/text-merge-pass-closeout.md).
 Epic closeout review is defined in [Epic Completion Review](docs/epic-completion-review.md).
@@ -64,6 +65,9 @@ The final P2A-05 high / medium priority behavior-preserving refactor wave closeo
 - `docs/adr/0018-retiree-retention-anonymization-deletion-job-retention-log-extension-boundary.md` records the Proposed future extension anchor for retiree retention policy, anonymization requests, deletion requests, legal hold, retention exceptions, system `retention_action_log`, human `audit_event`, shared `correlation_id` evidence, and no-runtime implementation boundaries.
 - `docs/adr/0019-legal-entity-timezone-business-calendar-extension-boundary.md` records the Proposed future extension anchor for legal-entity timezone resolution, business-calendar ownership, future-date apply worker boundaries, audit evidence, replay/correction semantics, fail-closed defaults, and no-runtime implementation boundaries.
 - `docs/adr/0020-r08-prohibited-column-payload-policy-boundary.md` records the Proposed R08 prohibited column and payload policy boundary, including the concrete prohibited list, repository guard baseline, and deferred parser/full-engine boundary.
+- `docs/solo-maintainer-governance.md` records the solo-maintainer /
+  owner-acknowledged governance posture for Proposed two-key ADR anchors and
+  stronger-readiness blockers.
 - `docs/run-modes.md` defines the `run-mode/*` taxonomy and issue-label hygiene rules.
 - `docs/text-merge-pass.md` defines the documentation text-merge procedure used
   by the later #82 pass.
