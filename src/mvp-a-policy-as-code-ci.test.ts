@@ -1071,6 +1071,13 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
   const statusBeforeGatePath = "docs/fixture-status-before-gate-readiness.md";
   const dependencyOnlyAliasPath =
     "docs/fixture-dependency-only-alias-readiness.md";
+  const sharedStatusPath = "docs/fixture-shared-status-readiness.md";
+  const boldStatusValuePath =
+    "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md";
+  const productionLikeUsePath = "docs/fixture-production-like-use-readiness.md";
+  const headingScopedTablePath =
+    "docs/fixture-heading-scoped-table-readiness.md";
+  const dependencyHeaderPath = "docs/fixture-dependency-header-readiness.md";
   const findings = checkMvpAPolicyAsCode({
     ...inputs,
     documentationTextByPath: new Map([
@@ -1149,6 +1156,28 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
       [
         dependencyOnlyAliasPath,
         "P0-R08 / #14 depends on ADR 0011 and is Accepted.",
+      ],
+      [sharedStatusPath, "P0-R05 / #11 and P0-R06 / #12 are Accepted."],
+      [
+        boldStatusValuePath,
+        [
+          "# ADR 0014: Raw payload CSV export redaction boundary",
+          "",
+          "Status: **Accepted**",
+        ].join("\n"),
+      ],
+      [productionLikeUsePath, "P0-R05 / #11 is ready for production-like use."],
+      [
+        headingScopedTablePath,
+        ["# P0-R06 / #12", "", "| Status | Accepted |"].join("\n"),
+      ],
+      [
+        dependencyHeaderPath,
+        [
+          "| Gate | Readiness | Dependency | Independent approval |",
+          "| --- | --- | --- | --- |",
+          "| P0-R08 / #14 | Accepted | ADR 0011 | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+        ].join("\n"),
       ],
     ]),
   });
@@ -1307,6 +1336,53 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
         finding.subject === "P0-R08 / #14",
     ),
     "expected dependency rows to preserve the actual P0-R08 Accepted claim",
+  );
+  for (const subject of ["P0-R05 / #11", "P0-R06 / #12"]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === sharedStatusPath &&
+          finding.subject === subject,
+      ),
+      `expected shared Accepted status to fail for ${subject}`,
+    );
+  }
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === boldStatusValuePath &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected bolded ADR Status value to fail via document identity",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === productionLikeUsePath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected ready-for-production-like-use wording to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === headingScopedTablePath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected heading-scoped table status rows to fail",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === dependencyHeaderPath,
+    ),
+    false,
+    "expected dependency header cells not to create readiness findings for dependency aliases",
   );
 });
 

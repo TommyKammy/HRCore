@@ -206,6 +206,7 @@ function splitClaimSegments(text: string): string[] {
   let pendingProseLines: string[] = [];
   let currentGateHeading: { level: number; text: string } | undefined =
     undefined;
+  let currentTableHeaderCells: string[] | undefined = undefined;
 
   const flushPendingProse = (): void => {
     if (pendingProseLines.length === 0) {
@@ -238,14 +239,32 @@ function splitClaimSegments(text: string): string[] {
     const normalizedLine = line.replace(/\s+/gu, " ").trim();
     if (normalizedLine.length === 0) {
       flushPendingProse();
+      currentTableHeaderCells = undefined;
       continue;
     }
 
     if (normalizedLine.includes("|")) {
       flushPendingProse();
-      segments.push(normalizedLine);
+      const tableCells = parseMarkdownTableCells(normalizedLine);
+      if (isMarkdownTableSeparatorRow(tableCells)) {
+        continue;
+      }
+
+      const tableSegment =
+        currentTableHeaderCells === undefined
+          ? normalizedLine
+          : applyDependencyHeaderContextToTableRow(
+              tableCells,
+              currentTableHeaderCells,
+            );
+      segments.push(
+        applyCurrentGateHeadingContext(tableSegment, currentGateHeading?.text),
+      );
+      currentTableHeaderCells ??= tableCells;
       continue;
     }
+
+    currentTableHeaderCells = undefined;
 
     const headingMatch = /^(#{1,6})\s+/u.exec(normalizedLine);
     if (headingMatch !== null) {
@@ -276,6 +295,44 @@ function splitClaimSegments(text: string): string[] {
   flushPendingProse();
 
   return segments;
+}
+
+function parseMarkdownTableCells(line: string): string[] {
+  const trimmedLine = line.trim();
+  const content =
+    trimmedLine.startsWith("|") && trimmedLine.endsWith("|")
+      ? trimmedLine.slice(1, -1)
+      : trimmedLine;
+  return content.split("|").map((cell) => cell.replace(/\s+/gu, " ").trim());
+}
+
+function isMarkdownTableSeparatorRow(cells: readonly string[]): boolean {
+  return (
+    cells.length > 0 &&
+    cells.every((cell) => /^:?-{3,}:?$/u.test(cell.replace(/\s+/gu, "")))
+  );
+}
+
+function applyDependencyHeaderContextToTableRow(
+  cells: readonly string[],
+  headerCells: readonly string[],
+): string {
+  const labeledCells = cells.map((cell, index) => {
+    const headerCell = headerCells[index] ?? "";
+    if (!isDependencyHeaderCell(headerCell) || cell.length === 0) {
+      return cell;
+    }
+
+    return `dependency: ${cell}`;
+  });
+
+  return `| ${labeledCells.join(" | ")} |`;
+}
+
+function isDependencyHeaderCell(headerCell: string): boolean {
+  return /\b(?:dependencies|dependency|depends?\s+on|blocked\s+by|requires?|prerequisites?)\b/iu.test(
+    headerCell,
+  );
 }
 
 function applyCurrentGateHeadingContext(
@@ -314,30 +371,61 @@ function getGateScopedClaimSegments(
   const gatePositions = findAliasIndexes(segment, gate.aliases).filter(
     (gatePosition) => !isDependencyGateMention(segment, gatePosition),
   );
-  const affectedGatePositions = findAffectedGateAliasIndexes(segment);
+  const otherAffectedGatePositions = findOtherAffectedGateAliasIndexes(
+    segment,
+    gate,
+  );
   const scopedSegments = gatePositions
     .map((gatePosition) => {
-      const nextGatePosition = affectedGatePositions.find(
+      const nextGatePosition = otherAffectedGatePositions.find(
         (affectedGatePosition) =>
           affectedGatePosition > gatePosition &&
           !isDependencyGateMention(segment, affectedGatePosition),
       );
-      return segment.slice(gatePosition, nextGatePosition).trim();
+      const gateScopedSegment = segment
+        .slice(gatePosition, nextGatePosition)
+        .trim();
+      if (
+        nextGatePosition === undefined ||
+        hasAffectedReadinessOverclaim(stripReviewMetadata(gateScopedSegment))
+      ) {
+        return gateScopedSegment;
+      }
+
+      const hardBreakAfterGate = findNextHardClaimBreak(segment, gatePosition);
+      const sharedClaimSegment = segment
+        .slice(gatePosition, hardBreakAfterGate)
+        .trim();
+      return hasAffectedReadinessOverclaim(
+        stripReviewMetadata(sharedClaimSegment),
+      )
+        ? sharedClaimSegment
+        : gateScopedSegment;
     })
     .filter((scopedSegment) => scopedSegment.length > 0);
   return scopedSegments.length === 0 ? [segment] : scopedSegments;
+}
+
+function findNextHardClaimBreak(segment: string, startIndex: number): number {
+  const nextBreakIndex = segment.slice(startIndex).search(/[.;]/u);
+  return nextBreakIndex === -1 ? segment.length : startIndex + nextBreakIndex;
 }
 
 function isTableRowSegment(segment: string): boolean {
   return /^\s*\|.*\|\s*$/u.test(segment);
 }
 
-function findAffectedGateAliasIndexes(segment: string): number[] {
+function findOtherAffectedGateAliasIndexes(
+  segment: string,
+  gate: (typeof affectedReadinessGateClaims)[number],
+): number[] {
   return Array.from(
     new Set(
-      affectedReadinessGateClaims.flatMap((gate) =>
-        findAliasIndexes(segment, gate.aliases),
-      ),
+      affectedReadinessGateClaims
+        .filter((affectedGate) => affectedGate.subject !== gate.subject)
+        .flatMap((affectedGate) =>
+          findAliasIndexes(segment, affectedGate.aliases),
+        ),
     ),
   ).sort((left, right) => left - right);
 }
@@ -405,17 +493,20 @@ function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
 }
 
 function hasAcceptedStatusClaim(segment: string): boolean {
-  const normalizedSegment = segment.replace(/\s+/gu, " ").trim();
+  const normalizedSegment = segment
+    .replace(/\*/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
   return (
-    /^(?:[-*+]|\d+\.)?\s*\*{0,2}Accepted\*{0,2}\b/iu.test(normalizedSegment) ||
-    /^\*{0,2}Status\*{0,2}\s*:\s*Accepted\b/iu.test(normalizedSegment) ||
-    /^\*{0,2}Status\s*:\*{0,2}\s*Accepted\b/iu.test(normalizedSegment) ||
-    /^\|?\s*\*{0,2}Status\*{0,2}\s*\|\s*Accepted\b/iu.test(normalizedSegment)
+    /^(?:[-+]|\d+\.)?\s*Accepted\b/iu.test(normalizedSegment) ||
+    /^Status\s*:\s*Accepted\b/iu.test(normalizedSegment) ||
+    /^\|?\s*Status\s*\|\s*Accepted\b/iu.test(normalizedSegment)
   );
 }
 
 function hasProductionLikeReadinessOverclaim(segment: string): boolean {
   return (
+    /\bready\s+for\s+production-like\s+use\b/iu.test(segment) ||
     /\bproduction-like(?:\s+|-)ready\b/iu.test(segment) ||
     /(?:^|[|:])\s*production-like(?:\s+|-)ready\b/iu.test(segment) ||
     /\b(?:is|are|be|become|treated\s+as|described\s+as)\s+production-like(?:\s+|-)ready\b/iu.test(
