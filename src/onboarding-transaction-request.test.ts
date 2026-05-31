@@ -99,6 +99,27 @@ test("MVP-A onboarding transaction request input is parsed into a typed fail-clo
   );
 });
 
+test("MVP-A onboarding Okta writeback integration stays outside the core transaction module", async () => {
+  const [coreModule, integrationModule, applyFacade] = await Promise.all([
+    readRepoFile("src/onboarding-transaction-request-internal.ts"),
+    readRepoFile("src/onboarding-okta-writeback-integration.ts"),
+    readRepoFile("src/onboarding-transaction-request-apply.ts"),
+  ]);
+
+  assert.match(
+    integrationModule,
+    /export async function applyApprovedOnboardingTransactionRequestWithOktaProjection/u,
+  );
+  assert.match(
+    applyFacade,
+    /from "\.\/onboarding-okta-writeback-integration\.js"/u,
+  );
+  assert.doesNotMatch(
+    coreModule,
+    /OktaMasteringAdapter|ingestSyntheticWorkEmailWriteback|refreshSyntheticWorkEmailFromProvider|applyApprovedOnboardingTransactionRequestWithOktaProjection/u,
+  );
+});
+
 test("MVP-A onboarding transaction request focused boundary modules preserve lifecycle behavior", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {
