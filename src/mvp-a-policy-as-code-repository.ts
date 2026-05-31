@@ -43,7 +43,15 @@ export async function readRepoTextFilesByPath(
 ): Promise<Map<string, string>> {
   const textByPath = new Map<string, string>();
   for (const path of paths) {
-    textByPath.set(path, await readFile(join(cwd, path), "utf8"));
+    try {
+      textByPath.set(path, await readFile(join(cwd, path), "utf8"));
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        continue;
+      }
+
+      throw error;
+    }
   }
 
   return textByPath;

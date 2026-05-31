@@ -207,6 +207,75 @@ test("MVP-A policy-as-code gate fails closed for non-production data drift", asy
   );
 });
 
+test("MVP-A policy-as-code gate fails closed for affected readiness overclaims", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-readiness-overclaim.md",
+        [
+          "P0-R05 / #11 authorization and data-scope enforcement: Accepted.",
+          "P0-R06 / #12 audit immutability and production backup is production-like ready.",
+          "P0-R08 / #14 raw payload and CSV/export can be treated as Accepted.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-readiness-overclaim.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected P0-R05 Accepted overclaim to fail the documentation policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-readiness-overclaim.md" &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected P0-R06 production-like overclaim to fail the documentation policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-readiness-overclaim.md" &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected P0-R08 Accepted overclaim to fail the documentation policy gate",
+  );
+});
+
+test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+
+  assert.deepEqual(
+    checkMvpAPolicyAsCode({
+      ...inputs,
+      documentationTextByPath: new Map([
+        ...inputs.documentationTextByPath,
+        [
+          "docs/fixture-bounded-readiness.md",
+          [
+            "P0-R05 / #11 authorization and data-scope enforcement remains a conditional-go follow-up.",
+            "P0-R06 / #12 production audit immutability remains blocked for production-like readiness.",
+            "P0-R08 / #14 raw payload and CSV/export remains blocked for real-data and production-like use.",
+            "The only Go claim is bounded/non-production MVP-A onboarding evidence.",
+          ].join("\n"),
+        ],
+      ]),
+    }),
+    [],
+  );
+});
+
 test("MVP-A policy-as-code input loader discovers fixture and seed files", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await mkdir(join(fixtureCwd, "drizzle"));
