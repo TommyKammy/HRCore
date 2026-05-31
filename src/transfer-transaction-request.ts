@@ -1086,7 +1086,7 @@ export function verifyMvpBTransferCorrelationTrace(
 ): MvpBTransferCorrelationTrace {
   const correlationId = requireTransferTraceCorrelationId(input.correlationId);
   const request = readTransferTraceRequestByCorrelationId(db, correlationId);
-  const payload = parsePersistedTransferApplyPayload(request);
+  const payload = readTransferTracePayload(request);
   const auditEvents = readTransferTraceAuditEvents(db, request);
   const approvalAuditEvents = auditEvents.filter(
     (event) => event.action === "mvp_b.transfer.approve",
@@ -1132,6 +1132,11 @@ export function verifyMvpBTransferCorrelationTrace(
   if (input.requireApproval && approvalAuditEvent === undefined) {
     throwTransferTraceError(
       "MVP-B transfer trace requires approval audit evidence for the root correlation id",
+    );
+  }
+  if (input.requireApply && request.status_code !== "completed") {
+    throwTransferTraceError(
+      "MVP-B transfer trace requires completed transfer request state for apply evidence",
     );
   }
   if (input.requireApply && lifecycleEvent === undefined) {
@@ -1242,6 +1247,18 @@ function readTransferTraceRequestByCorrelationId(
   }
 
   return request;
+}
+
+function readTransferTracePayload(
+  request: ExistingTransferTransactionRequestRow,
+): TransferTransactionRequestPayload {
+  try {
+    return parsePersistedTransferApplyPayload(request);
+  } catch {
+    throwTransferTraceError(
+      "MVP-B transfer trace requires supported transfer payload evidence",
+    );
+  }
 }
 
 function readTransferTraceAuditEvents(
@@ -1505,6 +1522,18 @@ function assertTransferTraceBindings(input: {
     );
   }
   if (
+    input.applyAuditEvent !== undefined &&
+    !isRootLinkedTransferTraceApplyCorrelation({
+      correlationId: input.applyAuditEvent.correlationId,
+      requestedCorrelationId: input.requestedCorrelationId,
+      request: input.request,
+    })
+  ) {
+    throwTransferTraceError(
+      "MVP-B transfer trace apply audit evidence must be rooted in the transfer correlation",
+    );
+  }
+  if (
     input.lifecycleEvent !== undefined &&
     input.lifecycleEvent.transactionRequestId !==
       input.request.transaction_request_id
@@ -1532,19 +1561,27 @@ function assertTransferTraceBindings(input: {
       );
     }
   }
-  if (
-    input.requireApplyJobAttempt &&
-    !input.applyJobAttempts.some((attempt) =>
-      isRootLinkedTransferTraceApplyJobAttempt({
-        attempt,
-        requestedCorrelationId: input.requestedCorrelationId,
-        request: input.request,
-        applyAuditEvent: input.applyAuditEvent,
-      }),
-    )
-  ) {
+  const rootLinkedApplyJobAttempt = input.applyJobAttempts.find((attempt) =>
+    isRootLinkedTransferTraceApplyJobAttempt({
+      attempt,
+      requestedCorrelationId: input.requestedCorrelationId,
+      request: input.request,
+      applyAuditEvent: input.applyAuditEvent,
+    }),
+  );
+  if (input.requireApplyJobAttempt && rootLinkedApplyJobAttempt === undefined) {
     throwTransferTraceError(
       "MVP-B transfer trace requires an applied job attempt rooted in the transfer correlation and linked to the apply audit evidence",
+    );
+  }
+  if (
+    input.requireApplyJobAttempt &&
+    input.applyAuditEvent !== undefined &&
+    rootLinkedApplyJobAttempt !== undefined &&
+    rootLinkedApplyJobAttempt.attemptedAt !== input.applyAuditEvent.occurredAt
+  ) {
+    throwTransferTraceError(
+      "MVP-B transfer trace applied job attempt timing must match the apply audit evidence",
     );
   }
   if (input.requireOktaProjection && input.oktaProjection === undefined) {
@@ -1587,6 +1624,27 @@ function isRootLinkedTransferTraceApplyJobAttempt(input: {
 
   const parsedAttemptCorrelation = parseTransferTraceWorkerAttemptCorrelationId(
     input.attempt.correlationId,
+  );
+  return (
+    parsedAttemptCorrelation !== undefined &&
+    parsedAttemptCorrelation.transactionRequestId ===
+      input.request.transaction_request_id &&
+    isRootTransferTraceWorkerCorrelation(
+      parsedAttemptCorrelation.workerCorrelationId,
+      input.requestedCorrelationId,
+    )
+  );
+}
+
+function isRootLinkedTransferTraceApplyCorrelation(input: {
+  correlationId: string;
+  requestedCorrelationId: string;
+  request: ExistingTransferTransactionRequestRow;
+}): boolean {
+  if (input.correlationId === input.requestedCorrelationId) return true;
+
+  const parsedAttemptCorrelation = parseTransferTraceWorkerAttemptCorrelationId(
+    input.correlationId,
   );
   return (
     parsedAttemptCorrelation !== undefined &&
