@@ -204,7 +204,7 @@ function splitClaimSegments(text: string): string[] {
 
     segments.push(
       ...normalizedProse
-        .split(/\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
+        .split(/(?<!\b\d)\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
         .map((segment) =>
           applyCurrentGateHeadingContext(
             segment.replace(/\s+/gu, " ").trim(),
@@ -280,7 +280,7 @@ function applyCurrentGateHeadingContext(
 function isStatusOrReadinessSegment(segment: string): boolean {
   return (
     /^(?:Status\s*:\s*)?Accepted\s*\.?$/iu.test(segment) ||
-    /^(?:[-*]\s*)Accepted\s*\.?$/iu.test(segment) ||
+    /^(?:[-*]|\d+\.)\s*Accepted\s*\.?$/iu.test(segment) ||
     hasProductionLikeReadinessOverclaim(segment)
   );
 }
@@ -290,13 +290,38 @@ function getGateScopedClaimSegments(
   gate: (typeof affectedReadinessGateClaims)[number],
 ): string[] {
   const gatePositions = findAliasIndexes(segment, gate.aliases);
+  const affectedGatePositions = findAffectedGateAliasIndexes(segment);
   const scopedSegments = gatePositions
-    .map((gatePosition, index) => {
-      const nextGatePosition = gatePositions[index + 1];
+    .map((gatePosition) => {
+      const nextGatePosition = affectedGatePositions.find(
+        (affectedGatePosition) =>
+          affectedGatePosition > gatePosition &&
+          !isDependencyGateMention(segment, affectedGatePosition),
+      );
       return segment.slice(gatePosition, nextGatePosition).trim();
     })
     .filter((scopedSegment) => scopedSegment.length > 0);
   return scopedSegments.length === 0 ? [segment] : scopedSegments;
+}
+
+function findAffectedGateAliasIndexes(segment: string): number[] {
+  return Array.from(
+    new Set(
+      affectedReadinessGateClaims.flatMap((gate) =>
+        findAliasIndexes(segment, gate.aliases),
+      ),
+    ),
+  ).sort((left, right) => left - right);
+}
+
+function isDependencyGateMention(
+  segment: string,
+  gatePosition: number,
+): boolean {
+  const prefix = segment.slice(Math.max(0, gatePosition - 40), gatePosition);
+  return /\b(?:depends?\s+on|dependency|blocked\s+by|requires?)\s+$/iu.test(
+    prefix,
+  );
 }
 
 function findAliasIndexes(
@@ -347,13 +372,14 @@ function hasAffectedReadinessOverclaim(segment: string): boolean {
 function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
   return (
     /^(?:Status\s*:\s*)?Accepted\s*\.?$/iu.test(segment) ||
-    /^(?:[-*]\s*)Accepted\s*\.?$/iu.test(segment) ||
+    /^(?:[-*]|\d+\.)\s*Accepted\s*\.?$/iu.test(segment) ||
     hasProductionLikeReadinessOverclaim(segment)
   );
 }
 
 function hasProductionLikeReadinessOverclaim(segment: string): boolean {
   return (
+    /\bproduction-like(?:\s+|-)ready\b/iu.test(segment) ||
     /(?:^|[|:])\s*production-like(?:\s+|-)ready\b/iu.test(segment) ||
     /\b(?:is|are|be|become|treated\s+as|described\s+as)\s+production-like(?:\s+|-)ready\b/iu.test(
       segment,
@@ -372,7 +398,7 @@ function isExplicitlyBlockedOrDeferred(segment: string): boolean {
   if (hasBareReadinessTableCell(claimText)) {
     return false;
   }
-  return /(?:not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? (?:an? )?accepted [^|.]+ before|until a later accepted|later accepted two-key|\b(?:cannot|do not|does not|must not)\b[^|.]{0,80}\b(?:describe|claim|treat|mark|count|classify|approve|be described as|be treated as)\b[^|.]{0,80}\b(?:accepted|production-like(?:\s+|-)ready|production-like readiness))/iu.test(
+  return /(?:not be described as|not accepted|not yet accepted|no accepted|not production-like(?:\s+|-)ready|not yet production-like(?:\s+|-)ready|no production-like(?:\s+|-)ready|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? (?:an? )?accepted [^|.]+ before|until a later accepted|later accepted two-key|\b(?:cannot|do not|does not|must not)\b[^|.]{0,80}\b(?:describe|claim|treat|mark|count|classify|approve|be described as|be treated as)\b[^|.]{0,80}\b(?:accepted|production-like(?:\s+|-)ready|production-like readiness))/iu.test(
     claimText,
   );
 }

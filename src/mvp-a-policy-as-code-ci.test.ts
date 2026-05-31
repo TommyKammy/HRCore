@@ -1043,6 +1043,75 @@ test("MVP-A policy-as-code gate covers current readiness review probes", async (
   );
 });
 
+test("MVP-A policy-as-code gate covers final readiness review probes", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const multiGatePath = "docs/fixture-multi-gate-readiness-claim.md";
+  const directProductionLikePath =
+    "docs/fixture-direct-production-like-ready.md";
+  const acceptedFollowUpPath = "docs/fixture-accepted-follow-up-work.md";
+  const numberedStatusPath = "docs/fixture-numbered-status-readiness.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        multiGatePath,
+        "P0-R05 / #11 is Accepted; P0-R06 / #12 remains blocked.",
+      ],
+      [directProductionLikePath, "P0-R05 / #11 production-like ready."],
+      [acceptedFollowUpPath, "P0-R05 / #11 is Accepted with follow-up work."],
+      [numberedStatusPath, ["# P0-R06 / #12", "", "1. Accepted"].join("\n")],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === multiGatePath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected P0-R05 Accepted claim not to inherit P0-R06 blocked wording",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === multiGatePath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    false,
+    "expected P0-R06 blocked wording in the same sentence to stay allowed",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === directProductionLikePath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected direct gate-prefixed production-like ready claim to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === acceptedFollowUpPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected Accepted with follow-up work to remain an Accepted overclaim",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === numberedStatusPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected numbered Accepted status under a gate heading to fail",
+  );
+});
+
 test("MVP-A policy-as-code input loader discovers readiness documentation", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
