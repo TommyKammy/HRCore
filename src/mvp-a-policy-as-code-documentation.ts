@@ -87,19 +87,9 @@ function collectAffectedReadinessGateFindings(
 
   for (const [path, text] of inputs.documentationTextByPath) {
     const documentGate = findAffectedReadinessGateForDocumentPath(path);
-    if (
+    const documentHasIndependentApproval =
       documentGate !== undefined &&
-      hasAcceptedAdrStatusClaim(text) &&
-      !hasDocumentedIndependentReadinessApproval(text)
-    ) {
-      findings.push({
-        surface: "documentation",
-        path,
-        subject: documentGate.subject,
-        message:
-          "Affected readiness gate must not be described as Accepted or production-like ready without documented independent approval",
-      });
-    }
+      hasDocumentedIndependentReadinessApproval(text);
 
     const claimSegments = splitClaimSegments(text);
     for (const segment of claimSegments) {
@@ -108,13 +98,20 @@ function collectAffectedReadinessGateFindings(
       }
 
       for (const gate of affectedReadinessGateClaims) {
-        if (!mentionsAffectedGate(segment, gate.aliases)) {
+        const claimBelongsToDocumentGate =
+          documentGate?.subject === gate.subject &&
+          hasDocumentScopedReadinessOverclaim(segment);
+        if (
+          !claimBelongsToDocumentGate &&
+          !mentionsAffectedGate(segment, gate.aliases)
+        ) {
           continue;
         }
 
         if (
           isExplicitlyBlockedOrDeferred(segment) ||
-          hasDocumentedIndependentReadinessApproval(segment)
+          hasDocumentedIndependentReadinessApproval(segment) ||
+          (claimBelongsToDocumentGate && documentHasIndependentApproval)
         ) {
           continue;
         }
@@ -174,15 +171,21 @@ function splitClaimSegments(text: string): string[] {
   return segments;
 }
 
-function hasAcceptedAdrStatusClaim(text: string): boolean {
-  return /^##\s+Status\s*\r?\n(?:[^\S\r\n]*\r?\n)*[^\S\r\n]*Accepted[^\S\r\n]*$/imu.test(
-    text,
-  );
-}
-
 function hasAffectedReadinessOverclaim(segment: string): boolean {
   return (
     /\bAccepted\b/u.test(segment) ||
+    hasProductionLikeReadinessOverclaim(segment)
+  );
+}
+
+function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
+  return (
+    /^Accepted$/iu.test(segment) || hasProductionLikeReadinessOverclaim(segment)
+  );
+}
+
+function hasProductionLikeReadinessOverclaim(segment: string): boolean {
+  return (
     /\b(?:is|are|be|become|treated\s+as|described\s+as)\s+production-like(?:\s+|-)ready\b/iu.test(
       segment,
     ) ||

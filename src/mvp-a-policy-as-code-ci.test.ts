@@ -363,6 +363,77 @@ test("MVP-A policy-as-code gate carries ADR document identity into status claims
   );
 });
 
+test("MVP-A policy-as-code input loader scans affected ADR readiness claims", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  await writeFile(
+    join(fixtureCwd, "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md"),
+    [
+      "# ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary",
+      "",
+      "## Status",
+      "",
+      "Accepted",
+      "",
+      "## Decision owners",
+      "",
+      "- Author: TommyKammy",
+      "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+      "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+      "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(
+      fixtureCwd,
+      "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+    ),
+    [
+      "# ADR 0012: Audit Event Hash Chain, WORM, and S3 Object Lock MVP-A/v1 Boundary",
+      "",
+      "## Status",
+      "",
+      "Proposed",
+      "",
+      "## Readiness",
+      "",
+      "production-like-ready: Go",
+      "",
+      "## Decision owners",
+      "",
+      "- Author: TommyKammy",
+      "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+      "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+      "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected loader-read ADR 0011 Accepted status to fail via document identity",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md" &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected loader-read ADR 0012 production-like readiness to fail via document identity",
+  );
+});
+
 test("MVP-A policy-as-code gate scopes independent approval to each readiness claim", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
