@@ -1581,7 +1581,7 @@ function assertTransferTraceBindings(input: {
       );
     }
   }
-  const rootLinkedApplyJobAttempt = input.applyJobAttempts.find((attempt) =>
+  const rootLinkedApplyJobAttempts = input.applyJobAttempts.filter((attempt) =>
     isRootLinkedTransferTraceApplyJobAttempt({
       attempt,
       requestedCorrelationId: input.requestedCorrelationId,
@@ -1589,6 +1589,17 @@ function assertTransferTraceBindings(input: {
       applyAuditEvent: input.applyAuditEvent,
     }),
   );
+  if (rootLinkedApplyJobAttempts.length !== input.applyJobAttempts.length) {
+    throwTransferTraceError(
+      "MVP-B transfer trace apply job attempt evidence must be rooted in the transfer correlation and linked to the apply audit evidence",
+    );
+  }
+  if (rootLinkedApplyJobAttempts.length > 1) {
+    throwTransferTraceError(
+      "MVP-B transfer trace requires a single applied job attempt linked to the apply audit evidence",
+    );
+  }
+  const rootLinkedApplyJobAttempt = rootLinkedApplyJobAttempts[0];
   if (input.requireApplyJobAttempt && rootLinkedApplyJobAttempt === undefined) {
     throwTransferTraceError(
       "MVP-B transfer trace requires an applied job attempt rooted in the transfer correlation and linked to the apply audit evidence",
