@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 
 const fixtureSeedFileNamePattern =
   /(?:^|[-_.])(fixture|fixtures|seed|seeds)(?:[-_.]|$)/iu;
@@ -49,6 +49,23 @@ export async function readRepoTextFilesByPath(
   return textByPath;
 }
 
+export async function readDiscoveredDocumentationTextByPath(
+  cwd: string,
+  requiredPaths: readonly string[],
+): Promise<Map<string, string>> {
+  const textByPath = await readRepoTextFilesByPath(cwd, requiredPaths);
+  const discoveredPaths = await discoverMarkdownDocumentationPaths(cwd);
+  for (const path of discoveredPaths) {
+    if (textByPath.has(path)) {
+      continue;
+    }
+
+    textByPath.set(path, await readFile(join(cwd, path), "utf8"));
+  }
+
+  return textByPath;
+}
+
 export async function readDiscoveredFixtureSeedTextByPath(
   cwd: string,
 ): Promise<Map<string, string>> {
@@ -58,6 +75,56 @@ export async function readDiscoveredFixtureSeedTextByPath(
     ...(await discoverFixtureSeedFilesUnder(cwd, "docs")),
   ].sort();
   return readRepoTextFilesByPath(cwd, discoveredPaths);
+}
+
+async function discoverMarkdownDocumentationPaths(
+  cwd: string,
+): Promise<string[]> {
+  const rootEntries = await readdir(cwd, { withFileTypes: true });
+  const rootMarkdownPaths = rootEntries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter(isMarkdownDocumentationPath);
+  return [
+    ...rootMarkdownPaths,
+    ...(await discoverMarkdownDocumentationFilesUnder(cwd, "docs")),
+  ].sort();
+}
+
+async function discoverMarkdownDocumentationFilesUnder(
+  cwd: string,
+  rootPath: string,
+): Promise<string[]> {
+  const discoveredPaths: string[] = [];
+  const walk = async (relativeDirectory: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(join(cwd, relativeDirectory), {
+        withFileTypes: true,
+      });
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return;
+      }
+
+      throw error;
+    }
+
+    for (const entry of entries) {
+      const relativePath = join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(relativePath);
+        continue;
+      }
+
+      if (entry.isFile() && isMarkdownDocumentationPath(relativePath)) {
+        discoveredPaths.push(relativePath);
+      }
+    }
+  };
+
+  await walk(rootPath);
+  return discoveredPaths;
 }
 
 async function discoverFixtureSeedRootFiles(cwd: string): Promise<string[]> {
@@ -106,7 +173,7 @@ async function discoverFixtureSeedFilesUnder(
 
 function isFixtureSeedTextPath(path: string): boolean {
   const fileName = basename(path);
-  const directorySegments = path.split(/[\\/]+/u).slice(0, -1);
+  const directorySegments = dirname(path).split(/[\\/]+/u);
   return (
     fixtureSeedTextExtensions.has(extname(fileName).toLowerCase()) &&
     (fixtureSeedFileNamePattern.test(fileName) ||
@@ -115,6 +182,10 @@ function isFixtureSeedTextPath(path: string): boolean {
       )) &&
     !fixtureSeedIgnoredNamePattern.test(fileName)
   );
+}
+
+function isMarkdownDocumentationPath(path: string): boolean {
+  return extname(path).toLowerCase() === ".md";
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
