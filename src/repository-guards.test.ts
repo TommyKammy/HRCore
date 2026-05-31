@@ -2518,6 +2518,21 @@ test("MVP-B P2B-01 readiness review closeout keeps production gates blocked", as
     /#240[\s\S]{0,160}\bis\s+Accepted two-key approval\b/u,
     "P2B-01 closeout must not convert #240 owner acknowledgement into Accepted two-key approval",
   );
+  assert.doesNotMatch(
+    closeout,
+    /`src\/transfer-transaction-request-contract\.ts`/u,
+    "P2B-01 closeout must not cite nonexistent transfer contract implementation modules",
+  );
+  assert.doesNotMatch(
+    closeout,
+    /`src\/onboarding-okta-writeback-integration\.ts`/u,
+    "P2B-01 closeout transfer projection evidence must not cite the onboarding writeback module",
+  );
+  assert.match(
+    closeout,
+    /`src\/transfer-transaction-request\.ts`\s+`applyApprovedTransferTransactionRequestWithOktaProjection`/u,
+    "P2B-01 closeout must cite the transfer projection implementation symbol",
+  );
 
   assert.match(
     readme,
