@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
@@ -9,8 +9,38 @@ import { text, sqliteTable } from "drizzle-orm/sqlite-core";
 import {
   checkMvpAPolicyAsCode,
   loadCurrentMvpAPolicyAsCodeInputs,
+  mvpAPolicyAsCodeDocumentationPaths,
   type MvpAPolicyAsCodeInputs,
 } from "./mvp-a-policy-as-code-ci.js";
+
+async function writeMinimalPolicyInputRepository(
+  cwd: string,
+  documentationPaths: readonly string[] = mvpAPolicyAsCodeDocumentationPaths,
+): Promise<void> {
+  await mkdir(join(cwd, "drizzle"), { recursive: true });
+  await mkdir(join(cwd, "openapi"), { recursive: true });
+  await writeFile(join(cwd, "drizzle", "0000_fixture.sql"), "");
+  await writeFile(
+    join(cwd, "openapi", "hrcore.openapi.json"),
+    JSON.stringify({
+      paths: {
+        "/onboarding/new-hire": {
+          get: {
+            operationId: "getOnboardingNewHire",
+          },
+        },
+      },
+    }),
+  );
+
+  for (const documentationPath of documentationPaths) {
+    await mkdir(join(cwd, dirname(documentationPath)), { recursive: true });
+    await writeFile(
+      join(cwd, documentationPath),
+      `fixture policy docs for ${documentationPath}`,
+    );
+  }
+}
 
 test("MVP-A policy-as-code exposes focused helper entry points", async () => {
   const openApiModulePath = "./mvp-a-policy-as-code-openapi.js";
@@ -217,7 +247,7 @@ test("MVP-A policy-as-code gate fails closed for affected readiness overclaims",
         "docs/fixture-readiness-overclaim.md",
         [
           "P0-R05 / #11 authorization and data-scope enforcement: Accepted.",
-          "P0-R06 / #12 audit immutability and production backup is production-like ready.",
+          "P0-R06 / #12 audit immutability and production backup is production-like-ready: Go.",
           "P0-R08 / #14 raw payload and CSV/export can be treated as Accepted.",
         ].join("\n"),
       ],
@@ -253,6 +283,76 @@ test("MVP-A policy-as-code gate fails closed for affected readiness overclaims",
   );
 });
 
+test("MVP-A policy-as-code gate scans ADR-path table rows as gate claims", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-adr-path-overclaim.md",
+        [
+          "| Decision record | Readiness |",
+          "| --- | --- |",
+          "| docs/adr/0011-data-scope-policy-dsl-rls-boundary.md | Accepted |",
+          "| docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md | production-like-ready: Go |",
+          "| docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md | Accepted |",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  for (const subject of ["P0-R05 / #11", "P0-R06 / #12", "P0-R08 / #14"]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === "docs/fixture-adr-path-overclaim.md" &&
+          finding.subject === subject,
+      ),
+      `expected ${subject} ADR-path table overclaim to fail the policy gate`,
+    );
+  }
+});
+
+test("MVP-A policy-as-code gate scopes independent approval to each readiness claim", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-scoped-independent-approval.md",
+        [
+          "| Gate | Readiness | Independent approval |",
+          "| --- | --- | --- |",
+          "| P0-R05 / #11 | Accepted | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+          "| P0-R06 / #12 | Accepted | Independent approver: Required before Accepted; Independent counter-approver: Required before Accepted; Time-locked review window: Required before Accepted |",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-scoped-independent-approval.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected documented independent approval on the same P0-R05 claim to pass",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-scoped-independent-approval.md" &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected P0-R06 overclaim to fail despite another row's approval evidence",
+  );
+});
+
 test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
 
@@ -267,6 +367,7 @@ test("MVP-A policy-as-code gate allows bounded non-production readiness wording"
             "P0-R05 / #11 authorization and data-scope enforcement remains a conditional-go follow-up.",
             "P0-R06 / #12 production audit immutability remains blocked for production-like readiness.",
             "P0-R08 / #14 raw payload and CSV/export remains blocked for real-data and production-like use.",
+            "P0-R08 / #14 is not Accepted for raw payload or CSV/export launch.",
             "The only Go claim is bounded/non-production MVP-A onboarding evidence.",
           ].join("\n"),
         ],
@@ -278,30 +379,10 @@ test("MVP-A policy-as-code gate allows bounded non-production readiness wording"
 
 test("MVP-A policy-as-code input loader discovers fixture and seed files", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
-  await mkdir(join(fixtureCwd, "drizzle"));
-  await mkdir(join(fixtureCwd, "openapi"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
   await mkdir(join(fixtureCwd, "src"));
   await mkdir(join(fixtureCwd, "src", "seeds"));
-  await mkdir(join(fixtureCwd, "docs"));
-  await mkdir(join(fixtureCwd, "docs", "fixtures"));
-  await writeFile(join(fixtureCwd, "drizzle", "0000_fixture.sql"), "");
-  await writeFile(
-    join(fixtureCwd, "openapi", "hrcore.openapi.json"),
-    JSON.stringify({
-      paths: {
-        "/onboarding/new-hire": {
-          get: {
-            operationId: "getOnboardingNewHire",
-          },
-        },
-      },
-    }),
-  );
-  await writeFile(join(fixtureCwd, "README.md"), "fixture policy root");
-  await writeFile(
-    join(fixtureCwd, "docs", "mvp-a-onboarding-non-production-data-gate.md"),
-    "fixture policy docs",
-  );
+  await mkdir(join(fixtureCwd, "docs", "fixtures"), { recursive: true });
   await writeFile(
     join(fixtureCwd, "src", "review-fixture.ts"),
     "export const fixtureName = 'real employee';",
@@ -380,6 +461,30 @@ test("MVP-A policy-as-code input loader discovers fixture and seed files", async
         finding.path === "docs/fixtures/personas.yaml",
     ),
     "expected discovered docs fixture directory file to fail the policy gate",
+  );
+});
+
+test("MVP-A policy-as-code input loader fails when monitored documentation is missing", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  const omittedDocumentationPath = "docs/solo-maintainer-governance.md";
+  await writeMinimalPolicyInputRepository(
+    fixtureCwd,
+    mvpAPolicyAsCodeDocumentationPaths.filter(
+      (path) => path !== omittedDocumentationPath,
+    ),
+  );
+
+  await assert.rejects(
+    loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+    (error: unknown) => {
+      const nodeError = error as NodeJS.ErrnoException;
+      return (
+        error instanceof Error &&
+        nodeError.code === "ENOENT" &&
+        error.message.includes(omittedDocumentationPath)
+      );
+    },
+    "expected missing monitored documentation to fail input loading",
   );
 });
 

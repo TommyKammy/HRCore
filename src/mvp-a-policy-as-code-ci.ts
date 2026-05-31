@@ -46,6 +46,20 @@ export type {
   MvpAPolicyAsCodeInputs,
 } from "./mvp-a-policy-as-code-types.js";
 
+export const mvpAPolicyAsCodeDocumentationPaths = [
+  "README.md",
+  "docs/mvp-a-onboarding-non-production-data-gate.md",
+  "docs/solo-maintainer-governance.md",
+  "docs/mvp-a-go-no-go.md",
+  "docs/mvp-a-go-no-go-scope.md",
+  "docs/mvp-a-go-no-go-future-wave-readiness.md",
+  "docs/mvp-a-onboarding-go-no-go-checklist.md",
+  "docs/mvp-a-p2a-02-independent-review-closeout.md",
+  "docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md",
+  "docs/mvp-a-p2a-04-refactor-wave-closeout.md",
+  "docs/mvp-a-p2a-05-refactor-wave-closeout.md",
+] as const;
+
 export function checkMvpAPolicyAsCode(
   inputs: MvpAPolicyAsCodeInputs,
 ): MvpAPolicyAsCodeFinding[] {
@@ -87,19 +101,10 @@ export async function loadCurrentMvpAPolicyAsCodeInputs(
       await readFile(join(cwd, "openapi/hrcore.openapi.json"), "utf8"),
     ) as OpenApiContract,
     fixtureSeedTextByPath: await readDiscoveredFixtureSeedTextByPath(cwd),
-    documentationTextByPath: await readRepoTextFilesByPath(cwd, [
-      "README.md",
-      "docs/mvp-a-onboarding-non-production-data-gate.md",
-      "docs/solo-maintainer-governance.md",
-      "docs/mvp-a-go-no-go.md",
-      "docs/mvp-a-go-no-go-scope.md",
-      "docs/mvp-a-go-no-go-future-wave-readiness.md",
-      "docs/mvp-a-onboarding-go-no-go-checklist.md",
-      "docs/mvp-a-p2a-02-independent-review-closeout.md",
-      "docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md",
-      "docs/mvp-a-p2a-04-refactor-wave-closeout.md",
-      "docs/mvp-a-p2a-05-refactor-wave-closeout.md",
-    ]),
+    documentationTextByPath: await readRepoTextFilesByPath(
+      cwd,
+      mvpAPolicyAsCodeDocumentationPaths,
+    ),
   };
 }
 

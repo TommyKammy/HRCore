@@ -6,15 +6,30 @@ import type {
 const affectedReadinessGateClaims = [
   {
     subject: "P0-R05 / #11",
-    aliases: ["P0-R05", "#11", "ADR 0011"],
+    aliases: [
+      "P0-R05",
+      "#11",
+      "ADR 0011",
+      "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
+    ],
   },
   {
     subject: "P0-R06 / #12",
-    aliases: ["P0-R06", "#12", "ADR 0012"],
+    aliases: [
+      "P0-R06",
+      "#12",
+      "ADR 0012",
+      "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+    ],
   },
   {
     subject: "P0-R08 / #14",
-    aliases: ["P0-R08", "#14", "ADR 0014"],
+    aliases: [
+      "P0-R08",
+      "#14",
+      "ADR 0014",
+      "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
+    ],
   },
 ] as const;
 
@@ -63,30 +78,31 @@ function collectAffectedReadinessGateFindings(
   const findings: MvpAPolicyAsCodeFinding[] = [];
 
   for (const [path, text] of inputs.documentationTextByPath) {
-    if (hasDocumentedIndependentReadinessApproval(text)) {
-      continue;
-    }
-
     const claimSegments = splitClaimSegments(text);
     for (const segment of claimSegments) {
-      if (isExplicitlyBlockedOrDeferred(segment)) {
-        continue;
-      }
-
       if (!hasAffectedReadinessOverclaim(segment)) {
         continue;
       }
 
       for (const gate of affectedReadinessGateClaims) {
-        if (gate.aliases.some((alias) => segment.includes(alias))) {
-          findings.push({
-            surface: "documentation",
-            path,
-            subject: gate.subject,
-            message:
-              "Affected readiness gate must not be described as Accepted or production-like ready without documented independent approval",
-          });
+        if (!mentionsAffectedGate(segment, gate.aliases)) {
+          continue;
         }
+
+        if (
+          isExplicitlyBlockedOrDeferred(segment) ||
+          hasDocumentedIndependentReadinessApproval(segment)
+        ) {
+          continue;
+        }
+
+        findings.push({
+          surface: "documentation",
+          path,
+          subject: gate.subject,
+          message:
+            "Affected readiness gate must not be described as Accepted or production-like ready without documented independent approval",
+        });
       }
     }
   }
@@ -94,25 +110,63 @@ function collectAffectedReadinessGateFindings(
   return findings;
 }
 
+function mentionsAffectedGate(
+  segment: string,
+  aliases: readonly string[],
+): boolean {
+  const normalizedSegment = segment.toLowerCase();
+  return aliases.some((alias) =>
+    normalizedSegment.includes(alias.toLowerCase()),
+  );
+}
+
 function splitClaimSegments(text: string): string[] {
-  return text
-    .split(/\n{2,}|\r?\n|[.;]/u)
-    .map((segment) => segment.replace(/\s+/gu, " ").trim())
-    .filter((segment) => segment.length > 0);
+  const segments: string[] = [];
+
+  for (const line of text.split(/\r?\n/u)) {
+    const normalizedLine = line.replace(/\s+/gu, " ").trim();
+    if (normalizedLine.length === 0) {
+      continue;
+    }
+
+    if (normalizedLine.includes("|")) {
+      segments.push(normalizedLine);
+      continue;
+    }
+
+    segments.push(
+      ...normalizedLine
+        .split(/[.;]/u)
+        .map((segment) => segment.replace(/\s+/gu, " ").trim())
+        .filter((segment) => segment.length > 0),
+    );
+  }
+
+  return segments;
 }
 
 function hasAffectedReadinessOverclaim(segment: string): boolean {
   return (
     /\bAccepted\b/u.test(segment) ||
-    /\bproduction-like\s+(?:ready|readiness\s*:\s*(?:Go|Accepted)|readiness\s+is\s+(?:Go|Accepted))\b/iu.test(
+    /\b(?:is|are|be|become|treated\s+as|described\s+as)\s+production-like(?:\s+|-)ready\b/iu.test(
+      segment,
+    ) ||
+    /\bproduction-like(?:\s+|-)ready\s*:\s*(?:Go|Accepted|Yes)\b/iu.test(
+      segment,
+    ) ||
+    /\bproduction-like(?:\s+|-)readiness\s*(?::\s*|\s+is\s+)(?:Go|Accepted|ready)\b/iu.test(
       segment,
     )
   );
 }
 
 function isExplicitlyBlockedOrDeferred(segment: string): boolean {
-  return /(?:must not|cannot|do not|does not|not be described as|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|follow-up work|#\d+-class [^|]+ follow-up|before Accepted|required before Accepted|requires? a later Accepted|until a later Accepted|later Accepted two-key)/iu.test(
-    segment,
+  const claimText = segment
+    .replace(/\bIndependent approver:\s*[^|]+/giu, "")
+    .replace(/\bIndependent counter-approver:\s*[^|]+/giu, "")
+    .replace(/\bTime-locked review window:\s*[^|]+/giu, "");
+  return /(?:must not|cannot|do not|does not|not be described as|not Accepted|not yet Accepted|no Accepted|has not been Accepted|have not been Accepted|is not Accepted|are not Accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before Accepted|required before Accepted|requires? a later Accepted|until a later Accepted|later Accepted two-key)/iu.test(
+    claimText,
   );
 }
 
