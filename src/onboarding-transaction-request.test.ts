@@ -72,15 +72,23 @@ test("MVP-A onboarding Okta writeback integration stays outside the core transac
   );
 });
 
-test("MVP-A onboarding transaction request internal imports focused parser reader and id helpers", async () => {
+test("MVP-A onboarding transaction request modules keep contract parsing, reads, and ids focused", async () => {
   const [
     internalModule,
+    persistenceModule,
+    approvalModule,
+    applyModule,
+    workerModule,
     parserModule,
     validationModule,
     readerModule,
     idModule,
   ] = await Promise.all([
     readRepoFile("src/onboarding-transaction-request-internal.ts"),
+    readRepoFile("src/onboarding-transaction-request-persistence.ts"),
+    readRepoFile("src/onboarding-transaction-request-approval.ts"),
+    readRepoFile("src/onboarding-transaction-request-apply.ts"),
+    readRepoFile("src/onboarding-transaction-request-worker.ts"),
     readRepoFile("src/onboarding-transaction-request-parser.ts"),
     readRepoFile("src/onboarding-transaction-request-validation.ts"),
     readRepoFile("src/onboarding-transaction-request-readers.ts"),
@@ -92,11 +100,19 @@ test("MVP-A onboarding transaction request internal imports focused parser reade
     /from "\.\/onboarding-transaction-request-parser\.js"/u,
   );
   assert.match(
-    internalModule,
+    persistenceModule,
+    /from "\.\/onboarding-transaction-request-parser\.js"/u,
+  );
+  assert.match(
+    approvalModule,
     /from "\.\/onboarding-transaction-request-readers\.js"/u,
   );
   assert.match(
-    internalModule,
+    applyModule,
+    /from "\.\/onboarding-transaction-request-readers\.js"/u,
+  );
+  assert.match(
+    workerModule,
     /from "\.\/onboarding-transaction-request-ids\.js"/u,
   );
   assert.match(
@@ -112,10 +128,7 @@ test("MVP-A onboarding transaction request internal imports focused parser reade
     idModule,
     /export function buildOnboardingApplyLifecycleEventId/u,
   );
-  assert.doesNotMatch(
-    internalModule,
-    /^function (?:parsePerson|parsePayload|assertSupportedFields|readOnboardingTransactionRequest|readDueOnboardingApplyCandidates|buildOnboardingApplyLifecycleEventId|buildOnboardingDecisionAuditEventId)\b/mu,
-  );
+  assert.doesNotMatch(internalModule, /^function |^export function /mu);
 });
 
 test("MVP-A onboarding transaction request focused boundary modules preserve lifecycle behavior", async (t) => {
@@ -237,6 +250,49 @@ test("MVP-A onboarding transaction request focused boundary modules preserve lif
       ],
     },
   );
+});
+
+test("MVP-A onboarding transaction request focused boundary modules own runtime implementations", async () => {
+  const [persistenceModule, approvalModule, applyModule, workerModule] =
+    await Promise.all([
+      readRepoFile("src/onboarding-transaction-request-persistence.ts"),
+      readRepoFile("src/onboarding-transaction-request-approval.ts"),
+      readRepoFile("src/onboarding-transaction-request-apply.ts"),
+      readRepoFile("src/onboarding-transaction-request-worker.ts"),
+    ]);
+
+  assert.match(
+    persistenceModule,
+    /export function saveOnboardingTransactionRequest/u,
+  );
+  assert.match(
+    persistenceModule,
+    /export function saveEditableOnboardingTransactionRequest/u,
+  );
+  assert.match(
+    approvalModule,
+    /export function decideOnboardingTransactionRequest/u,
+  );
+  assert.match(
+    applyModule,
+    /export function applyApprovedOnboardingTransactionRequest/u,
+  );
+  assert.match(
+    workerModule,
+    /export function applyDueOnboardingTransactionRequests/u,
+  );
+
+  for (const focusedModule of [
+    persistenceModule,
+    approvalModule,
+    applyModule,
+    workerModule,
+  ]) {
+    assert.doesNotMatch(
+      focusedModule,
+      /from "\.\/onboarding-transaction-request-internal\.js"/u,
+    );
+  }
 });
 
 test("MVP-A onboarding transaction request validation returns deterministic required-field errors", () => {
