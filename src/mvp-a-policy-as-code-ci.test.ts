@@ -1078,6 +1078,12 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
   const headingScopedTablePath =
     "docs/fixture-heading-scoped-table-readiness.md";
   const dependencyHeaderPath = "docs/fixture-dependency-header-readiness.md";
+  const mixedGateStatusRowPath =
+    "docs/fixture-mixed-gate-status-row-readiness.md";
+  const fencedMarkdownExamplePath =
+    "docs/fixture-fenced-markdown-example-readiness.md";
+  const referentialCounterApproverPath =
+    "docs/fixture-referential-counter-approver-readiness.md";
   const findings = checkMvpAPolicyAsCode({
     ...inputs,
     documentationTextByPath: new Map([
@@ -1178,6 +1184,28 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
           "| --- | --- | --- | --- |",
           "| P0-R08 / #14 | Accepted | ADR 0011 | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
         ].join("\n"),
+      ],
+      [
+        mixedGateStatusRowPath,
+        [
+          "| Gate A | Status A | Gate B | Status B |",
+          "| --- | --- | --- | --- |",
+          "| P0-R05 / #11 | Proposed | P0-R06 / #12 | Accepted |",
+        ].join("\n"),
+      ],
+      [
+        fencedMarkdownExamplePath,
+        [
+          "The following wording is prohibited and must stay illustrative only:",
+          "",
+          "```md",
+          "P0-R05 / #11 is Accepted",
+          "```",
+        ].join("\n"),
+      ],
+      [
+        referentialCounterApproverPath,
+        "P0-R05 / #11 is Accepted; Independent approver: Alice; Independent counter-approver: same as approver; Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
       ],
     ]),
   });
@@ -1383,6 +1411,43 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
     ),
     false,
     "expected dependency header cells not to create readiness findings for dependency aliases",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === mixedGateStatusRowPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    false,
+    "expected P0-R05 Proposed status not to inherit P0-R06 Accepted wording from the same table row",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === mixedGateStatusRowPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected P0-R06 Accepted status to fail in its matching table cells",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === fencedMarkdownExamplePath,
+    ),
+    false,
+    "expected fenced Markdown examples not to be scanned as readiness claims",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === referentialCounterApproverPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected referential counter-approver metadata not to satisfy two-key approval",
   );
 });
 

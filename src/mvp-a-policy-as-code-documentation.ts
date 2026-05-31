@@ -207,6 +207,7 @@ function splitClaimSegments(text: string): string[] {
   let currentGateHeading: { level: number; text: string } | undefined =
     undefined;
   let currentTableHeaderCells: string[] | undefined = undefined;
+  let fencedCodeBlockMarker: "`" | "~" | undefined = undefined;
 
   const flushPendingProse = (): void => {
     if (pendingProseLines.length === 0) {
@@ -237,6 +238,21 @@ function splitClaimSegments(text: string): string[] {
 
   for (const line of text.split(/\r?\n/u)) {
     const normalizedLine = line.replace(/\s+/gu, " ").trim();
+    const fenceMarkerMatch = /^(`{3,}|~{3,})/u.exec(line.trimStart());
+    if (fencedCodeBlockMarker !== undefined) {
+      if (fenceMarkerMatch?.[1].startsWith(fencedCodeBlockMarker)) {
+        fencedCodeBlockMarker = undefined;
+      }
+      continue;
+    }
+
+    if (fenceMarkerMatch !== null) {
+      flushPendingProse();
+      currentTableHeaderCells = undefined;
+      fencedCodeBlockMarker = fenceMarkerMatch[1].startsWith("`") ? "`" : "~";
+      continue;
+    }
+
     if (normalizedLine.length === 0) {
       flushPendingProse();
       currentTableHeaderCells = undefined;
@@ -365,7 +381,7 @@ function getGateScopedClaimSegments(
   gate: (typeof affectedReadinessGateClaims)[number],
 ): string[] {
   if (isTableRowSegment(segment)) {
-    return [segment];
+    return getGateScopedTableClaimSegments(segment, gate);
   }
 
   const gatePositions = findAliasIndexes(segment, gate.aliases).filter(
@@ -404,6 +420,74 @@ function getGateScopedClaimSegments(
     })
     .filter((scopedSegment) => scopedSegment.length > 0);
   return scopedSegments.length === 0 ? [segment] : scopedSegments;
+}
+
+function getGateScopedTableClaimSegments(
+  segment: string,
+  gate: (typeof affectedReadinessGateClaims)[number],
+): string[] {
+  const cells = parseMarkdownTableCells(segment);
+  const gateCellIndexes = findAffectedGateTableCellIndexes(cells);
+  const matchingGateCellIndexes = gateCellIndexes
+    .filter(({ affectedGate }) => affectedGate.subject === gate.subject)
+    .map(({ index }) => index);
+
+  const scopedSegments = matchingGateCellIndexes
+    .map((gateCellIndex) =>
+      getGateScopedTableCells(
+        cells,
+        gateCellIndexes.map(({ index }) => index),
+        gateCellIndex,
+      ),
+    )
+    .map((scopedCells) => `| ${scopedCells.join(" | ")} |`)
+    .filter((scopedSegment) => scopedSegment.length > 0);
+
+  return scopedSegments.length === 0 ? [segment] : scopedSegments;
+}
+
+function findAffectedGateTableCellIndexes(cells: readonly string[]): {
+  affectedGate: (typeof affectedReadinessGateClaims)[number];
+  index: number;
+}[] {
+  return cells.flatMap((cell, index) =>
+    affectedReadinessGateClaims
+      .filter((gate) => hasClaimGateMention(cell, gate.aliases))
+      .map((affectedGate) => ({ affectedGate, index })),
+  );
+}
+
+function getGateScopedTableCells(
+  cells: readonly string[],
+  gateCellIndexes: readonly number[],
+  gateCellIndex: number,
+): string[] {
+  const uniqueGateCellIndexes = Array.from(new Set(gateCellIndexes)).sort(
+    (left, right) => left - right,
+  );
+  let gateClusterStart = gateCellIndex;
+  while (uniqueGateCellIndexes.includes(gateClusterStart - 1)) {
+    gateClusterStart -= 1;
+  }
+
+  let gateClusterEnd = gateCellIndex;
+  while (uniqueGateCellIndexes.includes(gateClusterEnd + 1)) {
+    gateClusterEnd += 1;
+  }
+
+  const previousGateCellIndex = uniqueGateCellIndexes
+    .filter((index) => index < gateClusterStart)
+    .at(-1);
+  const nextGateCellIndex = uniqueGateCellIndexes.find(
+    (index) => index > gateClusterEnd,
+  );
+  const scopedStart = previousGateCellIndex === undefined ? 0 : gateCellIndex;
+  const scopedEnd = nextGateCellIndex ?? cells.length;
+
+  return cells
+    .slice(scopedStart, scopedEnd)
+    .map((cell) => cell.replace(/\s+/gu, " ").trim())
+    .filter((cell) => cell.length > 0);
 }
 
 function findNextHardClaimBreak(segment: string, startIndex: number): number {
@@ -668,7 +752,7 @@ function readReviewMetadataValue(
 function hasConcreteReviewMetadataValue(value: string): boolean {
   return (
     value.length > 0 &&
-    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder|missing|absent|unavailable|unknown|unrecorded|not required|waived?)\b|not\s+recorded/iu.test(
+    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder|missing|absent|unavailable|unknown|unrecorded|not required|waived?|ditto)\b|not\s+recorded|\b(?:same\s+as|same\s+person|as\s+above|see\s+(?:above|approver|counter-approver|author)|refer(?:s|red)?\s+to)\b/iu.test(
       value,
     )
   );
