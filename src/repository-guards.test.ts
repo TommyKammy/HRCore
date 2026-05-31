@@ -329,6 +329,53 @@ test("repository-owned review policy supports single-maintainer protection", asy
   }
 });
 
+test("solo-maintainer governance note keeps two-key ADRs as Proposed anchors", async () => {
+  const [governanceNote, readme, p2a03Closeout] = await Promise.all([
+    readRepoFile("docs/solo-maintainer-governance.md"),
+    readRepoFile("README.md"),
+    readRepoFile(
+      "docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md",
+    ),
+  ]);
+  const normalizedGovernanceNote = governanceNote.replace(/\s+/gu, " ").trim();
+  const normalizedP2a03Closeout = p2a03Closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# Solo-Maintainer Governance Posture",
+    "HRCore currently operates in a solo-maintainer / owner-acknowledged development model.",
+    "Owner acknowledgement is not an independent second key.",
+    "ADR 0011",
+    "ADR 0012",
+    "ADR 0014",
+    "do not satisfy the original ADR 0000 two-key acceptance semantics",
+    "must not be described as Accepted",
+    "may remain Proposed design anchors for bounded non-production development",
+    "Production-like readiness remains blocked for real employee data, live IdP/Okta tenant operation, production audit immutability, raw payload viewing, CSV/export, production backup, DLQ/ops, legal/privacy runtime, and related stronger-readiness claims.",
+    "No third-party legal, security, privacy, operator, or independent maintainer approval is recorded by this note.",
+  ]) {
+    assert.ok(
+      normalizedGovernanceNote.includes(
+        requiredText.replace(/\s+/gu, " ").trim(),
+      ),
+      `missing solo-maintainer governance text: ${requiredText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    governanceNote,
+    /ADR 00(?:11|12|14)[\s\S]{0,80}## Status\s+Accepted/u,
+    "solo-maintainer governance must not mark two-key ADRs as Accepted",
+  );
+  assert.match(
+    readme,
+    /\[Solo-Maintainer Governance Posture\]\(docs\/solo-maintainer-governance\.md\)/,
+  );
+  assert.ok(
+    normalizedP2a03Closeout.includes("Solo-Maintainer Governance Posture"),
+    "P2A-03 closeout must cross-link the solo-maintainer governance note",
+  );
+});
+
 test("pull request template preserves child issue review checklist", async () => {
   const pullRequestTemplate = await readRepoFile(
     ".github/pull_request_template.md",

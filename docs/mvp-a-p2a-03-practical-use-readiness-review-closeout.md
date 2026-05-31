@@ -36,6 +36,11 @@ production-like readiness from the current P2A-03 evidence.
 | ADR 0014                  | `docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md`; `docs/mvp-a-onboarding-pii-export-gate.md`; `src/mvp-a-onboarding-pii-export-gate.ts`                                                                                                                              | Raw payload viewing, CSV/export, download, watermark/manifest, and download-log surfaces remain closed.                                                                                                                                  |
 | ADR 0020                  | `docs/adr/0020-r08-prohibited-column-payload-policy-boundary.md`; `src/mvp-a-policy-as-code-ci.ts`; `src/repository-guards.test.ts`                                                                                                                                                                     | R08 prohibited column and payload guardrails remain in place for current repository evidence. No broad prohibited payload, raw, export, or regulated-data surface is accepted.                                                           |
 
+The current solo-maintainer / owner-acknowledged governance posture for ADR
+0011, ADR 0012, ADR 0014, and related stronger-readiness gates is recorded in
+[Solo-Maintainer Governance Posture](solo-maintainer-governance.md). That note
+does not mark those ADRs or their child gates as Accepted.
+
 ## No Silent Surface Openings
 
 The P2A-03 follow-up wave does not silently open any of these surfaces:
