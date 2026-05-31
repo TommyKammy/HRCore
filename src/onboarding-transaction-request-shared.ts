@@ -42,6 +42,11 @@ export type OnboardingDecisionTarget = {
   auditAction: string;
 };
 
+export type TransactionDecisionScope = {
+  requestType: string;
+  label: string;
+};
+
 export function assertSingleDraftUpdate(result: unknown): void {
   if (!isSingleSqlChange(result)) {
     throw new Error(
@@ -59,26 +64,33 @@ export function isSingleSqlChange(result: unknown): boolean {
 export function getOnboardingDecisionTarget(
   decision: OnboardingApprovalDecision,
 ): OnboardingDecisionTarget {
+  return getTransactionDecisionTarget(decision, "mvp_a.onboarding");
+}
+
+export function getTransactionDecisionTarget(
+  decision: OnboardingApprovalDecision,
+  auditActionPrefix: string,
+): OnboardingDecisionTarget {
   switch (decision) {
     case "approve":
       return {
         statusCode: "approved",
-        auditAction: "mvp_a.onboarding.approve",
+        auditAction: `${auditActionPrefix}.approve`,
       };
     case "return":
       return {
         statusCode: "returned",
-        auditAction: "mvp_a.onboarding.return",
+        auditAction: `${auditActionPrefix}.return`,
       };
     case "reject":
       return {
         statusCode: "rejected",
-        auditAction: "mvp_a.onboarding.reject",
+        auditAction: `${auditActionPrefix}.reject`,
       };
     case "cancel":
       return {
         statusCode: "cancelled",
-        auditAction: "mvp_a.onboarding.cancel",
+        auditAction: `${auditActionPrefix}.cancel`,
       };
   }
 }
@@ -88,15 +100,27 @@ export function assertLegalOnboardingDecision(
   decision: OnboardingApprovalDecisionInput,
   target: OnboardingDecisionTarget,
 ): void {
+  assertLegalTransactionDecision(existing, decision, target, {
+    requestType: "hire",
+    label: "onboarding transaction request",
+  });
+}
+
+export function assertLegalTransactionDecision(
+  existing: ExistingOnboardingTransactionRequestRow,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+  scope: TransactionDecisionScope,
+): void {
   if (existing.status_code === target.statusCode) {
     throw new Error(
-      "onboarding transaction request decision audit evidence is missing for the repeated command",
+      `${scope.label} decision audit evidence is missing for the repeated command`,
     );
   }
 
   if (existing.status_code !== "submitted") {
     throw new Error(
-      `onboarding transaction request ${decision.decision} decision requires submitted state`,
+      `${scope.label} ${decision.decision} decision requires submitted state`,
     );
   }
 }
@@ -199,6 +223,20 @@ export function buildOnboardingTransactionRequestRetryResult(
 }
 
 export function buildOnboardingDecisionResult(
+  existing: ExistingOnboardingTransactionRequestRow,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+  auditEventId: string,
+): OnboardingApprovalDecisionResult {
+  return buildTransactionDecisionResult(
+    existing,
+    decision,
+    target,
+    auditEventId,
+  );
+}
+
+export function buildTransactionDecisionResult(
   existing: ExistingOnboardingTransactionRequestRow,
   decision: OnboardingApprovalDecisionInput,
   target: OnboardingDecisionTarget,
@@ -406,6 +444,25 @@ export function buildOnboardingDecisionRetryResultAfterConflict(
   target: OnboardingDecisionTarget,
   auditEventId: string,
 ): OnboardingApprovalDecisionResult | undefined {
+  return buildTransactionDecisionRetryResultAfterConflict(
+    db,
+    decision,
+    target,
+    auditEventId,
+    {
+      requestType: "hire",
+      label: "onboarding transaction request",
+    },
+  );
+}
+
+export function buildTransactionDecisionRetryResultAfterConflict(
+  db: OnboardingTransactionRequestDatabase,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+  auditEventId: string,
+  scope: TransactionDecisionScope,
+): OnboardingApprovalDecisionResult | undefined {
   const latest = readOnboardingTransactionRequestById(
     db,
     decision.transactionRequestId,
@@ -414,20 +471,21 @@ export function buildOnboardingDecisionRetryResultAfterConflict(
 
   if (
     !latest ||
-    latest.request_type !== "hire" ||
+    latest.request_type !== scope.requestType ||
     latest.status_code !== target.statusCode ||
     !auditEvent
   ) {
     return undefined;
   }
 
-  assertMatchingOnboardingDecisionAuditEvent(
+  assertMatchingTransactionDecisionAuditEvent(
     auditEvent,
     latest,
     decision,
     target,
+    scope,
   );
-  return buildOnboardingDecisionResult(latest, decision, target, auditEventId);
+  return buildTransactionDecisionResult(latest, decision, target, auditEventId);
 }
 
 export function buildApplyDueOnboardingTransactionRequestsResult(
@@ -517,6 +575,25 @@ export function assertMatchingOnboardingDecisionAuditEvent(
   decision: OnboardingApprovalDecisionInput,
   target: OnboardingDecisionTarget,
 ): void {
+  assertMatchingTransactionDecisionAuditEvent(
+    auditEvent,
+    existing,
+    decision,
+    target,
+    {
+      requestType: "hire",
+      label: "onboarding transaction request",
+    },
+  );
+}
+
+export function assertMatchingTransactionDecisionAuditEvent(
+  auditEvent: ExistingAuditEventRow,
+  existing: ExistingOnboardingTransactionRequestRow,
+  decision: OnboardingApprovalDecisionInput,
+  target: OnboardingDecisionTarget,
+  scope: TransactionDecisionScope,
+): void {
   if (
     auditEvent.actor_id !== decision.decidedBy ||
     auditEvent.action !== target.auditAction ||
@@ -526,7 +603,7 @@ export function assertMatchingOnboardingDecisionAuditEvent(
     auditEvent.correlation_id !== decision.correlationId
   ) {
     throw new Error(
-      "onboarding transaction request repeated decision conflicts with existing audit evidence",
+      `${scope.label} repeated decision conflicts with existing audit evidence`,
     );
   }
 }
