@@ -493,6 +493,123 @@
         }
       }
     },
+    "/transfers/assignment-change": {
+      "get": {
+        "operationId": "renderMvpBTransferWizard",
+        "summary": "Render MVP-B assignment transfer wizard",
+        "description": "Returns the MVP-B-only assignment transfer wizard surface for draft, validation, and submit. Raw payload disclosure, CSV/export, real-data upload, broad employee search, live-provider, and production control surfaces remain outside this operation.",
+        "responses": {
+          "200": {
+            "description": "MVP-B transfer wizard HTML.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfers/assignment-change/transaction-requests/validate": {
+      "post": {
+        "operationId": "validateMvpBTransferTransactionRequest",
+        "summary": "Validate an MVP-B transfer transaction request",
+        "description": "Validates the submitted body through the bounded MVP-B transfer transaction_request contract without applying business rules in the UI layer.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferTransactionRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request is valid for the MVP-B transfer contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferTransactionRequestValidationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request violated the MVP-B transfer transaction_request contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfers/assignment-change/transaction-requests": {
+      "post": {
+        "operationId": "saveMvpBTransferTransactionRequest",
+        "summary": "Save or submit an MVP-B transfer transaction request",
+        "description": "Creates or submits a bounded MVP-B transfer transaction_request for repo-owned synthetic data only. Unsupported later-wave fields, raw payload disclosure, CSV/export, real-data upload, broad employee search, and live-provider inputs fail outside this contract.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferTransactionRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A transfer draft was created, a request was submitted, or an idempotent retry was accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingTransactionRequestPersistenceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with an existing authoritative transfer transaction_request binding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The local transfer transaction_request database was not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/writeback-events/work-email": {
       "post": {
         "operationId": "ingestSyntheticWorkEmailWriteback",
@@ -1426,6 +1543,181 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^[^@]+@.+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferTransactionRequestValidationResult": {
+        "type": "object",
+        "required": ["valid", "requestType", "statusCode", "payloadVersion"],
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "const": true
+          },
+          "requestType": {
+            "type": "string",
+            "const": "transfer"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["draft", "submitted"]
+          },
+          "payloadVersion": {
+            "type": "string",
+            "const": "mvp_b_transfer_v1"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferTransactionRequestInput": {
+        "type": "object",
+        "required": [
+          "id",
+          "person",
+          "requestType",
+          "statusCode",
+          "requestedAt",
+          "correlationId",
+          "payloadVersion",
+          "payload"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "person": {
+            "$ref": "#/components/schemas/TransferPersonInput"
+          },
+          "requestType": {
+            "type": "string",
+            "const": "transfer"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": ["draft", "submitted"]
+          },
+          "requestedAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "payloadVersion": {
+            "type": "string",
+            "const": "mvp_b_transfer_v1"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TransferPayload"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferPersonInput": {
+        "type": "object",
+        "required": ["id", "displayName", "createdAt"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferPayload": {
+        "type": "object",
+        "required": [
+          "tenantEnvironmentId",
+          "effectiveDate",
+          "currentAssignment",
+          "targetAssignment",
+          "transferReason"
+        ],
+        "properties": {
+          "tenantEnvironmentId": {
+            "type": "string",
+            "const": "repo_owned_synthetic_mvp_b_transfer"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "currentAssignment": {
+            "$ref": "#/components/schemas/TransferCurrentAssignmentPayload"
+          },
+          "targetAssignment": {
+            "$ref": "#/components/schemas/TransferTargetAssignmentPayload"
+          },
+          "transferReason": {
+            "$ref": "#/components/schemas/TransferReasonPayload"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferCurrentAssignmentPayload": {
+        "type": "object",
+        "required": ["assignmentId", "assignmentCode"],
+        "properties": {
+          "assignmentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assignmentCode": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferTargetAssignmentPayload": {
+        "type": "object",
+        "required": [
+          "organizationReference",
+          "departmentReference",
+          "managerReference"
+        ],
+        "properties": {
+          "organizationReference": {
+            "type": "string",
+            "minLength": 1
+          },
+          "departmentReference": {
+            "type": "string",
+            "minLength": 1
+          },
+          "managerReference": {
+            "type": "string",
+            "minLength": 1
+          },
+          "positionCode": {
+            "type": ["string", "null"],
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransferReasonPayload": {
+        "type": "object",
+        "required": ["reasonCode"],
+        "properties": {
+          "reasonCode": {
+            "type": "string",
+            "enum": ["team_change", "manager_change", "organization_change"]
+          },
+          "note": {
+            "type": ["string", "null"],
+            "minLength": 1
           }
         },
         "additionalProperties": false
