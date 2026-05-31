@@ -41,6 +41,11 @@ const affectedReadinessGateClaims = [
 const reviewMetadataLabels =
   "(?:Independent\\s+approver|Approver|Independent\\s+counter-approver|Counter-approver|Time-locked\\s+review\\s+window)";
 
+const requiredNonProductionDocumentationPaths = [
+  "README.md",
+  "docs/mvp-a-onboarding-non-production-data-gate.md",
+] as const;
+
 export function collectDocumentationFindings(
   inputs: MvpAPolicyAsCodeInputs,
 ): MvpAPolicyAsCodeFinding[] {
@@ -55,7 +60,8 @@ export function collectDocumentationFindings(
     "#203 two-key approval record placeholder",
     "does not approve legal approval, privacy approval, real-data processing, production-like data processing, raw payload viewing, CSV/export, download logs, watermark/manifest behavior, My Number, Specific Personal Information, or sensitive personal information",
   ];
-  const combinedDocumentation = [...inputs.documentationTextByPath.values()]
+  const combinedRequiredDocumentation = requiredNonProductionDocumentationPaths
+    .map((path) => inputs.documentationTextByPath.get(path) ?? "")
     .join("\n")
     .replace(/\s+/gu, " ")
     .trim();
@@ -63,7 +69,9 @@ export function collectDocumentationFindings(
 
   for (const requiredText of requiredDocumentationText) {
     if (
-      !combinedDocumentation.includes(requiredText.replace(/\s+/gu, " ").trim())
+      !combinedRequiredDocumentation.includes(
+        requiredText.replace(/\s+/gu, " ").trim(),
+      )
     ) {
       findings.push({
         surface: "documentation",
@@ -231,7 +239,7 @@ function isExplicitlyBlockedOrDeferred(segment: string): boolean {
   if (hasBareReadinessTableCell(claimText)) {
     return false;
   }
-  return /(?:must not|cannot|do not|does not|not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? an? accepted [^|.]+ before|until a later accepted|later accepted two-key)/iu.test(
+  return /(?:must not|not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? an? accepted [^|.]+ before|until a later accepted|later accepted two-key|\b(?:cannot|do not|does not)\b[^|.]{0,80}\b(?:describe|claim|treat|mark|count|classify|approve)\b[^|.]{0,80}\b(?:accepted|production-like(?:\s+|-)ready|production-like readiness))/iu.test(
     claimText,
   );
 }

@@ -471,6 +471,44 @@ test("MVP-A policy-as-code input loader scans affected companion gate docs", asy
   }
 });
 
+test("MVP-A policy-as-code gate keeps non-production documentation checks path-scoped", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const companionOnlyRequiredText = [
+    "mvp_a_onboarding_non_production_data_handling_v1",
+    "repo_owned_synthetic_fixture",
+    "approved_non_production_dataset",
+    "mvp_a_onboarding_pii_export_closed_v1",
+    "#202",
+    "#203 legal/privacy approval evidence placeholder",
+    "#203 independent data-owner approval placeholder",
+    "#203 two-key approval record placeholder",
+    "does not approve legal approval, privacy approval, real-data processing, production-like data processing, raw payload viewing, CSV/export, download logs, watermark/manifest behavior, My Number, Specific Personal Information, or sensitive personal information",
+  ].join("\n");
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      ["README.md", "incomplete non-production readiness summary"],
+      [
+        "docs/mvp-a-onboarding-non-production-data-gate.md",
+        "incomplete non-production gate",
+      ],
+      ["docs/mvp-a-onboarding-pii-export-gate.md", companionOnlyRequiredText],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "README.md docs/mvp-a-onboarding-non-production-data-gate.md" &&
+        finding.subject === "mvp_a_onboarding_pii_export_closed_v1",
+    ),
+    "expected companion-only required text not to satisfy the non-production documentation check",
+  );
+});
+
 test("MVP-A policy-as-code gate covers current readiness review probes", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
@@ -792,6 +830,28 @@ test("MVP-A policy-as-code gate rejects weak readiness approval wording", async 
       `expected ${subject} weak readiness approval wording to fail`,
     );
   }
+});
+
+test("MVP-A policy-as-code gate rejects accepted claims with generic negation wording", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-generic-negation-accepted.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [path, "P0-R05 / #11 does not need more review and is Accepted."],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected generic does-not wording not to suppress an Accepted overclaim",
+  );
 });
 
 test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
