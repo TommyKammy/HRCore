@@ -272,6 +272,8 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
     "src/transfer-transaction-request-contract.ts",
     "src/transfer-transaction-request-persistence.ts",
     "src/transfer-transaction-request-decision.ts",
+    "src/transfer-transaction-request-apply.ts",
+    "src/transfer-transaction-request-worker.ts",
   ] as const;
   const sources = Object.fromEntries(
     await Promise.all(
@@ -299,8 +301,18 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
   );
   assert.doesNotMatch(
     sources["src/transfer-transaction-request.ts"],
-    /transfer_transaction_request_(?:persistence|edit|decision)/u,
-    "public transfer facade must not carry persistence or decision savepoint names",
+    /export function applyApprovedTransferTransactionRequest/u,
+    "public transfer facade must not own approved transfer apply runtime",
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /export function applyDueTransferTransactionRequests/u,
+    "public transfer facade must not own due-transfer worker runtime",
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /transfer_transaction_request_(?:persistence|edit|decision|apply)/u,
+    "public transfer facade must not carry persistence, decision, or apply savepoint names",
   );
 
   assert.match(
@@ -310,6 +322,14 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
   assert.match(
     sources["src/transfer-transaction-request-decision.ts"],
     /export function decideTransferTransactionRequest/u,
+  );
+  assert.match(
+    sources["src/transfer-transaction-request-apply.ts"],
+    /export function applyApprovedTransferTransactionRequest/u,
+  );
+  assert.match(
+    sources["src/transfer-transaction-request-worker.ts"],
+    /export function applyDueTransferTransactionRequests/u,
   );
   assert.match(
     sources["src/transfer-transaction-request-contract.ts"],
