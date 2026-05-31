@@ -27,8 +27,8 @@ import {
 } from "./mvp-a-policy-as-code-openapi.js";
 import {
   readCommittedMigrationSqlByPath,
+  readDiscoveredDocumentationTextByPath,
   readDiscoveredFixtureSeedTextByPath,
-  readRepoTextFilesByPath,
 } from "./mvp-a-policy-as-code-repository.js";
 import {
   collectMigrationFindings,
@@ -107,7 +107,7 @@ export async function loadCurrentMvpAPolicyAsCodeInputs(
       await readFile(join(cwd, "openapi/hrcore.openapi.json"), "utf8"),
     ) as OpenApiContract,
     fixtureSeedTextByPath: await readDiscoveredFixtureSeedTextByPath(cwd),
-    documentationTextByPath: await readRepoTextFilesByPath(
+    documentationTextByPath: await readDiscoveredDocumentationTextByPath(
       cwd,
       mvpAPolicyAsCodeDocumentationPaths,
     ),

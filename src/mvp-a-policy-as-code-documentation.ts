@@ -39,7 +39,7 @@ const affectedReadinessGateClaims = [
 ] as const;
 
 const reviewMetadataLabels =
-  "(?:Independent\\s+approver|Approver|Independent\\s+counter-approver|Counter-approver|Time-locked\\s+review\\s+window)";
+  "(?:Author|Independent\\s+approver|Approver|Independent\\s+counter-approver|Counter-approver|Time-locked\\s+review\\s+window)";
 
 const requiredNonProductionDocumentationPaths = [
   "README.md",
@@ -108,37 +108,39 @@ function collectAffectedReadinessGateFindings(
 
       for (const gate of affectedReadinessGateClaims) {
         const gateIsMentioned = mentionsAffectedGate(segment, gate.aliases);
-        const rawGateClaimSegment = gateIsMentioned
-          ? getGateScopedClaimSegment(segment, gate)
-          : segment;
-        const gateClaimSegment = stripReviewMetadata(rawGateClaimSegment);
-        const claimBelongsToDocumentGate =
-          documentGate?.subject === gate.subject &&
-          hasDocumentScopedReadinessOverclaim(claimSegment);
-        const gateHasOverclaim =
-          gateIsMentioned && hasAffectedReadinessOverclaim(gateClaimSegment);
-        if (!claimBelongsToDocumentGate && !gateHasOverclaim) {
-          continue;
-        }
+        const rawGateClaimSegments = gateIsMentioned
+          ? getGateScopedClaimSegments(segment, gate)
+          : [segment];
+        for (const rawGateClaimSegment of rawGateClaimSegments) {
+          const gateClaimSegment = stripReviewMetadata(rawGateClaimSegment);
+          const claimBelongsToDocumentGate =
+            documentGate?.subject === gate.subject &&
+            hasDocumentScopedReadinessOverclaim(claimSegment);
+          const gateHasOverclaim =
+            gateIsMentioned && hasAffectedReadinessOverclaim(gateClaimSegment);
+          if (!claimBelongsToDocumentGate && !gateHasOverclaim) {
+            continue;
+          }
 
-        const claimHasIndependentApproval =
-          gateHasOverclaim &&
-          hasDocumentedIndependentReadinessApproval(segment);
-        if (
-          isExplicitlyBlockedOrDeferred(rawGateClaimSegment) ||
-          claimHasIndependentApproval ||
-          (claimBelongsToDocumentGate && documentHasIndependentApproval)
-        ) {
-          continue;
-        }
+          const claimHasIndependentApproval =
+            gateHasOverclaim &&
+            hasDocumentedIndependentReadinessApproval(rawGateClaimSegment);
+          if (
+            isExplicitlyBlockedOrDeferred(rawGateClaimSegment) ||
+            claimHasIndependentApproval ||
+            (claimBelongsToDocumentGate && documentHasIndependentApproval)
+          ) {
+            continue;
+          }
 
-        findings.push({
-          surface: "documentation",
-          path,
-          subject: gate.subject,
-          message:
-            "Affected readiness gate must not be described as Accepted or production-like ready without documented independent approval",
-        });
+          findings.push({
+            surface: "documentation",
+            path,
+            subject: gate.subject,
+            message:
+              "Affected readiness gate must not be described as Accepted or production-like ready without documented independent approval",
+          });
+        }
       }
     }
   }
@@ -183,6 +185,8 @@ function escapeRegExp(value: string): string {
 function splitClaimSegments(text: string): string[] {
   const segments: string[] = [];
   let pendingProseLines: string[] = [];
+  let currentGateHeading: { level: number; text: string } | undefined =
+    undefined;
 
   const flushPendingProse = (): void => {
     if (pendingProseLines.length === 0) {
@@ -201,7 +205,12 @@ function splitClaimSegments(text: string): string[] {
     segments.push(
       ...normalizedProse
         .split(/\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
-        .map((segment) => segment.replace(/\s+/gu, " ").trim())
+        .map((segment) =>
+          applyCurrentGateHeadingContext(
+            segment.replace(/\s+/gu, " ").trim(),
+            currentGateHeading?.text,
+          ),
+        )
         .filter((segment) => segment.length > 0),
     );
   };
@@ -219,8 +228,21 @@ function splitClaimSegments(text: string): string[] {
       continue;
     }
 
-    if (/^#{1,6}\s+/u.test(normalizedLine)) {
+    const headingMatch = /^(#{1,6})\s+/u.exec(normalizedLine);
+    if (headingMatch !== null) {
       flushPendingProse();
+      const headingLevel = headingMatch[1].length;
+      const headingMentionsAffectedGate = affectedReadinessGateClaims.some(
+        (gate) => mentionsAffectedGate(normalizedLine, gate.aliases),
+      );
+      if (headingMentionsAffectedGate) {
+        currentGateHeading = { level: headingLevel, text: normalizedLine };
+      } else if (
+        currentGateHeading !== undefined &&
+        headingLevel <= currentGateHeading.level
+      ) {
+        currentGateHeading = undefined;
+      }
       segments.push(normalizedLine);
       continue;
     }
@@ -237,42 +259,74 @@ function splitClaimSegments(text: string): string[] {
   return segments;
 }
 
-function getGateScopedClaimSegment(
+function applyCurrentGateHeadingContext(
   segment: string,
-  gate: (typeof affectedReadinessGateClaims)[number],
+  currentGateHeading: string | undefined,
 ): string {
-  const gatePositions = affectedReadinessGateClaims
-    .map((affectedGate) => ({
-      subject: affectedGate.subject,
-      index: findFirstAliasIndex(segment, affectedGate.aliases),
-    }))
-    .filter((position) => position.index !== -1)
-    .sort((left, right) => left.index - right.index);
-  const gatePosition = gatePositions.find(
-    (position) => position.subject === gate.subject,
-  );
-
-  if (gatePosition === undefined) {
+  if (
+    currentGateHeading === undefined ||
+    segment.length === 0 ||
+    affectedReadinessGateClaims.some((gate) =>
+      mentionsAffectedGate(segment, gate.aliases),
+    ) ||
+    !isStatusOrReadinessSegment(segment)
+  ) {
     return segment;
   }
 
-  const nextGatePosition = gatePositions.find(
-    (position) =>
-      position.index > gatePosition.index && position.subject !== gate.subject,
-  );
-  return segment
-    .slice(gatePosition.index, nextGatePosition?.index ?? segment.length)
-    .trim();
+  return `${currentGateHeading} ${segment}`;
 }
 
-function findFirstAliasIndex(
+function isStatusOrReadinessSegment(segment: string): boolean {
+  return (
+    /^(?:Status\s*:\s*)?Accepted\s*\.?$/iu.test(segment) ||
+    /^(?:[-*]\s*)Accepted\s*\.?$/iu.test(segment) ||
+    hasProductionLikeReadinessOverclaim(segment)
+  );
+}
+
+function getGateScopedClaimSegments(
+  segment: string,
+  gate: (typeof affectedReadinessGateClaims)[number],
+): string[] {
+  const gatePositions = findAliasIndexes(segment, gate.aliases);
+  const scopedSegments = gatePositions
+    .map((gatePosition, index) => {
+      const nextGatePosition = gatePositions[index + 1];
+      return segment.slice(gatePosition, nextGatePosition).trim();
+    })
+    .filter((scopedSegment) => scopedSegment.length > 0);
+  return scopedSegments.length === 0 ? [segment] : scopedSegments;
+}
+
+function findAliasIndexes(
   segment: string,
   aliases: readonly string[],
-): number {
-  const aliasIndexes = aliases
-    .map((alias) => findAliasIndex(segment, alias))
-    .filter((index) => index !== -1);
-  return aliasIndexes.length === 0 ? -1 : Math.min(...aliasIndexes);
+): number[] {
+  return Array.from(
+    new Set(
+      aliases
+        .flatMap((alias) => findAllAliasIndexes(segment, alias))
+        .filter((index) => index !== -1),
+    ),
+  ).sort((left, right) => left - right);
+}
+
+function findAllAliasIndexes(segment: string, alias: string): number[] {
+  const indexes: number[] = [];
+  let searchStart = 0;
+  while (searchStart < segment.length) {
+    const index = findAliasIndex(segment.slice(searchStart), alias);
+    if (index === -1) {
+      break;
+    }
+
+    const absoluteIndex = searchStart + index;
+    indexes.push(absoluteIndex);
+    searchStart = absoluteIndex + alias.length;
+  }
+
+  return indexes;
 }
 
 function stripReviewMetadata(segment: string): string {
@@ -341,6 +395,7 @@ function hasBareReadinessTableCell(segment: string): boolean {
 }
 
 function hasDocumentedIndependentReadinessApproval(text: string): boolean {
+  const author = readReviewMetadataValue(text, ["Author"]);
   const approver = readReviewMetadataValue(text, [
     "Independent\\s+approver",
     "Approver",
@@ -359,6 +414,10 @@ function hasDocumentedIndependentReadinessApproval(text: string): boolean {
     reviewWindow !== undefined &&
     hasConcreteReviewMetadataValue(approver) &&
     hasConcreteReviewMetadataValue(counterApprover) &&
+    (author === undefined ||
+      (hasConcreteReviewMetadataValue(author) &&
+        !sameReviewMetadataValue(author, approver) &&
+        !sameReviewMetadataValue(author, counterApprover))) &&
     !sameReviewMetadataValue(approver, counterApprover) &&
     hasCompletedReviewWindow(reviewWindow)
   );

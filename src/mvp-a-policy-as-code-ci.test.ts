@@ -990,6 +990,85 @@ test("MVP-A policy-as-code gate covers follow-up readiness review probes", async
   );
 });
 
+test("MVP-A policy-as-code gate covers current readiness review probes", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const selfApprovalPath = "docs/fixture-self-approved-readiness.md";
+  const headingScopedPath = "docs/fixture-heading-scoped-readiness.md";
+  const repeatedGatePath = "docs/fixture-repeated-gate-readiness.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        selfApprovalPath,
+        "P0-R05 / #11 is Accepted; Author: Alice; Approver: Alice; Counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
+      ],
+      [
+        headingScopedPath,
+        ["# P0-R06 / #12", "", "## Status", "", "Accepted"].join("\n"),
+      ],
+      [
+        repeatedGatePath,
+        "P0-R08 / #14 is not Accepted; P0-R08 / #14 is Accepted for launch.",
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === selfApprovalPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected author/approver self-approval to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === headingScopedPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected heading-scoped Accepted status to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === repeatedGatePath &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected later same-gate Accepted claim to fail after an earlier negation",
+  );
+});
+
+test("MVP-A policy-as-code input loader discovers readiness documentation", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  const discoveredDocumentationPath = "docs/future-readiness-closeout.md";
+  await writeFile(
+    join(fixtureCwd, discoveredDocumentationPath),
+    "P0-R05 / #11 is Accepted.",
+  );
+
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd);
+
+  assert.equal(
+    inputs.documentationTextByPath.get(discoveredDocumentationPath),
+    "P0-R05 / #11 is Accepted.",
+  );
+  assert.ok(
+    checkMvpAPolicyAsCode(inputs).some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === discoveredDocumentationPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected discovered readiness documentation overclaim to fail",
+  );
+});
+
 test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
 
