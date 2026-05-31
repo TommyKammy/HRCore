@@ -297,10 +297,10 @@ export function saveTransferTransactionRequest(
       return buildTransferRetryResult(existingRequest);
     }
 
-    // Draft submission may refresh requestedAt and payload, but only for the
-    // same durable request/person/correlation binding.
-    if (isSameTransferDraftBinding(existingRequest, parsed)) {
-      return submitExistingTransferDraft(
+    // Drafts and returned requests may be edited only through the same durable
+    // request/person/correlation binding.
+    if (isEditableTransferBinding(existingRequest, parsed)) {
+      return updateEditableTransferRequest(
         db,
         existingRequest,
         parsed,
@@ -1228,60 +1228,75 @@ function matchesTransferRetry(
   );
 }
 
-function isSameTransferDraftBinding(
+function isEditableTransferBinding(
   existing: ExistingTransferTransactionRequestRow,
   input: TransferTransactionRequestInput,
 ): boolean {
   return (
-    existing.status_code === "draft" &&
-    input.statusCode === "submitted" &&
+    (existing.status_code === "draft" || existing.status_code === "returned") &&
     existing.transaction_request_id === input.id &&
     existing.person_id === input.person.id &&
-    existing.display_name === input.person.displayName &&
-    existing.created_at === input.person.createdAt &&
     existing.request_type === input.requestType &&
     existing.correlation_id === input.correlationId &&
     existing.payload_version === input.payloadVersion
   );
 }
 
-function submitExistingTransferDraft(
+function updateEditableTransferRequest(
   db: OnboardingTransactionRequestDatabase,
   existing: ExistingTransferTransactionRequestRow,
   input: TransferTransactionRequestInput,
   payloadJson: string,
 ): TransferTransactionRequestPersistenceResult {
-  const updateResult = db
-    .prepare(
+  db.exec("SAVEPOINT transfer_transaction_request_edit");
+  try {
+    db.prepare(
       `
+        UPDATE person
+        SET display_name = ?,
+            created_at = ?
+        WHERE id = ?
+      `,
+    ).run(input.person.displayName, input.person.createdAt, input.person.id);
+
+    const updateResult = db
+      .prepare(
+        `
         UPDATE transaction_request
-        SET status_code = 'submitted',
+        SET status_code = ?,
             requested_at = ?,
             payload_json = ?
         WHERE id = ?
           AND person_id = ?
           AND correlation_id = ?
-          AND status_code = 'draft'
+          AND status_code in ('draft', 'returned')
       `,
-    )
-    .run(
-      input.requestedAt,
-      payloadJson,
-      existing.transaction_request_id,
-      input.person.id,
-      input.correlationId,
-    ) as { changes?: number | bigint };
+      )
+      .run(
+        input.statusCode,
+        input.requestedAt,
+        payloadJson,
+        existing.transaction_request_id,
+        input.person.id,
+        input.correlationId,
+      ) as { changes?: number | bigint };
 
-  if (updateResult.changes !== 1 && updateResult.changes !== 1n) {
-    throw new Error(
-      "transfer transaction request draft submission conflicts with the current request state",
-    );
+    if (updateResult.changes !== 1 && updateResult.changes !== 1n) {
+      throw new Error(
+        "transfer transaction request edit conflicts with the current request state",
+      );
+    }
+
+    db.exec("RELEASE SAVEPOINT transfer_transaction_request_edit");
+  } catch (error) {
+    rollbackNamedSavepoint(db, "transfer_transaction_request_edit");
+    throw error;
   }
 
   return {
     personId: input.person.id,
     transactionRequestId: existing.transaction_request_id,
-    statusCode: "submitted",
+    statusCode: input.statusCode,
     correlationId: input.correlationId,
   };
 }

@@ -19,7 +19,10 @@ import {
   mvpAOnboardingAuditHeaders,
   recordSyntheticOnboardingApplyJobAttempt,
 } from "./test-helpers/onboarding.js";
-import { createTransferTransactionRequestFixture } from "./transfer-transaction-request.js";
+import {
+  createTransferTransactionRequestFixture,
+  decideTransferTransactionRequest,
+} from "./transfer-transaction-request.js";
 import { createSyntheticWorkEmailWritebackFixture } from "./writeback-ingest.js";
 
 const normalizeRow = <TRow extends Record<string, unknown>>(
@@ -2501,6 +2504,118 @@ test("POST /transfers/assignment-change/transaction-requests validates and submi
       status_code: "submitted",
       payload_version: "mvp_b_transfer_v1",
       payload_json: JSON.stringify(fixture.payload),
+    },
+  );
+});
+
+test("POST /transfers/assignment-change/transaction-requests edits drafts and resubmits returned requests", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const draft = createTransferTransactionRequestFixture({
+    statusCode: "draft",
+  });
+  const createDraftResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: draft,
+  });
+  assert.equal(createDraftResponse.statusCode, 201);
+  assert.deepEqual(createDraftResponse.json(), {
+    personId: draft.person.id,
+    transactionRequestId: draft.id,
+    statusCode: "draft",
+    correlationId: draft.correlationId,
+  });
+
+  const editedDraft = createTransferTransactionRequestFixture({
+    statusCode: "draft",
+    requestedAt: "2026-06-16T00:00:00Z",
+    person: { displayName: "MVP-B Transfer Draft Edited" },
+    payload: {
+      targetAssignment: {
+        organizationReference: "organization-engineering",
+        departmentReference: "department-platform",
+        managerReference: "manager-platform-001",
+        positionCode: "position-principal-engineer-001",
+      },
+    },
+  });
+  const editDraftResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: editedDraft,
+  });
+  assert.equal(editDraftResponse.statusCode, 201);
+  assert.deepEqual(editDraftResponse.json(), {
+    personId: draft.person.id,
+    transactionRequestId: draft.id,
+    statusCode: "draft",
+    correlationId: draft.correlationId,
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: {
+      ...editedDraft,
+      statusCode: "submitted",
+    },
+  });
+  assert.equal(submitResponse.statusCode, 201);
+  decideTransferTransactionRequest(onboardingDb, {
+    transactionRequestId: draft.id,
+    decision: "return",
+    decidedAt: "2026-06-16T01:00:00Z",
+    decidedBy: "operator-people-ops-transfer-001",
+    correlationId: "correlation-transfer-route-return-001",
+  });
+
+  const correctedSubmit = createTransferTransactionRequestFixture({
+    requestedAt: "2026-06-17T00:00:00Z",
+    person: { displayName: "MVP-B Transfer Draft Edited" },
+    payload: {
+      targetAssignment: editedDraft.payload.targetAssignment,
+      transferReason: {
+        reasonCode: "manager_change",
+        note: "Corrected bounded MVP-B transfer request",
+      },
+    },
+  });
+  const resubmitResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: correctedSubmit,
+  });
+
+  assert.equal(resubmitResponse.statusCode, 201);
+  assert.deepEqual(resubmitResponse.json(), {
+    personId: draft.person.id,
+    transactionRequestId: draft.id,
+    statusCode: "submitted",
+    correlationId: draft.correlationId,
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT person.display_name, transaction_request.status_code, transaction_request.payload_json
+            FROM transaction_request
+            JOIN person ON person.id = transaction_request.person_id
+            WHERE transaction_request.id = ?
+          `,
+        )
+        .get(draft.id),
+    ),
+    {
+      display_name: "MVP-B Transfer Draft Edited",
+      status_code: "submitted",
+      payload_json: JSON.stringify(correctedSubmit.payload),
     },
   );
 });

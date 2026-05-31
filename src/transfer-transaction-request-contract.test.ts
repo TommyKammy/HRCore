@@ -4,6 +4,7 @@ import test, { type TestContext } from "node:test";
 
 import {
   createTransferTransactionRequestFixture,
+  decideTransferTransactionRequest,
   parseTransferTransactionRequestInput,
   saveTransferTransactionRequest,
   TransferTransactionRequestValidationError,
@@ -309,6 +310,156 @@ test("MVP-B transfer transaction request persistence submits and updates an exis
           transferReason: {
             reasonCode: "team_change",
             note: "Synthetic bounded MVP-B transfer request",
+          },
+        }),
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-B transfer transaction request persistence edits an existing draft", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const draft = createTransferTransactionRequestFixture({
+      statusCode: "draft",
+    });
+    saveTransferTransactionRequest(db, draft);
+
+    const editResult = saveTransferTransactionRequest(
+      db,
+      createTransferTransactionRequestFixture({
+        statusCode: "draft",
+        requestedAt: "2026-06-16T00:00:00Z",
+        person: {
+          displayName: "MVP-B Transfer Draft Edited",
+        },
+        payload: {
+          targetAssignment: {
+            organizationReference: "organization-engineering",
+            departmentReference: "department-platform",
+            managerReference: "manager-platform-001",
+            positionCode: "position-principal-engineer-001",
+          },
+        },
+      }),
+    );
+
+    assert.deepEqual(editResult, {
+      personId: draft.person.id,
+      transactionRequestId: draft.id,
+      statusCode: "draft",
+      correlationId: draft.correlationId,
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT person.display_name, transaction_request.status_code, transaction_request.payload_json
+              FROM transaction_request
+              JOIN person ON person.id = transaction_request.person_id
+              WHERE transaction_request.id = ?
+            `,
+          )
+          .get(draft.id) as Record<string, unknown> | undefined,
+      ),
+      {
+        display_name: "MVP-B Transfer Draft Edited",
+        status_code: "draft",
+        payload_json: JSON.stringify({
+          tenantEnvironmentId: "repo_owned_synthetic_mvp_b_transfer",
+          effectiveDate: "2026-07-01",
+          currentAssignment: {
+            assignmentId: "assignment-current-transfer-001",
+            assignmentCode: "ASN-CURRENT-TRANSFER-001",
+          },
+          targetAssignment: {
+            organizationReference: "organization-engineering",
+            departmentReference: "department-platform",
+            managerReference: "manager-platform-001",
+            positionCode: "position-principal-engineer-001",
+          },
+          transferReason: {
+            reasonCode: "team_change",
+            note: "Synthetic bounded MVP-B transfer request",
+          },
+        }),
+      },
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-B transfer transaction request persistence resubmits an existing returned request", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const submitted = createTransferTransactionRequestFixture();
+    saveTransferTransactionRequest(db, submitted);
+    decideTransferTransactionRequest(db, {
+      transactionRequestId: submitted.id,
+      decision: "return",
+      decidedAt: "2026-06-15T01:00:00Z",
+      decidedBy: "operator-people-ops-transfer-001",
+      correlationId: "correlation-transfer-return-001",
+    });
+
+    const resubmitResult = saveTransferTransactionRequest(
+      db,
+      createTransferTransactionRequestFixture({
+        requestedAt: "2026-06-16T00:00:00Z",
+        payload: {
+          transferReason: {
+            reasonCode: "manager_change",
+            note: "Corrected bounded MVP-B transfer request",
+          },
+        },
+      }),
+    );
+
+    assert.deepEqual(resubmitResult, {
+      personId: submitted.person.id,
+      transactionRequestId: submitted.id,
+      statusCode: "submitted",
+      correlationId: submitted.correlationId,
+    });
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code, requested_at, payload_json
+              FROM transaction_request
+              WHERE id = ?
+            `,
+          )
+          .get(submitted.id) as Record<string, unknown> | undefined,
+      ),
+      {
+        status_code: "submitted",
+        requested_at: "2026-06-16T00:00:00Z",
+        payload_json: JSON.stringify({
+          tenantEnvironmentId: "repo_owned_synthetic_mvp_b_transfer",
+          effectiveDate: "2026-07-01",
+          currentAssignment: {
+            assignmentId: "assignment-current-transfer-001",
+            assignmentCode: "ASN-CURRENT-TRANSFER-001",
+          },
+          targetAssignment: {
+            organizationReference: "organization-engineering",
+            departmentReference: "department-product",
+            managerReference: "manager-product-001",
+            positionCode: "position-staff-engineer-001",
+          },
+          transferReason: {
+            reasonCode: "manager_change",
+            note: "Corrected bounded MVP-B transfer request",
           },
         }),
       },
