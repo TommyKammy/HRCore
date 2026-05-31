@@ -482,6 +482,62 @@ test("MVP-A policy-as-code gate scopes independent approval to each readiness cl
   );
 });
 
+test("MVP-A policy-as-code gate rejects same-person two-key readiness approval", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-same-person-readiness-approval.md",
+        [
+          "| Gate | Readiness | Independent approval |",
+          "| --- | --- | --- |",
+          "| P0-R05 / #11 | Accepted | Independent approver: Alice; Independent counter-approver: Alice; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-same-person-readiness-approval.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected same-person two-key readiness approval to fail",
+  );
+});
+
+test("MVP-A policy-as-code gate rejects bare production-like ready table cells", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-bare-production-like-ready.md",
+        [
+          "| Gate | Readiness |",
+          "| --- | --- |",
+          "| P0-R06 / #12 | production-like ready |",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-bare-production-like-ready.md" &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected bare production-like ready table cell to fail",
+  );
+});
+
 test("MVP-A policy-as-code gate rejects weak readiness approval wording", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
