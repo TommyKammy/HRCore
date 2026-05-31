@@ -1,4 +1,19 @@
 import type { SyntheticWorkEmailWritebackInput } from "./writeback-ingest.js";
+import {
+  areProjectionKeyFieldsWellFormed,
+  encodeProjectionKeyPart,
+  readMatchingWritebackProjectionEvidence,
+  readUserProjectionEvidenceForEmployee,
+  toTimestampMillis,
+  withMockMetadata,
+} from "./okta-mastering-adapter-metadata.js";
+import { projectMockOktaGroups } from "./okta-mastering-adapter-mock-groups.js";
+import {
+  createMockOktaUser,
+  disableMockOktaUser,
+  updateMockOktaUser,
+} from "./okta-mastering-adapter-mock-users.js";
+export { resolveLocalOktaMasteringConfig } from "./okta-mastering-adapter-config.js";
 
 export type SyntheticOktaUserStatus =
   | "active"
@@ -141,7 +156,7 @@ export type OktaGroupProjectionResult = OktaGroupProjectionResultCore & {
   metadata: OktaMasteringProjectionMetadata;
 };
 
-type OktaMasteringProjectionResultCore =
+export type OktaMasteringProjectionResultCore =
   | {
       outcome: "success";
       operation: OktaMasteringOperation;
@@ -220,15 +235,6 @@ export type OktaMasteringAdapterConfig =
   | BlockedOktaMasteringConfig
   | LocalRealOktaMasteringConfig;
 
-const LOCAL_OKTAENV_PREFIX = "HRCORE_" + "OKTA" + "_";
-const LOCAL_OKTAENV_KEYS = [
-  `${LOCAL_OKTAENV_PREFIX}BASE_URL`,
-  `${LOCAL_OKTAENV_PREFIX}CLIENT_ID`,
-  `${LOCAL_OKTAENV_PREFIX}CLIENT_SECRET`,
-] as const;
-
-type LocalOktaEnvKey = (typeof LOCAL_OKTAENV_KEYS)[number];
-
 const INVALID_PROJECTION_KEY_MESSAGE =
   "Synthetic projection key fields must be well-formed Unicode strings.";
 
@@ -236,29 +242,6 @@ export function createSyntheticOktaUserFixture(
   fixture: SyntheticOktaUserFixture,
 ): SyntheticOktaUserFixture {
   return { ...fixture };
-}
-
-export function resolveLocalOktaMasteringConfig(
-  env: Partial<Record<LocalOktaEnvKey, string | undefined>> = process.env,
-): BlockedOktaMasteringConfig | LocalRealOktaMasteringConfig {
-  const missing = LOCAL_OKTAENV_KEYS.filter((key) =>
-    isMissingOrPlaceholder(env[key]),
-  );
-
-  if (missing.length > 0) {
-    return {
-      mode: "blocked",
-      reason: "missing_trusted_local_credentials",
-      missing,
-    };
-  }
-
-  return {
-    mode: "local_real",
-    baseUrl: readTrustedLocalOktaValue(env, LOCAL_OKTAENV_KEYS[0]),
-    clientId: readTrustedLocalOktaValue(env, LOCAL_OKTAENV_KEYS[1]),
-    clientSecret: readTrustedLocalOktaValue(env, LOCAL_OKTAENV_KEYS[2]),
-  };
 }
 
 export function buildOktaMasteringAdapter(
@@ -332,15 +315,22 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     let result: OktaMasteringProjectionResultCore;
     switch (projection.operation) {
       case "create":
-        result = this.create(projection.desiredUser);
+        result = createMockOktaUser(
+          projection.desiredUser,
+          this.usersByEmployeeNumber,
+        );
         break;
       case "update":
-        result = this.update(projection.desiredUser);
+        result = updateMockOktaUser(
+          projection.desiredUser,
+          this.usersByEmployeeNumber,
+        );
         break;
       case "disable":
-        result = this.disable(
+        result = disableMockOktaUser(
           projection.employeeNumber,
           projection.effectiveAt,
+          this.usersByEmployeeNumber,
         );
         break;
     }
@@ -365,87 +355,15 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   async projectGroups(
     projection: OktaGroupProjection,
   ): Promise<OktaGroupProjectionResult> {
-    const normalizedGroupKeys = normalizeGroupKeys(projection.groupKeys);
-    if (
-      !areProjectionKeyFieldsWellFormed([
-        projection.employeeNumber,
-        projection.effectiveAt,
-        ...normalizedGroupKeys,
-      ])
-    ) {
-      return withMockGroupMetadata({
-        outcome: "permanent_failure",
-        operation: "replace_user_groups",
-        employeeNumber: projection.employeeNumber,
-        errorCode: "mock_invalid_projection_key",
-        message: INVALID_PROJECTION_KEY_MESSAGE,
-        groupKeys: normalizedGroupKeys,
-        effectiveAt: projection.effectiveAt,
-      });
-    }
-
-    if (projection.operation !== "replace_user_groups") {
-      return withMockGroupMetadata({
-        outcome: "permanent_failure",
-        operation: "replace_user_groups",
-        employeeNumber: projection.employeeNumber,
-        errorCode: "mock_invalid_group_operation",
-        message: "Synthetic group projection operation is not supported.",
-        groupKeys: normalizedGroupKeys,
-        effectiveAt: projection.effectiveAt,
-      });
-    }
-
-    const unknownGroupKeys = normalizedGroupKeys.filter(
-      (groupKey) => !this.groupsByKey.has(groupKey),
+    return projectMockOktaGroups(
+      projection,
+      {
+        groupsByKey: this.groupsByKey,
+        usersByEmployeeNumber: this.usersByEmployeeNumber,
+        groupKeysByEmployeeNumber: this.groupKeysByEmployeeNumber,
+      },
+      INVALID_PROJECTION_KEY_MESSAGE,
     );
-    if (unknownGroupKeys.length > 0) {
-      return withMockGroupMetadata({
-        outcome: "permanent_failure",
-        operation: "replace_user_groups",
-        employeeNumber: projection.employeeNumber,
-        errorCode: "mock_unknown_group",
-        message: "Synthetic group projection references unknown group keys.",
-        groupKeys: normalizedGroupKeys,
-        effectiveAt: projection.effectiveAt,
-      });
-    }
-
-    if (!this.usersByEmployeeNumber.has(projection.employeeNumber)) {
-      return withMockGroupMetadata({
-        outcome: "skipped",
-        operation: "replace_user_groups",
-        employeeNumber: projection.employeeNumber,
-        reason: "missing_user",
-        groupKeys: normalizedGroupKeys,
-        effectiveAt: projection.effectiveAt,
-      });
-    }
-
-    const currentGroupKeys =
-      this.groupKeysByEmployeeNumber.get(projection.employeeNumber) ?? [];
-    if (areSameGroupSet(currentGroupKeys, normalizedGroupKeys)) {
-      return withMockGroupMetadata({
-        outcome: "skipped",
-        operation: "replace_user_groups",
-        employeeNumber: projection.employeeNumber,
-        reason: "already_projected",
-        groupKeys: normalizedGroupKeys,
-        effectiveAt: projection.effectiveAt,
-      });
-    }
-
-    this.groupKeysByEmployeeNumber.set(projection.employeeNumber, [
-      ...normalizedGroupKeys,
-    ]);
-
-    return withMockGroupMetadata({
-      outcome: "success",
-      operation: "replace_user_groups",
-      employeeNumber: projection.employeeNumber,
-      groupKeys: normalizedGroupKeys,
-      effectiveAt: projection.effectiveAt,
-    });
   }
 
   async emitWorkEmailWriteback(
@@ -646,86 +564,6 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
     };
   }
 
-  private create(
-    desiredUser: SyntheticOktaUserFixture,
-  ): OktaMasteringProjectionResultCore {
-    const existingUser = this.usersByEmployeeNumber.get(
-      desiredUser.employeeNumber,
-    );
-    if (existingUser !== undefined) {
-      return {
-        outcome: "skipped",
-        operation: "create",
-        employeeNumber: desiredUser.employeeNumber,
-        externalId: existingUser.externalId,
-        reason: "already_exists",
-        effectiveAt: desiredUser.effectiveAt,
-      };
-    }
-
-    this.usersByEmployeeNumber.set(desiredUser.employeeNumber, {
-      ...desiredUser,
-    });
-
-    return successResult("create", desiredUser);
-  }
-
-  private update(
-    desiredUser: SyntheticOktaUserFixture,
-  ): OktaMasteringProjectionResultCore {
-    if (!this.usersByEmployeeNumber.has(desiredUser.employeeNumber)) {
-      return {
-        outcome: "skipped",
-        operation: "update",
-        employeeNumber: desiredUser.employeeNumber,
-        reason: "missing_user",
-        effectiveAt: desiredUser.effectiveAt,
-      };
-    }
-
-    this.usersByEmployeeNumber.set(desiredUser.employeeNumber, {
-      ...desiredUser,
-    });
-
-    return successResult("update", desiredUser);
-  }
-
-  private disable(
-    employeeNumber: string,
-    effectiveAt: string,
-  ): OktaMasteringProjectionResultCore {
-    const existingUser = this.usersByEmployeeNumber.get(employeeNumber);
-
-    if (existingUser === undefined) {
-      return {
-        outcome: "skipped",
-        operation: "disable",
-        employeeNumber,
-        reason: "missing_user",
-        effectiveAt,
-      };
-    }
-
-    if (existingUser.status === "deprovisioned") {
-      return {
-        outcome: "skipped",
-        operation: "disable",
-        employeeNumber,
-        reason: "already_deprovisioned",
-        effectiveAt,
-      };
-    }
-
-    const disabledUser = {
-      ...existingUser,
-      status: "deprovisioned" as const,
-      effectiveAt,
-    };
-    this.usersByEmployeeNumber.set(employeeNumber, disabledUser);
-
-    return successResult("disable", disabledUser);
-  }
-
   private findUserByExternalId(
     externalId: string,
   ): SyntheticOktaUserFixture | undefined {
@@ -752,224 +590,6 @@ class MockOktaMasteringAdapter implements OktaMasteringAdapter {
   }
 }
 
-function successResult(
-  operation: OktaMasteringOperation,
-  user: SyntheticOktaUserFixture,
-): OktaMasteringProjectionResultCore {
-  return {
-    outcome: "success",
-    operation,
-    employeeNumber: user.employeeNumber,
-    externalId: user.externalId,
-    effectiveAt: user.effectiveAt,
-  };
-}
-
-function withMockMetadata(
-  result: OktaMasteringProjectionResultCore,
-): OktaMasteringProjectionResult {
-  return {
-    ...result,
-    metadata: {
-      adapterMode: "mock",
-      provider: "okta",
-      projectionKey: [
-        "okta",
-        "mock",
-        encodeProjectionKeyPart(result.operation),
-        encodeProjectionKeyPart(result.employeeNumber),
-        encodeProjectionKeyPart(result.effectiveAt),
-      ].join(":"),
-      synthetic: true,
-    },
-  };
-}
-
-function withMockGroupMetadata(
-  result: OktaGroupProjectionResultCore,
-): OktaGroupProjectionResult {
-  const groupKeys = [...result.groupKeys];
-
-  return {
-    ...result,
-    groupKeys,
-    metadata: {
-      adapterMode: "mock",
-      provider: "okta",
-      projectionKey: [
-        "okta",
-        "mock",
-        encodeProjectionKeyPart(result.operation),
-        encodeProjectionKeyPart(result.employeeNumber),
-        encodeProjectionKeyPart(JSON.stringify(groupKeys)),
-        encodeProjectionKeyPart(result.effectiveAt),
-      ].join(":"),
-      synthetic: true,
-    },
-  };
-}
-
-type WritebackProjectionEvidence = {
-  operation: "create" | "update";
-  projectionKey: string;
-  effectiveAt: string;
-};
-
-function readMatchingWritebackProjectionEvidence(
-  input: OktaWorkEmailWritebackEmissionInput,
-): WritebackProjectionEvidence | undefined {
-  const projectionKeyParts = input.projectionEvidence.projectionKey.split(":");
-  if (projectionKeyParts.length !== 5) {
-    return undefined;
-  }
-
-  try {
-    const [provider, adapterMode, operation, employeeNumber, effectiveAt] =
-      projectionKeyParts.map(decodeURIComponent);
-
-    if (
-      provider !== "okta" ||
-      adapterMode !== "mock" ||
-      (operation !== "create" && operation !== "update") ||
-      employeeNumber !== input.employeeNumber ||
-      effectiveAt !== input.emittedAt
-    ) {
-      return undefined;
-    }
-
-    return {
-      operation,
-      projectionKey: input.projectionEvidence.projectionKey,
-      effectiveAt,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function readUserProjectionEvidenceForEmployee(
-  metadata: OktaMasteringProjectionMetadata,
-  employeeNumber: string,
-): WritebackProjectionEvidence | undefined {
-  const projectionKeyParts = metadata.projectionKey.split(":");
-  if (projectionKeyParts.length !== 5) {
-    return undefined;
-  }
-
-  try {
-    const [
-      provider,
-      adapterMode,
-      operation,
-      evidenceEmployeeNumber,
-      effectiveAt,
-    ] = projectionKeyParts.map(decodeURIComponent);
-
-    if (
-      provider !== "okta" ||
-      adapterMode !== "mock" ||
-      (operation !== "create" && operation !== "update") ||
-      evidenceEmployeeNumber !== employeeNumber
-    ) {
-      return undefined;
-    }
-
-    return {
-      operation,
-      projectionKey: metadata.projectionKey,
-      effectiveAt,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function encodeProjectionKeyPart(value: string): string {
-  return encodeURIComponent(toWellFormedString(value));
-}
-
-function areProjectionKeyFieldsWellFormed(values: string[]): boolean {
-  return values.every(isWellFormedString);
-}
-
-function isWellFormedString(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (isHighSurrogate(codeUnit)) {
-      const nextCodeUnit = value.charCodeAt(index + 1);
-      if (!isLowSurrogate(nextCodeUnit)) {
-        return false;
-      }
-      index += 1;
-      continue;
-    }
-
-    if (isLowSurrogate(codeUnit)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function toWellFormedString(value: string): string {
-  let result = "";
-  for (let index = 0; index < value.length; index += 1) {
-    const codeUnit = value.charCodeAt(index);
-    if (isHighSurrogate(codeUnit)) {
-      const nextCodeUnit = value.charCodeAt(index + 1);
-      if (isLowSurrogate(nextCodeUnit)) {
-        result += value[index] + value[index + 1];
-        index += 1;
-      } else {
-        result += "\uFFFD";
-      }
-      continue;
-    }
-
-    result += isLowSurrogate(codeUnit) ? "\uFFFD" : value[index];
-  }
-
-  return result;
-}
-
-function isHighSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
-}
-
-function isLowSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
-}
-
-function normalizeGroupKeys(groupKeys: string[]): string[] {
-  return Array.from(new Set(groupKeys.map((groupKey) => groupKey.trim()))).sort(
-    compareGroupKeys,
-  );
-}
-
-function compareGroupKeys(left: string, right: string): number {
-  if (left < right) {
-    return -1;
-  }
-
-  if (left > right) {
-    return 1;
-  }
-
-  return 0;
-}
-
-function areSameGroupSet(left: string[], right: string[]): boolean {
-  const normalizedLeft = normalizeGroupKeys(left);
-  const normalizedRight = normalizeGroupKeys(right);
-  return (
-    normalizedLeft.length === normalizedRight.length &&
-    normalizedLeft.every(
-      (groupKey, index) => groupKey === normalizedRight[index],
-    )
-  );
-}
-
 function getProjectionEmployeeNumber(projection: OktaMasteringProjection) {
   return projection.operation === "disable"
     ? projection.employeeNumber
@@ -980,34 +600,4 @@ function getProjectionEffectiveAt(projection: OktaMasteringProjection) {
   return projection.operation === "disable"
     ? projection.effectiveAt
     : projection.desiredUser.effectiveAt;
-}
-
-function toTimestampMillis(timestamp: string): number {
-  const millis = Date.parse(timestamp);
-  if (!Number.isFinite(millis)) {
-    throw new Error("Synthetic Okta timestamp must be parseable.");
-  }
-
-  return millis;
-}
-
-function isMissingOrPlaceholder(value: string | undefined): boolean {
-  const normalizedValue = value?.trim();
-  return (
-    normalizedValue === undefined ||
-    normalizedValue === "" ||
-    /^<[^>]+>$/.test(normalizedValue) ||
-    /^(todo|placeholder|example|sample)$/i.test(normalizedValue)
-  );
-}
-
-function readTrustedLocalOktaValue(
-  env: Partial<Record<LocalOktaEnvKey, string | undefined>>,
-  key: LocalOktaEnvKey,
-): string {
-  const value = env[key];
-  if (value === undefined || isMissingOrPlaceholder(value)) {
-    throw new Error(`Missing trusted local Okta config value: ${key}`);
-  }
-  return value.trim();
 }
