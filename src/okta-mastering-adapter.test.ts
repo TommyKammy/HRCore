@@ -1267,6 +1267,26 @@ test("real Okta mastering mode stays blocked until local placeholder credentials
   );
 });
 
+test("real Okta mastering config resolution does not bypass the public blocked adapter boundary", () => {
+  const envPrefix = "HRCORE_" + "OKTA" + "_";
+  const config = resolveLocalOktaMasteringConfig({
+    [`${envPrefix}BASE_URL`]: "https://okta.example.invalid",
+    [`${envPrefix}CLIENT_ID`]: "local-client-id",
+    [`${envPrefix}CLIENT_SECRET`]: "local-client-secret",
+  });
+
+  assert.deepEqual(config, {
+    mode: "local_real",
+    baseUrl: "https://okta.example.invalid",
+    clientId: "local-client-id",
+    clientSecret: "local-client-secret",
+  });
+  assert.throws(
+    () => buildOktaMasteringAdapter(config),
+    /Real Okta mastering adapter is not implemented for this PoC/,
+  );
+});
+
 function expectedMockMetadata(
   operation: string,
   employeeNumber: string,
