@@ -101,7 +101,8 @@ function collectAffectedReadinessGateFindings(
 
     const claimSegments = splitClaimSegments(text);
     for (const segment of claimSegments) {
-      if (!hasAffectedReadinessOverclaim(segment)) {
+      const claimSegment = stripReviewMetadata(segment);
+      if (!hasAffectedReadinessOverclaim(claimSegment)) {
         continue;
       }
 
@@ -109,9 +110,10 @@ function collectAffectedReadinessGateFindings(
         mentionsAffectedGate(segment, gate.aliases),
       );
       for (const gate of affectedReadinessGateClaims) {
+        const gateClaimSegment = getGateScopedClaimSegment(segment, gate);
         const claimBelongsToDocumentGate =
           documentGate?.subject === gate.subject &&
-          hasDocumentScopedReadinessOverclaim(segment);
+          hasDocumentScopedReadinessOverclaim(claimSegment);
         if (
           !claimBelongsToDocumentGate &&
           !mentionedGates.some(
@@ -126,7 +128,7 @@ function collectAffectedReadinessGateFindings(
           mentionedGates[0].subject === gate.subject &&
           hasDocumentedIndependentReadinessApproval(segment);
         if (
-          isExplicitlyBlockedOrDeferred(segment) ||
+          isExplicitlyBlockedOrDeferred(gateClaimSegment) ||
           claimHasIndependentApproval ||
           (claimBelongsToDocumentGate && documentHasIndependentApproval)
         ) {
@@ -157,18 +159,24 @@ function mentionsAffectedGate(
   segment: string,
   aliases: readonly string[],
 ): boolean {
-  return aliases.some((alias) => matchesAlias(segment, alias));
+  return aliases.some((alias) => findAliasIndex(segment, alias) !== -1);
 }
 
-function matchesAlias(segment: string, alias: string): boolean {
+function findAliasIndex(segment: string, alias: string): number {
   const aliasPattern = escapeRegExp(alias);
   const suffixBoundary = alias.startsWith("#")
     ? `(?!\\d)`
     : `(?![\\p{L}\\p{N}_-])`;
-  return new RegExp(
-    `(?:^|[^\\p{L}\\p{N}_-])${aliasPattern}${suffixBoundary}`,
+  const match = new RegExp(
+    `(^|[^\\p{L}\\p{N}_-])(${aliasPattern})${suffixBoundary}`,
     "iu",
-  ).test(segment);
+  ).exec(segment);
+
+  if (match === null) {
+    return -1;
+  }
+
+  return match.index + match[1].length;
 }
 
 function escapeRegExp(value: string): string {
@@ -191,13 +199,59 @@ function splitClaimSegments(text: string): string[] {
 
     segments.push(
       ...normalizedLine
-        .split(/[.]/u)
+        .split(/\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
         .map((segment) => segment.replace(/\s+/gu, " ").trim())
         .filter((segment) => segment.length > 0),
     );
   }
 
   return segments;
+}
+
+function getGateScopedClaimSegment(
+  segment: string,
+  gate: (typeof affectedReadinessGateClaims)[number],
+): string {
+  const gatePositions = affectedReadinessGateClaims
+    .map((affectedGate) => ({
+      subject: affectedGate.subject,
+      index: findFirstAliasIndex(segment, affectedGate.aliases),
+    }))
+    .filter((position) => position.index !== -1)
+    .sort((left, right) => left.index - right.index);
+  const gatePosition = gatePositions.find(
+    (position) => position.subject === gate.subject,
+  );
+
+  if (gatePosition === undefined) {
+    return segment;
+  }
+
+  const nextGatePosition = gatePositions.find(
+    (position) =>
+      position.index > gatePosition.index && position.subject !== gate.subject,
+  );
+  return segment
+    .slice(gatePosition.index, nextGatePosition?.index ?? segment.length)
+    .trim();
+}
+
+function findFirstAliasIndex(
+  segment: string,
+  aliases: readonly string[],
+): number {
+  const aliasIndexes = aliases
+    .map((alias) => findAliasIndex(segment, alias))
+    .filter((index) => index !== -1);
+  return aliasIndexes.length === 0 ? -1 : Math.min(...aliasIndexes);
+}
+
+function stripReviewMetadata(segment: string): string {
+  const metadataPattern = new RegExp(
+    `\\b${reviewMetadataLabels}:\\s*[^|]+`,
+    "giu",
+  );
+  return segment.replace(metadataPattern, "");
 }
 
 function hasAffectedReadinessOverclaim(segment: string): boolean {
@@ -231,15 +285,11 @@ function hasProductionLikeReadinessOverclaim(segment: string): boolean {
 }
 
 function isExplicitlyBlockedOrDeferred(segment: string): boolean {
-  const metadataPattern = new RegExp(
-    `\\b${reviewMetadataLabels}:\\s*[^|]+`,
-    "giu",
-  );
-  const claimText = segment.replace(metadataPattern, "");
+  const claimText = stripReviewMetadata(segment);
   if (hasBareReadinessTableCell(claimText)) {
     return false;
   }
-  return /(?:must not|not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? an? accepted [^|.]+ before|until a later accepted|later accepted two-key|\b(?:cannot|do not|does not)\b[^|.]{0,80}\b(?:describe|claim|treat|mark|count|classify|approve)\b[^|.]{0,80}\b(?:accepted|production-like(?:\s+|-)ready|production-like readiness))/iu.test(
+  return /(?:not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? (?:an? )?accepted [^|.]+ before|until a later accepted|later accepted two-key|\b(?:cannot|do not|does not|must not)\b[^|.]{0,80}\b(?:describe|claim|treat|mark|count|classify|approve|be described as|be treated as)\b[^|.]{0,80}\b(?:accepted|production-like(?:\s+|-)ready|production-like readiness))/iu.test(
     claimText,
   );
 }

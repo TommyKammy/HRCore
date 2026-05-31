@@ -854,6 +854,66 @@ test("MVP-A policy-as-code gate rejects accepted claims with generic negation wo
   );
 });
 
+test("MVP-A policy-as-code gate covers latest readiness review probes", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-latest-readiness-review-probes.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        [
+          "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md is Accepted.",
+          "| Gate | Readiness | Approval status |",
+          "| --- | --- | --- |",
+          "| P0-R05 / #11 | Proposed | Approver: Required before Accepted; Counter-approver: Required before Accepted; Time-locked review window: Required before Accepted |",
+          "P0-R06 / #12 must not rely on production backup shortcuts and is Accepted.",
+          "P0-R05 / #11 is not Accepted; P0-R08 / #14 is Accepted.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected ADR path alias Accepted claim to fail",
+  );
+  assert.equal(
+    findings.filter(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R05 / #11",
+    ).length,
+    1,
+    "expected Proposed rows with approval placeholders not to fail as Accepted claims",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected unrelated must-not wording not to suppress an Accepted claim",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected negative wording for one gate not to suppress another gate's Accepted claim",
+  );
+});
+
 test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
 
