@@ -515,6 +515,40 @@ test("MVP-B transfer migration preserves dependent request rows inside a transac
   }
 });
 
+test("MVP-B transfer migration metadata tracks the Drizzle 0014 contract", async () => {
+  const journalText = await readRepoFile("drizzle/meta/_journal.json");
+  const snapshotText = await readRepoFile("drizzle/meta/0014_snapshot.json");
+  const journal = JSON.parse(journalText) as {
+    entries?: Array<{ tag?: unknown }>;
+  };
+  const snapshot = JSON.parse(snapshotText) as {
+    tables?: Record<
+      string,
+      {
+        checkConstraints?: Record<string, { value?: unknown }>;
+      }
+    >;
+  };
+  const transactionRequestChecks =
+    snapshot.tables?.transaction_request?.checkConstraints;
+
+  assert.ok(
+    journal.entries?.some(
+      (entry) => entry.tag === "0014_transfer_transaction_request",
+    ),
+    "Drizzle journal must include the transfer transaction_request migration",
+  );
+  assert.equal(
+    transactionRequestChecks?.transaction_request_type_allowed?.value,
+    "\"transaction_request\".\"request_type\" in ('hire', 'change', 'terminate', 'transfer')",
+  );
+  assert.equal(
+    transactionRequestChecks?.transaction_request_payload_version_allowed
+      ?.value,
+    '"transaction_request"."payload_version" is null or "transaction_request"."payload_version" in (\'mvp_a_onboarding_v1\', \'mvp_b_transfer_v1\')',
+  );
+});
+
 async function openSqliteDatabase(t: TestContext) {
   let sqlite: typeof import("node:sqlite");
   try {
