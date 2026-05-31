@@ -482,6 +482,38 @@ test("MVP-A policy-as-code gate scopes independent approval to each readiness cl
   );
 });
 
+test("MVP-A policy-as-code gate rejects weak readiness approval wording", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-weak-readiness-approval.md",
+        [
+          "| Gate | Readiness | Independent approval |",
+          "| --- | --- | --- |",
+          "| P0-R05 / #11 | Accepted | Approver: Required before Accepted; Counter-approver: Required before Accepted; Time-locked review window: Required before Accepted |",
+          "| P0-R06 / #12 | production-like ready | Independent approver: Alice; Independent counter-approver: Alice; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+          "| P0-R08 / #14 | #14-class raw payload follow-up | accepted |",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  for (const subject of ["P0-R05 / #11", "P0-R06 / #12", "P0-R08 / #14"]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === "docs/fixture-weak-readiness-approval.md" &&
+          finding.subject === subject,
+      ),
+      `expected ${subject} weak readiness approval wording to fail`,
+    );
+  }
+});
+
 test("MVP-A policy-as-code gate allows bounded non-production readiness wording", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
 

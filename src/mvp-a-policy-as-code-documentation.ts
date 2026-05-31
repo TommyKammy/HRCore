@@ -173,19 +173,20 @@ function splitClaimSegments(text: string): string[] {
 
 function hasAffectedReadinessOverclaim(segment: string): boolean {
   return (
-    /\bAccepted\b/u.test(segment) ||
+    /\baccepted\b/iu.test(segment) ||
     hasProductionLikeReadinessOverclaim(segment)
   );
 }
 
 function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
   return (
-    /^Accepted$/iu.test(segment) || hasProductionLikeReadinessOverclaim(segment)
+    /^accepted$/iu.test(segment) || hasProductionLikeReadinessOverclaim(segment)
   );
 }
 
 function hasProductionLikeReadinessOverclaim(segment: string): boolean {
   return (
+    /(?:^|\|)\s*production-like(?:\s+|-)ready\s*(?:\||$)/iu.test(segment) ||
     /\b(?:is|are|be|become|treated\s+as|described\s+as)\s+production-like(?:\s+|-)ready\b/iu.test(
       segment,
     ) ||
@@ -199,11 +200,12 @@ function hasProductionLikeReadinessOverclaim(segment: string): boolean {
 }
 
 function isExplicitlyBlockedOrDeferred(segment: string): boolean {
-  const claimText = segment
-    .replace(/\bIndependent approver:\s*[^|]+/giu, "")
-    .replace(/\bIndependent counter-approver:\s*[^|]+/giu, "")
-    .replace(/\bTime-locked review window:\s*[^|]+/giu, "");
-  return /(?:must not|cannot|do not|does not|not be described as|not Accepted|not yet Accepted|no Accepted|has not been Accepted|have not been Accepted|is not Accepted|are not Accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before Accepted|required before Accepted|requires? a later Accepted|until a later Accepted|later Accepted two-key)/iu.test(
+  const metadataPattern = new RegExp(
+    `\\b${reviewMetadataLabels}:\\s*[^|]+`,
+    "giu",
+  );
+  const claimText = segment.replace(metadataPattern, "");
+  return /(?:must not|cannot|do not|does not|not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|before accepted|required before accepted|requires? a later accepted|requires? an? accepted [^|.]+ before|accepted [^|.]{0,80} evidence|until a later accepted|later accepted two-key)/iu.test(
     claimText,
   );
 }
@@ -227,6 +229,7 @@ function hasDocumentedIndependentReadinessApproval(text: string): boolean {
     reviewWindow !== undefined &&
     hasConcreteReviewMetadataValue(approver) &&
     hasConcreteReviewMetadataValue(counterApprover) &&
+    !sameReviewMetadataValue(approver, counterApprover) &&
     hasCompletedReviewWindow(reviewWindow)
   );
 }
@@ -251,6 +254,16 @@ function hasConcreteReviewMetadataValue(value: string): boolean {
       value,
     )
   );
+}
+
+function sameReviewMetadataValue(left: string, right: string): boolean {
+  return (
+    normalizeReviewMetadataValue(left) === normalizeReviewMetadataValue(right)
+  );
+}
+
+function normalizeReviewMetadataValue(value: string): string {
+  return value.replace(/\s+/gu, " ").trim().toLowerCase();
 }
 
 function hasCompletedReviewWindow(value: string): boolean {
