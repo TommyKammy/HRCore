@@ -82,6 +82,12 @@ type ExistingTransferTransactionRequestRow = {
   payload_json: string | null;
 };
 
+type ExistingTransferPersonRow = {
+  id: string;
+  display_name: string;
+  created_at: string;
+};
+
 const transferTransactionRequestFields = [
   "id",
   "person",
@@ -207,6 +213,10 @@ export function saveTransferTransactionRequest(
       return buildTransferRetryResult(existingRequest);
     }
 
+    if (matchesTransferDraftSubmission(existingRequest, parsed, payloadJson)) {
+      return submitExistingTransferDraft(db, existingRequest, parsed);
+    }
+
     throw new Error(
       "transfer transaction request retry conflicts with the existing request",
     );
@@ -218,12 +228,7 @@ export function saveTransferTransactionRequest(
     db.exec("SAVEPOINT transfer_transaction_request_persistence");
     savepointStarted = true;
 
-    db.prepare(
-      `
-        INSERT INTO person (id, display_name, created_at)
-        VALUES (?, ?, ?)
-      `,
-    ).run(parsed.person.id, parsed.person.displayName, parsed.person.createdAt);
+    ensureTransferPerson(db, parsed.person);
 
     db.prepare(
       `
@@ -472,6 +477,47 @@ function readTransferTransactionRequest(
     ) as ExistingTransferTransactionRequestRow | undefined;
 }
 
+function readTransferPerson(
+  db: OnboardingTransactionRequestDatabase,
+  personId: string,
+): ExistingTransferPersonRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT id, display_name, created_at
+        FROM person
+        WHERE id = ?
+      `,
+    )
+    .get(personId) as ExistingTransferPersonRow | undefined;
+}
+
+function ensureTransferPerson(
+  db: OnboardingTransactionRequestDatabase,
+  person: TransferTransactionRequestPersonInput,
+): void {
+  const existingPerson = readTransferPerson(db, person.id);
+
+  if (!existingPerson) {
+    db.prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES (?, ?, ?)
+      `,
+    ).run(person.id, person.displayName, person.createdAt);
+    return;
+  }
+
+  if (
+    existingPerson.display_name !== person.displayName ||
+    existingPerson.created_at !== person.createdAt
+  ) {
+    throw new Error(
+      "transfer transaction request person conflicts with the existing person",
+    );
+  }
+}
+
 function matchesTransferRetry(
   existing: ExistingTransferTransactionRequestRow,
   input: TransferTransactionRequestInput,
@@ -488,6 +534,61 @@ function matchesTransferRetry(
     existing.payload_version === input.payloadVersion &&
     existing.payload_json === payloadJson
   );
+}
+
+function matchesTransferDraftSubmission(
+  existing: ExistingTransferTransactionRequestRow,
+  input: TransferTransactionRequestInput,
+  payloadJson: string,
+): boolean {
+  return (
+    existing.status_code === "draft" &&
+    input.statusCode === "submitted" &&
+    existing.person_id === input.person.id &&
+    existing.display_name === input.person.displayName &&
+    existing.created_at === input.person.createdAt &&
+    existing.request_type === input.requestType &&
+    existing.requested_at === input.requestedAt &&
+    existing.correlation_id === input.correlationId &&
+    existing.payload_version === input.payloadVersion &&
+    existing.payload_json === payloadJson
+  );
+}
+
+function submitExistingTransferDraft(
+  db: OnboardingTransactionRequestDatabase,
+  existing: ExistingTransferTransactionRequestRow,
+  input: TransferTransactionRequestInput,
+): TransferTransactionRequestPersistenceResult {
+  const updateResult = db
+    .prepare(
+      `
+        UPDATE transaction_request
+        SET status_code = 'submitted'
+        WHERE id = ?
+          AND person_id = ?
+          AND correlation_id = ?
+          AND status_code = 'draft'
+      `,
+    )
+    .run(
+      existing.transaction_request_id,
+      input.person.id,
+      input.correlationId,
+    ) as { changes?: number | bigint };
+
+  if (updateResult.changes !== 1 && updateResult.changes !== 1n) {
+    throw new Error(
+      "transfer transaction request draft submission conflicts with the current request state",
+    );
+  }
+
+  return {
+    personId: input.person.id,
+    transactionRequestId: existing.transaction_request_id,
+    statusCode: "submitted",
+    correlationId: input.correlationId,
+  };
 }
 
 function buildTransferRetryResult(

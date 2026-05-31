@@ -1,3 +1,4 @@
+PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_transaction_request` (
 	`id` text PRIMARY KEY NOT NULL,
 	`person_id` text NOT NULL,
@@ -22,6 +23,7 @@ DROP TABLE `transaction_request`;
 --> statement-breakpoint
 ALTER TABLE `__new_transaction_request` RENAME TO `transaction_request`;
 --> statement-breakpoint
+PRAGMA foreign_keys=ON;--> statement-breakpoint
 CREATE UNIQUE INDEX `transaction_request_id_person_unique` ON `transaction_request` (`id`,`person_id`);
 --> statement-breakpoint
 CREATE UNIQUE INDEX `transaction_request_correlation_unique` ON `transaction_request` (`correlation_id`);
