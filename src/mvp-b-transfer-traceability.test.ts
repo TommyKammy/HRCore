@@ -10,6 +10,7 @@ import {
   applyApprovedTransferTransactionRequestWithOktaProjection,
   createTransferTransactionRequestFixture,
   decideTransferTransactionRequest,
+  MvpBTransferCorrelationTraceError,
   saveTransferTransactionRequest,
   verifyMvpBTransferCorrelationTrace,
 } from "./transfer-transaction-request.js";
@@ -151,15 +152,15 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
       "onboarding-apply-job-attempt-unrelated-transfer-trace-001",
       "transaction-request-transfer-001",
       "person-transfer-001",
-      "retryable_failure",
+      "applied",
       "2026-07-01T00:01:00Z",
       "worker-unrelated-transfer-trace-001",
       workerAttemptCorrelationId(
         "correlation-unrelated-transfer-worker-retry",
         "transaction-request-transfer-001",
       ),
-      1,
-      "synthetic unrelated retry failure",
+      0,
+      null,
     );
     const mixedTrace = verifyMvpBTransferCorrelationTrace(db, {
       correlationId: rootCorrelationId,
@@ -206,7 +207,7 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
         WHERE id = ?
       `,
     ).run("transaction-request-transfer-001");
-    assert.throws(
+    assertTransferTraceThrows(
       () =>
         verifyMvpBTransferCorrelationTrace(db, {
           correlationId: rootCorrelationId,
@@ -448,6 +449,18 @@ test("MVP-B transfer trace closeout preserves production readiness defer wording
   assert.doesNotMatch(closeout, /production audit immutability is ready/u);
   assert.doesNotMatch(closeout, /live-provider ready/u);
 });
+
+function assertTransferTraceThrows(
+  block: () => unknown,
+  message: RegExp,
+): void {
+  assert.throws(
+    block,
+    (error) =>
+      error instanceof MvpBTransferCorrelationTraceError &&
+      message.test(error.message),
+  );
+}
 
 function seedOpenTransferAssignment(
   db: NonNullable<Awaited<ReturnType<typeof openSchemaBackedDatabase>>>,
