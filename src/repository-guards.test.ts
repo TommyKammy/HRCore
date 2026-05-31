@@ -376,6 +376,56 @@ test("solo-maintainer governance note keeps two-key ADRs as Proposed anchors", a
   );
 });
 
+test("solo-maintainer governance closeout preserves owner-acknowledged defer posture", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/p0-gov-01-solo-maintainer-governance-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P0-GOV-01 Solo-Maintainer Governance Closeout",
+    "Issue: #244",
+    "Part of: #240",
+    "Depends on: #243",
+    "Final Posture",
+    "#241, #242, and #243 are complete",
+    "P0-R05 (#11), P0-R06 (#12), and P0-R08 (#14) remain owner-acknowledged defer",
+    "not Accepted under the original ADR 0000 two-key semantics",
+    "Owner acknowledgement is not independent legal, security, privacy, operator, or second-maintainer approval.",
+    "Bounded/non-production MVP-A continuation remains allowed",
+    "Production-like readiness remains blocked",
+    "Gates Covered",
+    "#11 / P0-R05",
+    "#12 / P0-R06",
+    "#14 / P0-R08",
+    "Future Promotion Condition",
+    "real independent legal/security/operator review",
+    "equivalent documented authority",
+    "named Approver",
+    "independent Counter-approver",
+    "completed ADR 0000 review-window evidence",
+    "Closeout Boundary",
+    "does not claim that independent review occurred",
+    "does not convert owner acknowledgement into production-like approval",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P0-GOV-01 closeout text: ${requiredText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    closeout,
+    /P0-R0(?:5|6|8)[\s\S]{0,120}\b(?:is|are|as|status:)\s+Accepted\b/u,
+    "P0-GOV-01 closeout must not promote P0-R05/R06/R08 to Accepted",
+  );
+  assert.match(
+    readme,
+    /\[P0-GOV-01 Solo-Maintainer Governance Closeout\]\(docs\/p0-gov-01-solo-maintainer-governance-closeout\.md\)/,
+  );
+});
+
 test("pull request template preserves child issue review checklist", async () => {
   const pullRequestTemplate = await readRepoFile(
     ".github/pull_request_template.md",

@@ -50,6 +50,7 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "README.md",
   "docs/mvp-a-onboarding-non-production-data-gate.md",
   "docs/solo-maintainer-governance.md",
+  "docs/p0-gov-01-solo-maintainer-governance-closeout.md",
   "docs/mvp-a-go-no-go.md",
   "docs/mvp-a-go-no-go-scope.md",
   "docs/mvp-a-go-no-go-future-wave-readiness.md",
