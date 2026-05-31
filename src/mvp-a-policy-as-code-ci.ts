@@ -58,6 +58,9 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md",
   "docs/mvp-a-p2a-04-refactor-wave-closeout.md",
   "docs/mvp-a-p2a-05-refactor-wave-closeout.md",
+  "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
+  "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+  "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
 ] as const;
 
 export function checkMvpAPolicyAsCode(

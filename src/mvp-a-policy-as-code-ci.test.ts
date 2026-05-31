@@ -101,6 +101,16 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     typeof documentationHelpers.collectDocumentationFindings,
     "function",
   );
+  assert.deepEqual(
+    mvpAPolicyAsCodeDocumentationPaths.filter((path) =>
+      path.startsWith("docs/adr/"),
+    ),
+    [
+      "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
+      "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+      "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
+    ],
+  );
 });
 
 test("MVP-A policy-as-code gate passes for current repository surfaces", async () => {
@@ -315,6 +325,44 @@ test("MVP-A policy-as-code gate scans ADR-path table rows as gate claims", async
   }
 });
 
+test("MVP-A policy-as-code gate carries ADR document identity into status claims", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
+        [
+          "# ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary",
+          "",
+          "## Status",
+          "",
+          "Accepted",
+          "",
+          "## Decision owners",
+          "",
+          "- Author: TommyKammy",
+          "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+          "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+          "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected status-only Accepted ADR claim to fail via ADR document identity",
+  );
+});
+
 test("MVP-A policy-as-code gate scopes independent approval to each readiness claim", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
@@ -328,6 +376,7 @@ test("MVP-A policy-as-code gate scopes independent approval to each readiness cl
           "| --- | --- | --- |",
           "| P0-R05 / #11 | Accepted | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
           "| P0-R06 / #12 | Accepted | Independent approver: Required before Accepted; Independent counter-approver: Required before Accepted; Time-locked review window: Required before Accepted |",
+          "| P0-R08 / #14 | Accepted | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 not completed |",
         ].join("\n"),
       ],
     ]),
@@ -350,6 +399,15 @@ test("MVP-A policy-as-code gate scopes independent approval to each readiness cl
         finding.subject === "P0-R06 / #12",
     ),
     "expected P0-R06 overclaim to fail despite another row's approval evidence",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-scoped-independent-approval.md" &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected P0-R08 overclaim to fail when review window is incomplete",
   );
 });
 

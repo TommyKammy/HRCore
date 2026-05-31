@@ -6,6 +6,7 @@ import type {
 const affectedReadinessGateClaims = [
   {
     subject: "P0-R05 / #11",
+    documentPath: "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
     aliases: [
       "P0-R05",
       "#11",
@@ -15,6 +16,8 @@ const affectedReadinessGateClaims = [
   },
   {
     subject: "P0-R06 / #12",
+    documentPath:
+      "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
     aliases: [
       "P0-R06",
       "#12",
@@ -24,6 +27,8 @@ const affectedReadinessGateClaims = [
   },
   {
     subject: "P0-R08 / #14",
+    documentPath:
+      "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
     aliases: [
       "P0-R08",
       "#14",
@@ -32,6 +37,9 @@ const affectedReadinessGateClaims = [
     ],
   },
 ] as const;
+
+const reviewMetadataLabels =
+  "(?:Independent\\s+approver|Approver|Independent\\s+counter-approver|Counter-approver|Time-locked\\s+review\\s+window)";
 
 export function collectDocumentationFindings(
   inputs: MvpAPolicyAsCodeInputs,
@@ -78,6 +86,21 @@ function collectAffectedReadinessGateFindings(
   const findings: MvpAPolicyAsCodeFinding[] = [];
 
   for (const [path, text] of inputs.documentationTextByPath) {
+    const documentGate = findAffectedReadinessGateForDocumentPath(path);
+    if (
+      documentGate !== undefined &&
+      hasAcceptedAdrStatusClaim(text) &&
+      !hasDocumentedIndependentReadinessApproval(text)
+    ) {
+      findings.push({
+        surface: "documentation",
+        path,
+        subject: documentGate.subject,
+        message:
+          "Affected readiness gate must not be described as Accepted or production-like ready without documented independent approval",
+      });
+    }
+
     const claimSegments = splitClaimSegments(text);
     for (const segment of claimSegments) {
       if (!hasAffectedReadinessOverclaim(segment)) {
@@ -108,6 +131,12 @@ function collectAffectedReadinessGateFindings(
   }
 
   return findings;
+}
+
+function findAffectedReadinessGateForDocumentPath(
+  path: string,
+): (typeof affectedReadinessGateClaims)[number] | undefined {
+  return affectedReadinessGateClaims.find((gate) => path === gate.documentPath);
 }
 
 function mentionsAffectedGate(
@@ -145,6 +174,12 @@ function splitClaimSegments(text: string): string[] {
   return segments;
 }
 
+function hasAcceptedAdrStatusClaim(text: string): boolean {
+  return /^##\s+Status\s*\r?\n(?:[^\S\r\n]*\r?\n)*[^\S\r\n]*Accepted[^\S\r\n]*$/imu.test(
+    text,
+  );
+}
+
 function hasAffectedReadinessOverclaim(segment: string): boolean {
   return (
     /\bAccepted\b/u.test(segment) ||
@@ -171,16 +206,56 @@ function isExplicitlyBlockedOrDeferred(segment: string): boolean {
 }
 
 function hasDocumentedIndependentReadinessApproval(text: string): boolean {
-  const normalizedText = text.replace(/\s+/gu, " ").trim();
+  const approver = readReviewMetadataValue(text, [
+    "Independent\\s+approver",
+    "Approver",
+  ]);
+  const counterApprover = readReviewMetadataValue(text, [
+    "Independent\\s+counter-approver",
+    "Counter-approver",
+  ]);
+  const reviewWindow = readReviewMetadataValue(text, [
+    "Time-locked\\s+review\\s+window",
+  ]);
+
   return (
-    /Independent approver:\s*(?!Required before Accepted|No\b|None\b|TBD\b|TODO\b|placeholder\b)[^.;\n]+/iu.test(
-      normalizedText,
-    ) &&
-    /Independent counter-approver:\s*(?!Required before Accepted|No\b|None\b|TBD\b|TODO\b|placeholder\b)[^.;\n]+/iu.test(
-      normalizedText,
-    ) &&
-    /Time-locked review window:\s*(?!Required before Accepted|No\b|None\b|TBD\b|TODO\b|placeholder\b)[^.;\n]+completed/iu.test(
-      normalizedText,
+    approver !== undefined &&
+    counterApprover !== undefined &&
+    reviewWindow !== undefined &&
+    hasConcreteReviewMetadataValue(approver) &&
+    hasConcreteReviewMetadataValue(counterApprover) &&
+    hasCompletedReviewWindow(reviewWindow)
+  );
+}
+
+function readReviewMetadataValue(
+  text: string,
+  labels: readonly string[],
+): string | undefined {
+  const labelPattern = labels.join("|");
+  const metadataValuePattern = new RegExp(
+    `(?:^|[|;\\r\\n])\\s*(?:[-*]\\s+)?(?:${labelPattern}):\\s*(.*?)(?=\\s*(?:;\\s*)?${reviewMetadataLabels}:|[|\\r\\n]|$)`,
+    "iu",
+  );
+  const match = metadataValuePattern.exec(text);
+  return match?.[1].replace(/\s+/gu, " ").trim();
+}
+
+function hasConcreteReviewMetadataValue(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder)\b/iu.test(
+      value,
+    )
+  );
+}
+
+function hasCompletedReviewWindow(value: string): boolean {
+  return (
+    hasConcreteReviewMetadataValue(value) &&
+    /\bcompleted\b/iu.test(value) &&
+    !/(?:\b(?:not|no|without|pending|incomplete|uncompleted)\b[^|;\n\r]{0,80}\bcompleted\b|\bcompleted\b[^|;\n\r]{0,40}\b(?:no|false|pending|not|required)\b)/iu.test(
+      value,
     )
   );
 }
