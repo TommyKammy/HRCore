@@ -19,6 +19,10 @@ import {
   mvpAOnboardingAuditHeaders,
   recordSyntheticOnboardingApplyJobAttempt,
 } from "./test-helpers/onboarding.js";
+import {
+  createTransferTransactionRequestFixture,
+  decideTransferTransactionRequest,
+} from "./transfer-transaction-request.js";
 import { createSyntheticWorkEmailWritebackFixture } from "./writeback-ingest.js";
 
 const normalizeRow = <TRow extends Record<string, unknown>>(
@@ -81,6 +85,15 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.ok(
     contract.paths["/onboarding/new-hire/transaction-requests/validate"],
   );
+  assert.ok(contract.paths["/transfers/assignment-change"]);
+  assert.ok(
+    contract.paths["/transfers/assignment-change/transaction-requests"],
+  );
+  assert.ok(
+    contract.paths[
+      "/transfers/assignment-change/transaction-requests/validate"
+    ],
+  );
   assert.ok(contract.paths["/writeback-events/work-email"]);
 
   assert.equal(
@@ -93,6 +106,39 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     contract.paths["/onboarding/new-hire/transaction-requests"].post.requestBody
       .content["application/json"].schema.$ref,
     "#/components/schemas/OnboardingTransactionRequestInput",
+  );
+  assert.equal(
+    contract.paths["/transfers/assignment-change"].get.responses["200"].content[
+      "text/html"
+    ].schema.type,
+    "string",
+  );
+  assert.equal(
+    contract.paths["/transfers/assignment-change/transaction-requests"].post
+      .requestBody.content["application/json"].schema.$ref,
+    "#/components/schemas/TransferTransactionRequestInput",
+  );
+  assert.equal(
+    contract.paths["/transfers/assignment-change/transaction-requests/validate"]
+      .post.requestBody.content["application/json"].schema.$ref,
+    "#/components/schemas/TransferTransactionRequestInput",
+  );
+  const transferSaveOperation =
+    contract.paths["/transfers/assignment-change/transaction-requests"].post;
+  assert.equal(
+    transferSaveOperation.responses["400"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ValidationErrorResponse",
+  );
+  assert.equal(
+    transferSaveOperation.responses["409"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
+  );
+  assert.equal(
+    transferSaveOperation.responses["503"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
   );
   const onboardingSaveOperation =
     contract.paths["/onboarding/new-hire/transaction-requests"].post;
@@ -245,6 +291,45 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.equal(
     onboardingWorkEmailExpectation.properties.value.pattern,
     "^[^@]+@.+$",
+  );
+
+  const transferRequestInput =
+    contract.components.schemas.TransferTransactionRequestInput;
+  assert.equal(transferRequestInput.properties.requestType.const, "transfer");
+  assert.equal(
+    transferRequestInput.properties.payloadVersion.const,
+    "mvp_b_transfer_v1",
+  );
+  assert.equal(
+    transferRequestInput.properties.payload.$ref,
+    "#/components/schemas/TransferPayload",
+  );
+  const transferPayload = contract.components.schemas.TransferPayload;
+  assert.deepEqual(transferPayload.required, [
+    "tenantEnvironmentId",
+    "effectiveDate",
+    "currentAssignment",
+    "targetAssignment",
+    "transferReason",
+  ]);
+  assert.equal(
+    transferPayload.properties.tenantEnvironmentId.const,
+    "repo_owned_synthetic_mvp_b_transfer",
+  );
+  assert.equal(
+    transferPayload.properties.effectiveDate.pattern,
+    "^\\d{4}-\\d{2}-\\d{2}$",
+  );
+  assert.deepEqual(
+    Object.keys(transferPayload.properties).filter((propertyName) =>
+      /raw|csv|upload|provider|search/u.test(propertyName),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    contract.components.schemas.TransferReasonPayload.properties.reasonCode
+      .enum,
+    ["team_change", "manager_change", "organization_change"],
   );
 
   const writebackOperation =
@@ -2315,6 +2400,226 @@ test("POST /onboarding/new-hire/transaction-requests/:id/decisions rejects non-h
         .get() as Record<string, unknown> | undefined,
     ),
     { count: 0 },
+  );
+});
+
+test("GET /transfers/assignment-change renders the bounded MVP-B transfer wizard surface", async (t) => {
+  const app = await buildApp();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/transfers/assignment-change",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(
+    response.headers["content-type"] ?? "",
+    /^text\/html; charset=utf-8/u,
+  );
+  assert.match(response.body, /id="mvp-b-transfer-wizard"/u);
+  assert.match(response.body, /name="person.displayName"/u);
+  assert.match(response.body, /name="payload.tenantEnvironmentId"/u);
+  assert.match(
+    response.body,
+    /tenantEnvironmentId: read\("payload\.tenantEnvironmentId"\)/u,
+  );
+  assert.match(response.body, /form\.addEventListener\("submit"/u);
+  assert.match(response.body, /event\.preventDefault\(\)/u);
+  assert.match(response.body, /send\(read\("statusCode"\) \|\| "submitted"\)/u);
+  assert.match(response.body, /name="payload.effectiveDate"/u);
+  assert.match(response.body, /name="payload.currentAssignment.assignmentId"/u);
+  assert.match(
+    response.body,
+    /name="payload.targetAssignment.departmentReference"/u,
+  );
+  assert.match(response.body, /name="payload.transferReason.reasonCode"/u);
+  assert.doesNotMatch(
+    response.body,
+    /rawPayload|csvExport|CSV|liveProvider|employeeSearch|upload/u,
+  );
+});
+
+test("POST /transfers/assignment-change/transaction-requests validates and submits bounded transfer requests", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const fixture = createTransferTransactionRequestFixture();
+  const invalidResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests/validate",
+    payload: {
+      ...fixture,
+      payload: {
+        ...fixture.payload,
+        effectiveDate: "2026-02-30",
+      },
+    },
+  });
+
+  assert.equal(invalidResponse.statusCode, 400);
+  assert.deepEqual(invalidResponse.json(), {
+    error: "payload.effectiveDate must be an ISO date",
+    validationErrors: [
+      {
+        message: "payload.effectiveDate must be an ISO date",
+      },
+    ],
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: fixture,
+  });
+
+  assert.equal(submitResponse.statusCode, 201);
+  assert.deepEqual(submitResponse.json(), {
+    personId: "person-transfer-001",
+    transactionRequestId: "transaction-request-transfer-001",
+    statusCode: "submitted",
+    correlationId: "correlation-transfer-001",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT
+              transaction_request.request_type,
+              transaction_request.status_code,
+              transaction_request.payload_version,
+              transaction_request.payload_json
+            FROM transaction_request
+            WHERE transaction_request.id = ?
+          `,
+        )
+        .get("transaction-request-transfer-001"),
+    ),
+    {
+      request_type: "transfer",
+      status_code: "submitted",
+      payload_version: "mvp_b_transfer_v1",
+      payload_json: JSON.stringify(fixture.payload),
+    },
+  );
+});
+
+test("POST /transfers/assignment-change/transaction-requests edits drafts and resubmits returned requests", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const draft = createTransferTransactionRequestFixture({
+    statusCode: "draft",
+  });
+  const createDraftResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: draft,
+  });
+  assert.equal(createDraftResponse.statusCode, 201);
+  assert.deepEqual(createDraftResponse.json(), {
+    personId: draft.person.id,
+    transactionRequestId: draft.id,
+    statusCode: "draft",
+    correlationId: draft.correlationId,
+  });
+
+  const editedDraft = createTransferTransactionRequestFixture({
+    statusCode: "draft",
+    requestedAt: "2026-06-16T00:00:00Z",
+    person: { displayName: "MVP-B Transfer Draft Edited" },
+    payload: {
+      targetAssignment: {
+        organizationReference: "organization-engineering",
+        departmentReference: "department-platform",
+        managerReference: "manager-platform-001",
+        positionCode: "position-principal-engineer-001",
+      },
+    },
+  });
+  const editDraftResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: editedDraft,
+  });
+  assert.equal(editDraftResponse.statusCode, 201);
+  assert.deepEqual(editDraftResponse.json(), {
+    personId: draft.person.id,
+    transactionRequestId: draft.id,
+    statusCode: "draft",
+    correlationId: draft.correlationId,
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: {
+      ...editedDraft,
+      statusCode: "submitted",
+    },
+  });
+  assert.equal(submitResponse.statusCode, 201);
+  decideTransferTransactionRequest(onboardingDb, {
+    transactionRequestId: draft.id,
+    decision: "return",
+    decidedAt: "2026-06-16T01:00:00Z",
+    decidedBy: "operator-people-ops-transfer-001",
+    correlationId: "correlation-transfer-route-return-001",
+  });
+
+  const correctedSubmit = createTransferTransactionRequestFixture({
+    requestedAt: "2026-06-17T00:00:00Z",
+    person: { displayName: "MVP-B Transfer Draft Edited" },
+    payload: {
+      targetAssignment: editedDraft.payload.targetAssignment,
+      transferReason: {
+        reasonCode: "manager_change",
+        note: "Corrected bounded MVP-B transfer request",
+      },
+    },
+  });
+  const resubmitResponse = await app.inject({
+    method: "POST",
+    url: "/transfers/assignment-change/transaction-requests",
+    payload: correctedSubmit,
+  });
+
+  assert.equal(resubmitResponse.statusCode, 201);
+  assert.deepEqual(resubmitResponse.json(), {
+    personId: draft.person.id,
+    transactionRequestId: draft.id,
+    statusCode: "submitted",
+    correlationId: draft.correlationId,
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT person.display_name, transaction_request.status_code, transaction_request.payload_json
+            FROM transaction_request
+            JOIN person ON person.id = transaction_request.person_id
+            WHERE transaction_request.id = ?
+          `,
+        )
+        .get(draft.id),
+    ),
+    {
+      display_name: "MVP-B Transfer Draft Edited",
+      status_code: "submitted",
+      payload_json: JSON.stringify(correctedSubmit.payload),
+    },
   );
 });
 
