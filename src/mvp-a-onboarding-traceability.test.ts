@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
 
 import { buildOktaMasteringAdapter } from "./okta-mastering-adapter.js";
@@ -21,19 +19,12 @@ import {
   decideOnboardingTransactionRequest,
   saveOnboardingTransactionRequest,
 } from "./onboarding-transaction-request.js";
+import {
+  openSchemaBackedDatabase,
+  readRepoFile,
+} from "./test-helpers/database.js";
+import { workerAttemptCorrelationId } from "./test-helpers/onboarding.js";
 import { verifyMvpAOnboardingCorrelationTrace } from "./mvp-a-onboarding-traceability.js";
-
-const workerAttemptCorrelationId = (
-  workerCorrelationId: string,
-  transactionRequestId: string,
-): string =>
-  `onboarding-apply-worker-attempt-${Buffer.from(
-    JSON.stringify([workerCorrelationId, transactionRequestId]),
-    "utf8",
-  ).toString("base64url")}`;
-
-const readRepoFile = (path: string): Promise<string> =>
-  readFile(join(process.cwd(), path), "utf8");
 
 const unsafeMvpAOnboardingEvidenceAuthorizationGate = (
   gate: unknown,
@@ -44,39 +35,6 @@ const unsafeMvpAOnboardingEvidenceRuntimeAccessInput = (
   input: unknown,
 ): Parameters<typeof authorizeMvpAOnboardingEvidenceRuntimeAccess>[1] =>
   input as Parameters<typeof authorizeMvpAOnboardingEvidenceRuntimeAccess>[1];
-
-const readCommittedMigrationSql = async (): Promise<string> => {
-  const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
-
-  const migrationSqlFiles = await Promise.all(
-    migrationFiles.map((file) => readRepoFile(join("drizzle", file))),
-  );
-
-  return migrationSqlFiles.join("\n");
-};
-
-const openSchemaBackedDatabase = async (t: test.TestContext) => {
-  let sqlite: typeof import("node:sqlite");
-  try {
-    sqlite = await import("node:sqlite");
-  } catch (error) {
-    if (
-      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
-    ) {
-      t.skip("node:sqlite is unavailable in this Node runtime");
-      return undefined;
-    }
-
-    throw error;
-  }
-
-  const db = new sqlite.DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec(await readCommittedMigrationSql());
-  return db;
-};
 
 test("MVP-A onboarding evidence is traceable from one root correlation id", async (t) => {
   const db = await openSchemaBackedDatabase(t);

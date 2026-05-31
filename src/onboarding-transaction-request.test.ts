@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -30,59 +28,13 @@ import { saveOnboardingTransactionRequest as saveOnboardingTransactionRequestFro
 import { decideOnboardingTransactionRequest as decideOnboardingTransactionRequestFromApproval } from "./onboarding-transaction-request-approval.js";
 import { applyApprovedOnboardingTransactionRequest as applyApprovedOnboardingTransactionRequestFromApply } from "./onboarding-transaction-request-apply.js";
 import { applyDueOnboardingTransactionRequests as applyDueOnboardingTransactionRequestsFromWorker } from "./onboarding-transaction-request-worker.js";
-
-const readRepoFile = (path: string): Promise<string> =>
-  readFile(join(process.cwd(), path), "utf8");
-
-const readCommittedMigrationSql = async (): Promise<string> => {
-  const migrationFiles = (await readdir(join(process.cwd(), "drizzle")))
-    .filter((file) => file.endsWith(".sql"))
-    .sort();
-
-  const migrationSqlFiles = await Promise.all(
-    migrationFiles.map((file) => readRepoFile(join("drizzle", file))),
-  );
-
-  return migrationSqlFiles.join("\n");
-};
-
-const normalizeRow = <TRow extends Record<string, unknown>>(
-  row: TRow | undefined,
-): Record<string, unknown> | undefined => (row ? { ...row } : row);
-
-const normalizeRows = <TRow extends Record<string, unknown>>(
-  rows: TRow[],
-): Record<string, unknown>[] => rows.map((row) => ({ ...row }));
-
-const workerAttemptCorrelationId = (
-  workerCorrelationId: string,
-  transactionRequestId: string,
-): string =>
-  `onboarding-apply-worker-attempt-${Buffer.from(
-    JSON.stringify([workerCorrelationId, transactionRequestId]),
-    "utf8",
-  ).toString("base64url")}`;
-
-const openSchemaBackedDatabase = async (t: test.TestContext) => {
-  let sqlite: typeof import("node:sqlite");
-  try {
-    sqlite = await import("node:sqlite");
-  } catch (error) {
-    if (
-      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
-    ) {
-      t.skip("node:sqlite is unavailable in this Node runtime");
-      return undefined;
-    }
-
-    throw error;
-  }
-
-  const db = new sqlite.DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec(await readCommittedMigrationSql());
-  return db;
-};
+import {
+  normalizeRow,
+  normalizeRows,
+  openSchemaBackedDatabase,
+  readRepoFile,
+} from "./test-helpers/database.js";
+import { workerAttemptCorrelationId } from "./test-helpers/onboarding.js";
 
 test("MVP-A onboarding transaction request input is parsed into a typed fail-closed contract", () => {
   const parsed = parseOnboardingTransactionRequestInput(
