@@ -266,6 +266,57 @@ test("synthetic hire behavior stays split by responsibility", async () => {
   }
 });
 
+test("MVP-B transfer transaction request facade stays split by responsibility", async () => {
+  const modulePaths = [
+    "src/transfer-transaction-request.ts",
+    "src/transfer-transaction-request-contract.ts",
+    "src/transfer-transaction-request-persistence.ts",
+    "src/transfer-transaction-request-decision.ts",
+  ] as const;
+  const sources = Object.fromEntries(
+    await Promise.all(
+      modulePaths.map(async (path) => [path, await readRepoFile(path)]),
+    ),
+  ) as Record<(typeof modulePaths)[number], string>;
+
+  assert.match(
+    sources["src/transfer-transaction-request.ts"],
+    /from "\.\/transfer-transaction-request-persistence\.js"/u,
+  );
+  assert.match(
+    sources["src/transfer-transaction-request.ts"],
+    /from "\.\/transfer-transaction-request-decision\.js"/u,
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /export function saveTransferTransactionRequest/u,
+    "public transfer facade must not own transfer persistence runtime",
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /export function decideTransferTransactionRequest/u,
+    "public transfer facade must not own transfer decision runtime",
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /transfer_transaction_request_(?:persistence|edit|decision)/u,
+    "public transfer facade must not carry persistence or decision savepoint names",
+  );
+
+  assert.match(
+    sources["src/transfer-transaction-request-persistence.ts"],
+    /export function saveTransferTransactionRequest/u,
+  );
+  assert.match(
+    sources["src/transfer-transaction-request-decision.ts"],
+    /export function decideTransferTransactionRequest/u,
+  );
+  assert.match(
+    sources["src/transfer-transaction-request-contract.ts"],
+    /export function parseTransferTransactionRequestInput/u,
+  );
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
