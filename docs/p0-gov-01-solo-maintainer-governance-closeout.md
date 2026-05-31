@@ -12,8 +12,8 @@ review outcome. This closeout is part of the policy-as-code documentation input
 set, so future wording changes here must preserve the same fail-closed readiness
 boundary.
 
-P0-R05 (#11), P0-R06 (#12), and P0-R08 (#14) remain owner-acknowledged defer.
-They are not Accepted under the original ADR 0000 two-key semantics. Owner
+P0-R05 (#11), P0-R06 (#12), and P0-R08 (#14) remain owner-acknowledged defer;
+they are not Accepted under the original ADR 0000 two-key semantics. Owner
 acknowledgement is not independent legal, security, privacy, operator, or
 second-maintainer approval.
 
