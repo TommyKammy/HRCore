@@ -2456,6 +2456,75 @@ test("MVP-A P2A-05 refactor wave closeout records behavior-preserving review", a
   );
 });
 
+test("MVP-B P2B-01 readiness review closeout keeps production gates blocked", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-b-p2b-01-readiness-review-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-B P2B-01 Readiness Review Closeout",
+    "Issue: #256",
+    "Part of: #248",
+    "Depends on: #255",
+    "Readiness Verdict",
+    "bounded/non-production MVP-B transfer E2E: Go",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "Reviewed Artifacts",
+    "#249 transfer transaction_request schema / validation",
+    "#250 transfer approval / return / reject / cancel flow",
+    "#251 effective-dated assignment update and collision guard",
+    "#252 transfer wizard / API bounded surface",
+    "#253 future-date transfer apply worker",
+    "#254 mock Okta group/profile projection impact",
+    "#255 transfer audit / correlation trace closeout",
+    "No Silent Surface Openings",
+    "real employee data",
+    "live Okta",
+    "production authorization/RLS",
+    "audit immutability",
+    "raw/export",
+    "backup",
+    "ops/DLQ",
+    "legal/privacy",
+    "two-key acceptance",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Blockers",
+    "<follow-up-real-employee-data-readiness>",
+    "<follow-up-live-okta-provider-readiness>",
+    "<follow-up-production-authorization-rls>",
+    "<follow-up-production-audit-immutability>",
+    "<follow-up-raw-export-readiness>",
+    "<follow-up-production-backup-readiness>",
+    "<follow-up-operations-dlq-replay>",
+    "<follow-up-legal-privacy-two-key-acceptance>",
+    "Owner acknowledgement is not Accepted two-key approval.",
+    "Closeout",
+    "P2B-01 can close for bounded/non-production MVP-B transfer review evidence",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2B-01 readiness closeout text: ${requiredText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    closeout,
+    /#240[\s\S]{0,160}\bis\s+Accepted two-key approval\b/u,
+    "P2B-01 closeout must not convert #240 owner acknowledgement into Accepted two-key approval",
+  );
+
+  assert.match(
+    readme,
+    /\[MVP-B P2B-01 Readiness Review Closeout\]\(docs\/mvp-b-p2b-01-readiness-review-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
