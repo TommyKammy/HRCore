@@ -33,6 +33,7 @@ The MVP-A onboarding PII masking, raw payload, and CSV/export closed gate is rec
 The MVP-A onboarding non-production data handling gate is recorded in [MVP-A Onboarding Non-Production Data Handling Gate](docs/mvp-a-onboarding-non-production-data-gate.md).
 The MVP-A onboarding local synthetic backup / restore rehearsal gate is recorded in [MVP-A Onboarding Backup / Restore Rehearsal Gate](docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md).
 The final bounded/non-production MVP-A onboarding gate review checklist is recorded in [MVP-A Onboarding Go/No-Go Checklist](docs/mvp-a-onboarding-go-no-go-checklist.md).
+The bounded synthetic MVP-B transfer assignment apply behavior and deferred P0-R03/R08 gates are recorded in [MVP-B Transfer Assignment Apply Boundary](docs/mvp-b-transfer-assignment-apply-boundary.md).
 The final P2A-02 independent implementation review closeout is recorded in [MVP-A P2A-02 Independent Review Closeout](docs/mvp-a-p2a-02-independent-review-closeout.md).
 The final P2A-03 practical-use readiness review closeout is recorded in [MVP-A P2A-03 Practical-Use Readiness Review Closeout](docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md).
 The final P2A-04 behavior-preserving refactor wave closeout is recorded in [MVP-A P2A-04 Refactor Wave Closeout](docs/mvp-a-p2a-04-refactor-wave-closeout.md).
@@ -110,6 +111,10 @@ The final P2A-05 high / medium priority behavior-preserving refactor wave closeo
   bounded/non-production MVP-A onboarding Go/No-Go checklist, stronger-readiness
   blockers, and follow-up placeholders before practical-use or production-like
   claims.
+- `docs/mvp-b-transfer-assignment-apply-boundary.md` records the bounded
+  synthetic MVP-B transfer assignment apply behavior, deterministic assignment
+  history evidence, collision guard, and deferred P0-R03/R08 production-grade
+  constraints.
 - `docs/mvp-a-p2a-02-independent-review-closeout.md` records the independent
   MVP-A P2A-02 implementation review, R08/core-stability evidence, verification
   commands, residual risks, and bounded/non-production readiness verdict.
