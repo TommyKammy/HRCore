@@ -248,7 +248,7 @@ test("MVP-B transfer transaction request persistence rejects existing person dri
   }
 });
 
-test("MVP-B transfer transaction request persistence submits an existing draft", async (t) => {
+test("MVP-B transfer transaction request persistence submits and updates an existing draft", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
 
@@ -262,6 +262,15 @@ test("MVP-B transfer transaction request persistence submits an existing draft",
       db,
       createTransferTransactionRequestFixture({
         statusCode: "submitted",
+        requestedAt: "2026-06-16T00:00:00Z",
+        payload: {
+          targetAssignment: {
+            organizationReference: "organization-engineering",
+            departmentReference: "department-platform",
+            managerReference: "manager-platform-001",
+            positionCode: "position-principal-engineer-001",
+          },
+        },
       }),
     );
 
@@ -274,21 +283,86 @@ test("MVP-B transfer transaction request persistence submits an existing draft",
         db
           .prepare(
             `
-              SELECT status_code
+              SELECT status_code, requested_at, payload_json
               FROM transaction_request
               WHERE id = ?
             `,
           )
           .get(draft.id) as Record<string, unknown> | undefined,
       ),
-      { status_code: "submitted" },
+      {
+        status_code: "submitted",
+        requested_at: "2026-06-16T00:00:00Z",
+        payload_json: JSON.stringify({
+          tenantEnvironmentId: "repo_owned_synthetic_mvp_b_transfer",
+          effectiveDate: "2026-07-01",
+          currentAssignment: {
+            assignmentId: "assignment-current-transfer-001",
+            assignmentCode: "ASN-CURRENT-TRANSFER-001",
+          },
+          targetAssignment: {
+            organizationReference: "organization-engineering",
+            departmentReference: "department-platform",
+            managerReference: "manager-platform-001",
+            positionCode: "position-principal-engineer-001",
+          },
+          transferReason: {
+            reasonCode: "team_change",
+            note: "Synthetic bounded MVP-B transfer request",
+          },
+        }),
+      },
     );
   } finally {
     db.close();
   }
 });
 
-test("MVP-B transfer migration preserves dependent onboarding apply attempts", async (t) => {
+test("MVP-B transfer transaction request persistence rejects draft submission binding drift", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const draft = createTransferTransactionRequestFixture({
+      statusCode: "draft",
+    });
+    saveTransferTransactionRequest(db, draft);
+
+    assert.throws(
+      () =>
+        saveTransferTransactionRequest(
+          db,
+          createTransferTransactionRequestFixture({
+            id: "transaction-request-transfer-different",
+            statusCode: "submitted",
+          }),
+        ),
+      /transfer transaction request retry conflicts with the existing request/,
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT id, status_code
+              FROM transaction_request
+              WHERE correlation_id = ?
+            `,
+          )
+          .get(draft.correlationId) as Record<string, unknown> | undefined,
+      ),
+      {
+        id: draft.id,
+        status_code: "draft",
+      },
+      "draft submission must not update a differently bound request",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-B transfer migration preserves dependent request rows inside a transaction", async (t) => {
   const db = await openSqliteDatabase(t);
   if (!db) return;
 
@@ -361,9 +435,34 @@ test("MVP-B transfer migration preserves dependent onboarding apply attempts", a
       `,
     ).run();
 
+    db.prepare(
+      `
+        INSERT INTO lifecycle_event (
+          id,
+          person_id,
+          transaction_request_id,
+          contact_point_id,
+          event_type,
+          effective_date,
+          occurred_at
+        )
+        VALUES (
+          'lifecycle-event-migration-transfer-001',
+          'person-migration-transfer-001',
+          'transaction-request-migration-transfer-001',
+          NULL,
+          'hire',
+          '2026-06-01',
+          '2026-06-01T00:00:00Z'
+        )
+      `,
+    ).run();
+
+    db.exec("BEGIN IMMEDIATE");
     db.exec(
       await readRepoFile("drizzle/0014_transfer_transaction_request.sql"),
     );
+    db.exec("COMMIT");
 
     assert.deepEqual(
       normalizeRow(
@@ -375,6 +474,24 @@ test("MVP-B transfer migration preserves dependent onboarding apply attempts", a
               JOIN transaction_request
                 ON transaction_request.id = onboarding_apply_job_attempt.transaction_request_id
                AND transaction_request.person_id = onboarding_apply_job_attempt.person_id
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      {
+        transaction_request_id: "transaction-request-migration-transfer-001",
+      },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT lifecycle_event.transaction_request_id
+              FROM lifecycle_event
+              JOIN transaction_request
+                ON transaction_request.id = lifecycle_event.transaction_request_id
+               AND transaction_request.person_id = lifecycle_event.person_id
             `,
           )
           .get() as Record<string, unknown> | undefined,

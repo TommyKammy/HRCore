@@ -213,8 +213,13 @@ export function saveTransferTransactionRequest(
       return buildTransferRetryResult(existingRequest);
     }
 
-    if (matchesTransferDraftSubmission(existingRequest, parsed, payloadJson)) {
-      return submitExistingTransferDraft(db, existingRequest, parsed);
+    if (isSameTransferDraftBinding(existingRequest, parsed)) {
+      return submitExistingTransferDraft(
+        db,
+        existingRequest,
+        parsed,
+        payloadJson,
+      );
     }
 
     throw new Error(
@@ -525,6 +530,7 @@ function matchesTransferRetry(
 ): boolean {
   return (
     existing.status_code === input.statusCode &&
+    existing.transaction_request_id === input.id &&
     existing.person_id === input.person.id &&
     existing.display_name === input.person.displayName &&
     existing.created_at === input.person.createdAt &&
@@ -536,22 +542,20 @@ function matchesTransferRetry(
   );
 }
 
-function matchesTransferDraftSubmission(
+function isSameTransferDraftBinding(
   existing: ExistingTransferTransactionRequestRow,
   input: TransferTransactionRequestInput,
-  payloadJson: string,
 ): boolean {
   return (
     existing.status_code === "draft" &&
     input.statusCode === "submitted" &&
+    existing.transaction_request_id === input.id &&
     existing.person_id === input.person.id &&
     existing.display_name === input.person.displayName &&
     existing.created_at === input.person.createdAt &&
     existing.request_type === input.requestType &&
-    existing.requested_at === input.requestedAt &&
     existing.correlation_id === input.correlationId &&
-    existing.payload_version === input.payloadVersion &&
-    existing.payload_json === payloadJson
+    existing.payload_version === input.payloadVersion
   );
 }
 
@@ -559,12 +563,15 @@ function submitExistingTransferDraft(
   db: OnboardingTransactionRequestDatabase,
   existing: ExistingTransferTransactionRequestRow,
   input: TransferTransactionRequestInput,
+  payloadJson: string,
 ): TransferTransactionRequestPersistenceResult {
   const updateResult = db
     .prepare(
       `
         UPDATE transaction_request
-        SET status_code = 'submitted'
+        SET status_code = 'submitted',
+            requested_at = ?,
+            payload_json = ?
         WHERE id = ?
           AND person_id = ?
           AND correlation_id = ?
@@ -572,6 +579,8 @@ function submitExistingTransferDraft(
       `,
     )
     .run(
+      input.requestedAt,
+      payloadJson,
       existing.transaction_request_id,
       input.person.id,
       input.correlationId,
