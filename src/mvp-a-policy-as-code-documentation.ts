@@ -97,20 +97,29 @@ function collectAffectedReadinessGateFindings(
         continue;
       }
 
+      const mentionedGates = affectedReadinessGateClaims.filter((gate) =>
+        mentionsAffectedGate(segment, gate.aliases),
+      );
       for (const gate of affectedReadinessGateClaims) {
         const claimBelongsToDocumentGate =
           documentGate?.subject === gate.subject &&
           hasDocumentScopedReadinessOverclaim(segment);
         if (
           !claimBelongsToDocumentGate &&
-          !mentionsAffectedGate(segment, gate.aliases)
+          !mentionedGates.some(
+            (mentionedGate) => mentionedGate.subject === gate.subject,
+          )
         ) {
           continue;
         }
 
+        const claimHasIndependentApproval =
+          mentionedGates.length === 1 &&
+          mentionedGates[0].subject === gate.subject &&
+          hasDocumentedIndependentReadinessApproval(segment);
         if (
           isExplicitlyBlockedOrDeferred(segment) ||
-          hasDocumentedIndependentReadinessApproval(segment) ||
+          claimHasIndependentApproval ||
           (claimBelongsToDocumentGate && documentHasIndependentApproval)
         ) {
           continue;
@@ -140,10 +149,22 @@ function mentionsAffectedGate(
   segment: string,
   aliases: readonly string[],
 ): boolean {
-  const normalizedSegment = segment.toLowerCase();
-  return aliases.some((alias) =>
-    normalizedSegment.includes(alias.toLowerCase()),
-  );
+  return aliases.some((alias) => matchesAlias(segment, alias));
+}
+
+function matchesAlias(segment: string, alias: string): boolean {
+  const aliasPattern = escapeRegExp(alias);
+  const suffixBoundary = alias.startsWith("#")
+    ? `(?!\\d)`
+    : `(?![\\p{L}\\p{N}_-])`;
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}_-])${aliasPattern}${suffixBoundary}`,
+    "iu",
+  ).test(segment);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function splitClaimSegments(text: string): string[] {
@@ -162,7 +183,7 @@ function splitClaimSegments(text: string): string[] {
 
     segments.push(
       ...normalizedLine
-        .split(/[.;]/u)
+        .split(/[.]/u)
         .map((segment) => segment.replace(/\s+/gu, " ").trim())
         .filter((segment) => segment.length > 0),
     );
@@ -180,13 +201,15 @@ function hasAffectedReadinessOverclaim(segment: string): boolean {
 
 function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
   return (
-    /^accepted$/iu.test(segment) || hasProductionLikeReadinessOverclaim(segment)
+    /^(?:Status\s*:\s*)?Accepted\s*\.?$/iu.test(segment) ||
+    /^(?:[-*]\s*)Accepted\s*\.?$/iu.test(segment) ||
+    hasProductionLikeReadinessOverclaim(segment)
   );
 }
 
 function hasProductionLikeReadinessOverclaim(segment: string): boolean {
   return (
-    /(?:^|\|)\s*production-like(?:\s+|-)ready\s*(?:\||$)/iu.test(segment) ||
+    /(?:^|[|:])\s*production-like(?:\s+|-)ready\b/iu.test(segment) ||
     /\b(?:is|are|be|become|treated\s+as|described\s+as)\s+production-like(?:\s+|-)ready\b/iu.test(
       segment,
     ) ||
@@ -205,9 +228,29 @@ function isExplicitlyBlockedOrDeferred(segment: string): boolean {
     "giu",
   );
   const claimText = segment.replace(metadataPattern, "");
-  return /(?:must not|cannot|do not|does not|not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|before accepted|required before accepted|requires? a later accepted|requires? an? accepted [^|.]+ before|accepted [^|.]{0,80} evidence|until a later accepted|later accepted two-key)/iu.test(
+  if (hasBareReadinessTableCell(claimText)) {
+    return false;
+  }
+  return /(?:must not|cannot|do not|does not|not be described as|not accepted|not yet accepted|no accepted|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|follow-up work|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? an? accepted [^|.]+ before|until a later accepted|later accepted two-key)/iu.test(
     claimText,
   );
+}
+
+function hasBareReadinessTableCell(segment: string): boolean {
+  if (!segment.includes("|")) {
+    return false;
+  }
+
+  return segment
+    .split("|")
+    .map((cell) => cell.replace(/\s+/gu, " ").trim())
+    .some(
+      (cell) =>
+        /^accepted$/iu.test(cell) ||
+        /^production-like(?:\s+|-)ready(?:\s*:\s*(?:Go|Accepted|Yes))?$/iu.test(
+          cell,
+        ),
+    );
 }
 
 function hasDocumentedIndependentReadinessApproval(text: string): boolean {

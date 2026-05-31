@@ -434,6 +434,43 @@ test("MVP-A policy-as-code input loader scans affected ADR readiness claims", as
   );
 });
 
+test("MVP-A policy-as-code input loader scans affected companion gate docs", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  await writeFile(
+    join(fixtureCwd, "docs/mvp-a-onboarding-evidence-authorization-gate.md"),
+    "P0-R05 / #11 authorization and data-scope enforcement: Accepted.",
+  );
+  await writeFile(
+    join(fixtureCwd, "docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md"),
+    "P0-R06 / #12: production-like ready.",
+  );
+  await writeFile(
+    join(fixtureCwd, "docs/mvp-a-onboarding-pii-export-gate.md"),
+    "P0-R08 / #14 raw payload and CSV/export can be treated as Accepted.",
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, subject] of [
+    ["docs/mvp-a-onboarding-evidence-authorization-gate.md", "P0-R05 / #11"],
+    ["docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md", "P0-R06 / #12"],
+    ["docs/mvp-a-onboarding-pii-export-gate.md", "P0-R08 / #14"],
+  ]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === path &&
+          finding.subject === subject,
+      ),
+      `expected loader-read ${path} overclaim to fail the policy gate`,
+    );
+  }
+});
+
 test("MVP-A policy-as-code gate scopes independent approval to each readiness claim", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
@@ -479,6 +516,137 @@ test("MVP-A policy-as-code gate scopes independent approval to each readiness cl
         finding.subject === "P0-R08 / #14",
     ),
     "expected P0-R08 overclaim to fail when review window is incomplete",
+  );
+});
+
+test("MVP-A policy-as-code gate handles affected readiness claim edge cases", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        "docs/fixture-current-head-readiness-edges.md",
+        [
+          "Issue #114 is Accepted as an unrelated follow-up.",
+          "P0-R05 / #11 is Accepted; Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
+          "P0-R06 / #12: production-like ready.",
+          "| Gate | Readiness | Evidence |",
+          "| --- | --- | --- |",
+          "| P0-R05 / #11 | Accepted | accepted authorization evidence attached |",
+        ].join("\n"),
+      ],
+      [
+        "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
+        [
+          "# ADR 0011: Data Scope Policy DSL and PostgreSQL RLS MVP-A/v1 Boundary",
+          "",
+          "Status: Accepted",
+          "",
+          "## Decision owners",
+          "",
+          "- Author: TommyKammy",
+          "- Approver: Required before Accepted; no named maintainer approval is recorded in this PR.",
+          "- Counter-approver: Required before Accepted; no independent named counter-approver is recorded in this PR.",
+          "- Time-locked review window: Required before Accepted; no completed review window is recorded in this PR.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-current-head-readiness-edges.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    true,
+    "expected P0-R05 Accepted evidence row to fail",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-current-head-readiness-edges.md" &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    true,
+    "expected P0-R06 shorthand production-like-ready claim to fail",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md" &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    true,
+    "expected inline ADR Status: Accepted claim to fail via document identity",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/fixture-current-head-readiness-edges.md" &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    false,
+    "expected unrelated #114 Accepted wording not to match #14",
+  );
+});
+
+test("MVP-A policy-as-code gate does not substring-match issue aliases", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-alias-boundary.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        [
+          "Issue #114 is Accepted as an unrelated follow-up.",
+          "Issue #125 is Accepted as an unrelated follow-up.",
+          "Issue #140 is Accepted as an unrelated follow-up.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.equal(
+    findings.some(
+      (finding) => finding.surface === "documentation" && finding.path === path,
+    ),
+    false,
+    "expected unrelated issue aliases not to trigger affected readiness findings",
+  );
+});
+
+test("MVP-A policy-as-code gate preserves semicolon approval metadata", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-semicolon-readiness-approval.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        "P0-R05 / #11 is Accepted; Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
+      ],
+    ]),
+  });
+
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    false,
+    "expected semicolon-separated independent approval metadata to satisfy the same claim",
   );
 });
 
