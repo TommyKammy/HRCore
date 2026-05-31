@@ -1050,6 +1050,16 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
     "docs/fixture-direct-production-like-ready.md";
   const acceptedFollowUpPath = "docs/fixture-accepted-follow-up-work.md";
   const numberedStatusPath = "docs/fixture-numbered-status-readiness.md";
+  const negativeThenAcceptedPath =
+    "docs/fixture-negative-then-accepted-readiness.md";
+  const commaMetadataBeforeClaimPath =
+    "docs/fixture-comma-metadata-before-readiness.md";
+  const waivedCounterApproverPath =
+    "docs/fixture-waived-counter-approver-readiness.md";
+  const approvedDependencyLabelPath =
+    "docs/fixture-approved-dependency-label-readiness.md";
+  const adrStatusVariantPath =
+    "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md";
   const findings = checkMvpAPolicyAsCode({
     ...inputs,
     documentationTextByPath: new Map([
@@ -1061,6 +1071,36 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
       [directProductionLikePath, "P0-R05 / #11 production-like ready."],
       [acceptedFollowUpPath, "P0-R05 / #11 is Accepted with follow-up work."],
       [numberedStatusPath, ["# P0-R06 / #12", "", "1. Accepted"].join("\n")],
+      [
+        negativeThenAcceptedPath,
+        "P0-R05 / #11 is not production-like ready but is Accepted.",
+      ],
+      [
+        commaMetadataBeforeClaimPath,
+        "Approver: Required before Accepted, Counter-approver: Required before Accepted, P0-R06 / #12 is Accepted.",
+      ],
+      [
+        waivedCounterApproverPath,
+        "P0-R08 / #14 is Accepted; Independent approver: Alice; Independent counter-approver: Not required because solo-maintainer; Time-locked review window: 2026-05-01 to 2026-05-02 completed.",
+      ],
+      [
+        approvedDependencyLabelPath,
+        [
+          "| Gate | Readiness | Dependency | Independent approval |",
+          "| --- | --- | --- | --- |",
+          "| P0-R08 / #14 | Accepted | dependency: ADR 0011 | Independent approver: Alice; Independent counter-approver: Bob; Time-locked review window: 2026-05-01 to 2026-05-02 completed |",
+        ].join("\n"),
+      ],
+      [
+        adrStatusVariantPath,
+        [
+          "# ADR 0011: Data scope policy DSL and RLS boundary",
+          "",
+          "## Status",
+          "",
+          "**Status:** Accepted with follow-ups",
+        ].join("\n"),
+      ],
     ]),
   });
 
@@ -1109,6 +1149,51 @@ test("MVP-A policy-as-code gate covers final readiness review probes", async () 
         finding.subject === "P0-R06 / #12",
     ),
     "expected numbered Accepted status under a gate heading to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === negativeThenAcceptedPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected Accepted wording after negative production-like wording to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === commaMetadataBeforeClaimPath &&
+        finding.subject === "P0-R06 / #12",
+    ),
+    "expected comma-separated placeholder metadata not to hide Accepted wording",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === waivedCounterApproverPath &&
+        finding.subject === "P0-R08 / #14",
+    ),
+    "expected waived counter-approver metadata not to satisfy two-key approval",
+  );
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === approvedDependencyLabelPath,
+    ),
+    false,
+    "expected dependency-labeled same-row approval to stay scoped to the claimed gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === adrStatusVariantPath &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected ADR status variants containing Accepted to fail via document identity",
   );
 });
 

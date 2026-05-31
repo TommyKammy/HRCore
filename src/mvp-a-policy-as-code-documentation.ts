@@ -40,6 +40,16 @@ const affectedReadinessGateClaims = [
 
 const reviewMetadataLabels =
   "(?:Author|Independent\\s+approver|Approver|Independent\\s+counter-approver|Counter-approver|Time-locked\\s+review\\s+window)";
+const affectedReadinessGateAliasLabels = affectedReadinessGateClaims
+  .flatMap((gate) => gate.aliases)
+  .sort((left, right) => right.length - left.length)
+  .map((alias) => {
+    const suffixBoundary = alias.startsWith("#")
+      ? `(?!\\d)`
+      : `(?![\\p{L}\\p{N}_-])`;
+    return `${escapeRegExp(alias)}${suffixBoundary}`;
+  })
+  .join("|");
 
 const requiredNonProductionDocumentationPaths = [
   "README.md",
@@ -279,8 +289,7 @@ function applyCurrentGateHeadingContext(
 
 function isStatusOrReadinessSegment(segment: string): boolean {
   return (
-    /^(?:Status\s*:\s*)?Accepted\s*\.?$/iu.test(segment) ||
-    /^(?:[-*]|\d+\.)\s*Accepted\s*\.?$/iu.test(segment) ||
+    hasAcceptedStatusClaim(segment) ||
     hasProductionLikeReadinessOverclaim(segment)
   );
 }
@@ -319,7 +328,7 @@ function isDependencyGateMention(
   gatePosition: number,
 ): boolean {
   const prefix = segment.slice(Math.max(0, gatePosition - 40), gatePosition);
-  return /\b(?:depends?\s+on|dependency|blocked\s+by|requires?)\s+$/iu.test(
+  return /\b(?:depends?\s+on|dependency\s*:|dependency|blocked\s+by|requires?)\s+$/iu.test(
     prefix,
   );
 }
@@ -356,7 +365,7 @@ function findAllAliasIndexes(segment: string, alias: string): number[] {
 
 function stripReviewMetadata(segment: string): string {
   const metadataPattern = new RegExp(
-    `\\b${reviewMetadataLabels}:\\s*[^|;\\r\\n]+\\s*(?:;\\s*)?`,
+    `\\b${reviewMetadataLabels}:\\s*.*?(?=\\s*(?:[,;]\\s*)?(?:${reviewMetadataLabels}:|${affectedReadinessGateAliasLabels})|[|;\\r\\n]|$)`,
     "giu",
   );
   return segment.replace(metadataPattern, "");
@@ -371,9 +380,18 @@ function hasAffectedReadinessOverclaim(segment: string): boolean {
 
 function hasDocumentScopedReadinessOverclaim(segment: string): boolean {
   return (
-    /^(?:Status\s*:\s*)?Accepted\s*\.?$/iu.test(segment) ||
-    /^(?:[-*]|\d+\.)\s*Accepted\s*\.?$/iu.test(segment) ||
+    hasAcceptedStatusClaim(segment) ||
     hasProductionLikeReadinessOverclaim(segment)
+  );
+}
+
+function hasAcceptedStatusClaim(segment: string): boolean {
+  const normalizedSegment = segment.replace(/\s+/gu, " ").trim();
+  return (
+    /^(?:[-*+]|\d+\.)?\s*Accepted\b/iu.test(normalizedSegment) ||
+    /^\*{0,2}Status\*{0,2}\s*:\s*Accepted\b/iu.test(normalizedSegment) ||
+    /^\*{0,2}Status\s*:\*{0,2}\s*Accepted\b/iu.test(normalizedSegment) ||
+    /^\|?\s*\*{0,2}Status\*{0,2}\s*\|\s*Accepted\b/iu.test(normalizedSegment)
   );
 }
 
@@ -398,8 +416,83 @@ function isExplicitlyBlockedOrDeferred(segment: string): boolean {
   if (hasBareReadinessTableCell(claimText)) {
     return false;
   }
+  if (hasUnblockedReadinessOverclaim(claimText)) {
+    return false;
+  }
   return /(?:not be described as|not accepted|not yet accepted|no accepted|not production-like(?:\s+|-)ready|not yet production-like(?:\s+|-)ready|no production-like(?:\s+|-)ready|has not been accepted|have not been accepted|is not accepted|are not accepted|remain(?:s)? Proposed|remain(?:s)? blocked|stays? blocked|blocked for|No-go until|#\d+-class [^|]+ follow-up|before accepted|required before accepted|requires? a later accepted|requires? (?:an? )?accepted [^|.]+ before|until a later accepted|later accepted two-key|\b(?:cannot|do not|does not|must not)\b[^|.]{0,80}\b(?:describe|claim|treat|mark|count|classify|approve|be described as|be treated as)\b[^|.]{0,80}\b(?:accepted|production-like(?:\s+|-)ready|production-like readiness))/iu.test(
     claimText,
+  );
+}
+
+function hasUnblockedReadinessOverclaim(segment: string): boolean {
+  return (
+    hasUnblockedAcceptedReadinessOccurrence(segment) ||
+    hasUnblockedReadinessOccurrence(
+      segment,
+      /\bproduction-like(?:\s+|-)ready\b/giu,
+    )
+  );
+}
+
+function hasUnblockedAcceptedReadinessOccurrence(segment: string): boolean {
+  for (const match of segment.matchAll(/\baccepted\b/giu)) {
+    const index = match.index;
+    if (index === undefined) {
+      continue;
+    }
+
+    if (
+      isAcceptedReadinessClaimShape(segment, index, match[0].length) &&
+      !isReadinessOccurrenceBlocked(segment.slice(0, index))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isAcceptedReadinessClaimShape(
+  segment: string,
+  index: number,
+  length: number,
+): boolean {
+  const prefix = segment.slice(Math.max(0, index - 40), index);
+  const suffix = segment.slice(index + length, index + length + 40);
+  return (
+    /(?:^|[\s|:])(?:is|are|be|been|become|treated\s+as|described\s+as|marked\s+as|classified\s+as|Status\s*:?)?\s*$/iu.test(
+      prefix,
+    ) && /^(?:\s*(?:[|.;,]|$)|\s+(?:with|for)\b)/iu.test(suffix)
+  );
+}
+
+function hasUnblockedReadinessOccurrence(
+  segment: string,
+  pattern: RegExp,
+): boolean {
+  for (const match of segment.matchAll(pattern)) {
+    const index = match.index;
+    if (index === undefined) {
+      continue;
+    }
+
+    if (!isReadinessOccurrenceBlocked(segment.slice(0, index))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isReadinessOccurrenceBlocked(prefix: string): boolean {
+  const localPrefix =
+    prefix
+      .split(/\b(?:but|however)\b|[.;]/iu)
+      .at(-1)
+      ?.replace(/\s+/gu, " ")
+      .trim() ?? "";
+  return /(?:\b(?:not|no|without|pending|incomplete|uncompleted|before|until|later)\b|\b(?:required|requires?|blocked|no-go)\b[^|]{0,40}\b(?:before|until|for)?|\b(?:cannot|do not|does not|must not|has not been|have not been|is not|are not)\b)[^|]{0,80}$/iu.test(
+    localPrefix,
   );
 }
 
@@ -465,7 +558,7 @@ function readReviewMetadataValue(
 function hasConcreteReviewMetadataValue(value: string): boolean {
   return (
     value.length > 0 &&
-    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder|missing|absent|unavailable|unknown|unrecorded)\b|not\s+recorded/iu.test(
+    !/\b(?:Required before Accepted|No|None|TBD|TODO|placeholder|missing|absent|unavailable|unknown|unrecorded|not required|waived?)\b|not\s+recorded/iu.test(
       value,
     )
   );
