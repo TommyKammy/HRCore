@@ -2311,6 +2311,54 @@ test("MVP-A P2A-04 refactor wave closeout records behavior-preserving review", a
   );
 });
 
+test("MVP-A P2A-05 refactor wave closeout records behavior-preserving review", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-p2a-05-refactor-wave-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A P2A-05 Refactor Wave Closeout",
+    "Issue: #232",
+    "Part of: #225",
+    "Depends on: #231",
+    "Readiness Verdict",
+    "bounded/non-production MVP-A onboarding E2E: unchanged",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "Reviewed Refactor Artifacts",
+    "onboarding transaction helper split",
+    "onboarding transaction runtime split",
+    "onboarding transaction test split",
+    "synthetic work_email writeback ingest split",
+    "synthetic hire source and test split",
+    "Okta/writeback integration and mock adapter split",
+    "Behavior and Boundary Review",
+    "No behavior drift, API drift, policy weakening, or readiness-claim broadening was accepted",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Refactor Debt",
+    "Final Verdict",
+    "P2A-05 can close as behavior-preserving maintainability hardening",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2A-05 refactor wave closeout text: ${requiredText}`,
+    );
+  }
+
+  assert.ok(
+    !normalizedCloseout.includes("src/onboarding-transaction-request.test.ts"),
+    "P2A-05 closeout must not cite the removed monolithic onboarding transaction test file",
+  );
+
+  assert.match(
+    readme,
+    /\[MVP-A P2A-05 Refactor Wave Closeout\]\(docs\/mvp-a-p2a-05-refactor-wave-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
