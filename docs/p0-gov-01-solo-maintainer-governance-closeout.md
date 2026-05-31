@@ -24,16 +24,19 @@ DLQ/ops, legal/privacy runtime, and related stronger-readiness claims.
 
 ## Gates Covered
 
-- #11 / P0-R05: owner-acknowledged defer for legal, labor, and personal-data
-  scope. Real-data or production-like legal/privacy/labor handling remains
+- #11 / P0-R05: owner-acknowledged defer for authorization and data-scope
+  enforcement. Production-like actor, subject, tenant, field-level RBAC, and
+  data-scope readiness remains blocked until the missing two-key evidence is
+  recorded.
+- #12 / P0-R06: owner-acknowledged defer for audit immutability, WORM/S3 Object
+  Lock, hash-chain, compliance-grade audit storage, and production
+  backup/restore evidence. Production-like audit and backup readiness remains
   blocked until the missing two-key evidence is recorded.
-- #12 / P0-R06: owner-acknowledged defer for security, authorization, audit,
-  break-glass, raw payload, CSV/export, backup/restore-adjacent, and operations
-  surfaces. Production-like security/audit/ops readiness remains blocked until
-  the missing two-key evidence is recorded.
-- #14 / P0-R08: owner-acknowledged defer for future-extension architecture and
-  prohibited-column/payload policy anchors. Production-like future-extension
-  readiness remains blocked until the missing two-key evidence is recorded.
+- #14 / P0-R08: owner-acknowledged defer for raw payload, CSV/export, prohibited
+  payload, and future-extension controls. Production-like raw-payload,
+  export/download, watermark or manifest, download-log, prohibited-payload, and
+  future-extension readiness remains blocked until the missing two-key evidence
+  is recorded.
 
 ## Future Promotion Condition
 

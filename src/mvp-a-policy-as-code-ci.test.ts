@@ -101,6 +101,12 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     typeof documentationHelpers.collectDocumentationFindings,
     "function",
   );
+  assert.ok(
+    mvpAPolicyAsCodeDocumentationPaths.includes(
+      "docs/p0-gov-01-solo-maintainer-governance-closeout.md",
+    ),
+    "expected P0-GOV-01 closeout to be scanned by policy-as-code",
+  );
   assert.deepEqual(
     mvpAPolicyAsCodeDocumentationPaths.filter((path) =>
       path.startsWith("docs/adr/"),
@@ -449,6 +455,10 @@ test("MVP-A policy-as-code input loader scans affected companion gate docs", asy
     join(fixtureCwd, "docs/mvp-a-onboarding-pii-export-gate.md"),
     "P0-R08 / #14 raw payload and CSV/export can be treated as Accepted.",
   );
+  await writeFile(
+    join(fixtureCwd, "docs/p0-gov-01-solo-maintainer-governance-closeout.md"),
+    "P0-R08 / #14 raw payload and CSV/export can be treated as Accepted.",
+  );
 
   const findings = checkMvpAPolicyAsCode(
     await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
@@ -458,6 +468,7 @@ test("MVP-A policy-as-code input loader scans affected companion gate docs", asy
     ["docs/mvp-a-onboarding-evidence-authorization-gate.md", "P0-R05 / #11"],
     ["docs/mvp-a-onboarding-backup-restore-rehearsal-gate.md", "P0-R06 / #12"],
     ["docs/mvp-a-onboarding-pii-export-gate.md", "P0-R08 / #14"],
+    ["docs/p0-gov-01-solo-maintainer-governance-closeout.md", "P0-R08 / #14"],
   ]) {
     assert.ok(
       findings.some(
