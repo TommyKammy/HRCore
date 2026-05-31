@@ -72,6 +72,52 @@ test("MVP-A onboarding Okta writeback integration stays outside the core transac
   );
 });
 
+test("MVP-A onboarding transaction request internal imports focused parser reader and id helpers", async () => {
+  const [
+    internalModule,
+    parserModule,
+    validationModule,
+    readerModule,
+    idModule,
+  ] = await Promise.all([
+    readRepoFile("src/onboarding-transaction-request-internal.ts"),
+    readRepoFile("src/onboarding-transaction-request-parser.ts"),
+    readRepoFile("src/onboarding-transaction-request-validation.ts"),
+    readRepoFile("src/onboarding-transaction-request-readers.ts"),
+    readRepoFile("src/onboarding-transaction-request-ids.ts"),
+  ]);
+
+  assert.match(
+    internalModule,
+    /from "\.\/onboarding-transaction-request-parser\.js"/u,
+  );
+  assert.match(
+    internalModule,
+    /from "\.\/onboarding-transaction-request-readers\.js"/u,
+  );
+  assert.match(
+    internalModule,
+    /from "\.\/onboarding-transaction-request-ids\.js"/u,
+  );
+  assert.match(
+    parserModule,
+    /export function parseOnboardingTransactionRequestInput/u,
+  );
+  assert.match(validationModule, /export function assertSupportedFields/u);
+  assert.match(
+    readerModule,
+    /export function readOnboardingTransactionRequest/u,
+  );
+  assert.match(
+    idModule,
+    /export function buildOnboardingApplyLifecycleEventId/u,
+  );
+  assert.doesNotMatch(
+    internalModule,
+    /^function (?:parsePerson|parsePayload|assertSupportedFields|readOnboardingTransactionRequest|readDueOnboardingApplyCandidates|buildOnboardingApplyLifecycleEventId|buildOnboardingDecisionAuditEventId)\b/mu,
+  );
+});
+
 test("MVP-A onboarding transaction request focused boundary modules preserve lifecycle behavior", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {
