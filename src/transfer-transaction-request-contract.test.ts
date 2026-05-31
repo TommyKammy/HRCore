@@ -9,6 +9,7 @@ import {
   saveTransferTransactionRequest,
   TransferTransactionRequestValidationError,
 } from "./transfer-transaction-request.js";
+import { parseTransferPayload } from "./transfer-transaction-request-contract.js";
 import {
   normalizeRow,
   normalizeRows,
@@ -98,6 +99,23 @@ test("MVP-B transfer transaction request validation rejects unsupported later-wa
       /payload contains unsupported fields:/,
     );
   }
+});
+
+test("MVP-B transfer payload parser remains bounded to repo-owned synthetic tenant environment", () => {
+  const fixture = createTransferTransactionRequestFixture();
+
+  assert.throws(
+    () =>
+      parseTransferPayload({
+        ...fixture.payload,
+        tenantEnvironmentId: "production",
+      }),
+    (error) =>
+      error instanceof TransferTransactionRequestValidationError &&
+      error instanceof Error &&
+      error.message ===
+        "payload.tenantEnvironmentId must be repo_owned_synthetic_mvp_b_transfer",
+  );
 });
 
 test("MVP-B transfer transaction request persistence stores only draft or submitted transfer payloads", async (t) => {
