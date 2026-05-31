@@ -2119,6 +2119,49 @@ test("MVP-A P2A-03 practical-use readiness review closeout keeps stronger gates 
   );
 });
 
+test("MVP-A P2A-04 refactor wave closeout records behavior-preserving review", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-a-p2a-04-refactor-wave-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-A P2A-04 Refactor Wave Closeout",
+    "Issue: #217",
+    "Part of: #210",
+    "Depends on: #216",
+    "Readiness Verdict",
+    "bounded/non-production MVP-A onboarding E2E: unchanged",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "Reviewed Refactor Artifacts",
+    "Fastify app route modules",
+    "onboarding transaction request boundaries",
+    "Okta writeback integration",
+    "policy-as-code CI helpers",
+    "onboarding traceability verifier",
+    "shared onboarding test helpers",
+    "Behavior and Boundary Review",
+    "No behavior drift, API drift, policy weakening, or readiness-claim broadening was accepted",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Refactor Debt",
+    "Final Verdict",
+    "P2A-04 can close as behavior-preserving maintainability hardening",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2A-04 refactor wave closeout text: ${requiredText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-A P2A-04 Refactor Wave Closeout\]\(docs\/mvp-a-p2a-04-refactor-wave-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
