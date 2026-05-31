@@ -1,14 +1,14 @@
-export {
-  applyApprovedOnboardingTransactionRequest,
-  applyApprovedOnboardingTransactionRequestWithOktaProjection,
-} from "./onboarding-transaction-request-internal.js";
+export { applyApprovedOnboardingTransactionRequest } from "./onboarding-transaction-request-internal.js";
+export { applyApprovedOnboardingTransactionRequestWithOktaProjection } from "./onboarding-okta-writeback-integration.js";
 export type {
   AppliedOnboardingTransactionRequestResult,
-  AppliedOnboardingTransactionRequestWithOktaProjectionResult,
   ApplyApprovedOnboardingTransactionRequestInput,
+} from "./onboarding-transaction-request-internal.js";
+export type {
+  AppliedOnboardingTransactionRequestWithOktaProjectionResult,
   ApplyApprovedOnboardingTransactionRequestWithOktaProjectionInput,
   OktaOnboardingUserProjectionResult,
   OktaOnboardingUserProjectionStatus,
   OnboardingWorkEmailWritebackResult,
   OnboardingWorkEmailWritebackStatus,
-} from "./onboarding-transaction-request-internal.js";
+} from "./onboarding-okta-writeback-integration.js";
