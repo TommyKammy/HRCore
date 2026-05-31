@@ -213,6 +213,8 @@ export function saveTransferTransactionRequest(
       return buildTransferRetryResult(existingRequest);
     }
 
+    // Draft submission may refresh requestedAt and payload, but only for the
+    // same durable request/person/correlation binding.
     if (isSameTransferDraftBinding(existingRequest, parsed)) {
       return submitExistingTransferDraft(
         db,

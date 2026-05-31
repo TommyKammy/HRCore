@@ -1,3 +1,5 @@
+-- Rebuild request-dependent tables around the transaction_request rebuild so
+-- SQLite foreign-key enforcement never sees a referenced request table drop.
 CREATE TEMP TABLE `__transfer_migration_lifecycle_event_rows` AS SELECT "id", "person_id", "transaction_request_id", "contact_point_id", "event_type", "effective_date", "occurred_at" FROM `lifecycle_event`;
 --> statement-breakpoint
 CREATE TEMP TABLE `__transfer_migration_onboarding_apply_job_attempt_rows` AS SELECT "id", "transaction_request_id", "person_id", "status_code", "attempted_at", "worker_id", "correlation_id", "retryable", "error_message" FROM `onboarding_apply_job_attempt`;
