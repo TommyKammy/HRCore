@@ -8,7 +8,9 @@ Depends on: #243
 
 #241, #242, and #243 are complete. Their combined result is a
 solo-maintainer / owner-acknowledged governance posture, not an independent
-review outcome.
+review outcome. This closeout is part of the policy-as-code documentation input
+set, so future wording changes here must preserve the same fail-closed readiness
+boundary.
 
 P0-R05 (#11), P0-R06 (#12), and P0-R08 (#14) remain owner-acknowledged defer.
 They are not Accepted under the original ADR 0000 two-key semantics. Owner

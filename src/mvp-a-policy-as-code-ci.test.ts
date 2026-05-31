@@ -482,6 +482,36 @@ test("MVP-A policy-as-code input loader scans affected companion gate docs", asy
   }
 });
 
+test("MVP-A policy-as-code input loader scans solo-maintainer closeout gate claims", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  const closeoutPath = "docs/p0-gov-01-solo-maintainer-governance-closeout.md";
+  await writeFile(
+    join(fixtureCwd, closeoutPath),
+    [
+      "P0-R05 / #11 authorization and data-scope enforcement is Accepted.",
+      "P0-R06 / #12 audit and backup evidence is production-like ready.",
+      "P0-R08 / #14 raw payload and CSV/export controls are Accepted.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const subject of ["P0-R05 / #11", "P0-R06 / #12", "P0-R08 / #14"]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === closeoutPath &&
+          finding.subject === subject,
+      ),
+      `expected loader-read solo-maintainer closeout overclaim to fail for ${subject}`,
+    );
+  }
+});
+
 test("MVP-A policy-as-code gate keeps non-production documentation checks path-scoped", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const companionOnlyRequiredText = [
