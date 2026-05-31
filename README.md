@@ -33,6 +33,7 @@ The MVP-A onboarding local synthetic backup / restore rehearsal gate is recorded
 The final bounded/non-production MVP-A onboarding gate review checklist is recorded in [MVP-A Onboarding Go/No-Go Checklist](docs/mvp-a-onboarding-go-no-go-checklist.md).
 The final P2A-02 independent implementation review closeout is recorded in [MVP-A P2A-02 Independent Review Closeout](docs/mvp-a-p2a-02-independent-review-closeout.md).
 The final P2A-03 practical-use readiness review closeout is recorded in [MVP-A P2A-03 Practical-Use Readiness Review Closeout](docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md).
+The final P2A-04 behavior-preserving refactor wave closeout is recorded in [MVP-A P2A-04 Refactor Wave Closeout](docs/mvp-a-p2a-04-refactor-wave-closeout.md).
 
 ## Baseline structure
 
@@ -106,6 +107,10 @@ The final P2A-03 practical-use readiness review closeout is recorded in [MVP-A P
   independent P2A-03 practical-use readiness review, verification commands,
   residual blockers, and bounded/non-production-only verdict after the
   non-production data handling follow-up wave.
+- `docs/mvp-a-p2a-04-refactor-wave-closeout.md` records the independent P2A-04
+  refactor wave review, completed module ownership splits, verification
+  commands, residual cleanup risks, and behavior-preserving maintainability
+  verdict.
 
 ## Local verification
 
