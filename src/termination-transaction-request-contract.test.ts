@@ -11,6 +11,7 @@ import {
 import {
   normalizeRow,
   openSchemaBackedDatabase,
+  readRepoFile,
 } from "./test-helpers/database.js";
 
 test("MVP-C termination transaction request input is parsed into a typed bounded contract", () => {
@@ -180,4 +181,40 @@ test("MVP-C termination transaction request persistence stores only draft or sub
   } finally {
     db.close();
   }
+});
+
+test("MVP-C termination migration metadata tracks the Drizzle 0015 contract", async () => {
+  const journalText = await readRepoFile("drizzle/meta/_journal.json");
+  const snapshotText = await readRepoFile("drizzle/meta/0015_snapshot.json");
+  const journal = JSON.parse(journalText) as {
+    entries?: Array<{ tag?: unknown }>;
+  };
+  const snapshot = JSON.parse(snapshotText) as {
+    prevId?: unknown;
+    tables?: Record<
+      string,
+      {
+        checkConstraints?: Record<string, { value?: unknown }>;
+      }
+    >;
+  };
+  const transactionRequestChecks =
+    snapshot.tables?.transaction_request?.checkConstraints;
+
+  assert.ok(
+    journal.entries?.some(
+      (entry) => entry.tag === "0015_termination_transaction_request",
+    ),
+    "Drizzle journal must include the termination transaction_request migration",
+  );
+  assert.equal(snapshot.prevId, "7e4367d8-71ed-4b2a-9b48-9b1e93a07972");
+  assert.equal(
+    transactionRequestChecks?.transaction_request_type_allowed?.value,
+    "\"transaction_request\".\"request_type\" in ('hire', 'change', 'terminate', 'transfer')",
+  );
+  assert.equal(
+    transactionRequestChecks?.transaction_request_payload_version_allowed
+      ?.value,
+    '"transaction_request"."payload_version" is null or "transaction_request"."payload_version" in (\'mvp_a_onboarding_v1\', \'mvp_b_transfer_v1\', \'mvp_c_termination_v1\')',
+  );
 });
