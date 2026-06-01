@@ -39,6 +39,7 @@ The final P2A-03 practical-use readiness review closeout is recorded in [MVP-A P
 The final P2A-04 behavior-preserving refactor wave closeout is recorded in [MVP-A P2A-04 Refactor Wave Closeout](docs/mvp-a-p2a-04-refactor-wave-closeout.md).
 The final P2A-05 high / medium priority behavior-preserving refactor wave closeout is recorded in [MVP-A P2A-05 Refactor Wave Closeout](docs/mvp-a-p2a-05-refactor-wave-closeout.md).
 The final P2B-01 bounded/non-production MVP-B transfer readiness review closeout is recorded in [MVP-B P2B-01 Readiness Review Closeout](docs/mvp-b-p2b-01-readiness-review-closeout.md).
+The final P2B-02 behavior-preserving transfer refactor wave closeout is recorded in [MVP-B P2B-02 Refactor Wave Closeout](docs/mvp-b-p2b-02-refactor-wave-closeout.md).
 
 ## Baseline structure
 
@@ -135,6 +136,10 @@ The final P2B-01 bounded/non-production MVP-B transfer readiness review closeout
   P2B-01 bounded/non-production MVP-B transfer readiness review, child issue
   evidence, verification commands, residual stronger-readiness blockers, and
   blocked production-like verdict.
+- `docs/mvp-b-p2b-02-refactor-wave-closeout.md` records the independent P2B-02
+  transfer refactor wave review, completed module ownership splits,
+  verification commands, residual cleanup risks, and behavior-preserving
+  maintainability verdict.
 
 ## Local verification
 

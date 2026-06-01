@@ -2690,6 +2690,63 @@ test("MVP-B P2B-01 readiness review closeout keeps production gates blocked", as
   );
 });
 
+test("MVP-B P2B-02 refactor wave closeout records behavior-preserving review", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-b-p2b-02-refactor-wave-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-B P2B-02 Refactor Wave Closeout",
+    "Issue: #271",
+    "Part of: #265",
+    "Depends on: #270",
+    "Readiness Verdict",
+    "bounded/non-production MVP-B transfer E2E: unchanged",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "Reviewed Refactor Artifacts",
+    "transfer contract parser / validation helper split",
+    "transfer persistence / decision runtime split",
+    "transfer apply / future-date worker runtime split",
+    "transfer mock Okta projection boundary split",
+    "transfer traceability verifier / tests split",
+    "Behavior and Boundary Review",
+    "No behavior drift, API drift, migration drift, policy weakening, or readiness-claim broadening was accepted",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Refactor Debt",
+    "Final Verdict",
+    "P2B-02 can close as behavior-preserving maintainability hardening",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2B-02 refactor wave closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2B-02 closeout must not broaden readiness with: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-B P2B-02 Refactor Wave Closeout\]\(docs\/mvp-b-p2b-02-refactor-wave-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
