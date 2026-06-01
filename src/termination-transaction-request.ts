@@ -1,6 +1,7 @@
 export { saveTerminationTransactionRequest } from "./termination-transaction-request-persistence.js";
 export { decideTerminationTransactionRequest } from "./termination-transaction-request-decision.js";
 export { applyApprovedTerminationTransactionRequest } from "./termination-transaction-request-apply.js";
+export { applyDueTerminationTransactionRequests } from "./termination-transaction-request-worker.js";
 
 export {
   createTerminationTransactionRequestFixture,
@@ -13,6 +14,12 @@ export type {
   AppliedTerminationTransactionRequestResult,
   ApplyApprovedTerminationTransactionRequestInput,
 } from "./termination-transaction-request-apply.js";
+export type {
+  ApplyDueTerminationTransactionRequestsInput,
+  ApplyDueTerminationTransactionRequestsItemResult,
+  ApplyDueTerminationTransactionRequestsResult,
+  ApplyDueTerminationTransactionRequestsStatus,
+} from "./termination-transaction-request-worker.js";
 export type {
   OnboardingApprovalDecision as TerminationApprovalDecision,
   OnboardingApprovalDecisionInput as TerminationApprovalDecisionInput,
