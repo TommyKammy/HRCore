@@ -23,6 +23,7 @@ import {
   createTransferTransactionRequestFixture,
   decideTransferTransactionRequest,
 } from "./transfer-transaction-request.js";
+import { createTerminationTransactionRequestFixture } from "./termination-transaction-request.js";
 import { createSyntheticWorkEmailWritebackFixture } from "./writeback-ingest.js";
 
 const normalizeRow = <TRow extends Record<string, unknown>>(
@@ -94,6 +95,9 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       "/transfers/assignment-change/transaction-requests/validate"
     ],
   );
+  assert.ok(contract.paths["/terminations"]);
+  assert.ok(contract.paths["/terminations/transaction-requests"]);
+  assert.ok(contract.paths["/terminations/transaction-requests/validate"]);
   assert.ok(contract.paths["/writeback-events/work-email"]);
 
   assert.equal(
@@ -123,6 +127,21 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
       .post.requestBody.content["application/json"].schema.$ref,
     "#/components/schemas/TransferTransactionRequestInput",
   );
+  assert.equal(
+    contract.paths["/terminations"].get.responses["200"].content["text/html"]
+      .schema.type,
+    "string",
+  );
+  assert.equal(
+    contract.paths["/terminations/transaction-requests"].post.requestBody
+      .content["application/json"].schema.$ref,
+    "#/components/schemas/TerminationTransactionRequestInput",
+  );
+  assert.equal(
+    contract.paths["/terminations/transaction-requests/validate"].post
+      .requestBody.content["application/json"].schema.$ref,
+    "#/components/schemas/TerminationTransactionRequestInput",
+  );
   const transferSaveOperation =
     contract.paths["/transfers/assignment-change/transaction-requests"].post;
   assert.equal(
@@ -137,6 +156,23 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   );
   assert.equal(
     transferSaveOperation.responses["503"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
+  );
+  const terminationSaveOperation =
+    contract.paths["/terminations/transaction-requests"].post;
+  assert.equal(
+    terminationSaveOperation.responses["400"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ValidationErrorResponse",
+  );
+  assert.equal(
+    terminationSaveOperation.responses["409"].content["application/json"].schema
+      .$ref,
+    "#/components/schemas/ErrorResponse",
+  );
+  assert.equal(
+    terminationSaveOperation.responses["503"].content["application/json"].schema
       .$ref,
     "#/components/schemas/ErrorResponse",
   );
@@ -330,6 +366,50 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
     contract.components.schemas.TransferReasonPayload.properties.reasonCode
       .enum,
     ["team_change", "manager_change", "organization_change"],
+  );
+
+  const terminationRequestInput =
+    contract.components.schemas.TerminationTransactionRequestInput;
+  assert.equal(
+    terminationRequestInput.properties.requestType.const,
+    "terminate",
+  );
+  assert.equal(
+    terminationRequestInput.properties.payloadVersion.const,
+    "mvp_c_termination_v1",
+  );
+  assert.equal(
+    terminationRequestInput.properties.payload.$ref,
+    "#/components/schemas/TerminationPayload",
+  );
+  const terminationPayload = contract.components.schemas.TerminationPayload;
+  assert.deepEqual(terminationPayload.required, [
+    "tenantEnvironmentId",
+    "effectiveDate",
+    "currentEmployment",
+    "currentAssignment",
+    "terminationReason",
+  ]);
+  assert.equal(
+    terminationPayload.properties.tenantEnvironmentId.const,
+    "repo_owned_synthetic_mvp_c_termination",
+  );
+  assert.equal(
+    terminationPayload.properties.effectiveDate.pattern,
+    "^\\d{4}-\\d{2}-\\d{2}$",
+  );
+  assert.deepEqual(
+    Object.keys(terminationPayload.properties).filter((propertyName) =>
+      /raw|csv|upload|provider|search|retention|deletion|anonymization|legalHold/u.test(
+        propertyName,
+      ),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    contract.components.schemas.TerminationReasonPayload.properties.reasonCode
+      .enum,
+    ["resignation", "retirement", "contract_end", "mutual_agreement"],
   );
 
   const writebackOperation =
@@ -2506,6 +2586,111 @@ test("POST /transfers/assignment-change/transaction-requests validates and submi
       request_type: "transfer",
       status_code: "submitted",
       payload_version: "mvp_b_transfer_v1",
+      payload_json: JSON.stringify(fixture.payload),
+    },
+  );
+});
+
+test("GET /terminations renders the bounded MVP-C termination wizard surface", async (t) => {
+  const app = await buildApp();
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/terminations",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(
+    response.headers["content-type"] ?? "",
+    /^text\/html; charset=utf-8/u,
+  );
+  assert.match(response.body, /id="mvp-c-termination-wizard"/u);
+  assert.match(response.body, /name="person.displayName"/u);
+  assert.match(response.body, /name="payload.tenantEnvironmentId"/u);
+  assert.match(
+    response.body,
+    /tenantEnvironmentId: read\("payload\.tenantEnvironmentId"\)/u,
+  );
+  assert.match(response.body, /form\.addEventListener\("submit"/u);
+  assert.match(response.body, /event\.preventDefault\(\)/u);
+  assert.match(response.body, /send\(read\("statusCode"\) \|\| "submitted"\)/u);
+  assert.match(response.body, /name="payload.effectiveDate"/u);
+  assert.match(response.body, /name="payload.currentEmployment.employmentId"/u);
+  assert.match(response.body, /name="payload.currentAssignment.assignmentId"/u);
+  assert.match(response.body, /name="payload.terminationReason.reasonCode"/u);
+  assert.doesNotMatch(
+    response.body,
+    /rawPayload|csvExport|CSV|liveProvider|employeeSearch|upload|retentionJob|deletionJob|anonymization|legalHold|hardDelete/u,
+  );
+});
+
+test("POST /terminations/transaction-requests validates and submits bounded termination requests", async (t) => {
+  const onboardingDb = await openLocalSyntheticWritebackDatabase(":memory:");
+  const app = await buildApp({ onboardingDb });
+  t.after(async () => {
+    await app.close();
+    onboardingDb.close();
+  });
+
+  const fixture = createTerminationTransactionRequestFixture();
+  const invalidResponse = await app.inject({
+    method: "POST",
+    url: "/terminations/transaction-requests/validate",
+    payload: {
+      ...fixture,
+      payload: {
+        ...fixture.payload,
+        retentionJob: { jobId: "retention-job-001" },
+      },
+    },
+  });
+
+  assert.equal(invalidResponse.statusCode, 400);
+  assert.deepEqual(invalidResponse.json(), {
+    error: "payload contains unsupported fields: retentionJob",
+    validationErrors: [
+      {
+        message: "payload contains unsupported fields: retentionJob",
+      },
+    ],
+  });
+
+  const submitResponse = await app.inject({
+    method: "POST",
+    url: "/terminations/transaction-requests",
+    payload: fixture,
+  });
+
+  assert.equal(submitResponse.statusCode, 201);
+  assert.deepEqual(submitResponse.json(), {
+    personId: "person-termination-001",
+    transactionRequestId: "transaction-request-termination-001",
+    statusCode: "submitted",
+    correlationId: "correlation-termination-001",
+  });
+  assert.deepEqual(
+    normalizeRow(
+      onboardingDb
+        .prepare(
+          `
+            SELECT
+              transaction_request.request_type,
+              transaction_request.status_code,
+              transaction_request.payload_version,
+              transaction_request.payload_json
+            FROM transaction_request
+            WHERE transaction_request.id = ?
+          `,
+        )
+        .get("transaction-request-termination-001"),
+    ),
+    {
+      request_type: "terminate",
+      status_code: "submitted",
+      payload_version: "mvp_c_termination_v1",
       payload_json: JSON.stringify(fixture.payload),
     },
   );
