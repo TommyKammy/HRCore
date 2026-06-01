@@ -134,7 +134,13 @@ export function applyApprovedTerminationTransactionRequest(
     employment,
   );
   assertSupportedTerminationWindow(employment, assignment, payload);
-  assertNoOtherOpenTerminationAssignments(db, existing, employment, assignment);
+  assertNoOtherConflictingTerminationAssignments(
+    db,
+    existing,
+    employment,
+    assignment,
+    payload,
+  );
 
   db.exec("SAVEPOINT approved_termination_transaction_request_apply");
   try {
@@ -408,13 +414,14 @@ function assertSupportedTerminationWindow(
   }
 }
 
-function assertNoOtherOpenTerminationAssignments(
+function assertNoOtherConflictingTerminationAssignments(
   db: OnboardingTransactionRequestDatabase,
   existing: ExistingOnboardingTransactionRequestRow,
   employment: ExistingTerminationEmploymentRow,
   assignment: ExistingTerminationAssignmentRow,
+  payload: TerminationTransactionRequestPayload,
 ): void {
-  const otherOpenAssignment = db
+  const otherConflictingAssignment = db
     .prepare(
       `
         SELECT id
@@ -422,17 +429,20 @@ function assertNoOtherOpenTerminationAssignments(
         WHERE person_id = ?
           AND employment_id = ?
           AND id <> ?
-          AND end_date IS NULL
+          AND (end_date IS NULL OR end_date > ?)
         LIMIT 1
       `,
     )
-    .get(existing.person_id, employment.id, assignment.id) as
-    | { id: string }
-    | undefined;
+    .get(
+      existing.person_id,
+      employment.id,
+      assignment.id,
+      payload.effectiveDate,
+    ) as { id: string } | undefined;
 
-  if (otherOpenAssignment) {
+  if (otherConflictingAssignment) {
     throw new Error(
-      "approved termination apply requires no other open assignment for the current employment",
+      "approved termination apply requires no other assignment extending beyond the termination effective date for the current employment",
     );
   }
 }

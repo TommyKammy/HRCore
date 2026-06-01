@@ -287,7 +287,7 @@ test("MVP-C termination apply rejects other open assignment for the current empl
           appliedBy: "operator-people-ops-termination-apply-001",
           correlationId: "correlation-termination-apply-001",
         }),
-      /approved termination apply requires no other open assignment for the current employment/,
+      /approved termination apply requires no other assignment extending beyond the termination effective date for the current employment/,
     );
     assert.deepEqual(
       normalizeRow(
@@ -328,6 +328,145 @@ test("MVP-C termination apply rejects other open assignment for the current empl
         {
           id: "assignment-other-open-termination-001",
           end_date: null,
+        },
+      ],
+      "rejected termination apply must not close any assignment",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-termination-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "approved" },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM lifecycle_event
+              WHERE transaction_request_id = 'transaction-request-termination-001'
+                AND event_type = 'termination'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 0 },
+      "rejected termination apply must not create lifecycle evidence",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get() as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+      "rejected termination apply must preserve only approval audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-C termination apply rejects other finite assignment extending beyond the termination date without partial mutation", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveTerminationTransactionRequest(
+      db,
+      createTerminationTransactionRequestFixture(),
+    );
+    seedOpenTerminationEmploymentAndAssignment(db);
+    db.prepare(
+      `
+        INSERT INTO assignment (
+          id,
+          person_id,
+          employment_id,
+          assignment_code,
+          organization_code,
+          position_code,
+          start_date,
+          end_date
+        )
+        VALUES (
+          'assignment-other-finite-termination-001',
+          'person-termination-001',
+          'employment-termination-001',
+          'ASN-OTHER-FINITE-TERMINATION-001',
+          'department-platform',
+          'position-engineer-002',
+          '2026-08-10',
+          '2026-09-30'
+        )
+      `,
+    ).run();
+    decideTerminationTransactionRequest(db, {
+      transactionRequestId: "transaction-request-termination-001",
+      decision: "approve",
+      decidedAt: "2026-08-15T01:00:00Z",
+      decidedBy: "operator-people-ops-termination-001",
+      correlationId: "correlation-termination-approval-001",
+    });
+
+    assert.throws(
+      () =>
+        applyApprovedTerminationTransactionRequest(db, {
+          transactionRequestId: "transaction-request-termination-001",
+          appliedAt: "2026-08-15T02:00:00Z",
+          appliedBy: "operator-people-ops-termination-apply-001",
+          correlationId: "correlation-termination-apply-001",
+        }),
+      /approved termination apply requires no other assignment extending beyond the termination effective date for the current employment/,
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code, end_date
+              FROM employment
+              WHERE id = 'employment-termination-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      {
+        status_code: "active",
+        end_date: null,
+      },
+      "rejected termination apply must not end employment with a finite assignment extending beyond termination",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, end_date
+              FROM assignment
+              WHERE employment_id = 'employment-termination-001'
+              ORDER BY id
+            `,
+          )
+          .all?.() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "assignment-current-termination-001",
+          end_date: null,
+        },
+        {
+          id: "assignment-other-finite-termination-001",
+          end_date: "2026-09-30",
         },
       ],
       "rejected termination apply must not close any assignment",
