@@ -444,6 +444,89 @@ test("MVP-C termination apply retry fails closed when completed evidence drifts"
   }
 });
 
+test("MVP-C termination apply retry fails closed when completed start-date evidence drifts", async (t) => {
+  for (const drift of [
+    {
+      name: "employment",
+      updateSql: `
+        UPDATE employment
+        SET start_date = '2026-09-01'
+        WHERE id = 'employment-termination-001'
+      `,
+    },
+    {
+      name: "assignment",
+      updateSql: `
+        UPDATE assignment
+        SET start_date = '2026-09-01'
+        WHERE id = 'assignment-current-termination-001'
+      `,
+    },
+  ]) {
+    await t.test(drift.name, async (t) => {
+      const db = await openSchemaBackedDatabase(t);
+      if (!db) return;
+
+      try {
+        saveTerminationTransactionRequest(
+          db,
+          createTerminationTransactionRequestFixture(),
+        );
+        seedOpenTerminationEmploymentAndAssignment(db);
+        decideTerminationTransactionRequest(db, {
+          transactionRequestId: "transaction-request-termination-001",
+          decision: "approve",
+          decidedAt: "2026-08-15T01:00:00Z",
+          decidedBy: "operator-people-ops-termination-001",
+          correlationId: "correlation-termination-approval-001",
+        });
+        applyApprovedTerminationTransactionRequest(db, {
+          transactionRequestId: "transaction-request-termination-001",
+          appliedAt: "2026-08-15T02:00:00Z",
+          appliedBy: "operator-people-ops-termination-apply-001",
+          correlationId: "correlation-termination-apply-001",
+        });
+        db.prepare(drift.updateSql).run();
+
+        assert.throws(
+          () =>
+            applyApprovedTerminationTransactionRequest(db, {
+              transactionRequestId: "transaction-request-termination-001",
+              appliedAt: "2026-08-15T02:00:00Z",
+              appliedBy: "operator-people-ops-termination-apply-001",
+              correlationId: "correlation-termination-apply-001",
+            }),
+          /approved termination apply retry conflicts with the completed request/,
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db
+              .prepare(
+                `
+                  SELECT status_code
+                  FROM transaction_request
+                  WHERE id = 'transaction-request-termination-001'
+                `,
+              )
+              .get() as Record<string, unknown> | undefined,
+          ),
+          { status_code: "completed" },
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db.prepare("SELECT count(*) AS count FROM audit_event").get() as
+              | Record<string, unknown>
+              | undefined,
+          ),
+          { count: 2 },
+        );
+      } finally {
+        db.close();
+      }
+    });
+  }
+});
+
 function seedOpenTerminationEmploymentAndAssignment(
   db: NonNullable<Awaited<ReturnType<typeof openSchemaBackedDatabase>>>,
   options: {

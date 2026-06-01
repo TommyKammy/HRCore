@@ -542,11 +542,15 @@ function assertCompletedTerminationApplyMatchesInput(
     existing.employment_id !== payload.currentEmployment.employmentId ||
     existing.employment_code !== payload.currentEmployment.employmentCode ||
     existing.employment_status_code !== "terminated" ||
+    existing.employment_start_date === null ||
+    existing.employment_start_date > payload.effectiveDate ||
     existing.employment_end_date !== payload.effectiveDate ||
     existing.assignment_id !== payload.currentAssignment.assignmentId ||
     existing.assignment_employment_id !==
       payload.currentEmployment.employmentId ||
     existing.assignment_code !== payload.currentAssignment.assignmentCode ||
+    existing.assignment_start_date === null ||
+    existing.assignment_start_date > payload.effectiveDate ||
     existing.assignment_end_date !== payload.effectiveDate ||
     existing.audit_event_id !==
       buildOnboardingApplyAuditEventId(lifecycleEventId) ||
