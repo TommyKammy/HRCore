@@ -7,6 +7,7 @@ import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import { registerMvpAOnboardingAuditRoutes } from "./routes/mvp-a-onboarding-audit.js";
 import { registerMvpAOnboardingSupportReviewRoutes } from "./routes/mvp-a-onboarding-support-review.js";
 import { registerOnboardingRoutes } from "./routes/onboarding.js";
+import { registerTerminationRoutes } from "./routes/termination.js";
 import { registerTransferRoutes } from "./routes/transfer.js";
 import { registerWritebackRoutes } from "./routes/writeback.js";
 import { type SyntheticWritebackDatabase } from "./writeback-ingest.js";
@@ -41,6 +42,7 @@ export async function buildApp(
   registerMvpAOnboardingAuditRoutes(app, options);
   registerMvpAOnboardingSupportReviewRoutes(app, options);
   registerOnboardingRoutes(app, options);
+  registerTerminationRoutes(app, options);
   registerTransferRoutes(app, options);
   registerWritebackRoutes(app, options);
 
