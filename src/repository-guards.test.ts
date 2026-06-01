@@ -273,6 +273,7 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
     "src/transfer-transaction-request-persistence.ts",
     "src/transfer-transaction-request-decision.ts",
     "src/transfer-transaction-request-apply.ts",
+    "src/transfer-okta-projection-integration.ts",
     "src/transfer-transaction-request-worker.ts",
   ] as const;
   const sources = Object.fromEntries(
@@ -314,6 +315,10 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
     /transfer_transaction_request_(?:persistence|edit|decision|apply)/u,
     "public transfer facade must not carry persistence, decision, or apply savepoint names",
   );
+  assert.match(
+    sources["src/transfer-transaction-request.ts"],
+    /from "\.\/transfer-okta-projection-integration\.js"/u,
+  );
 
   assert.match(
     sources["src/transfer-transaction-request-persistence.ts"],
@@ -326,6 +331,20 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
   assert.match(
     sources["src/transfer-transaction-request-apply.ts"],
     /export function applyApprovedTransferTransactionRequest/u,
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request-apply.ts"],
+    /okta-mastering-adapter|OktaTransferProjectionImpactEvidence|applyApprovedTransferTransactionRequestWithOktaProjection|buildMvpBTransferOktaUserProjection|projectGroups/u,
+    "core transfer apply module must not own mock Okta projection integration",
+  );
+  assert.match(
+    sources["src/transfer-okta-projection-integration.ts"],
+    /export async function applyApprovedTransferTransactionRequestWithOktaProjection/u,
+  );
+  assert.match(
+    sources["src/transfer-okta-projection-integration.ts"],
+    /authoritativeForRbac:\s*false/u,
+    "transfer Okta projection integration must keep group impact non-authoritative for RBAC",
   );
   assert.match(
     sources["src/transfer-transaction-request-worker.ts"],

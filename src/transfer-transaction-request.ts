@@ -17,12 +17,10 @@ import type {
   OnboardingTransactionRequestDatabase,
 } from "./onboarding-transaction-request.js";
 import type { TransferTransactionRequestPayload } from "./transfer-transaction-request-contract.js";
-import type { OktaTransferProjectionImpactEvidence } from "./transfer-transaction-request-apply.js";
+import type { OktaTransferProjectionImpactEvidence } from "./transfer-okta-projection-integration.js";
 
-export {
-  applyApprovedTransferTransactionRequest,
-  applyApprovedTransferTransactionRequestWithOktaProjection,
-} from "./transfer-transaction-request-apply.js";
+export { applyApprovedTransferTransactionRequest } from "./transfer-transaction-request-apply.js";
+export { applyApprovedTransferTransactionRequestWithOktaProjection } from "./transfer-okta-projection-integration.js";
 export { decideTransferTransactionRequest } from "./transfer-transaction-request-decision.js";
 export { saveTransferTransactionRequest } from "./transfer-transaction-request-persistence.js";
 export { applyDueTransferTransactionRequests } from "./transfer-transaction-request-worker.js";
@@ -34,13 +32,15 @@ export {
 } from "./transfer-transaction-request-contract.js";
 export type {
   AppliedTransferTransactionRequestResult,
-  AppliedTransferTransactionRequestWithOktaProjectionResult,
   ApplyApprovedTransferTransactionRequestInput,
+} from "./transfer-transaction-request-apply.js";
+export type {
+  AppliedTransferTransactionRequestWithOktaProjectionResult,
   ApplyApprovedTransferTransactionRequestWithOktaProjectionInput,
   OktaTransferGroupProjectionStatus,
   OktaTransferProfileProjectionStatus,
   OktaTransferProjectionImpactEvidence,
-} from "./transfer-transaction-request-apply.js";
+} from "./transfer-okta-projection-integration.js";
 export type { TransferTransactionRequestPersistenceResult } from "./transfer-transaction-request-persistence.js";
 export type {
   ApplyDueTransferTransactionRequestsInput,
