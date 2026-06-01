@@ -1,0 +1,244 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  applyApprovedTerminationTransactionRequestWithOktaProjection,
+  applyDueTerminationTransactionRequests,
+  createTerminationTransactionRequestFixture,
+  decideTerminationTransactionRequest,
+  MvpCTerminationCorrelationTraceError,
+  saveTerminationTransactionRequest,
+  verifyMvpCTerminationCorrelationTrace,
+} from "./termination-transaction-request.js";
+import {
+  buildOktaMasteringAdapter,
+  createSyntheticOktaUserFixture,
+} from "./okta-mastering-adapter.js";
+import { openSchemaBackedDatabase } from "./test-helpers/database.js";
+import { workerAttemptCorrelationId } from "./test-helpers/onboarding.js";
+
+test("MVP-C termination evidence is traceable from one root correlation id", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    const rootCorrelationId = "correlation-termination-trace-001";
+    saveTerminationTransactionRequest(
+      db,
+      createTerminationTransactionRequestFixture({
+        correlationId: rootCorrelationId,
+        payload: { effectiveDate: "2026-08-15" },
+      }),
+    );
+    seedOpenTerminationEmployment(db);
+    decideTerminationTransactionRequest(db, {
+      transactionRequestId: "transaction-request-termination-001",
+      decision: "approve",
+      decidedAt: "2026-08-01T01:00:00Z",
+      decidedBy: "operator-people-ops-termination-001",
+      correlationId: rootCorrelationId,
+    });
+    const workerCorrelationId = `${rootCorrelationId}:future-date-worker`;
+    const workerResult = applyDueTerminationTransactionRequests(db, {
+      now: "2026-08-15T00:00:00Z",
+      workerId: "worker-termination-future-apply-001",
+      correlationId: workerCorrelationId,
+      batchLimit: 1,
+    });
+    const oktaProjection =
+      await applyApprovedTerminationTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-termination-001",
+        appliedAt: "2026-08-15T00:00:00Z",
+        appliedBy: "worker-termination-future-apply-001",
+        correlationId: workerAttemptCorrelationId(
+          workerCorrelationId,
+          "transaction-request-termination-001",
+        ),
+        oktaAdapter: buildOktaMasteringAdapter({
+          mode: "mock",
+          initialUsers: [
+            createSyntheticOktaUserFixture({
+              externalId: "synthetic-okta-user-person-termination-001",
+              employeeNumber: "EMP-TERMINATION-001",
+              email: "mvp-c-termination-one@example.invalid",
+              displayName: "MVP-C Termination One",
+              givenName: "MVP-C",
+              familyName: "Termination One",
+              status: "active",
+              departmentCode: "department-people-ops",
+              managerExternalId: "manager-people-ops-001",
+              effectiveAt: "2026-08-01T00:00:00Z",
+            }),
+          ],
+        }),
+      });
+
+    const trace = verifyMvpCTerminationCorrelationTrace(db, {
+      correlationId: rootCorrelationId,
+      requireApproval: true,
+      requireApply: true,
+      requireApplyJobAttempt: true,
+      requireOktaProjection: true,
+      oktaProjection: oktaProjection.oktaProjection,
+    });
+
+    assert.equal(workerResult.applied, 1);
+    assert.deepEqual(trace.transactionRequest, {
+      id: "transaction-request-termination-001",
+      personId: "person-termination-001",
+      requestType: "terminate",
+      statusCode: "completed",
+      correlationId: rootCorrelationId,
+    });
+    assert.deepEqual(
+      trace.auditEvents.map((event) => event.action),
+      ["mvp_c.termination.approve", "mvp_c.termination.apply"],
+    );
+    assert.deepEqual(trace.lifecycleEvent, {
+      id: "lifecycle-event-transaction-request-termination-001-apply",
+      transactionRequestId: "transaction-request-termination-001",
+      personId: "person-termination-001",
+      eventType: "termination",
+      effectiveDate: "2026-08-15",
+      occurredAt: "2026-08-15T00:00:00Z",
+    });
+    assert.equal(trace.endedEmployment?.statusCode, "terminated");
+    assert.equal(trace.endedEmployment?.endDate, "2026-08-15");
+    assert.equal(trace.endedAssignment?.endDate, "2026-08-15");
+    assert.equal(trace.applyJobAttempts.length, 1);
+    assert.ok(
+      trace.oktaProjection?.profile.status === "projected" ||
+        trace.oktaProjection?.profile.status === "already_projected",
+    );
+    assert.ok(
+      trace.oktaProjection?.groups.status === "projected" ||
+        trace.oktaProjection?.groups.status === "already_projected",
+    );
+    assert.deepEqual(trace.remainingProductionReadinessGates, [
+      "#11 owner-acknowledged defer / production-like blocked",
+      "#12 owner-acknowledged defer / production-like blocked",
+      "#14 owner-acknowledged defer / production-like blocked",
+      "Production audit immutability, WORM archive custody, raw/export access, backup/restore readiness, ops/DLQ replay, legal/privacy review, two-key approval, real-data readiness, and live Okta tenant readiness remain blocked.",
+    ]);
+
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: {
+            ...oktaProjection.oktaProjection,
+            transactionRequestId: "transaction-request-termination-unrelated",
+          },
+        }),
+      /MVP-C termination trace requires mock Okta disable projection evidence linked to the termination transaction and apply evidence/,
+    );
+    db.prepare(
+      `
+        DELETE FROM onboarding_apply_job_attempt
+        WHERE transaction_request_id = ?
+      `,
+    ).run("transaction-request-termination-001");
+    db.prepare(
+      `
+        INSERT INTO onboarding_apply_job_attempt (
+          id,
+          transaction_request_id,
+          person_id,
+          status_code,
+          attempted_at,
+          worker_id,
+          correlation_id,
+          retryable,
+          error_message
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      "onboarding-apply-job-attempt-unrelated-termination-trace-001",
+      "transaction-request-termination-001",
+      "person-termination-001",
+      "applied",
+      "2026-08-15T00:01:00Z",
+      "worker-unrelated-termination-trace-001",
+      workerAttemptCorrelationId(
+        "correlation-unrelated-termination-worker-retry",
+        "transaction-request-termination-001",
+      ),
+      0,
+      null,
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-C termination trace requires an applied job attempt rooted in the termination correlation and linked to the apply audit evidence/,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+function seedOpenTerminationEmployment(
+  db: Awaited<ReturnType<typeof openSchemaBackedDatabase>>,
+): void {
+  if (!db) return;
+
+  db.prepare(
+    `
+      INSERT INTO employment (
+        id,
+        person_id,
+        employment_code,
+        status_code,
+        start_date,
+        end_date
+      )
+      VALUES ('employment-termination-001', 'person-termination-001', 'EMP-TERMINATION-001', 'active', '2026-08-01', NULL)
+    `,
+  ).run();
+  db.prepare(
+    `
+      INSERT INTO assignment (
+        id,
+        person_id,
+        employment_id,
+        assignment_code,
+        organization_code,
+        position_code,
+        start_date,
+        end_date
+      )
+      VALUES (
+        'assignment-current-termination-001',
+        'person-termination-001',
+        'employment-termination-001',
+        'ASN-CURRENT-TERMINATION-001',
+        'department-people-ops',
+        'position-engineer-001',
+        '2026-08-01',
+        NULL
+      )
+    `,
+  ).run();
+}
+
+function assertTerminationTraceThrows(
+  fn: () => unknown,
+  expected: RegExp,
+): void {
+  assert.throws(fn, (error) => {
+    assert.ok(error instanceof MvpCTerminationCorrelationTraceError);
+    assert.match(error.message, expected);
+    return true;
+  });
+}
