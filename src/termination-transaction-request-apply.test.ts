@@ -687,6 +687,354 @@ test("MVP-C termination apply rechecks sibling assignments at the assignment clo
   }
 });
 
+test("MVP-C termination apply rechecks sibling assignments at the employment close boundary", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveTerminationTransactionRequest(
+      db,
+      createTerminationTransactionRequestFixture(),
+    );
+    seedOpenTerminationEmploymentAndAssignment(db);
+    decideTerminationTransactionRequest(db, {
+      transactionRequestId: "transaction-request-termination-001",
+      decision: "approve",
+      decidedAt: "2026-08-15T01:00:00Z",
+      decidedBy: "operator-people-ops-termination-001",
+      correlationId: "correlation-termination-approval-001",
+    });
+
+    let injectedSiblingAssignment = false;
+    const concurrentEmploymentDb: OnboardingTransactionRequestDatabase = {
+      exec(sql) {
+        return db.exec(sql);
+      },
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        if (
+          sql.includes("UPDATE employment") &&
+          sql.includes("SET status_code = 'terminated'")
+        ) {
+          return {
+            get(...values: SqlValue[]) {
+              return statement.get(...values);
+            },
+            run(...values: SqlValue[]) {
+              if (!injectedSiblingAssignment) {
+                injectedSiblingAssignment = true;
+                db.prepare(
+                  `
+                    INSERT INTO assignment (
+                      id,
+                      person_id,
+                      employment_id,
+                      assignment_code,
+                      organization_code,
+                      position_code,
+                      start_date,
+                      end_date
+                    )
+                    VALUES (
+                      'assignment-employment-boundary-termination-001',
+                      'person-termination-001',
+                      'employment-termination-001',
+                      'ASN-EMPLOYMENT-BOUNDARY-TERMINATION-001',
+                      'department-platform',
+                      'position-engineer-002',
+                      '2026-08-10',
+                      NULL
+                    )
+                  `,
+                ).run();
+              }
+
+              return statement.run(...values);
+            },
+          };
+        }
+
+        return statement;
+      },
+    };
+
+    assert.throws(
+      () =>
+        applyApprovedTerminationTransactionRequest(concurrentEmploymentDb, {
+          transactionRequestId: "transaction-request-termination-001",
+          appliedAt: "2026-08-15T02:00:00Z",
+          appliedBy: "operator-people-ops-termination-apply-001",
+          correlationId: "correlation-termination-apply-001",
+        }),
+      /approved termination apply conflicts with the current employment state/,
+    );
+    assert.equal(
+      injectedSiblingAssignment,
+      true,
+      "the employment close statement must be reached before the conflict is rejected",
+    );
+    assert.deepEqual(
+      normalizeRows(
+        db
+          .prepare(
+            `
+              SELECT id, end_date
+              FROM assignment
+              WHERE employment_id = 'employment-termination-001'
+              ORDER BY id
+            `,
+          )
+          .all?.() as Record<string, unknown>[],
+      ),
+      [
+        {
+          id: "assignment-current-termination-001",
+          end_date: null,
+        },
+      ],
+      "the employment close boundary must roll back the assignment close and injected conflict",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code, end_date
+              FROM employment
+              WHERE id = 'employment-termination-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      {
+        status_code: "active",
+        end_date: null,
+      },
+      "rejected termination apply must not end employment after an employment-boundary conflict",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT status_code
+              FROM transaction_request
+              WHERE id = 'transaction-request-termination-001'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { status_code: "approved" },
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db
+          .prepare(
+            `
+              SELECT count(*) AS count
+              FROM lifecycle_event
+              WHERE transaction_request_id = 'transaction-request-termination-001'
+                AND event_type = 'termination'
+            `,
+          )
+          .get() as Record<string, unknown> | undefined,
+      ),
+      { count: 0 },
+      "rejected termination apply must not create lifecycle evidence",
+    );
+    assert.deepEqual(
+      normalizeRow(
+        db.prepare("SELECT count(*) AS count FROM audit_event").get() as
+          | Record<string, unknown>
+          | undefined,
+      ),
+      { count: 1 },
+      "rejected termination apply must preserve only approval audit evidence",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-C termination apply rechecks start dates at guarded close boundaries", async (t) => {
+  for (const drift of [
+    {
+      name: "assignment",
+      matchesGuardedClose(sql: string) {
+        return (
+          sql.includes("UPDATE assignment") &&
+          sql.includes("SET end_date = ?") &&
+          sql.includes("AND assignment_code = ?")
+        );
+      },
+      updateSql: `
+        UPDATE assignment
+        SET start_date = '2026-09-01'
+        WHERE id = 'assignment-current-termination-001'
+      `,
+      expectedError:
+        /approved termination apply conflicts with the current assignment state/,
+    },
+    {
+      name: "employment",
+      matchesGuardedClose(sql: string) {
+        return (
+          sql.includes("UPDATE employment") &&
+          sql.includes("SET status_code = 'terminated'")
+        );
+      },
+      updateSql: `
+        UPDATE employment
+        SET start_date = '2026-09-01'
+        WHERE id = 'employment-termination-001'
+      `,
+      expectedError:
+        /approved termination apply conflicts with the current employment state/,
+    },
+  ]) {
+    await t.test(drift.name, async (t) => {
+      const db = await openSchemaBackedDatabase(t);
+      if (!db) return;
+
+      try {
+        saveTerminationTransactionRequest(
+          db,
+          createTerminationTransactionRequestFixture(),
+        );
+        seedOpenTerminationEmploymentAndAssignment(db);
+        decideTerminationTransactionRequest(db, {
+          transactionRequestId: "transaction-request-termination-001",
+          decision: "approve",
+          decidedAt: "2026-08-15T01:00:00Z",
+          decidedBy: "operator-people-ops-termination-001",
+          correlationId: "correlation-termination-approval-001",
+        });
+
+        let injectedStartDateDrift = false;
+        const staleStartDateDb: OnboardingTransactionRequestDatabase = {
+          exec(sql) {
+            return db.exec(sql);
+          },
+          prepare(sql) {
+            const statement = db.prepare(sql);
+            if (drift.matchesGuardedClose(sql)) {
+              return {
+                get(...values: SqlValue[]) {
+                  return statement.get(...values);
+                },
+                run(...values: SqlValue[]) {
+                  if (!injectedStartDateDrift) {
+                    injectedStartDateDrift = true;
+                    db.prepare(drift.updateSql).run();
+                  }
+
+                  return statement.run(...values);
+                },
+              };
+            }
+
+            return statement;
+          },
+        };
+
+        assert.throws(
+          () =>
+            applyApprovedTerminationTransactionRequest(staleStartDateDb, {
+              transactionRequestId: "transaction-request-termination-001",
+              appliedAt: "2026-08-15T02:00:00Z",
+              appliedBy: "operator-people-ops-termination-apply-001",
+              correlationId: "correlation-termination-apply-001",
+            }),
+          drift.expectedError,
+        );
+        assert.equal(
+          injectedStartDateDrift,
+          true,
+          "the guarded close statement must be reached before start-date drift is rejected",
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db
+              .prepare(
+                `
+                  SELECT status_code, start_date, end_date
+                  FROM employment
+                  WHERE id = 'employment-termination-001'
+                `,
+              )
+              .get() as Record<string, unknown> | undefined,
+          ),
+          {
+            status_code: "active",
+            start_date: "2026-08-01",
+            end_date: null,
+          },
+          "rejected termination apply must roll back employment drift and preserve the open employment",
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db
+              .prepare(
+                `
+                  SELECT start_date, end_date
+                  FROM assignment
+                  WHERE id = 'assignment-current-termination-001'
+                `,
+              )
+              .get() as Record<string, unknown> | undefined,
+          ),
+          {
+            start_date: "2026-08-01",
+            end_date: null,
+          },
+          "rejected termination apply must roll back assignment drift and preserve the open assignment",
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db
+              .prepare(
+                `
+                  SELECT status_code
+                  FROM transaction_request
+                  WHERE id = 'transaction-request-termination-001'
+                `,
+              )
+              .get() as Record<string, unknown> | undefined,
+          ),
+          { status_code: "approved" },
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db
+              .prepare(
+                `
+                  SELECT count(*) AS count
+                  FROM lifecycle_event
+                  WHERE transaction_request_id = 'transaction-request-termination-001'
+                    AND event_type = 'termination'
+                `,
+              )
+              .get() as Record<string, unknown> | undefined,
+          ),
+          { count: 0 },
+          "rejected termination apply must not create lifecycle evidence",
+        );
+        assert.deepEqual(
+          normalizeRow(
+            db.prepare("SELECT count(*) AS count FROM audit_event").get() as
+              | Record<string, unknown>
+              | undefined,
+          ),
+          { count: 1 },
+          "rejected termination apply must preserve only approval audit evidence",
+        );
+      } finally {
+        db.close();
+      }
+    });
+  }
+});
+
 test("MVP-C termination apply retry fails closed when completed evidence drifts", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) return;
