@@ -3,10 +3,15 @@ import test from "node:test";
 
 import {
   applyApprovedTerminationTransactionRequest,
+  applyApprovedTerminationTransactionRequestWithOktaProjection,
   createTerminationTransactionRequestFixture,
   decideTerminationTransactionRequest,
   saveTerminationTransactionRequest,
 } from "./termination-transaction-request.js";
+import {
+  buildOktaMasteringAdapter,
+  createSyntheticOktaUserFixture,
+} from "./okta-mastering-adapter.js";
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request.js";
 import type { SqlValue } from "./onboarding-transaction-request-types.js";
 import {
@@ -144,6 +149,247 @@ test("MVP-C termination apply ends the referenced employment and assignment with
     );
   } finally {
     db.close();
+  }
+});
+
+test("MVP-C termination apply records deterministic mock Okta disable and non-authoritative group-removal evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) return;
+
+  try {
+    saveTerminationTransactionRequest(
+      db,
+      createTerminationTransactionRequestFixture(),
+    );
+    seedOpenTerminationEmploymentAndAssignment(db);
+    decideTerminationTransactionRequest(db, {
+      transactionRequestId: "transaction-request-termination-001",
+      decision: "approve",
+      decidedAt: "2026-08-15T01:00:00Z",
+      decidedBy: "operator-people-ops-termination-001",
+      correlationId: "correlation-termination-approval-001",
+    });
+
+    const oktaAdapter = buildOktaMasteringAdapter({
+      mode: "mock",
+      initialUsers: [
+        createSyntheticOktaUserFixture({
+          externalId: "synthetic-okta-user-person-termination-001",
+          employeeNumber: "EMP-TERMINATION-001",
+          email: "mvp-c-termination-one@example.invalid",
+          displayName: "MVP-C Termination One",
+          givenName: "MVP-C",
+          familyName: "Termination One",
+          status: "active",
+          departmentCode: "department-platform",
+          managerExternalId: "manager-platform-001",
+          effectiveAt: "2026-08-01T00:00:00Z",
+        }),
+      ],
+      initialGroups: [
+        {
+          externalId: "synthetic-okta-group-department-platform",
+          groupKey: "DEPT-department-platform",
+          displayName: "Synthetic Department Platform",
+          purpose: "poc_identity_lifecycle_membership",
+          effectiveAt: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+    assert.equal(
+      (
+        await oktaAdapter.projectGroups({
+          operation: "replace_user_groups",
+          employeeNumber: "EMP-TERMINATION-001",
+          groupKeys: ["DEPT-department-platform"],
+          effectiveAt: "2026-08-01T00:00:00Z",
+        })
+      ).outcome,
+      "success",
+      "test fixture must start with local synthetic group membership",
+    );
+
+    const result =
+      await applyApprovedTerminationTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-termination-001",
+        appliedAt: "2026-08-15T02:00:00Z",
+        appliedBy: "operator-people-ops-termination-apply-001",
+        correlationId: "correlation-termination-apply-001",
+        oktaAdapter,
+      });
+    const retryResult =
+      await applyApprovedTerminationTransactionRequestWithOktaProjection(db, {
+        transactionRequestId: "transaction-request-termination-001",
+        appliedAt: "2026-08-15T02:00:00Z",
+        appliedBy: "operator-people-ops-termination-apply-001",
+        correlationId: "correlation-termination-apply-001",
+        oktaAdapter,
+      });
+
+    assert.deepEqual(
+      {
+        ...retryResult,
+        oktaProjection: undefined,
+      },
+      {
+        ...result,
+        oktaProjection: undefined,
+      },
+    );
+    assert.equal(
+      retryResult.oktaProjection.groups.status,
+      "already_projected",
+      "same-correlation retry should expose deterministic no-op group removal evidence",
+    );
+    assert.deepEqual(result.oktaProjection, {
+      provider: "okta",
+      adapterMode: "mock",
+      synthetic: true,
+      authoritativeForRbac: false,
+      transactionRequestId: "transaction-request-termination-001",
+      lifecycleEventId:
+        "lifecycle-event-transaction-request-termination-001-apply",
+      applyCorrelationId: "correlation-termination-apply-001",
+      profile: {
+        status: "projected",
+        result: {
+          outcome: "success",
+          operation: "disable",
+          employeeNumber: "EMP-TERMINATION-001",
+          externalId: "synthetic-okta-user-person-termination-001",
+          effectiveAt: "2026-08-15T02:00:00Z",
+          metadata: {
+            provider: "okta",
+            adapterMode: "mock",
+            projectionKey:
+              "okta:mock:disable:EMP-TERMINATION-001:2026-08-15T02%3A00%3A00Z",
+            synthetic: true,
+          },
+        },
+      },
+      groups: {
+        status: "projected",
+        result: {
+          outcome: "success",
+          operation: "replace_user_groups",
+          employeeNumber: "EMP-TERMINATION-001",
+          groupKeys: [],
+          effectiveAt: "2026-08-15T02:00:00Z",
+          metadata: {
+            provider: "okta",
+            adapterMode: "mock",
+            projectionKey:
+              "okta:mock:replace_user_groups:EMP-TERMINATION-001:%5B%5D:2026-08-15T02%3A00%3A00Z",
+            synthetic: true,
+          },
+        },
+      },
+    });
+    assert.deepEqual(
+      oktaAdapter.readSyntheticUserByEmployeeNumber("EMP-TERMINATION-001"),
+      {
+        externalId: "synthetic-okta-user-person-termination-001",
+        employeeNumber: "EMP-TERMINATION-001",
+        email: "mvp-c-termination-one@example.invalid",
+        displayName: "MVP-C Termination One",
+        givenName: "MVP-C",
+        familyName: "Termination One",
+        status: "deprovisioned",
+        departmentCode: "department-platform",
+        managerExternalId: "manager-platform-001",
+        effectiveAt: "2026-08-15T02:00:00Z",
+      },
+      "disable evidence must reflect only local mock Okta state",
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("MVP-C termination Okta impact skips group removal after non-successful profile disable outcomes", async (t) => {
+  for (const projectionCase of [
+    {
+      name: "missing profile user",
+      forcedFailures: undefined,
+      expectedProfileStatus: "skipped",
+      expectedOutcome: "skipped",
+    },
+    {
+      name: "retryable profile disable",
+      forcedFailures: {
+        "EMP-TERMINATION-001": {
+          outcome: "retryable_failure",
+          errorCode: "mock_retryable_disable_timeout",
+          message: "Synthetic retryable Okta disable timeout.",
+          retryAfterSeconds: 30,
+        },
+      },
+      expectedProfileStatus: "retryable_failure",
+      expectedOutcome: "retryable_failure",
+    },
+    {
+      name: "permanent profile disable",
+      forcedFailures: {
+        "EMP-TERMINATION-001": {
+          outcome: "permanent_failure",
+          errorCode: "mock_permanent_disable_rejected",
+          message: "Synthetic permanent Okta disable rejection.",
+        },
+      },
+      expectedProfileStatus: "failed",
+      expectedOutcome: "permanent_failure",
+    },
+  ] as const) {
+    await t.test(projectionCase.name, async (t) => {
+      const db = await openSchemaBackedDatabase(t);
+      if (!db) return;
+
+      try {
+        saveTerminationTransactionRequest(
+          db,
+          createTerminationTransactionRequestFixture(),
+        );
+        seedOpenTerminationEmploymentAndAssignment(db);
+        decideTerminationTransactionRequest(db, {
+          transactionRequestId: "transaction-request-termination-001",
+          decision: "approve",
+          decidedAt: "2026-08-15T01:00:00Z",
+          decidedBy: "operator-people-ops-termination-001",
+          correlationId: "correlation-termination-approval-001",
+        });
+
+        const result =
+          await applyApprovedTerminationTransactionRequestWithOktaProjection(
+            db,
+            {
+              transactionRequestId: "transaction-request-termination-001",
+              appliedAt: "2026-08-15T02:00:00Z",
+              appliedBy: "operator-people-ops-termination-apply-001",
+              correlationId: "correlation-termination-apply-001",
+              oktaAdapter: buildOktaMasteringAdapter({
+                mode: "mock",
+                forcedFailures: projectionCase.forcedFailures,
+              }),
+            },
+          );
+
+        assert.equal(
+          result.oktaProjection.profile.status,
+          projectionCase.expectedProfileStatus,
+        );
+        assert.equal(
+          result.oktaProjection.profile.result.outcome,
+          projectionCase.expectedOutcome,
+        );
+        assert.deepEqual(result.oktaProjection.groups, {
+          status: "skipped",
+          skippedReason: "profile_projection_not_successful",
+        });
+        assert.equal(result.statusCode, "completed");
+      } finally {
+        db.close();
+      }
+    });
   }
 });
 

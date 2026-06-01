@@ -1,6 +1,7 @@
 export { saveTerminationTransactionRequest } from "./termination-transaction-request-persistence.js";
 export { decideTerminationTransactionRequest } from "./termination-transaction-request-decision.js";
 export { applyApprovedTerminationTransactionRequest } from "./termination-transaction-request-apply.js";
+export { applyApprovedTerminationTransactionRequestWithOktaProjection } from "./termination-okta-projection-integration.js";
 export { applyDueTerminationTransactionRequests } from "./termination-transaction-request-worker.js";
 
 export {
@@ -14,6 +15,13 @@ export type {
   AppliedTerminationTransactionRequestResult,
   ApplyApprovedTerminationTransactionRequestInput,
 } from "./termination-transaction-request-apply.js";
+export type {
+  AppliedTerminationTransactionRequestWithOktaProjectionResult,
+  ApplyApprovedTerminationTransactionRequestWithOktaProjectionInput,
+  OktaTerminationGroupProjectionStatus,
+  OktaTerminationProfileProjectionStatus,
+  OktaTerminationProjectionImpactEvidence,
+} from "./termination-okta-projection-integration.js";
 export type {
   ApplyDueTerminationTransactionRequestsInput,
   ApplyDueTerminationTransactionRequestsItemResult,
