@@ -154,6 +154,17 @@ export function applyApprovedTerminationTransactionRequest(
             AND employment_id = ?
             AND assignment_code = ?
             AND end_date IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM assignment AS other_assignment
+              WHERE other_assignment.person_id = assignment.person_id
+                AND other_assignment.employment_id = assignment.employment_id
+                AND other_assignment.id <> assignment.id
+                AND (
+                  other_assignment.end_date IS NULL
+                  OR other_assignment.end_date > ?
+                )
+            )
         `,
       )
       .run(
@@ -162,6 +173,7 @@ export function applyApprovedTerminationTransactionRequest(
         existing.person_id,
         employment.id,
         payload.currentAssignment.assignmentCode,
+        payload.effectiveDate,
       );
     if (!isSingleSqlChange(closeAssignmentResult)) {
       throw new Error(
