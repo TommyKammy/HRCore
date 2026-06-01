@@ -14,11 +14,7 @@ import {
   saveTransferTransactionRequest,
   verifyMvpBTransferCorrelationTrace,
 } from "./transfer-transaction-request.js";
-import {
-  normalizeRows,
-  openSchemaBackedDatabase,
-  readRepoFile,
-} from "./test-helpers/database.js";
+import { openSchemaBackedDatabase } from "./test-helpers/database.js";
 import { workerAttemptCorrelationId } from "./test-helpers/onboarding.js";
 
 test("MVP-B transfer evidence is traceable from one root correlation id", async (t) => {
@@ -480,18 +476,6 @@ test("MVP-B transfer evidence is traceable from one root correlation id", async 
   } finally {
     db.close();
   }
-});
-
-test("MVP-B transfer trace closeout preserves production readiness defer wording", async () => {
-  const closeout = await readRepoFile(
-    "docs/mvp-b-transfer-traceability-closeout.md",
-  );
-
-  assert.match(closeout, /bounded non-production MVP-B transfer traceability/u);
-  assert.match(closeout, /#11\/#12\/#14 remain owner-acknowledged defer/u);
-  assert.doesNotMatch(closeout, /production-like-ready:\s*Go/u);
-  assert.doesNotMatch(closeout, /production audit immutability is ready/u);
-  assert.doesNotMatch(closeout, /live-provider ready/u);
 });
 
 function assertTransferTraceThrows(

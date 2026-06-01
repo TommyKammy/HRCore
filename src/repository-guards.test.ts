@@ -356,6 +356,66 @@ test("MVP-B transfer transaction request facade stays split by responsibility", 
   );
 });
 
+test("MVP-B transfer traceability verifier stays split by responsibility", async () => {
+  const modulePaths = [
+    "src/transfer-transaction-request.ts",
+    "src/transfer-traceability-assembly.ts",
+    "src/transfer-traceability-db-reads.ts",
+    "src/transfer-traceability-production-gates.ts",
+    "src/transfer-traceability-types.ts",
+  ] as const;
+  const sources = Object.fromEntries(
+    await Promise.all(
+      modulePaths.map(async (path) => [path, await readRepoFile(path)]),
+    ),
+  ) as Record<(typeof modulePaths)[number], string>;
+
+  assert.match(
+    sources["src/transfer-transaction-request.ts"],
+    /from "\.\/transfer-traceability-assembly\.js"/u,
+  );
+  assert.match(
+    sources["src/transfer-transaction-request.ts"],
+    /from "\.\/transfer-traceability-types\.js"/u,
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /export function verifyMvpBTransferCorrelationTrace/u,
+    "public transfer facade must not own transfer trace assembly runtime",
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /class MvpBTransferCorrelationTraceError/u,
+    "public transfer facade must not own transfer trace error types",
+  );
+  assert.doesNotMatch(
+    sources["src/transfer-transaction-request.ts"],
+    /remainingMvpBTransferProductionReadinessGates/u,
+    "public transfer facade must not own production gate wording constants",
+  );
+
+  assert.match(
+    sources["src/transfer-traceability-assembly.ts"],
+    /export function verifyMvpBTransferCorrelationTrace/u,
+  );
+  assert.match(
+    sources["src/transfer-traceability-assembly.ts"],
+    /assertTransferTraceBindings/u,
+  );
+  assert.match(
+    sources["src/transfer-traceability-db-reads.ts"],
+    /readTransferTraceRequestByCorrelationId/u,
+  );
+  assert.match(
+    sources["src/transfer-traceability-production-gates.ts"],
+    /owner-acknowledged defer/u,
+  );
+  assert.match(
+    sources["src/transfer-traceability-types.ts"],
+    /export class MvpBTransferCorrelationTraceError/u,
+  );
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
