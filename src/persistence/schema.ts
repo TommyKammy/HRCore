@@ -480,7 +480,11 @@ export const transaction_request = sqliteTable(
     requestedAt: text("requested_at").notNull(),
     correlationId: text("correlation_id"),
     payloadVersion: text("payload_version", {
-      enum: ["mvp_a_onboarding_v1", "mvp_b_transfer_v1"],
+      enum: [
+        "mvp_a_onboarding_v1",
+        "mvp_b_transfer_v1",
+        "mvp_c_termination_v1",
+      ],
     }),
     payloadJson: text("payload_json"),
   },
@@ -507,7 +511,7 @@ export const transaction_request = sqliteTable(
     ),
     check(
       "transaction_request_payload_version_allowed",
-      sql`${table.payloadVersion} is null or ${table.payloadVersion} in ('mvp_a_onboarding_v1', 'mvp_b_transfer_v1')`,
+      sql`${table.payloadVersion} is null or ${table.payloadVersion} in ('mvp_a_onboarding_v1', 'mvp_b_transfer_v1', 'mvp_c_termination_v1')`,
     ),
     check(
       "transaction_request_payload_pair",

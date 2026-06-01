@@ -106,6 +106,13 @@
       "when": 1780232891489,
       "tag": "0014_transfer_transaction_request",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1780281807823,
+      "tag": "0015_termination_transaction_request",
+      "breakpoints": true
     }
   ]
 }
