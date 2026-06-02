@@ -1323,6 +1323,72 @@ test("MVP-D local ops failure decisions reject stale row-detail evidence", async
   );
 });
 
+test("MVP-D local ops failure decisions reject stale CSV provenance and row identity evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-row-identity-001",
+    correlationId: "csv-import-dlq-row-identity-001",
+    rowId: "csv-row-dlq-row-identity-001",
+    requestedAt: "2026-06-03T11:17:00+09:00",
+  });
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-row-identity-001",
+  });
+
+  db.exec(`
+    UPDATE csv_import_job
+    SET import_fingerprint = 'fingerprint-csv-import-job-dlq-row-identity-001-revised'
+    WHERE id = 'csv-import-job-dlq-row-identity-001';
+
+    UPDATE csv_import_row_outcome
+    SET id = 'csv-import-row-outcome-csv-row-dlq-row-identity-001-revised'
+    WHERE id = 'csv-import-row-outcome-csv-row-dlq-row-identity-001';
+  `);
+
+  assert.notEqual(
+    readLocalOpsJobStatus(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-row-identity-001",
+    }).evidenceVersion,
+    status.evidenceVersion,
+  );
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-row-identity-001",
+        rowId: "csv-row-dlq-row-identity-001",
+        decision: "close",
+        reason: "reviewed original row identity evidence",
+        decidedAt: "2026-06-03T11:18:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId:
+          "dlq-decision-correlation-row-identity-stale-001",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision requires current evidence/,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-row-identity-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+  );
+});
+
 test("MVP-D local ops failure decisions require matching audit evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {

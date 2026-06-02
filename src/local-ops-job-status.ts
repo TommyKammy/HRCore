@@ -95,6 +95,9 @@ export interface LocalOpsFailureDecisionResult {
 type CsvImportJobRow = {
   id: string;
   correlation_id: string;
+  import_fingerprint: string;
+  template_version: string;
+  tenant_environment_id: string;
   status_code: string;
   requested_at: string;
   requested_by: string;
@@ -103,6 +106,8 @@ type CsvImportJobRow = {
 };
 
 type CsvImportOutcomeRow = {
+  id: string;
+  job_id: string;
   row_id: string;
   lifecycle_type: string;
   status_code: string;
@@ -407,6 +412,9 @@ function readCsvImportOpsJobStatus(
         SELECT
           id,
           correlation_id,
+          import_fingerprint,
+          template_version,
+          tenant_environment_id,
           status_code,
           requested_at,
           requested_by,
@@ -426,6 +434,8 @@ function readCsvImportOpsJobStatus(
   const statement = db.prepare(
     `
       SELECT
+        id,
+        job_id,
         row_id,
         lifecycle_type,
         status_code,
@@ -461,10 +471,15 @@ function readCsvImportOpsJobStatus(
       "csv_import",
       job.id,
       job.status_code,
+      job.import_fingerprint,
+      job.template_version,
+      job.tenant_environment_id,
       String(job.accepted_rows),
       String(job.failed_rows),
       ...outcomes.map((outcome) =>
-        [
+        encodeStableKey([
+          outcome.id,
+          outcome.job_id,
           outcome.row_id,
           outcome.lifecycle_type,
           outcome.status_code,
@@ -474,7 +489,7 @@ function readCsvImportOpsJobStatus(
           outcome.error_message ?? "",
           outcome.correlation_id,
           outcome.decided_at,
-        ].join(":"),
+        ]),
       ),
     ]),
     operatorEvidence: {
