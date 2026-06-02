@@ -55,6 +55,7 @@ export interface MvpDCsvImportDryRunDiff {
     personId: string;
     effectiveDate: string;
     correlationId: string;
+    rowFingerprint: string;
   };
 }
 
@@ -254,6 +255,7 @@ export function dryRunSyntheticLifecycleCsvImport(
         personId: row.person_id.trim(),
         effectiveDate: row.effective_date.trim(),
         correlationId: `csv-import-${rowId}`,
+        rowFingerprint: buildRowFingerprint(row),
       },
     });
   }
@@ -1062,11 +1064,11 @@ function buildImportFingerprint(rows: AcceptedParsedCsvRow[]): string {
   return JSON.stringify(rows.map((row) => buildCanonicalCsvRow(row)));
 }
 
-function buildRowFingerprint(row: AcceptedParsedCsvRow): string {
+function buildRowFingerprint(row: ParsedCsvRow): string {
   return JSON.stringify(buildCanonicalCsvRow(row));
 }
 
-function buildCanonicalCsvRow(row: AcceptedParsedCsvRow): ParsedCsvRow {
+function buildCanonicalCsvRow(row: ParsedCsvRow): ParsedCsvRow {
   return Object.fromEntries(
     mvpDCsvImportTemplateColumns.map((column) => [column, row[column].trim()]),
   ) as ParsedCsvRow;

@@ -764,11 +764,10 @@ function buildOperatorDecisionAuditEventId(
 function buildOperatorDecisionSubjectId(
   input: RecordLocalOpsOperatorDecisionInput,
 ): string {
-  return `local-ops-job-${encodeStableKey([
+  return `local-ops-job-${input.expectedEvidenceVersion}-${encodeStableKey([
     input.workflow,
     input.correlationId,
     input.decision,
-    input.expectedEvidenceVersion,
     input.reason,
   ])}`;
 }
