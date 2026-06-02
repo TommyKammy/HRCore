@@ -2747,6 +2747,98 @@ test("MVP-B P2B-02 refactor wave closeout records behavior-preserving review", a
   );
 });
 
+test("MVP-C P2C-01 readiness review closeout keeps stronger gates blocked", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-c-p2c-01-readiness-review-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-C P2C-01 Readiness Review Closeout",
+    "Issue: #286",
+    "Part of: #278",
+    "Depends on: #285",
+    "Readiness Verdict",
+    "bounded/non-production MVP-C termination E2E: Go",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Reviewed Artifacts",
+    "#279 termination transaction_request schema / validation",
+    "#280 termination approval / return / reject / cancel flow",
+    "#281 effective-dated employment / assignment termination apply",
+    "#282 termination wizard / API bounded surface",
+    "#283 future-date termination apply worker",
+    "#284 mock Okta disable / group removal projection impact",
+    "#285 termination audit / correlation trace closeout",
+    "Owner acknowledgement is not Accepted two-key approval.",
+    "Issue #14 / R08 retention, anonymization, hard delete, legal hold, and deletion job surfaces remain blocked",
+    "No Silent Surface Openings",
+    "real employee data",
+    "live Okta",
+    "production authorization/RLS",
+    "audit immutability",
+    "raw/export",
+    "backup",
+    "ops/DLQ",
+    "legal/privacy",
+    "retention/deletion",
+    "two-key acceptance",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Blockers",
+    "<follow-up-real-employee-data-readiness>",
+    "<follow-up-live-okta-provider-readiness>",
+    "<follow-up-production-authorization-rls>",
+    "<follow-up-production-audit-immutability>",
+    "<follow-up-raw-export-readiness>",
+    "<follow-up-production-backup-readiness>",
+    "<follow-up-operations-dlq-replay>",
+    "<follow-up-legal-privacy-acceptance>",
+    "<follow-up-retention-deletion-readiness>",
+    "<follow-up-two-key-acceptance>",
+    "Issue #278 can close only after #286 is complete or explicitly deferred.",
+    "P2C-01 can close for bounded/non-production MVP-C termination review evidence",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2C-01 readiness closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "retention/deletion runtime ready: Go",
+    "retention/deletion readiness: Go",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2C-01 closeout must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    closeout,
+    /#240[\s\S]{0,160}\bis\s+Accepted two-key approval\b/u,
+    "P2C-01 closeout must not convert #240 owner acknowledgement into Accepted two-key approval",
+  );
+  assert.match(
+    closeout,
+    /`src\/termination-transaction-request\.ts`\s+`applyApprovedTerminationTransactionRequestWithOktaProjection`/u,
+    "P2C-01 closeout must cite the termination projection implementation symbol",
+  );
+  assert.match(
+    readme,
+    /\[MVP-C P2C-01 Readiness Review Closeout\]\(docs\/mvp-c-p2c-01-readiness-review-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
