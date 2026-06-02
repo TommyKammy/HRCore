@@ -247,11 +247,15 @@ function withConcurrentLocalOpsFailureDecision(
   hooks: {
     afterMissingDecisionRead?: () => void;
     afterRetryCountRead?: () => void;
+    beforeFailureDecisionSavepoint?: () => void;
     beforeFailureDecisionInsert?: () => void;
   },
 ): OnboardingTransactionRequestDatabase {
   return {
     exec(sql: string): unknown {
+      if (sql === "SAVEPOINT local_ops_failure_decision") {
+        hooks.beforeFailureDecisionSavepoint?.();
+      }
       return db.exec(sql);
     },
     prepare(sql: string) {
@@ -1322,5 +1326,181 @@ test("MVP-D local ops failure decisions recover committed insert races", async (
         decision_correlation_id: "dlq-decision-correlation-race-retry-003",
       },
     ],
+  );
+});
+
+test("MVP-D local ops failure decisions enforce replay and ignore races durably", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-replay-race-001",
+    correlationId: "csv-import-dlq-replay-race-001",
+    rowId: "csv-row-dlq-replay-race-001",
+    requestedAt: "2026-06-03T12:30:00+09:00",
+  });
+  const replayRaceStatus = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-replay-race-001",
+  });
+
+  let insertedReplayRace = false;
+  const replayRaceDb = withConcurrentLocalOpsFailureDecision(db, {
+    beforeFailureDecisionSavepoint: () => {
+      if (insertedReplayRace) {
+        return;
+      }
+      insertedReplayRace = true;
+      insertRawFailureDecisionEvidence(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-replay-race-001",
+        rowId: "csv-row-dlq-replay-race-001",
+        decision: "replay",
+        failureStatus: "replayed",
+        retryCount: 0,
+        evidenceVersion: replayRaceStatus.evidenceVersion,
+        reason: "replay committed by a racing local ops caller",
+        decidedAt: "2026-06-03T12:31:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-race-replay-001",
+      });
+    },
+  });
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(replayRaceDb, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-replay-race-001",
+        rowId: "csv-row-dlq-replay-race-001",
+        decision: "replay",
+        reason: "second replay loses durable uniqueness race",
+        decidedAt: "2026-06-03T12:31:30+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-race-replay-002",
+        expectedEvidenceVersion: replayRaceStatus.evidenceVersion,
+      }),
+    /local ops failure decision rejects duplicate replay/,
+  );
+  assert.deepEqual(
+    normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT decision, decision_correlation_id
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-replay-race-001'
+            ORDER BY decided_at
+          `,
+        )
+        .all(),
+    ),
+    [
+      {
+        decision: "replay",
+        decision_correlation_id: "dlq-decision-correlation-race-replay-001",
+      },
+    ],
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM audit_event
+            WHERE correlation_id = 'dlq-decision-correlation-race-replay-002'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+  );
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-ignore-race-001",
+    correlationId: "csv-import-dlq-ignore-race-001",
+    rowId: "csv-row-dlq-ignore-race-001",
+    requestedAt: "2026-06-03T12:40:00+09:00",
+  });
+  const ignoreRaceStatus = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-ignore-race-001",
+  });
+
+  let insertedIgnoreRace = false;
+  const ignoredFailureDb = withConcurrentLocalOpsFailureDecision(db, {
+    beforeFailureDecisionSavepoint: () => {
+      if (insertedIgnoreRace) {
+        return;
+      }
+      insertedIgnoreRace = true;
+      insertRawFailureDecisionEvidence(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-ignore-race-001",
+        rowId: "csv-row-dlq-ignore-race-001",
+        decision: "ignore",
+        failureStatus: "ignored",
+        retryCount: 0,
+        evidenceVersion: ignoreRaceStatus.evidenceVersion,
+        reason: "ignore committed by a racing local ops caller",
+        decidedAt: "2026-06-03T12:41:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-race-ignore-001",
+      });
+    },
+  });
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(ignoredFailureDb, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-ignore-race-001",
+        rowId: "csv-row-dlq-ignore-race-001",
+        decision: "retry",
+        reason: "retry loses durable ignore terminal race",
+        decidedAt: "2026-06-03T12:41:30+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-race-after-ignore-001",
+        expectedEvidenceVersion: ignoreRaceStatus.evidenceVersion,
+      }),
+    /local ops failure decision rejects terminal failure state/,
+  );
+  assert.deepEqual(
+    normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT decision, failure_status, decision_correlation_id
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-ignore-race-001'
+            ORDER BY decided_at
+          `,
+        )
+        .all(),
+    ),
+    [
+      {
+        decision: "ignore",
+        failure_status: "ignored",
+        decision_correlation_id: "dlq-decision-correlation-race-ignore-001",
+      },
+    ],
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM audit_event
+            WHERE correlation_id = 'dlq-decision-correlation-race-after-ignore-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
   );
 });
