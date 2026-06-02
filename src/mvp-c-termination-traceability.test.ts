@@ -16,6 +16,7 @@ import {
 } from "./okta-mastering-adapter.js";
 import {
   buildOnboardingApplyAuditEventId,
+  buildOnboardingApplyJobAttemptId,
   buildOnboardingApplyLifecycleEventIdForRequest,
   buildOnboardingDecisionAuditEventId,
 } from "./onboarding-transaction-request-ids.js";
@@ -44,6 +45,10 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
       correlationId: rootCorrelationId,
     });
     const workerCorrelationId = `${rootCorrelationId}:future-date-worker`;
+    const applyAttemptCorrelationId = workerAttemptCorrelationId(
+      workerCorrelationId,
+      "transaction-request-termination-001",
+    );
     const workerResult = applyDueTerminationTransactionRequests(db, {
       now: "2026-08-14T23:30:00-02:00",
       workerId: "worker-termination-future-apply-001",
@@ -55,10 +60,7 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
         transactionRequestId: "transaction-request-termination-001",
         appliedAt: "2026-08-14T23:30:00-02:00",
         appliedBy: "worker-termination-future-apply-001",
-        correlationId: workerAttemptCorrelationId(
-          workerCorrelationId,
-          "transaction-request-termination-001",
-        ),
+        correlationId: applyAttemptCorrelationId,
         oktaAdapter: buildOktaMasteringAdapter({
           mode: "mock",
           initialUsers: [
@@ -658,6 +660,74 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
       "worker-termination-future-apply-001",
       "transaction-request-termination-001",
     );
+    const canonicalApplyJobAttemptId = buildOnboardingApplyJobAttemptId(
+      "transaction-request-termination-001",
+      applyAttemptCorrelationId,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET id = ?
+        WHERE id = ?
+      `,
+    ).run(
+      "onboarding-apply-job-attempt-noncanonical-termination-trace-001",
+      canonicalApplyJobAttemptId,
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-C termination trace applied job attempt evidence must use the canonical applied job attempt id/,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET id = ?
+        WHERE id = ?
+      `,
+    ).run(
+      canonicalApplyJobAttemptId,
+      "onboarding-apply-job-attempt-noncanonical-termination-trace-001",
+    );
+    db.exec("PRAGMA ignore_check_constraints = ON");
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET retryable = ?, error_message = ?
+        WHERE id = ?
+      `,
+    ).run(
+      1,
+      "retryable failure after applied status",
+      canonicalApplyJobAttemptId,
+    );
+    db.exec("PRAGMA ignore_check_constraints = OFF");
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-C termination trace applied job attempt success evidence must not carry retryable or error details/,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET retryable = ?, error_message = ?
+        WHERE id = ?
+      `,
+    ).run(0, null, canonicalApplyJobAttemptId);
     db.prepare(
       `
         DELETE FROM onboarding_apply_job_attempt

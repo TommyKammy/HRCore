@@ -1,6 +1,7 @@
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request.js";
 import {
   buildOnboardingApplyAuditEventId,
+  buildOnboardingApplyJobAttemptId,
   buildOnboardingApplyLifecycleEventIdForRequest,
   buildOnboardingDecisionAuditEventId,
 } from "./onboarding-transaction-request-ids.js";
@@ -316,6 +317,22 @@ function assertTerminationTraceBindings(input: {
     ) {
       throwTerminationTraceError(
         "MVP-C termination trace apply job attempt evidence must be linked to the termination request",
+      );
+    }
+    if (
+      attempt.id !==
+      buildOnboardingApplyJobAttemptId(
+        input.request.transaction_request_id,
+        attempt.correlationId,
+      )
+    ) {
+      throwTerminationTraceError(
+        "MVP-C termination trace applied job attempt evidence must use the canonical applied job attempt id",
+      );
+    }
+    if (attempt.retryable || attempt.errorMessage !== null) {
+      throwTerminationTraceError(
+        "MVP-C termination trace applied job attempt success evidence must not carry retryable or error details",
       );
     }
   }
