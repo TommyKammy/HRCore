@@ -3,6 +3,7 @@ export { decideTerminationTransactionRequest } from "./termination-transaction-r
 export { applyApprovedTerminationTransactionRequest } from "./termination-transaction-request-apply.js";
 export { applyApprovedTerminationTransactionRequestWithOktaProjection } from "./termination-okta-projection-integration.js";
 export { applyDueTerminationTransactionRequests } from "./termination-transaction-request-worker.js";
+export { verifyMvpCTerminationCorrelationTrace } from "./termination-traceability-assembly.js";
 
 export {
   createTerminationTransactionRequestFixture,
@@ -10,6 +11,7 @@ export {
   parseTerminationTransactionRequestInput,
   TerminationTransactionRequestValidationError,
 } from "./termination-transaction-request-contract.js";
+export { MvpCTerminationCorrelationTraceError } from "./termination-traceability-types.js";
 export type { TerminationTransactionRequestPersistenceResult } from "./termination-transaction-request-persistence.js";
 export type {
   AppliedTerminationTransactionRequestResult,
@@ -22,6 +24,16 @@ export type {
   OktaTerminationProfileProjectionStatus,
   OktaTerminationProjectionImpactEvidence,
 } from "./termination-okta-projection-integration.js";
+export type {
+  MvpCTerminationApplyJobAttemptTrace,
+  MvpCTerminationAssignmentTrace,
+  MvpCTerminationAuditTrace,
+  MvpCTerminationCorrelationTrace,
+  MvpCTerminationEmploymentTrace,
+  MvpCTerminationLifecycleTrace,
+  MvpCTerminationTransactionTrace,
+  VerifyMvpCTerminationCorrelationTraceInput,
+} from "./termination-traceability-types.js";
 export type {
   ApplyDueTerminationTransactionRequestsInput,
   ApplyDueTerminationTransactionRequestsItemResult,
