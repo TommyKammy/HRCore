@@ -11,6 +11,12 @@ import { buildTerminationApplyLifecycleEventId } from "./termination-transaction
 import { parsePersistedTerminationApplyPayload } from "./termination-transaction-request-apply-reads.js";
 import { buildCompletedTerminationApplyRetryResult } from "./termination-transaction-request-apply-retry.js";
 import type { ExistingCompletedTerminationApplyRow } from "./termination-transaction-request-apply-types.js";
+import { buildTerminationOktaProjectionEvidence } from "./termination-okta-projection-helpers.js";
+import {
+  buildTerminationApplyWorkerContext,
+  classifyTerminationApplyWorkerFailure,
+  shouldSkipFutureTerminationApplyCandidate,
+} from "./termination-transaction-request-worker-boundaries.js";
 import {
   matchesTerminationRetry,
   type ExistingTerminationTransactionRequestRow,
@@ -140,6 +146,102 @@ test("MVP-C termination focused modules own contract, retry, and helper boundari
         "lifecycle-event-transaction-request-termination-001-apply",
       statusCode: "completed",
       correlationId: "correlation-termination-apply-001",
+    },
+  );
+
+  assert.deepEqual(
+    buildTerminationApplyWorkerContext({
+      now: "2026-08-31T23:59:59Z",
+      workerId: "worker-termination-001",
+      correlationId: "correlation-termination-worker-001",
+    }),
+    {
+      worker: {
+        now: "2026-08-31T23:59:59Z",
+        workerId: "worker-termination-001",
+        correlationId: "correlation-termination-worker-001",
+        batchLimit: 100,
+      },
+      batchLimit: 100,
+      effectiveDate: "2026-08-31",
+    },
+  );
+  assert.equal(
+    shouldSkipFutureTerminationApplyCandidate("2026-09-01", "2026-08-31"),
+    true,
+  );
+  assert.deepEqual(
+    classifyTerminationApplyWorkerFailure(
+      new Error(
+        "approved termination apply requires an open current assignment",
+      ),
+    ),
+    {
+      retryable: true,
+      errorMessage:
+        "approved termination apply requires an open current assignment",
+    },
+  );
+  assert.deepEqual(
+    buildTerminationOktaProjectionEvidence({
+      transactionRequestId: "transaction-request-termination-001",
+      lifecycleEventId:
+        "lifecycle-event-transaction-request-termination-001-apply",
+      applyCorrelationId: "correlation-termination-apply-001",
+      profile: {
+        status: "retryable_failure",
+        result: {
+          outcome: "retryable_failure",
+          operation: "disable",
+          employeeNumber: "EMP-TERMINATION-001",
+          effectiveAt: "2026-08-31T00:00:00Z",
+          errorCode: "mock_retryable_disable_timeout",
+          message: "Synthetic retryable Okta disable timeout.",
+          metadata: {
+            provider: "okta",
+            adapterMode: "mock",
+            projectionKey:
+              "okta:mock:disable:EMP-TERMINATION-001:2026-08-31T00%3A00%3A00Z",
+            synthetic: true,
+          },
+        },
+      },
+      groups: {
+        status: "skipped",
+        skippedReason: "profile_projection_not_successful",
+      },
+    }),
+    {
+      provider: "okta",
+      adapterMode: "mock",
+      synthetic: true,
+      authoritativeForRbac: false,
+      transactionRequestId: "transaction-request-termination-001",
+      lifecycleEventId:
+        "lifecycle-event-transaction-request-termination-001-apply",
+      applyCorrelationId: "correlation-termination-apply-001",
+      profile: {
+        status: "retryable_failure",
+        result: {
+          outcome: "retryable_failure",
+          operation: "disable",
+          employeeNumber: "EMP-TERMINATION-001",
+          effectiveAt: "2026-08-31T00:00:00Z",
+          errorCode: "mock_retryable_disable_timeout",
+          message: "Synthetic retryable Okta disable timeout.",
+          metadata: {
+            provider: "okta",
+            adapterMode: "mock",
+            projectionKey:
+              "okta:mock:disable:EMP-TERMINATION-001:2026-08-31T00%3A00%3A00Z",
+            synthetic: true,
+          },
+        },
+      },
+      groups: {
+        status: "skipped",
+        skippedReason: "profile_projection_not_successful",
+      },
     },
   );
 });
