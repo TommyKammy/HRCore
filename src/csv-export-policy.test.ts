@@ -191,6 +191,15 @@ test("MVP-D bounded synthetic CSV export fails closed on raw, regulated, real-da
       rows: [
         {
           row_id: "csv-export-row-denied",
+          " row_id ": "csv-export-row-denied-shadow",
+        },
+      ],
+    },
+    {
+      ...baseline,
+      rows: [
+        {
+          row_id: "csv-export-row-denied",
           unclassified_export_payload: "synthetic",
         },
       ],

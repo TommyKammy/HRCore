@@ -224,15 +224,18 @@ function normalizeExportRow(
   row: MvpDCsvExportRow,
   selectedFieldSet: ReadonlySet<string>,
 ): MvpDCsvExportRow {
+  const seenRowKeys = new Set<string>();
   for (const [key, value] of Object.entries(row)) {
     const trimmedKey = key.trim();
     if (
       trimmedKey.length === 0 ||
+      seenRowKeys.has(trimmedKey) ||
       deniedSurfaceSet.has(normalizeSurface(trimmedKey)) ||
       !selectedFieldSet.has(trimmedKey)
     ) {
       throwOutsidePolicy();
     }
+    seenRowKeys.add(trimmedKey);
 
     const normalizedValue = normalizeSurface(value ?? "");
     if (
