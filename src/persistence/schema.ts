@@ -826,6 +826,119 @@ export const csv_import_row_outcome = sqliteTable(
   ],
 );
 
+export const local_ops_failure_decision = sqliteTable(
+  "local_ops_failure_decision",
+  {
+    id: syntheticId(),
+    workflow: text("workflow", { enum: ["csv_import"] }).notNull(),
+    sourceType: text("source_type", {
+      enum: ["repo_owned_synthetic_mvp_d_csv_failure"],
+    }).notNull(),
+    jobCorrelationId: text("job_correlation_id").notNull(),
+    rowId: text("row_id").notNull(),
+    decision: text("decision", {
+      enum: ["retry", "replay", "ignore", "close"],
+    }).notNull(),
+    failureStatus: text("failure_status", {
+      enum: ["open", "replayed", "ignored", "closed"],
+    }).notNull(),
+    retryCount: integer("retry_count").notNull().default(0),
+    evidenceVersion: text("evidence_version").notNull(),
+    reason: text("reason").notNull(),
+    decidedAt: text("decided_at").notNull(),
+    decidedBy: text("decided_by").notNull(),
+    decisionCorrelationId: text("decision_correlation_id").notNull(),
+    auditEventId: text("audit_event_id")
+      .notNull()
+      .references(() => audit_event.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("local_ops_failure_decision_correlation_unique").on(
+      table.decisionCorrelationId,
+    ),
+    uniqueIndex("local_ops_failure_decision_audit_event_unique").on(
+      table.auditEventId,
+    ),
+    uniqueIndex("local_ops_failure_decision_replay_unique")
+      .on(table.workflow, table.jobCorrelationId, table.rowId, table.decision)
+      .where(sql`${table.decision} = 'replay'`),
+    uniqueIndex("local_ops_failure_decision_retry_attempt_unique")
+      .on(
+        table.workflow,
+        table.jobCorrelationId,
+        table.rowId,
+        table.decision,
+        table.retryCount,
+      )
+      .where(sql`${table.decision} = 'retry'`),
+    check(
+      "local_ops_failure_decision_workflow_allowed",
+      sql`${table.workflow} = 'csv_import'`,
+    ),
+    check(
+      "local_ops_failure_decision_source_type_allowed",
+      sql`${table.sourceType} = 'repo_owned_synthetic_mvp_d_csv_failure'`,
+    ),
+    check(
+      "local_ops_failure_decision_id_non_empty",
+      sql`length(${table.id}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_job_correlation_non_empty",
+      sql`length(${table.jobCorrelationId}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_row_id_non_empty",
+      sql`length(${table.rowId}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_decision_allowed",
+      sql`${table.decision} in ('retry', 'replay', 'ignore', 'close')`,
+    ),
+    check(
+      "local_ops_failure_decision_failure_status_allowed",
+      sql`${table.failureStatus} in ('open', 'replayed', 'ignored', 'closed')`,
+    ),
+    check(
+      "local_ops_failure_decision_status_consistent",
+      sql`(${table.decision} = 'retry' and ${table.failureStatus} = 'open') or (${table.decision} = 'replay' and ${table.failureStatus} = 'replayed') or (${table.decision} = 'ignore' and ${table.failureStatus} = 'ignored') or (${table.decision} = 'close' and ${table.failureStatus} = 'closed')`,
+    ),
+    check(
+      "local_ops_failure_decision_retry_count_range",
+      sql`${table.retryCount} >= 0 and ${table.retryCount} <= 3`,
+    ),
+    check(
+      "local_ops_failure_decision_evidence_version_non_empty",
+      sql`length(${table.evidenceVersion}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_reason_non_empty",
+      sql`length(${table.reason}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_decided_at_date",
+      sql`${table.decidedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "local_ops_failure_decision_decided_by_non_empty",
+      sql`length(${table.decidedBy}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_correlation_non_empty",
+      sql`length(${table.decisionCorrelationId}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_audit_event_non_empty",
+      sql`length(${table.auditEventId}) > 0`,
+    ),
+    check(
+      "local_ops_failure_decision_created_at_date",
+      sql`${table.createdAt} glob '????-??-??*'`,
+    ),
+  ],
+);
+
 export const schema = {
   person,
   employment,
@@ -842,4 +955,5 @@ export const schema = {
   onboarding_apply_job_run,
   csv_import_job,
   csv_import_row_outcome,
+  local_ops_failure_decision,
 };

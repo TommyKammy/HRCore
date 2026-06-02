@@ -372,6 +372,8 @@ test("MVP-D local ops job status exposes bounded CSV import evidence", async (t)
       rowId: "csv-row-ops-001",
       lifecycleType: "termination",
       status: "applied",
+      rowFingerprint:
+        '{"template_version":"mvp_d_lifecycle_support_v1","row_id":"csv-row-ops-001","lifecycle_type":"termination","tenant_environment_id":"repo_owned_synthetic_mvp_d_csv","person_id":"person-csv-row-ops-001","display_name":"CSV Ops Synthetic","effective_date":"2026-08-31","employment_code":"","assignment_code":"","organization_reference":"","work_email":"","current_assignment_id":"assignment-current-csv-row-ops-001","target_organization_reference":"","target_department_reference":"","target_manager_reference":"","reason_code":"resignation"}',
       correlationId:
         "csv-import-row-outcome-correlation-WyJjc3YtaW1wb3J0LW9wcy1jb3JyZWxhdGlvbi0wMDEiLCJjc3Ytcm93LW9wcy0wMDEiXQ",
       decidedAt: "2026-06-02T21:00:00+09:00",
@@ -989,7 +991,7 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
           `,
         )
         .run(status.evidenceVersion),
-    /local ops failure decision requires consistent failure status/,
+    /local_ops_failure_decision_status_consistent/,
   );
 
   assert.throws(
@@ -1255,6 +1257,135 @@ test("MVP-D local ops failure decisions replay committed evidence before mutable
         .get(),
     ),
     { count: 1 },
+  );
+});
+
+test("MVP-D local ops failure decisions reject stale row-detail evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-row-evidence-001",
+    correlationId: "csv-import-dlq-row-evidence-001",
+    rowId: "csv-row-dlq-row-evidence-001",
+    requestedAt: "2026-06-03T11:15:00+09:00",
+  });
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-row-evidence-001",
+  });
+
+  db.exec(`
+    UPDATE csv_import_row_outcome
+    SET row_fingerprint = 'fingerprint-csv-row-dlq-row-evidence-001-revised',
+        error_message = 'synthetic transfer target revised'
+    WHERE id = 'csv-import-row-outcome-csv-row-dlq-row-evidence-001';
+  `);
+
+  assert.notEqual(
+    readLocalOpsJobStatus(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-row-evidence-001",
+    }).evidenceVersion,
+    status.evidenceVersion,
+  );
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-row-evidence-001",
+        rowId: "csv-row-dlq-row-evidence-001",
+        decision: "ignore",
+        reason: "reviewed original row evidence",
+        decidedAt: "2026-06-03T11:16:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId:
+          "dlq-decision-correlation-row-evidence-stale-001",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision requires current evidence/,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-row-evidence-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+  );
+});
+
+test("MVP-D local ops failure decisions require matching audit evidence", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `
+            INSERT INTO local_ops_failure_decision (
+              id,
+              workflow,
+              source_type,
+              job_correlation_id,
+              row_id,
+              decision,
+              failure_status,
+              retry_count,
+              evidence_version,
+              reason,
+              decided_at,
+              decided_by,
+              decision_correlation_id,
+              audit_event_id,
+              created_at
+            )
+            VALUES (
+              'local-ops-failure-decision-orphan-audit-001',
+              'csv_import',
+              'repo_owned_synthetic_mvp_d_csv_failure',
+              'csv-import-dlq-orphan-audit-001',
+              'csv-row-dlq-orphan-audit-001',
+              'retry',
+              'open',
+              1,
+              'local-ops-evidence-orphan-audit-001',
+              'orphan decision must stay blocked',
+              '2026-06-03T11:35:00+09:00',
+              'operator-mvp-d-csv-import',
+              'dlq-decision-correlation-orphan-audit-001',
+              'audit-event-local-ops-failure-orphan-audit-001',
+              '2026-06-03T11:35:00+09:00'
+            )
+          `,
+        )
+        .run(),
+    /FOREIGN KEY constraint failed/,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM local_ops_failure_decision
+            WHERE decision_correlation_id = 'dlq-decision-correlation-orphan-audit-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
   );
 });
 

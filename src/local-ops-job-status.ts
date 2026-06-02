@@ -48,6 +48,7 @@ export interface LocalOpsJobRowEvidence {
   rowId: string;
   lifecycleType: string;
   status: string;
+  rowFingerprint?: string;
   correlationId: string;
   decidedAt: string;
   transactionRequestId: string | null;
@@ -107,6 +108,7 @@ type CsvImportOutcomeRow = {
   status_code: string;
   transaction_request_id: string | null;
   lifecycle_event_id: string | null;
+  row_fingerprint: string;
   error_message: string | null;
   correlation_id: string;
   decided_at: string;
@@ -276,8 +278,6 @@ export function recordLocalOpsFailureDecision(
     );
   }
 
-  ensureLocalOpsFailureDecisionTable(db);
-
   const action = `${failureDecisionActionPrefix}.${command.workflow}.${command.decision}`;
   const decisionId = buildFailureDecisionId(command);
   const auditEventId = buildFailureDecisionAuditEventId(command);
@@ -431,6 +431,7 @@ function readCsvImportOpsJobStatus(
         status_code,
         transaction_request_id,
         lifecycle_event_id,
+        row_fingerprint,
         error_message,
         correlation_id,
         decided_at
@@ -465,7 +466,12 @@ function readCsvImportOpsJobStatus(
       ...outcomes.map((outcome) =>
         [
           outcome.row_id,
+          outcome.lifecycle_type,
           outcome.status_code,
+          outcome.transaction_request_id ?? "",
+          outcome.lifecycle_event_id ?? "",
+          outcome.row_fingerprint,
+          outcome.error_message ?? "",
           outcome.correlation_id,
           outcome.decided_at,
         ].join(":"),
@@ -486,6 +492,7 @@ function readCsvImportOpsJobStatus(
       rowId: outcome.row_id,
       lifecycleType: outcome.lifecycle_type,
       status: outcome.status_code,
+      rowFingerprint: outcome.row_fingerprint,
       correlationId: outcome.correlation_id,
       decidedAt: outcome.decided_at,
       transactionRequestId: outcome.transaction_request_id,
@@ -800,121 +807,6 @@ function failureStatusForDecision(
   }
 
   return "open";
-}
-
-function ensureLocalOpsFailureDecisionTable(
-  db: OnboardingTransactionRequestDatabase,
-): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS local_ops_failure_decision (
-      id TEXT PRIMARY KEY,
-      workflow TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      job_correlation_id TEXT NOT NULL,
-      row_id TEXT NOT NULL,
-      decision TEXT NOT NULL,
-      failure_status TEXT NOT NULL,
-      retry_count INTEGER NOT NULL DEFAULT 0,
-      evidence_version TEXT NOT NULL,
-      reason TEXT NOT NULL,
-      decided_at TEXT NOT NULL,
-      decided_by TEXT NOT NULL,
-      decision_correlation_id TEXT NOT NULL UNIQUE,
-      audit_event_id TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL,
-      CHECK(length(id) > 0),
-      CHECK(workflow = 'csv_import'),
-      CHECK(source_type = 'repo_owned_synthetic_mvp_d_csv_failure'),
-      CHECK(length(job_correlation_id) > 0),
-      CHECK(length(row_id) > 0),
-      CHECK(decision in ('retry', 'replay', 'ignore', 'close')),
-      CHECK(failure_status in ('open', 'replayed', 'ignored', 'closed')),
-      CHECK(retry_count >= 0 AND retry_count <= 3),
-      CHECK(length(evidence_version) > 0),
-      CHECK(length(reason) > 0),
-      CHECK(decided_at glob '????-??-??*'),
-      CHECK(length(decided_by) > 0),
-      CHECK(length(decision_correlation_id) > 0),
-      CHECK(length(audit_event_id) > 0),
-      CHECK(created_at glob '????-??-??*')
-    )
-  `);
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS local_ops_failure_decision_replay_unique
-    ON local_ops_failure_decision (workflow, job_correlation_id, row_id, decision)
-    WHERE decision = 'replay'
-  `);
-  db.exec(`
-    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_status_consistency
-    BEFORE INSERT ON local_ops_failure_decision
-    WHEN NOT (
-      (NEW.decision = 'retry' AND NEW.failure_status = 'open')
-      OR (NEW.decision = 'replay' AND NEW.failure_status = 'replayed')
-      OR (NEW.decision = 'ignore' AND NEW.failure_status = 'ignored')
-      OR (NEW.decision = 'close' AND NEW.failure_status = 'closed')
-    )
-    BEGIN
-      SELECT RAISE(ABORT, 'local ops failure decision requires consistent failure status');
-    END
-  `);
-  db.exec(`
-    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_replay_guard
-    BEFORE INSERT ON local_ops_failure_decision
-    WHEN NEW.decision = 'replay'
-      AND EXISTS (
-        SELECT 1
-        FROM local_ops_failure_decision
-        WHERE workflow = NEW.workflow
-          AND job_correlation_id = NEW.job_correlation_id
-          AND row_id = NEW.row_id
-          AND decision = 'replay'
-      )
-    BEGIN
-      SELECT RAISE(ABORT, 'local ops failure decision rejects duplicate replay');
-    END
-  `);
-  db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS local_ops_failure_decision_retry_attempt_unique
-    ON local_ops_failure_decision (
-      workflow,
-      job_correlation_id,
-      row_id,
-      decision,
-      retry_count
-    )
-    WHERE decision = 'retry'
-  `);
-  db.exec(`
-    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_retry_limit
-    BEFORE INSERT ON local_ops_failure_decision
-    WHEN NEW.decision = 'retry'
-      AND (
-        SELECT count(*)
-        FROM local_ops_failure_decision
-        WHERE workflow = NEW.workflow
-          AND job_correlation_id = NEW.job_correlation_id
-          AND row_id = NEW.row_id
-          AND decision = 'retry'
-      ) >= ${maxLocalOpsFailureRetries}
-    BEGIN
-      SELECT RAISE(ABORT, 'local ops failure decision retry limit exceeded');
-    END
-  `);
-  db.exec(`
-    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_terminal_guard
-    BEFORE INSERT ON local_ops_failure_decision
-    WHEN EXISTS (
-      SELECT 1
-      FROM local_ops_failure_decision
-      WHERE workflow = NEW.workflow
-        AND job_correlation_id = NEW.job_correlation_id
-        AND row_id = NEW.row_id
-        AND failure_status IN ('ignored', 'closed')
-    )
-    BEGIN
-      SELECT RAISE(ABORT, 'local ops failure decision rejects terminal failure state');
-    END
-  `);
 }
 
 function readLocalOpsFailureDecision(
