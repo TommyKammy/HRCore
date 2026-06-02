@@ -1,92 +1,52 @@
-import { parseOnboardingApprovalDecisionInput } from "./onboarding-transaction-request-parser.js";
 import {
   readAuditEventById,
   readOnboardingTransactionRequestById,
 } from "./onboarding-transaction-request-readers.js";
-import {
-  assertLegalTransactionDecision,
-  assertMatchingTransactionDecisionAuditEvent,
-  buildTransactionDecisionResult,
-  buildTransactionDecisionRetryResultAfterConflict,
-  getTransactionDecisionTarget,
-  isSingleSqlChange,
-  rollbackNamedSavepoint,
-} from "./onboarding-transaction-request-shared.js";
+import { rollbackNamedSavepoint } from "./onboarding-transaction-request-shared.js";
 import type {
   OnboardingApprovalDecisionResult,
   OnboardingTransactionRequestDatabase,
 } from "./onboarding-transaction-request.js";
-import { buildTerminationDecisionAuditEventId } from "./termination-transaction-request-ids.js";
+import {
+  assertLegalTerminationDecision,
+  assertTerminationDecisionTarget,
+  buildTerminationDecisionResult,
+  buildTerminationDecisionRetryResultAfterConflict,
+  buildTerminationRepeatedDecisionResult,
+  parseTerminationDecisionCommand,
+  recordTerminationDecisionAuditEvent,
+  updateSubmittedTerminationDecision,
+} from "./termination-transaction-request-decision-helpers.js";
 
 export function decideTerminationTransactionRequest(
   db: OnboardingTransactionRequestDatabase,
   input: unknown,
 ): OnboardingApprovalDecisionResult {
-  const decision = parseOnboardingApprovalDecisionInput(input);
-  const target = getTransactionDecisionTarget(
-    decision.decision,
-    "mvp_c.termination",
-  );
-  const auditEventId = buildTerminationDecisionAuditEventId(decision);
-  const scope = {
-    requestType: "terminate",
-    label: "termination transaction request",
-  };
+  const command = parseTerminationDecisionCommand(input);
   const existing = readOnboardingTransactionRequestById(
     db,
-    decision.transactionRequestId,
+    command.decision.transactionRequestId,
   );
 
-  if (!existing || existing.request_type !== scope.requestType) {
-    throw new Error(
-      "termination transaction request decision target not found",
-    );
+  assertTerminationDecisionTarget(existing);
+
+  const repeatedResult = buildTerminationRepeatedDecisionResult(
+    existing,
+    readAuditEventById(db, command.auditEventId),
+    command,
+  );
+  if (repeatedResult) {
+    return repeatedResult;
   }
 
-  const existingAuditEvent = readAuditEventById(db, auditEventId);
-  if (existing.status_code === target.statusCode && existingAuditEvent) {
-    assertMatchingTransactionDecisionAuditEvent(
-      existingAuditEvent,
-      existing,
-      decision,
-      target,
-      scope,
-    );
-    return buildTransactionDecisionResult(
-      existing,
-      decision,
-      target,
-      auditEventId,
-    );
-  }
-
-  assertLegalTransactionDecision(existing, decision, target, scope);
+  assertLegalTerminationDecision(existing, command);
 
   db.exec("SAVEPOINT termination_transaction_request_decision");
   try {
-    const updateResult = db
-      .prepare(
-        `
-          UPDATE transaction_request
-          SET status_code = ?
-          WHERE id = ?
-            AND person_id = ?
-            AND request_type = 'terminate'
-            AND status_code = 'submitted'
-        `,
-      )
-      .run(
-        target.statusCode,
-        existing.transaction_request_id,
-        existing.person_id,
-      );
-    if (!isSingleSqlChange(updateResult)) {
-      const retryResult = buildTransactionDecisionRetryResultAfterConflict(
+    if (!updateSubmittedTerminationDecision(db, existing, command)) {
+      const retryResult = buildTerminationDecisionRetryResultAfterConflict(
         db,
-        decision,
-        target,
-        auditEventId,
-        scope,
+        command,
       );
       if (retryResult) {
         db.exec("RELEASE SAVEPOINT termination_transaction_request_decision");
@@ -98,28 +58,7 @@ export function decideTerminationTransactionRequest(
       );
     }
 
-    db.prepare(
-      `
-        INSERT INTO audit_event (
-          id,
-          actor_id,
-          action,
-          subject_table,
-          subject_id,
-          occurred_at,
-          correlation_id,
-          poc_marker
-        )
-        VALUES (?, ?, ?, 'transaction_request', ?, ?, ?, 'synthetic_poc')
-      `,
-    ).run(
-      auditEventId,
-      decision.decidedBy,
-      target.auditAction,
-      existing.transaction_request_id,
-      decision.decidedAt,
-      decision.correlationId,
-    );
+    recordTerminationDecisionAuditEvent(db, existing, command);
 
     db.exec("RELEASE SAVEPOINT termination_transaction_request_decision");
   } catch (error) {
@@ -127,10 +66,5 @@ export function decideTerminationTransactionRequest(
     throw error;
   }
 
-  return buildTransactionDecisionResult(
-    existing,
-    decision,
-    target,
-    auditEventId,
-  );
+  return buildTerminationDecisionResult(existing, command);
 }
