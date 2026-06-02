@@ -1,4 +1,8 @@
 import {
+  buildWorkerAttemptCorrelationId,
+  buildWorkerAttemptCorrelationIdSearchPrefix,
+} from "./onboarding-transaction-request-ids.js";
+import {
   encodeStableKey,
   isSingleSqlChange,
 } from "./onboarding-transaction-request-shared.js";
@@ -385,10 +389,19 @@ function readOnboardingApplyOpsJobStatus(
     throw new Error("local ops job status requires query-all support");
   }
 
-  const prefix = `${run.correlation_id}:transaction_request:`;
+  const prefix = buildWorkerAttemptCorrelationIdSearchPrefix(
+    run.correlation_id,
+  );
   const attempts = (
     statement.all(prefix, `${prefix}\uffff`) as OnboardingApplyAttemptRow[]
-  ).filter((attempt) => attempt.correlation_id.startsWith(prefix));
+  ).filter(
+    (attempt) =>
+      attempt.correlation_id ===
+      buildWorkerAttemptCorrelationId(
+        run.correlation_id,
+        attempt.transaction_request_id,
+      ),
+  );
 
   return {
     workflow: "onboarding_apply",

@@ -12,6 +12,13 @@ import {
   rejectBroadLocalOpsJobSearch,
 } from "./local-ops-job-status.js";
 import {
+  applyDueOnboardingTransactionRequests,
+  createOnboardingTransactionRequestFixture,
+  decideOnboardingTransactionRequest,
+  saveOnboardingTransactionRequest,
+} from "./onboarding-transaction-request.js";
+import { buildWorkerAttemptCorrelationId } from "./onboarding-transaction-request-ids.js";
+import {
   normalizeRow,
   normalizeRows,
   openSchemaBackedDatabase,
@@ -132,6 +139,84 @@ test("MVP-D local ops job status exposes bounded CSV import evidence", async (t)
       decidedAt: "2026-06-02T21:00:00+09:00",
       transactionRequestId: "csv-import-transaction-request-csv-row-ops-001",
       lifecycleEventId: "csv-import-lifecycle-event-csv-row-ops-001",
+      errorMessage: null,
+    },
+  ]);
+});
+
+test("MVP-D local ops job status matches onboarding apply attempt correlations", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  saveOnboardingTransactionRequest(
+    db,
+    createOnboardingTransactionRequestFixture(),
+  );
+  decideOnboardingTransactionRequest(db, {
+    transactionRequestId: "transaction-request-onboarding-001",
+    decision: "approve",
+    decidedAt: "2026-05-21T01:00:00Z",
+    decidedBy: "operator-people-ops-001",
+    correlationId: "correlation-onboarding-approval-001",
+  });
+
+  const workerCorrelationId = "correlation-local-ops-onboarding-apply-run-001";
+  const attemptedAt = "2026-06-01T00:00:00Z";
+  assert.deepEqual(
+    applyDueOnboardingTransactionRequests(db, {
+      now: attemptedAt,
+      workerId: "worker-local-ops-onboarding-apply-001",
+      correlationId: workerCorrelationId,
+    }),
+    {
+      attempted: 1,
+      applied: 1,
+      failed: 0,
+      skipped: 0,
+      correlationId: workerCorrelationId,
+      results: [
+        {
+          transactionRequestId: "transaction-request-onboarding-001",
+          status: "applied",
+          lifecycleEventId:
+            "lifecycle-event-transaction-request-onboarding-001-apply",
+        },
+      ],
+    },
+  );
+
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "onboarding_apply",
+    correlationId: workerCorrelationId,
+  });
+
+  assert.equal(status.workflow, "onboarding_apply");
+  assert.equal(status.status, "completed");
+  assert.deepEqual(status.operatorEvidence, {
+    actorId: "worker-local-ops-onboarding-apply-001",
+    recordedAt: attemptedAt,
+    correlationId: workerCorrelationId,
+  });
+  assert.deepEqual(status.counts, {
+    attempted: 1,
+    applied: 1,
+    failed: 0,
+    skipped: 0,
+  });
+  assert.deepEqual(status.rows, [
+    {
+      rowId: "transaction-request-onboarding-001",
+      lifecycleType: "onboarding",
+      status: "applied",
+      correlationId: buildWorkerAttemptCorrelationId(
+        workerCorrelationId,
+        "transaction-request-onboarding-001",
+      ),
+      decidedAt: attemptedAt,
+      transactionRequestId: "transaction-request-onboarding-001",
+      lifecycleEventId: null,
       errorMessage: null,
     },
   ]);
