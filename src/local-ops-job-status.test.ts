@@ -7,6 +7,7 @@ import {
   mvpDCsvImportTemplateColumns,
 } from "./csv-import-contract.js";
 import {
+  recordLocalOpsFailureDecision,
   readLocalOpsJobStatus,
   recordLocalOpsOperatorDecision,
   rejectBroadLocalOpsJobSearch,
@@ -403,5 +404,275 @@ test("MVP-D local ops rejects production-only DLQ actions without durable writes
   assert.deepEqual(
     normalizeRow(db.prepare("SELECT count(*) AS count FROM audit_event").get()),
     { count: 0 },
+  );
+});
+
+test("MVP-D local ops failure decisions are reasoned, idempotent, and fail closed", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  db.exec(`
+    INSERT INTO csv_import_job (
+      id,
+      correlation_id,
+      import_fingerprint,
+      template_version,
+      tenant_environment_id,
+      status_code,
+      requested_at,
+      requested_by,
+      accepted_rows,
+      failed_rows
+    )
+    VALUES (
+      'csv-import-job-dlq-guard-001',
+      'csv-import-dlq-guard-001',
+      'fingerprint-csv-import-dlq-guard-001',
+      'mvp_d_lifecycle_support_v1',
+      'repo_owned_synthetic_mvp_d_csv',
+      'failed',
+      '2026-06-03T10:00:00+09:00',
+      'operator-mvp-d-csv-import',
+      1,
+      1
+    );
+    INSERT INTO csv_import_row_outcome (
+      id,
+      job_id,
+      row_id,
+      lifecycle_type,
+      status_code,
+      transaction_request_id,
+      lifecycle_event_id,
+      row_fingerprint,
+      error_message,
+      correlation_id,
+      decided_at
+    )
+    VALUES
+      (
+        'csv-import-row-outcome-dlq-failed-001',
+        'csv-import-job-dlq-guard-001',
+        'csv-row-dlq-failed-001',
+        'transfer',
+        'failed',
+        NULL,
+        NULL,
+        'fingerprint-csv-row-dlq-failed-001',
+        'synthetic transfer target missing',
+        'csv-import-row-outcome-correlation-dlq-failed-001',
+        '2026-06-03T10:00:00+09:00'
+      ),
+      (
+        'csv-import-row-outcome-dlq-applied-001',
+        'csv-import-job-dlq-guard-001',
+        'csv-row-dlq-applied-001',
+        'termination',
+        'applied',
+        'csv-import-transaction-request-csv-row-dlq-applied-001',
+        'csv-import-lifecycle-event-csv-row-dlq-applied-001',
+        'fingerprint-csv-row-dlq-applied-001',
+        NULL,
+        'csv-import-row-outcome-correlation-dlq-applied-001',
+        '2026-06-03T10:00:00+09:00'
+      );
+  `);
+
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-guard-001",
+  });
+  assert.equal(status.status, "failed");
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-failed-001",
+        decision: "replay",
+        reason: " ",
+        decidedAt: "2026-06-03T10:05:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-missing-reason",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision requires a reason/,
+  );
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-failed-001",
+        decision: "ignore",
+        reason: "operator reviewed synthetic failure",
+        decidedAt: "2026-06-03T10:05:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-stale",
+        expectedEvidenceVersion: "local-ops-evidence-stale",
+      }),
+    /local ops failure decision requires current evidence/,
+  );
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-applied-001",
+        decision: "replay",
+        reason: "successful rows must not replay",
+        decidedAt: "2026-06-03T10:05:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-applied",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision requires a failed row/,
+  );
+
+  const firstReplay = recordLocalOpsFailureDecision(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-guard-001",
+    rowId: "csv-row-dlq-failed-001",
+    decision: "replay",
+    reason: "synthetic target is now available",
+    decidedAt: "2026-06-03T10:05:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "dlq-decision-correlation-replay-001",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+  const duplicateReplay = recordLocalOpsFailureDecision(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-guard-001",
+    rowId: "csv-row-dlq-failed-001",
+    decision: "replay",
+    reason: "synthetic target is now available",
+    decidedAt: "2026-06-03T10:05:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "dlq-decision-correlation-replay-001",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+  assert.deepEqual(duplicateReplay, firstReplay);
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-failed-001",
+        decision: "replay",
+        reason: "second replay must be blocked",
+        decidedAt: "2026-06-03T10:06:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-replay-002",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision rejects duplicate replay/,
+  );
+
+  for (const retryNumber of [1, 2, 3] as const) {
+    assert.equal(
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-failed-001",
+        decision: "retry",
+        reason: `bounded synthetic retry attempt ${retryNumber}`,
+        decidedAt: `2026-06-03T10:1${retryNumber}:00+09:00`,
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: `dlq-decision-correlation-retry-00${retryNumber}`,
+        expectedEvidenceVersion: status.evidenceVersion,
+      }).retryCount,
+      retryNumber,
+    );
+  }
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-failed-001",
+        decision: "retry",
+        reason: "fourth retry must be blocked",
+        decidedAt: "2026-06-03T10:14:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-retry-004",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision retry limit exceeded/,
+  );
+
+  const closeDecision = recordLocalOpsFailureDecision(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-guard-001",
+    rowId: "csv-row-dlq-failed-001",
+    decision: "close",
+    reason: "synthetic failure handling complete",
+    decidedAt: "2026-06-03T10:20:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "dlq-decision-correlation-close-001",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+  assert.equal(closeDecision.failureStatus, "closed");
+
+  assert.deepEqual(
+    normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT
+              decision,
+              failure_status,
+              retry_count,
+              reason,
+              decision_correlation_id
+            FROM local_ops_failure_decision
+            ORDER BY decided_at, decision_correlation_id
+          `,
+        )
+        .all(),
+    ),
+    [
+      {
+        decision: "replay",
+        failure_status: "replayed",
+        retry_count: 0,
+        reason: "synthetic target is now available",
+        decision_correlation_id: "dlq-decision-correlation-replay-001",
+      },
+      {
+        decision: "retry",
+        failure_status: "open",
+        retry_count: 1,
+        reason: "bounded synthetic retry attempt 1",
+        decision_correlation_id: "dlq-decision-correlation-retry-001",
+      },
+      {
+        decision: "retry",
+        failure_status: "open",
+        retry_count: 2,
+        reason: "bounded synthetic retry attempt 2",
+        decision_correlation_id: "dlq-decision-correlation-retry-002",
+      },
+      {
+        decision: "retry",
+        failure_status: "open",
+        retry_count: 3,
+        reason: "bounded synthetic retry attempt 3",
+        decision_correlation_id: "dlq-decision-correlation-retry-003",
+      },
+      {
+        decision: "close",
+        failure_status: "closed",
+        retry_count: 3,
+        reason: "synthetic failure handling complete",
+        decision_correlation_id: "dlq-decision-correlation-close-001",
+      },
+    ],
   );
 });

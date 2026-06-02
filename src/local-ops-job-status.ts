@@ -15,6 +15,8 @@ export type LocalOpsJobWorkflow = "csv_import" | "onboarding_apply";
 export type LocalOpsOperatorDecision =
   | "acknowledge_failure"
   | "escalate_for_manual_review";
+export type LocalOpsFailureDecision = "retry" | "replay" | "ignore" | "close";
+export type LocalOpsFailureStatus = "open" | "replayed" | "ignored" | "closed";
 
 export interface ReadLocalOpsJobStatusInput {
   workflow: LocalOpsJobWorkflow;
@@ -69,6 +71,26 @@ export interface LocalOpsOperatorDecisionResult {
   evidenceVersion: string;
 }
 
+export interface RecordLocalOpsFailureDecisionInput extends ReadLocalOpsJobStatusInput {
+  rowId: string;
+  decision: LocalOpsFailureDecision;
+  reason: string;
+  decidedAt: string;
+  decidedBy: string;
+  decisionCorrelationId: string;
+  expectedEvidenceVersion: string;
+}
+
+export interface LocalOpsFailureDecisionResult {
+  decisionId: string;
+  auditEventId: string;
+  action: string;
+  correlationId: string;
+  evidenceVersion: string;
+  failureStatus: LocalOpsFailureStatus;
+  retryCount: number;
+}
+
 type CsvImportJobRow = {
   id: string;
   correlation_id: string;
@@ -110,8 +132,23 @@ type OnboardingApplyAttemptRow = {
   error_message: string | null;
 };
 
+type LocalOpsFailureDecisionRow = {
+  id: string;
+  audit_event_id: string;
+  action: string;
+  evidence_version: string;
+  failure_status: LocalOpsFailureStatus;
+  retry_count: number;
+  decided_by: string;
+  decided_at: string;
+  reason: string;
+  decision_correlation_id: string;
+};
+
 const repoOwnedSyntheticScope = "repo_owned_synthetic_mvp_d";
 const operatorDecisionActionPrefix = "mvp_d.ops_job.operator_decision";
+const failureDecisionActionPrefix = "mvp_d.ops_job.failure_decision";
+const maxLocalOpsFailureRetries = 3;
 
 export function readLocalOpsJobStatus(
   db: OnboardingTransactionRequestDatabase,
@@ -226,6 +263,78 @@ export function recordLocalOpsOperatorDecision(
     correlationId: command.decisionCorrelationId,
     evidenceVersion: current.evidenceVersion,
   };
+}
+
+export function recordLocalOpsFailureDecision(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): LocalOpsFailureDecisionResult {
+  const command = normalizeFailureDecisionInput(input);
+  if (command.workflow !== "csv_import") {
+    throw new Error(
+      "local ops failure decision rejects unsupported source type",
+    );
+  }
+
+  ensureLocalOpsFailureDecisionTable(db);
+
+  const current = readLocalOpsJobStatus(db, command);
+  if (current.evidenceVersion !== command.expectedEvidenceVersion) {
+    throw new Error("local ops failure decision requires current evidence");
+  }
+  const failureRow = current.rows.find((row) => row.rowId === command.rowId);
+  if (!failureRow || failureRow.status !== "failed") {
+    throw new Error("local ops failure decision requires a failed row");
+  }
+
+  const action = `${failureDecisionActionPrefix}.${command.workflow}.${command.decision}`;
+  const decisionId = buildFailureDecisionId(command);
+  const auditEventId = buildFailureDecisionAuditEventId(command);
+  const existingDecision = readLocalOpsFailureDecision(db, decisionId);
+  if (existingDecision) {
+    assertFailureDecisionMatchesExisting(existingDecision, command, action);
+    return buildFailureDecisionResult(existingDecision);
+  }
+
+  if (
+    command.decision === "replay" &&
+    hasPriorLocalOpsFailureDecision(db, command, "replay")
+  ) {
+    throw new Error("local ops failure decision rejects duplicate replay");
+  }
+
+  const priorRetryCount = countPriorLocalOpsFailureRetries(db, command);
+  const retryCount =
+    command.decision === "retry" ? priorRetryCount + 1 : priorRetryCount;
+  if (retryCount > maxLocalOpsFailureRetries) {
+    throw new Error("local ops failure decision retry limit exceeded");
+  }
+
+  const failureStatus = failureStatusForDecision(command.decision);
+  const resultRow: LocalOpsFailureDecisionRow = {
+    id: decisionId,
+    audit_event_id: auditEventId,
+    action,
+    evidence_version: command.expectedEvidenceVersion,
+    failure_status: failureStatus,
+    retry_count: retryCount,
+    decided_by: command.decidedBy,
+    decided_at: command.decidedAt,
+    reason: command.reason,
+    decision_correlation_id: command.decisionCorrelationId,
+  };
+
+  db.exec("SAVEPOINT local_ops_failure_decision");
+  try {
+    insertLocalOpsFailureDecisionAuditEvent(db, command, action, auditEventId);
+    insertLocalOpsFailureDecision(db, command, resultRow);
+    db.exec("RELEASE SAVEPOINT local_ops_failure_decision");
+  } catch (error) {
+    rollbackLocalOpsFailureDecisionSavepoint(db);
+    throw error;
+  }
+
+  return buildFailureDecisionResult(resultRow);
 }
 
 export function rejectBroadLocalOpsJobSearch(input: {
@@ -505,10 +614,69 @@ function normalizeOperatorDecisionInput(
   };
 }
 
+function normalizeFailureDecisionInput(
+  input: RecordLocalOpsFailureDecisionInput,
+): RecordLocalOpsFailureDecisionInput {
+  const status = normalizeStatusInput(input);
+  const rowId = input.rowId.trim();
+  const decision = input.decision.trim();
+  const reason = input.reason.trim();
+  const decidedAt = input.decidedAt.trim();
+  const decidedBy = input.decidedBy.trim();
+  const decisionCorrelationId = input.decisionCorrelationId.trim();
+  const expectedEvidenceVersion = input.expectedEvidenceVersion.trim();
+
+  if (rowId.length === 0) {
+    throw new Error("local ops failure decision requires a row id");
+  }
+  if (!isLocalOpsFailureDecision(decision)) {
+    throw new Error(
+      "local ops failure decision rejects unsupported transition",
+    );
+  }
+  if (reason.length === 0) {
+    throw new Error("local ops failure decision requires a reason");
+  }
+  if (decidedAt.length === 0 || !decidedAt.includes("T")) {
+    throw new Error("local ops failure decision requires an ISO timestamp");
+  }
+  if (decidedBy.length === 0 || decisionCorrelationId.length === 0) {
+    throw new Error(
+      "local ops failure decision requires actor and correlation evidence",
+    );
+  }
+  if (expectedEvidenceVersion.length === 0) {
+    throw new Error("local ops failure decision requires current evidence");
+  }
+
+  return {
+    ...input,
+    ...status,
+    rowId,
+    decision,
+    reason,
+    decidedAt,
+    decidedBy,
+    decisionCorrelationId,
+    expectedEvidenceVersion,
+  };
+}
+
 function isLocalOpsJobWorkflow(
   workflow: string,
 ): workflow is LocalOpsJobWorkflow {
   return workflow === "csv_import" || workflow === "onboarding_apply";
+}
+
+function isLocalOpsFailureDecision(
+  decision: string,
+): decision is LocalOpsFailureDecision {
+  return (
+    decision === "retry" ||
+    decision === "replay" ||
+    decision === "ignore" ||
+    decision === "close"
+  );
 }
 
 function buildEvidenceVersion(parts: string[]): string {
@@ -536,6 +704,327 @@ function buildOperatorDecisionSubjectId(
     input.expectedEvidenceVersion,
     input.reason,
   ])}`;
+}
+
+function buildFailureDecisionId(
+  input: RecordLocalOpsFailureDecisionInput,
+): string {
+  return `local-ops-failure-decision-${encodeStableKey([
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.decision,
+    input.decisionCorrelationId,
+  ])}`;
+}
+
+function buildFailureDecisionAuditEventId(
+  input: RecordLocalOpsFailureDecisionInput,
+): string {
+  return `audit-event-local-ops-failure-${encodeStableKey([
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.decision,
+    input.decisionCorrelationId,
+  ])}`;
+}
+
+function buildFailureDecisionSubjectId(
+  input: RecordLocalOpsFailureDecisionInput,
+): string {
+  return `local-ops-failure-${encodeStableKey([
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.expectedEvidenceVersion,
+  ])}`;
+}
+
+function failureStatusForDecision(
+  decision: LocalOpsFailureDecision,
+): LocalOpsFailureStatus {
+  if (decision === "replay") {
+    return "replayed";
+  }
+  if (decision === "ignore") {
+    return "ignored";
+  }
+  if (decision === "close") {
+    return "closed";
+  }
+
+  return "open";
+}
+
+function ensureLocalOpsFailureDecisionTable(
+  db: OnboardingTransactionRequestDatabase,
+): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS local_ops_failure_decision (
+      id TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      job_correlation_id TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      decision TEXT NOT NULL,
+      failure_status TEXT NOT NULL,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      evidence_version TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      decided_at TEXT NOT NULL,
+      decided_by TEXT NOT NULL,
+      decision_correlation_id TEXT NOT NULL UNIQUE,
+      audit_event_id TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      CHECK(length(id) > 0),
+      CHECK(workflow = 'csv_import'),
+      CHECK(source_type = 'repo_owned_synthetic_mvp_d_csv_failure'),
+      CHECK(length(job_correlation_id) > 0),
+      CHECK(length(row_id) > 0),
+      CHECK(decision in ('retry', 'replay', 'ignore', 'close')),
+      CHECK(failure_status in ('open', 'replayed', 'ignored', 'closed')),
+      CHECK(retry_count >= 0 AND retry_count <= 3),
+      CHECK(length(evidence_version) > 0),
+      CHECK(length(reason) > 0),
+      CHECK(decided_at glob '????-??-??*'),
+      CHECK(length(decided_by) > 0),
+      CHECK(length(decision_correlation_id) > 0),
+      CHECK(length(audit_event_id) > 0),
+      CHECK(created_at glob '????-??-??*')
+    )
+  `);
+}
+
+function readLocalOpsFailureDecision(
+  db: OnboardingTransactionRequestDatabase,
+  decisionId: string,
+): LocalOpsFailureDecisionRow | undefined {
+  return db
+    .prepare(
+      `
+        SELECT
+          id,
+          audit_event_id,
+          action,
+          evidence_version,
+          failure_status,
+          retry_count,
+          decided_by,
+          decided_at,
+          reason,
+          decision_correlation_id
+        FROM (
+          SELECT
+            decision.id,
+            decision.audit_event_id,
+            audit.action,
+            decision.evidence_version,
+            decision.failure_status,
+            decision.retry_count,
+            decision.decided_by,
+            decision.decided_at,
+            decision.reason,
+            decision.decision_correlation_id
+          FROM local_ops_failure_decision AS decision
+          JOIN audit_event AS audit
+            ON audit.id = decision.audit_event_id
+          WHERE decision.id = ?
+          LIMIT 1
+        )
+      `,
+    )
+    .get(decisionId) as LocalOpsFailureDecisionRow | undefined;
+}
+
+function hasPriorLocalOpsFailureDecision(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+  decision: LocalOpsFailureDecision,
+): boolean {
+  const row = db
+    .prepare(
+      `
+        SELECT id
+        FROM local_ops_failure_decision
+        WHERE workflow = ?
+          AND job_correlation_id = ?
+          AND row_id = ?
+          AND decision = ?
+        LIMIT 1
+      `,
+    )
+    .get(input.workflow, input.correlationId, input.rowId, decision) as
+    | { id: string }
+    | undefined;
+
+  return Boolean(row);
+}
+
+function countPriorLocalOpsFailureRetries(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): number {
+  const row = db
+    .prepare(
+      `
+        SELECT count(*) AS count
+        FROM local_ops_failure_decision
+        WHERE workflow = ?
+          AND job_correlation_id = ?
+          AND row_id = ?
+          AND decision = 'retry'
+      `,
+    )
+    .get(input.workflow, input.correlationId, input.rowId) as
+    | { count: number }
+    | undefined;
+
+  return row?.count ?? 0;
+}
+
+function insertLocalOpsFailureDecisionAuditEvent(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+  action: string,
+  auditEventId: string,
+): void {
+  const result = db
+    .prepare(
+      `
+        INSERT INTO audit_event (
+          id,
+          actor_id,
+          action,
+          subject_table,
+          subject_id,
+          occurred_at,
+          poc_marker,
+          correlation_id
+        )
+        VALUES (?, ?, ?, 'lifecycle_event', ?, ?, 'synthetic_poc', ?)
+      `,
+    )
+    .run(
+      auditEventId,
+      input.decidedBy,
+      action,
+      buildFailureDecisionSubjectId(input),
+      input.decidedAt,
+      input.decisionCorrelationId,
+    );
+
+  if (!isSingleSqlChange(result)) {
+    throw new Error(
+      "local ops failure decision audit evidence was not written",
+    );
+  }
+}
+
+function insertLocalOpsFailureDecision(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+  row: LocalOpsFailureDecisionRow,
+): void {
+  const result = db
+    .prepare(
+      `
+        INSERT INTO local_ops_failure_decision (
+          id,
+          workflow,
+          source_type,
+          job_correlation_id,
+          row_id,
+          decision,
+          failure_status,
+          retry_count,
+          evidence_version,
+          reason,
+          decided_at,
+          decided_by,
+          decision_correlation_id,
+          audit_event_id,
+          created_at
+        )
+        VALUES (
+          ?,
+          ?,
+          'repo_owned_synthetic_mvp_d_csv_failure',
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        )
+      `,
+    )
+    .run(
+      row.id,
+      input.workflow,
+      input.correlationId,
+      input.rowId,
+      input.decision,
+      row.failure_status,
+      row.retry_count,
+      row.evidence_version,
+      row.reason,
+      row.decided_at,
+      row.decided_by,
+      row.decision_correlation_id,
+      row.audit_event_id,
+      row.decided_at,
+    );
+
+  if (!isSingleSqlChange(result)) {
+    throw new Error("local ops failure decision evidence was not written");
+  }
+}
+
+function assertFailureDecisionMatchesExisting(
+  existing: LocalOpsFailureDecisionRow,
+  input: RecordLocalOpsFailureDecisionInput,
+  action: string,
+): void {
+  if (
+    existing.action !== action ||
+    existing.evidence_version !== input.expectedEvidenceVersion ||
+    existing.decided_by !== input.decidedBy ||
+    existing.decided_at !== input.decidedAt ||
+    existing.reason !== input.reason ||
+    existing.decision_correlation_id !== input.decisionCorrelationId
+  ) {
+    throw new Error(
+      "local ops failure decision conflicts with existing evidence",
+    );
+  }
+}
+
+function buildFailureDecisionResult(
+  row: LocalOpsFailureDecisionRow,
+): LocalOpsFailureDecisionResult {
+  return {
+    decisionId: row.id,
+    auditEventId: row.audit_event_id,
+    action: row.action,
+    correlationId: row.decision_correlation_id,
+    evidenceVersion: row.evidence_version,
+    failureStatus: row.failure_status,
+    retryCount: row.retry_count,
+  };
+}
+
+function rollbackLocalOpsFailureDecisionSavepoint(
+  db: OnboardingTransactionRequestDatabase,
+): void {
+  db.exec("ROLLBACK TO SAVEPOINT local_ops_failure_decision");
+  db.exec("RELEASE SAVEPOINT local_ops_failure_decision");
 }
 
 function throwUnsupportedOperatorTransition(): never {
