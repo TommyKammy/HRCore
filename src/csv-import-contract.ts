@@ -319,7 +319,10 @@ export function applySyntheticLifecycleCsvImport(
       const rowIds = buildApplyRowIds(row);
       const jobRowIds = buildApplyJobRowIds(command, row);
       const rowFingerprint = buildRowFingerprint(row);
-      const existingOutcome = readCsvImportRowOutcome(db, dryRunRow.rowId);
+      const existingOutcome = readSuccessfulCsvImportRowOutcome(
+        db,
+        dryRunRow.rowId,
+      );
       if (existingOutcome) {
         if (
           !matchesAppliedOutcome(existingOutcome, row, rowIds, rowFingerprint)
@@ -831,7 +834,7 @@ function recordIdempotentCsvImportRowOutcome(
   );
 }
 
-function readCsvImportRowOutcome(
+function readSuccessfulCsvImportRowOutcome(
   db: OnboardingTransactionRequestDatabase,
   rowId: string,
 ): ExistingCsvImportRowOutcome | undefined {
@@ -848,6 +851,7 @@ function readCsvImportRowOutcome(
         error_message
       FROM csv_import_row_outcome
       WHERE row_id = ?
+        AND status_code IN ('applied', 'idempotent')
       ORDER BY decided_at, id
       LIMIT 1
     `,
