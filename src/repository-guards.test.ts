@@ -2959,6 +2959,93 @@ test("MVP-C P2C-02 refactor wave closeout records behavior-preserving review", a
   );
 });
 
+test("MVP-D P2D-01 readiness review closeout keeps CSV/Ops/DLQ bounded", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-d-p2d-01-readiness-review-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-D P2D-01 Readiness Review Closeout",
+    "Issue: #315",
+    "Part of: #308",
+    "Depends on: #314",
+    "Readiness Verdict",
+    "bounded/non-production MVP-D CSV/Ops/DLQ evidence: Go",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Reviewed Artifacts",
+    "#309 CSV import contract / validation / dry-run",
+    "#310 CSV import apply / idempotency / failure handling",
+    "#311 bounded CSV export policy gate / no raw payload guard",
+    "#312 Ops job status / operator evidence / runbook boundary",
+    "#313 DLQ model / retry / replay guard",
+    "#314 CSV/Ops/DLQ traceability verifier / tests",
+    "P0-R05 (#11), P0-R06 (#12), and P0-R08 (#14) remain owner-acknowledged defer / production-like blocked",
+    "Owner acknowledgement is not Accepted two-key approval.",
+    "No Silent Surface Openings",
+    "real employee data",
+    "live Okta",
+    "production authorization/RLS",
+    "audit immutability",
+    "raw/export",
+    "production queue/DLQ",
+    "production ops",
+    "legal/privacy",
+    "retention/deletion",
+    "two-key acceptance",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Blockers",
+    "<follow-up-real-employee-data-readiness>",
+    "<follow-up-live-okta-provider-readiness>",
+    "<follow-up-production-authorization-rls>",
+    "<follow-up-production-audit-immutability>",
+    "<follow-up-raw-export-readiness>",
+    "<follow-up-production-operations-dlq>",
+    "<follow-up-legal-privacy-acceptance>",
+    "<follow-up-retention-deletion-readiness>",
+    "<follow-up-two-key-acceptance>",
+    "Issue #308 can close after #315 is complete and the epic comment records this bounded verdict.",
+    "P2D-01 can close for bounded/non-production MVP-D CSV/Ops/DLQ review evidence",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2D-01 readiness closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "unrestricted raw payload/export ready: Go",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2D-01 closeout must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    closeout,
+    /#240[\s\S]{0,160}\bis\s+Accepted two-key approval\b/u,
+    "P2D-01 closeout must not convert #240 owner acknowledgement into Accepted two-key approval",
+  );
+  assert.match(
+    readme,
+    /\[MVP-D P2D-01 Readiness Review Closeout\]\(docs\/mvp-d-p2d-01-readiness-review-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
