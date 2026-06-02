@@ -5,6 +5,7 @@ import {
   applySyntheticLifecycleCsvImport,
   dryRunSyntheticLifecycleCsvImport,
   mvpDCsvImportTemplateColumns,
+  type MvpDCsvImportDryRunDiff,
 } from "./csv-import-contract.js";
 import {
   normalizeRow,
@@ -14,6 +15,31 @@ import {
 
 function csv(lines: string[]): string {
   return `${lines.join("\n")}\n`;
+}
+
+function stripRowFingerprints(diffs: MvpDCsvImportDryRunDiff[]): Array<
+  Omit<MvpDCsvImportDryRunDiff, "evidence"> & {
+    evidence: Omit<MvpDCsvImportDryRunDiff["evidence"], "rowFingerprint">;
+  }
+> {
+  return diffs.map((diff) => ({
+    ...diff,
+    evidence: {
+      personId: diff.evidence.personId,
+      effectiveDate: diff.evidence.effectiveDate,
+      correlationId: diff.evidence.correlationId,
+    },
+  }));
+}
+
+function assertDryRunDiffFingerprints(diffs: MvpDCsvImportDryRunDiff[]): void {
+  for (const diff of diffs) {
+    assert.match(diff.evidence.rowFingerprint, /"template_version"/);
+    assert.match(
+      diff.evidence.rowFingerprint,
+      new RegExp(`"row_id":"${diff.rowId}"`),
+    );
+  }
 }
 
 test("MVP-D CSV dry-run parses bounded synthetic lifecycle rows without applying changes", () => {
@@ -69,7 +95,7 @@ test("MVP-D CSV dry-run parses bounded synthetic lifecycle rows without applying
     result.acceptedRows.map((row) => row.rowId),
     ["csv-row-001", "csv-row-002"],
   );
-  assert.deepEqual(result.diffs, [
+  assert.deepEqual(stripRowFingerprints(result.diffs), [
     {
       rowId: "csv-row-001",
       lifecycleType: "onboarding",
@@ -91,6 +117,7 @@ test("MVP-D CSV dry-run parses bounded synthetic lifecycle rows without applying
       },
     },
   ]);
+  assertDryRunDiffFingerprints(result.diffs);
 });
 
 test("MVP-D CSV dry-run reports deterministic validation reasons without mutating", () => {
@@ -192,7 +219,7 @@ test("MVP-D CSV dry-run normalizes lifecycle type before emitting diffs", () => 
       lifecycleType: "transfer",
     },
   ]);
-  assert.deepEqual(result.diffs, [
+  assert.deepEqual(stripRowFingerprints(result.diffs), [
     {
       rowId: "csv-row-normalized",
       lifecycleType: "transfer",
@@ -204,6 +231,7 @@ test("MVP-D CSV dry-run normalizes lifecycle type before emitting diffs", () => 
       },
     },
   ]);
+  assertDryRunDiffFingerprints(result.diffs);
 });
 
 test("MVP-D CSV dry-run fails closed on unsupported prohibited fields and malformed CSV", () => {

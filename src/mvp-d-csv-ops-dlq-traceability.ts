@@ -151,15 +151,16 @@ export function verifyMvpDCsvOpsDlqTraceability(
 
   const dryRun = verifyDryRunTrace(input.dryRun, opsStatus.rows);
   const deniedExport = verifyDeniedExportGuardEvidence(db, input.deniedExport);
-  const operatorActions = readOperatorActions(db, appliedJobCorrelationId);
+  const operatorActions = filterCurrentOperatorActions(
+    readOperatorActions(db, appliedJobCorrelationId),
+    opsStatus.evidenceVersion,
+  );
   if (operatorActions.length === 0) {
     throwTraceError("MVP-D trace requires operator action evidence");
   }
-  verifyOperatorActions(operatorActions, opsStatus.evidenceVersion);
 
-  const failureDecisions = readFailureDecisions(db, appliedJobCorrelationId);
-  verifyFailureDecisions(
-    failureDecisions,
+  const failureDecisions = verifyFailureDecisions(
+    readFailureDecisions(db, appliedJobCorrelationId),
     input.requiredFailureDecisions,
     opsStatus.rows,
     appliedJobCorrelationId,
@@ -265,6 +266,10 @@ function verifyDryRunTrace(
       diff.evidence.correlationId,
       "MVP-D trace requires dry-run diff correlation evidence",
     );
+    requireTraceValue(
+      diff.evidence.rowFingerprint,
+      "MVP-D trace requires dry-run row fingerprint evidence",
+    );
     if (
       diffCorrelationId !== `csv-import-${rowId}` ||
       diff.operation !== dryRunOperationForLifecycleType(diff.lifecycleType)
@@ -299,6 +304,20 @@ function verifyDryRunTrace(
         "MVP-D trace requires dry-run rows to match CSV job row outcomes",
       );
     }
+    if (
+      requireTraceValue(
+        diff.evidence.rowFingerprint,
+        "MVP-D trace requires dry-run row fingerprint evidence",
+      ) !==
+      requireTraceValue(
+        jobRow.rowFingerprint ?? "",
+        "MVP-D trace requires CSV job row fingerprint evidence",
+      )
+    ) {
+      throwTraceError(
+        "MVP-D trace requires dry-run row fingerprints to match CSV job outcomes",
+      );
+    }
   }
   if (jobRows.some((row) => !seenAcceptedRowIds.has(row.rowId))) {
     throwTraceError(
@@ -329,32 +348,26 @@ function verifyDeniedExportGuardEvidence(
   if (evidence.scope !== mvpDCsvExportScope) {
     throwTraceError("MVP-D trace requires bounded denied export scope");
   }
-  requireTraceValue(
+  const requestedBy = requireTraceValue(
     evidence.requestedBy,
     "MVP-D trace requires denied export actor evidence",
   );
-  if (
-    !isValidIsoTimestamp(
-      requireTraceValue(
-        evidence.requestedAt,
-        "MVP-D trace requires denied export timestamp evidence",
-      ),
-    )
-  ) {
+  const requestedAt = requireTraceValue(
+    evidence.requestedAt,
+    "MVP-D trace requires denied export timestamp evidence",
+  );
+  if (!isValidIsoTimestamp(requestedAt)) {
     throwTraceError("MVP-D trace requires denied export timestamp evidence");
   }
-  requireTraceValue(
+  const correlationId = requireTraceValue(
     evidence.correlationId,
     "MVP-D trace requires denied export correlation evidence",
   );
-  requireTraceValue(
+  const errorMessage = requireTraceValue(
     evidence.errorMessage,
     "MVP-D trace requires denied export guard error evidence",
   );
-  const persistedDownloadAuditCount = countExportAuditEvents(
-    db,
-    evidence.correlationId,
-  );
+  const persistedDownloadAuditCount = countExportAuditEvents(db, correlationId);
   if (
     evidence.auditEventCountBefore !== 0 ||
     evidence.auditEventCountAfter !== 0 ||
@@ -365,7 +378,7 @@ function verifyDeniedExportGuardEvidence(
     );
   }
   if (
-    evidence.errorMessage !==
+    errorMessage !==
     "CSV export request is outside the bounded synthetic MVP-D policy"
   ) {
     throwTraceError(
@@ -373,7 +386,13 @@ function verifyDeniedExportGuardEvidence(
     );
   }
 
-  return evidence;
+  return {
+    ...evidence,
+    requestedBy,
+    requestedAt,
+    correlationId,
+    errorMessage,
+  };
 }
 
 function countExportAuditEvents(
@@ -462,16 +481,14 @@ function readFailureDecisions(
   return statement.all(correlationId) as FailureDecisionTraceRow[];
 }
 
-function verifyOperatorActions(
+function filterCurrentOperatorActions(
   actions: AuditEventTraceRow[],
   currentEvidenceVersion: string,
-): void {
+): AuditEventTraceRow[] {
   const currentEvidenceSubjectPrefix = `local-ops-job-${currentEvidenceVersion}-`;
-  for (const action of actions) {
-    if (!action.subject_id.startsWith(currentEvidenceSubjectPrefix)) {
-      throwTraceError("MVP-D trace requires current operator action evidence");
-    }
-  }
+  return actions.filter((action) =>
+    action.subject_id.startsWith(currentEvidenceSubjectPrefix),
+  );
 }
 
 function verifyFailureDecisions(
@@ -480,8 +497,11 @@ function verifyFailureDecisions(
   jobRows: LocalOpsJobRowEvidence[],
   jobCorrelationId: string,
   currentEvidenceVersion: string,
-): void {
-  if (decisions.length === 0) {
+): FailureDecisionTraceRow[] {
+  const currentDecisions = decisions.filter(
+    (decision) => decision.evidence_version === currentEvidenceVersion,
+  );
+  if (currentDecisions.length === 0) {
     throwTraceError("MVP-D trace requires DLQ decision evidence");
   }
   const requiredDecisionSet = new Set(requiredDecisions);
@@ -496,7 +516,7 @@ function verifyFailureDecisions(
     jobRows.filter((row) => row.status === "failed").map((row) => row.rowId),
   );
   const decisionRowIds = new Set<string>();
-  for (const decision of decisions) {
+  for (const decision of currentDecisions) {
     requireTraceValue(
       decision.row_id,
       "MVP-D trace requires DLQ row id evidence",
@@ -513,9 +533,6 @@ function verifyFailureDecisions(
       decision.decision_correlation_id,
       "MVP-D trace requires DLQ decision correlation evidence",
     );
-    if (decision.evidence_version !== currentEvidenceVersion) {
-      throwTraceError("MVP-D trace requires current DLQ decision evidence");
-    }
     if (!failedJobRowIds.has(decision.row_id)) {
       throwTraceError(
         "MVP-D trace requires DLQ decisions to match failed CSV row outcomes",
@@ -540,7 +557,7 @@ function verifyFailureDecisions(
     }
   }
 
-  for (const decision of decisions) {
+  for (const decision of currentDecisions) {
     if (
       decision.audit_event_id !==
         buildFailureDecisionAuditEventId(
@@ -558,12 +575,18 @@ function verifyFailureDecisions(
   }
 
   for (const requiredDecision of requiredDecisions) {
-    if (!decisions.some((decision) => decision.decision === requiredDecision)) {
+    if (
+      !currentDecisions.some(
+        (decision) => decision.decision === requiredDecision,
+      )
+    ) {
       throwTraceError(
         `MVP-D trace requires ${requiredDecision} DLQ decision evidence`,
       );
     }
   }
+
+  return currentDecisions;
 }
 
 function dryRunOperationForLifecycleType(
