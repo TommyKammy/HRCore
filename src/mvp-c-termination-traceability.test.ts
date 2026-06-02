@@ -159,9 +159,9 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
     });
     db.prepare(
       `
-		        UPDATE audit_event
-		        SET id = ?
-		        WHERE id = ?
+        UPDATE audit_event
+        SET id = ?
+        WHERE id = ?
 		      `,
     ).run(
       "audit-event-termination-trace-approval-noncanonical",
@@ -261,6 +261,56 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
       canonicalApplyAuditEventId,
       "audit-event-termination-trace-noncanonical",
     );
+    db.prepare(
+      `
+        UPDATE lifecycle_event
+        SET occurred_at = ?
+        WHERE id = ?
+      `,
+    ).run("2026-08-15T01:30:00Z", canonicalLifecycleEventId);
+    assert.equal(
+      verifyMvpCTerminationCorrelationTrace(db, {
+        correlationId: rootCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireApplyJobAttempt: true,
+        requireOktaProjection: true,
+        oktaProjection: oktaProjection.oktaProjection,
+      }).lifecycleEvent?.occurredAt,
+      "2026-08-15T01:30:00Z",
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET attempted_at = ?
+        WHERE transaction_request_id = ?
+      `,
+    ).run("2026-08-15T01:30:00Z", "transaction-request-termination-001");
+    assert.equal(
+      verifyMvpCTerminationCorrelationTrace(db, {
+        correlationId: rootCorrelationId,
+        requireApproval: true,
+        requireApply: true,
+        requireApplyJobAttempt: true,
+        requireOktaProjection: true,
+        oktaProjection: oktaProjection.oktaProjection,
+      }).applyJobAttempts[0]?.attemptedAt,
+      "2026-08-15T01:30:00Z",
+    );
+    db.prepare(
+      `
+        UPDATE lifecycle_event
+        SET occurred_at = ?
+        WHERE id = ?
+      `,
+    ).run("2026-08-14T23:30:00-02:00", canonicalLifecycleEventId);
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET attempted_at = ?
+        WHERE transaction_request_id = ?
+      `,
+    ).run("2026-08-14T23:30:00-02:00", "transaction-request-termination-001");
 
     assertTerminationTraceThrows(
       () =>

@@ -239,7 +239,10 @@ function assertTerminationTraceBindings(input: {
   if (
     input.applyAuditEvent !== undefined &&
     input.lifecycleEvent !== undefined &&
-    input.applyAuditEvent.occurredAt !== input.lifecycleEvent.occurredAt
+    !isTerminationTraceSameInstant(
+      input.applyAuditEvent.occurredAt,
+      input.lifecycleEvent.occurredAt,
+    )
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace apply audit timing must match the lifecycle evidence",
@@ -385,7 +388,10 @@ function assertTerminationTraceBindings(input: {
     input.requireApplyJobAttempt &&
     input.applyAuditEvent !== undefined &&
     rootLinkedApplyJobAttempt !== undefined &&
-    rootLinkedApplyJobAttempt.attemptedAt !== input.applyAuditEvent.occurredAt
+    !isTerminationTraceSameInstant(
+      rootLinkedApplyJobAttempt.attemptedAt,
+      input.applyAuditEvent.occurredAt,
+    )
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace applied job attempt timing must match the apply audit evidence",
@@ -577,6 +583,13 @@ function expectedTerminationOktaGroupProjectionKey(input: {
 function isTerminationTraceInstantAfter(left: string, right: string): boolean {
   return (
     terminationTraceTimestampMillis(left) >
+    terminationTraceTimestampMillis(right)
+  );
+}
+
+function isTerminationTraceSameInstant(left: string, right: string): boolean {
+  return (
+    terminationTraceTimestampMillis(left) ===
     terminationTraceTimestampMillis(right)
   );
 }
