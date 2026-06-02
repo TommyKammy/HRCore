@@ -334,7 +334,7 @@ test("MVP-D CSV apply persists accepted dry-run rows once and records row outcom
   const firstApply = applySyntheticLifecycleCsvImport(db, {
     csvInput,
     dryRun,
-    appliedAt: "2026-06-02T12:00:00Z",
+    appliedAt: " 2026-06-02T12:00:00Z \n",
     appliedBy: "operator-mvp-d-csv-import",
     correlationId: "csv-import-apply-correlation-001",
   });
@@ -397,23 +397,27 @@ test("MVP-D CSV apply persists accepted dry-run rows once and records row outcom
       db
         .prepare(
           `
-	          SELECT
-	            job_id,
-	            row_id,
-	            lifecycle_type,
-	            status_code,
-	            transaction_request_id,
-	            lifecycle_event_id,
-	            row_fingerprint,
-	            error_message
-	          FROM csv_import_row_outcome
-	          ORDER BY job_id, row_id
-	        `,
+            SELECT
+              id,
+              job_id,
+              row_id,
+              lifecycle_type,
+              status_code,
+              transaction_request_id,
+              lifecycle_event_id,
+              row_fingerprint,
+              error_message,
+              correlation_id,
+              decided_at
+            FROM csv_import_row_outcome
+            ORDER BY job_id, row_id
+          `,
         )
         .all(),
     ),
     [
       {
+        id: "csv-import-row-outcome-WyJjc3YtaW1wb3J0LWFwcGx5LWNvcnJlbGF0aW9uLTAwMSIsImNzdi1yb3ctYXBwbHktMDAxIl0",
         job_id: "csv-import-job-csv-import-apply-correlation-001",
         row_id: "csv-row-apply-001",
         lifecycle_type: "termination",
@@ -424,8 +428,28 @@ test("MVP-D CSV apply persists accepted dry-run rows once and records row outcom
         row_fingerprint:
           '{"template_version":"mvp_d_lifecycle_support_v1","row_id":"csv-row-apply-001","lifecycle_type":"termination","tenant_environment_id":"repo_owned_synthetic_mvp_d_csv","person_id":"person-csv-apply-001","display_name":"CSV Apply Synthetic One","effective_date":"2026-08-31","employment_code":"","assignment_code":"","organization_reference":"","work_email":"","current_assignment_id":"assignment-current-csv-apply-001","target_organization_reference":"","target_department_reference":"","target_manager_reference":"","reason_code":"resignation"}',
         error_message: null,
+        correlation_id:
+          "csv-import-row-outcome-correlation-WyJjc3YtaW1wb3J0LWFwcGx5LWNvcnJlbGF0aW9uLTAwMSIsImNzdi1yb3ctYXBwbHktMDAxIl0",
+        decided_at: "2026-06-02T12:00:00Z",
       },
     ],
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT requested_at, requested_by
+            FROM csv_import_job
+            WHERE correlation_id = 'csv-import-apply-correlation-001'
+          `,
+        )
+        .get(),
+    ),
+    {
+      requested_at: "2026-06-02T12:00:00Z",
+      requested_by: "operator-mvp-d-csv-import",
+    },
   );
 });
 

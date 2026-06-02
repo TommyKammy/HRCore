@@ -1,5 +1,8 @@
 import { isValidIsoDate } from "./onboarding-transaction-request-validation.js";
-import { rollbackNamedSavepoint } from "./onboarding-transaction-request-shared.js";
+import {
+  encodeStableKey,
+  rollbackNamedSavepoint,
+} from "./onboarding-transaction-request-shared.js";
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
 
 export const mvpDCsvImportTemplateVersion = "mvp_d_lifecycle_support_v1";
@@ -117,6 +120,12 @@ type ExistingCsvImportRowOutcome = {
 type ExistingCsvImportJob = {
   correlation_id: string;
   import_fingerprint: string;
+};
+
+type NormalizedMvpDCsvImportApplyInput = MvpDCsvImportApplyInput & {
+  appliedAt: string;
+  appliedBy: string;
+  correlationId: string;
 };
 
 const supportedColumnSet = new Set<string>(mvpDCsvImportTemplateColumns);
@@ -265,10 +274,10 @@ export function applySyntheticLifecycleCsvImport(
   db: OnboardingTransactionRequestDatabase,
   input: MvpDCsvImportApplyInput,
 ): MvpDCsvImportApplyResult {
-  validateApplyCommand(input);
+  const command = normalizeApplyCommand(input);
 
-  const currentDryRun = dryRunSyntheticLifecycleCsvImport(input.csvInput);
-  if (!matchesDryRunContract(input.dryRun, currentDryRun)) {
+  const currentDryRun = dryRunSyntheticLifecycleCsvImport(command.csvInput);
+  if (!matchesDryRunContract(command.dryRun, currentDryRun)) {
     throw new Error(
       "CSV import apply requires a current dry-run result for the exact CSV input",
     );
@@ -279,7 +288,7 @@ export function applySyntheticLifecycleCsvImport(
     );
   }
 
-  const acceptedRows = readAcceptedCsvRows(input.csvInput);
+  const acceptedRows = readAcceptedCsvRows(command.csvInput);
   const rowsById = new Map(acceptedRows.map((row) => [row.row_id.trim(), row]));
   const importFingerprint = buildImportFingerprint(acceptedRows);
   const applyRows: Array<
@@ -294,7 +303,7 @@ export function applySyntheticLifecycleCsvImport(
     db.exec("SAVEPOINT mvp_d_csv_import_apply");
     savepointStarted = true;
 
-    recordCsvImportJob(db, input, importFingerprint, {
+    recordCsvImportJob(db, command, importFingerprint, {
       acceptedRows: currentDryRun.summary.acceptedRows,
       failedRows: currentDryRun.summary.rejectedRows,
     });
@@ -308,7 +317,7 @@ export function applySyntheticLifecycleCsvImport(
       }
 
       const rowIds = buildApplyRowIds(row);
-      const jobRowIds = buildApplyJobRowIds(input, row);
+      const jobRowIds = buildApplyJobRowIds(command, row);
       const rowFingerprint = buildRowFingerprint(row);
       const existingOutcome = readCsvImportRowOutcome(db, dryRunRow.rowId);
       if (existingOutcome) {
@@ -321,7 +330,7 @@ export function applySyntheticLifecycleCsvImport(
         }
         recordIdempotentCsvImportRowOutcome(
           db,
-          input,
+          command,
           row,
           rowIds,
           jobRowIds,
@@ -340,7 +349,14 @@ export function applySyntheticLifecycleCsvImport(
 
       try {
         db.exec("SAVEPOINT mvp_d_csv_import_apply_row");
-        applyAcceptedCsvRow(db, input, row, rowIds, jobRowIds, rowFingerprint);
+        applyAcceptedCsvRow(
+          db,
+          command,
+          row,
+          rowIds,
+          jobRowIds,
+          rowFingerprint,
+        );
         db.exec("RELEASE SAVEPOINT mvp_d_csv_import_apply_row");
         applyRows.push({
           rowId: dryRunRow.rowId,
@@ -356,7 +372,7 @@ export function applySyntheticLifecycleCsvImport(
           error instanceof Error ? error.message : "unknown CSV import failure";
         recordFailedCsvImportRowOutcome(
           db,
-          input,
+          command,
           row,
           jobRowIds,
           rowFingerprint,
@@ -372,7 +388,7 @@ export function applySyntheticLifecycleCsvImport(
       }
     }
 
-    finalizeCsvImportJob(db, input, {
+    finalizeCsvImportJob(db, command, {
       appliedRows,
       failedRows,
       idempotentRows,
@@ -393,7 +409,7 @@ export function applySyntheticLifecycleCsvImport(
       idempotentRows,
     },
     rows: applyRows,
-    correlationId: input.correlationId,
+    correlationId: command.correlationId,
   };
 }
 
@@ -458,16 +474,29 @@ function validateCsvImportRow(row: ParsedCsvRow): string[] {
   return reasons;
 }
 
-function validateApplyCommand(input: MvpDCsvImportApplyInput): void {
-  if (!isValidIsoTimestamp(input.appliedAt.trim())) {
+function normalizeApplyCommand(
+  input: MvpDCsvImportApplyInput,
+): NormalizedMvpDCsvImportApplyInput {
+  const appliedAt = input.appliedAt.trim();
+  const appliedBy = input.appliedBy.trim();
+  const correlationId = input.correlationId.trim();
+
+  if (!isValidIsoTimestamp(appliedAt)) {
     throw new Error("CSV import apply requires an ISO timestamp");
   }
-  if (input.appliedBy.trim().length === 0) {
+  if (appliedBy.length === 0) {
     throw new Error("CSV import apply requires an authenticated actor");
   }
-  if (input.correlationId.trim().length === 0) {
+  if (correlationId.length === 0) {
     throw new Error("CSV import apply requires a correlation id");
   }
+
+  return {
+    ...input,
+    appliedAt,
+    appliedBy,
+    correlationId,
+  };
 }
 
 function matchesDryRunContract(
@@ -858,9 +887,10 @@ function buildApplyJobRowIds(
   row: AcceptedParsedCsvRow,
 ) {
   const rowId = row.row_id.trim();
+  const rowOutcomeKey = encodeStableKey([input.correlationId, rowId]);
   return {
-    rowOutcomeId: `csv-import-row-outcome-${input.correlationId}-${rowId}`,
-    rowOutcomeCorrelationId: `csv-import-${input.correlationId}-${rowId}`,
+    rowOutcomeId: `csv-import-row-outcome-${rowOutcomeKey}`,
+    rowOutcomeCorrelationId: `csv-import-row-outcome-correlation-${rowOutcomeKey}`,
   };
 }
 
