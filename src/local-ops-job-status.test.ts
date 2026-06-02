@@ -652,6 +652,51 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
     /local ops failure decision retry limit exceeded/,
   );
 
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `
+            INSERT INTO local_ops_failure_decision (
+              id,
+              workflow,
+              source_type,
+              job_correlation_id,
+              row_id,
+              decision,
+              failure_status,
+              retry_count,
+              evidence_version,
+              reason,
+              decided_at,
+              decided_by,
+              decision_correlation_id,
+              audit_event_id,
+              created_at
+            )
+            VALUES (
+              'local-ops-failure-decision-raw-fourth-retry',
+              'csv_import',
+              'repo_owned_synthetic_mvp_d_csv_failure',
+              'csv-import-dlq-guard-001',
+              'csv-row-dlq-failed-001',
+              'retry',
+              'open',
+              3,
+              ?,
+              'raw fourth retry must be rejected durably',
+              '2026-06-03T10:14:30+09:00',
+              'operator-mvp-d-csv-import',
+              'dlq-decision-correlation-retry-raw-fourth',
+              'audit-event-local-ops-failure-raw-fourth-retry',
+              '2026-06-03T10:14:30+09:00'
+            )
+          `,
+        )
+        .run(status.evidenceVersion),
+    /local ops failure decision retry limit exceeded/,
+  );
+
   const closeDecision = recordLocalOpsFailureDecision(db, {
     workflow: "csv_import",
     correlationId: "csv-import-dlq-guard-001",

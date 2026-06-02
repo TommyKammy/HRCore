@@ -344,6 +344,12 @@ export function recordLocalOpsFailureDecision(
     ) {
       throw new Error("local ops failure decision rejects duplicate replay");
     }
+    if (
+      command.decision === "retry" &&
+      countPriorLocalOpsFailureRetries(db, command) >= maxLocalOpsFailureRetries
+    ) {
+      throw new Error("local ops failure decision retry limit exceeded");
+    }
     throw error;
   }
 
@@ -811,6 +817,33 @@ function ensureLocalOpsFailureDecisionTable(
     CREATE UNIQUE INDEX IF NOT EXISTS local_ops_failure_decision_replay_unique
     ON local_ops_failure_decision (workflow, job_correlation_id, row_id, decision)
     WHERE decision = 'replay'
+  `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS local_ops_failure_decision_retry_attempt_unique
+    ON local_ops_failure_decision (
+      workflow,
+      job_correlation_id,
+      row_id,
+      decision,
+      retry_count
+    )
+    WHERE decision = 'retry'
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_retry_limit
+    BEFORE INSERT ON local_ops_failure_decision
+    WHEN NEW.decision = 'retry'
+      AND (
+        SELECT count(*)
+        FROM local_ops_failure_decision
+        WHERE workflow = NEW.workflow
+          AND job_correlation_id = NEW.job_correlation_id
+          AND row_id = NEW.row_id
+          AND decision = 'retry'
+      ) >= ${maxLocalOpsFailureRetries}
+    BEGIN
+      SELECT RAISE(ABORT, 'local ops failure decision retry limit exceeded');
+    END
   `);
 }
 
