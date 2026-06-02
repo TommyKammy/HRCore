@@ -276,6 +276,8 @@ function serializeCsvArtifact(
     serializeCsvTraceLine("scope", mvpDCsvExportScope),
     serializeCsvTraceLine("audit_event_id", trace.auditEventId),
     serializeCsvTraceLine("correlation_id", request.correlationId),
+    serializeCsvTraceLine("requested_by", request.requestedBy),
+    serializeCsvTraceLine("requested_at", request.requestedAt),
     serializeCsvTraceLine("evidence_sha256", trace.evidenceHash),
     serializeCsvTraceLine("row_count", String(trace.rowCount)),
     serializeCsvTraceLine("masking_profile", mvpDCsvExportMaskingProfile),
