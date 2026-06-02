@@ -24,6 +24,9 @@ import type {
 import { throwTerminationTraceError } from "./termination-traceability-types.js";
 import type { OktaTerminationProjectionImpactEvidence } from "./termination-okta-projection-integration.js";
 
+const terminationTraceTimestampPattern =
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
+
 export function verifyMvpCTerminationCorrelationTrace(
   db: OnboardingTransactionRequestDatabase,
   input: VerifyMvpCTerminationCorrelationTraceInput,
@@ -305,6 +308,16 @@ function assertTerminationTraceBindings(input: {
     input.requireApplyJobAttempt &&
     input.applyAuditEvent !== undefined &&
     rootLinkedApplyJobAttempt !== undefined &&
+    rootLinkedApplyJobAttempt.workerId !== input.applyAuditEvent.actorId
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace applied job attempt actor must match the apply audit evidence",
+    );
+  }
+  if (
+    input.requireApplyJobAttempt &&
+    input.applyAuditEvent !== undefined &&
+    rootLinkedApplyJobAttempt !== undefined &&
     rootLinkedApplyJobAttempt.attemptedAt !== input.applyAuditEvent.occurredAt
   ) {
     throwTerminationTraceError(
@@ -502,6 +515,16 @@ function isTerminationTraceInstantAfter(left: string, right: string): boolean {
 }
 
 function terminationTraceTimestampMillis(timestamp: string): number {
+  const match = terminationTraceTimestampPattern.exec(timestamp);
+  if (
+    !match ||
+    !isValidTerminationTraceIsoDateParts(match[1], match[2], match[3])
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace timing evidence must include a valid ISO timestamp",
+    );
+  }
+
   const millis = Date.parse(timestamp);
   if (!Number.isFinite(millis)) {
     throwTerminationTraceError(
@@ -510,6 +533,23 @@ function terminationTraceTimestampMillis(timestamp: string): number {
   }
 
   return millis;
+}
+
+function isValidTerminationTraceIsoDateParts(
+  yearText: string,
+  monthText: string,
+  dayText: string,
+): boolean {
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month - 1 &&
+    candidate.getUTCDate() === day
+  );
 }
 
 function terminationTraceTimestampDate(timestamp: string): string {

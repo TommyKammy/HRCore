@@ -317,6 +317,37 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
         WHERE action = 'mvp_c.termination.approve'
       `,
     ).run("2026-08-01T01:00:00Z");
+    for (const invalidApprovalOccurredAt of [
+      "2026-08-01",
+      "2026-02-30T00:00:00Z",
+    ]) {
+      db.prepare(
+        `
+          UPDATE audit_event
+          SET occurred_at = ?
+          WHERE action = 'mvp_c.termination.approve'
+        `,
+      ).run(invalidApprovalOccurredAt);
+      assertTerminationTraceThrows(
+        () =>
+          verifyMvpCTerminationCorrelationTrace(db, {
+            correlationId: rootCorrelationId,
+            requireApproval: true,
+            requireApply: true,
+            requireApplyJobAttempt: true,
+            requireOktaProjection: true,
+            oktaProjection: oktaProjection.oktaProjection,
+          }),
+        /MVP-C termination trace timing evidence must include a valid ISO timestamp/,
+      );
+    }
+    db.prepare(
+      `
+        UPDATE audit_event
+        SET occurred_at = ?
+        WHERE action = 'mvp_c.termination.approve'
+      `,
+    ).run("2026-08-01T01:00:00Z");
     db.prepare(
       `
         UPDATE employment
@@ -430,6 +461,64 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
         WHERE id = ?
       `,
     ).run("assignment-surviving-termination-001");
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET attempted_at = ?
+        WHERE transaction_request_id = ?
+      `,
+    ).run("2026-08-15", "transaction-request-termination-001");
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-C termination trace timing evidence must include a valid ISO timestamp/,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET attempted_at = ?
+        WHERE transaction_request_id = ?
+      `,
+    ).run("2026-08-14T23:30:00-02:00", "transaction-request-termination-001");
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET worker_id = ?
+        WHERE transaction_request_id = ?
+      `,
+    ).run(
+      "worker-unrelated-termination-trace-001",
+      "transaction-request-termination-001",
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-C termination trace applied job attempt actor must match the apply audit evidence/,
+    );
+    db.prepare(
+      `
+        UPDATE onboarding_apply_job_attempt
+        SET worker_id = ?
+        WHERE transaction_request_id = ?
+      `,
+    ).run(
+      "worker-termination-future-apply-001",
+      "transaction-request-termination-001",
+    );
     db.prepare(
       `
         DELETE FROM onboarding_apply_job_attempt
