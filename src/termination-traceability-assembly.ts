@@ -1,4 +1,5 @@
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request.js";
+import { encodeProjectionKeyPart } from "./okta-mastering-adapter-metadata.js";
 import { remainingMvpCTerminationProductionReadinessGates } from "./termination-traceability-production-gates.js";
 import {
   readTerminationTraceApplyJobAttempts,
@@ -193,7 +194,10 @@ function assertTerminationTraceBindings(input: {
   if (
     input.approvalAuditEvent !== undefined &&
     input.applyAuditEvent !== undefined &&
-    input.approvalAuditEvent.occurredAt > input.applyAuditEvent.occurredAt
+    isTerminationTraceInstantAfter(
+      input.approvalAuditEvent.occurredAt,
+      input.applyAuditEvent.occurredAt,
+    )
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace approval audit timing must not postdate apply evidence",
@@ -203,7 +207,10 @@ function assertTerminationTraceBindings(input: {
     input.approvalAuditEvent !== undefined &&
     input.applyAuditEvent === undefined &&
     input.lifecycleEvent !== undefined &&
-    input.approvalAuditEvent.occurredAt > input.lifecycleEvent.occurredAt
+    isTerminationTraceInstantAfter(
+      input.approvalAuditEvent.occurredAt,
+      input.lifecycleEvent.occurredAt,
+    )
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace approval audit timing must not postdate lifecycle evidence",
@@ -337,11 +344,172 @@ function assertTerminationTraceBindings(input: {
         "MVP-C termination trace requires successful mock Okta disable projection evidence before closeout",
       );
     }
+    if (
+      !isTerminationOktaProjectionIdentityLinked({
+        oktaProjection: input.oktaProjection,
+        endedEmployment: input.endedEmployment,
+        applyAuditEvent: input.applyAuditEvent,
+      })
+    ) {
+      throwTerminationTraceError(
+        "MVP-C termination trace requires mock Okta disable projection identity details linked to ended employment and apply evidence",
+      );
+    }
   }
 }
 
 function isSuccessfulTerminationOktaProjectionStatus(status: string): boolean {
   return status === "projected" || status === "already_projected";
+}
+
+function isTerminationOktaProjectionIdentityLinked(input: {
+  oktaProjection: OktaTerminationProjectionImpactEvidence;
+  endedEmployment?: MvpCTerminationEmploymentTrace;
+  applyAuditEvent?: MvpCTerminationAuditTrace;
+}): boolean {
+  if (
+    input.endedEmployment === undefined ||
+    input.applyAuditEvent === undefined
+  ) {
+    return false;
+  }
+
+  const employeeNumber = input.endedEmployment.employmentCode;
+  const effectiveAt = input.applyAuditEvent.occurredAt;
+  const profileResult = input.oktaProjection.profile.result;
+  const groupResult = input.oktaProjection.groups.result;
+
+  if (
+    profileResult.operation !== "disable" ||
+    profileResult.employeeNumber !== employeeNumber ||
+    profileResult.effectiveAt !== effectiveAt ||
+    !isMockOktaProjectionMetadata(
+      profileResult.metadata,
+      expectedTerminationOktaProjectionKey({
+        operation: "disable",
+        employeeNumber,
+        effectiveAt,
+      }),
+    ) ||
+    !isSuccessfulTerminationOktaProfileResult(
+      input.oktaProjection.profile.status,
+      profileResult,
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    groupResult !== undefined &&
+    groupResult.operation === "replace_user_groups" &&
+    groupResult.employeeNumber === employeeNumber &&
+    groupResult.effectiveAt === effectiveAt &&
+    groupResult.groupKeys.length === 0 &&
+    isMockOktaProjectionMetadata(
+      groupResult.metadata,
+      expectedTerminationOktaGroupProjectionKey({
+        employeeNumber,
+        groupKeys: [],
+        effectiveAt,
+      }),
+    ) &&
+    isSuccessfulTerminationOktaGroupResult(
+      input.oktaProjection.groups.status,
+      groupResult,
+    )
+  );
+}
+
+function isSuccessfulTerminationOktaProfileResult(
+  status: OktaTerminationProjectionImpactEvidence["profile"]["status"],
+  result: OktaTerminationProjectionImpactEvidence["profile"]["result"],
+): boolean {
+  if (status === "projected") {
+    return result.outcome === "success";
+  }
+
+  return (
+    status === "already_projected" &&
+    result.outcome === "skipped" &&
+    result.operation === "disable" &&
+    result.reason === "already_deprovisioned"
+  );
+}
+
+function isSuccessfulTerminationOktaGroupResult(
+  status: OktaTerminationProjectionImpactEvidence["groups"]["status"],
+  result: NonNullable<
+    OktaTerminationProjectionImpactEvidence["groups"]["result"]
+  >,
+): boolean {
+  if (status === "projected") {
+    return result.outcome === "success";
+  }
+
+  return (
+    status === "already_projected" &&
+    result.outcome === "skipped" &&
+    result.reason === "already_projected"
+  );
+}
+
+function isMockOktaProjectionMetadata(
+  metadata: OktaTerminationProjectionImpactEvidence["profile"]["result"]["metadata"],
+  projectionKey: string,
+): boolean {
+  return (
+    metadata.provider === "okta" &&
+    metadata.adapterMode === "mock" &&
+    metadata.synthetic === true &&
+    metadata.projectionKey === projectionKey
+  );
+}
+
+function expectedTerminationOktaProjectionKey(input: {
+  operation: "disable";
+  employeeNumber: string;
+  effectiveAt: string;
+}): string {
+  return [
+    "okta",
+    "mock",
+    encodeProjectionKeyPart(input.operation),
+    encodeProjectionKeyPart(input.employeeNumber),
+    encodeProjectionKeyPart(input.effectiveAt),
+  ].join(":");
+}
+
+function expectedTerminationOktaGroupProjectionKey(input: {
+  employeeNumber: string;
+  groupKeys: string[];
+  effectiveAt: string;
+}): string {
+  return [
+    "okta",
+    "mock",
+    encodeProjectionKeyPart("replace_user_groups"),
+    encodeProjectionKeyPart(input.employeeNumber),
+    encodeProjectionKeyPart(JSON.stringify(input.groupKeys)),
+    encodeProjectionKeyPart(input.effectiveAt),
+  ].join(":");
+}
+
+function isTerminationTraceInstantAfter(left: string, right: string): boolean {
+  return (
+    terminationTraceTimestampMillis(left) >
+    terminationTraceTimestampMillis(right)
+  );
+}
+
+function terminationTraceTimestampMillis(timestamp: string): number {
+  const millis = Date.parse(timestamp);
+  if (!Number.isFinite(millis)) {
+    throwTerminationTraceError(
+      "MVP-C termination trace timing evidence must include a valid ISO timestamp",
+    );
+  }
+
+  return millis;
 }
 
 function terminationTraceTimestampDate(timestamp: string): string {

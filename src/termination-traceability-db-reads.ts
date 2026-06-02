@@ -274,6 +274,32 @@ export function readTerminationTraceEndedAssignment(
       "MVP-C termination trace ended assignment evidence must not start after the termination effective date",
     );
   }
+  if (row) {
+    const otherConflictingAssignment = db
+      .prepare(
+        `
+          SELECT id
+          FROM assignment
+          WHERE person_id = ?
+            AND employment_id = ?
+            AND id <> ?
+            AND (end_date IS NULL OR end_date > ?)
+          LIMIT 1
+        `,
+      )
+      .get(
+        request.person_id,
+        endedEmployment.id,
+        row.id,
+        payload.effectiveDate,
+      ) as { id: string } | undefined;
+
+    if (otherConflictingAssignment) {
+      throwTerminationTraceError(
+        "MVP-C termination trace requires no sibling assignment extending beyond the termination effective date",
+      );
+    }
+  }
   return row ? mapTerminationTraceAssignmentRow(row) : undefined;
 }
 
