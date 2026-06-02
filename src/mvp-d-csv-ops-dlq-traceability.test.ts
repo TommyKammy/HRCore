@@ -329,12 +329,54 @@ test("MVP-D CSV/Ops/DLQ traceability verifier covers bounded synthetic success, 
   assertTraceThrows(
     () =>
       verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun,
+        appliedJobCorrelationId: jobCorrelationId,
+        deniedExport,
+        requiredFailureDecisions: [],
+      }),
+    "MVP-D trace requires complete DLQ decision requirements",
+  );
+
+  assertTraceThrows(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
         dryRun: { ...dryRun, diffs: dryRun.diffs.slice(1) },
         appliedJobCorrelationId: jobCorrelationId,
         deniedExport,
         requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
       }),
     "MVP-D trace requires dry-run diff evidence for every accepted row",
+  );
+
+  assertTraceThrows(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun: {
+          ...dryRun,
+          acceptedRows: [
+            ...dryRun.acceptedRows,
+            {
+              ...dryRun.acceptedRows[1]!,
+              rowId: "csv-row-trace-undecided-001",
+            },
+          ],
+          diffs: [
+            ...dryRun.diffs,
+            {
+              ...dryRun.diffs[1]!,
+              rowId: "csv-row-trace-undecided-001",
+              evidence: {
+                ...dryRun.diffs[1]!.evidence,
+                correlationId: "csv-import-csv-row-trace-undecided-001",
+              },
+            },
+          ],
+        },
+        appliedJobCorrelationId: jobCorrelationId,
+        deniedExport,
+        requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+      }),
+    "MVP-D trace requires dry-run rows to match CSV job row outcomes",
   );
 
   assertTraceThrows(
@@ -480,6 +522,19 @@ test("MVP-D CSV/Ops/DLQ traceability verifier covers bounded synthetic success, 
         deniedExport: {
           ...deniedExport,
           requestedAt: "not-a-timestamp",
+        },
+        requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+      }),
+    "MVP-D trace requires denied export timestamp evidence",
+  );
+  assertTraceThrows(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun,
+        appliedJobCorrelationId: jobCorrelationId,
+        deniedExport: {
+          ...deniedExport,
+          requestedAt: "",
         },
         requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
       }),
@@ -662,6 +717,103 @@ test("MVP-D CSV/Ops/DLQ traceability verifier covers bounded synthetic success, 
     SET row_id = 'csv-row-trace-close-001'
     WHERE decision = 'close';
   `);
+
+  db.exec(`
+    INSERT INTO csv_import_row_outcome (
+      id,
+      job_id,
+      row_id,
+      lifecycle_type,
+      status_code,
+      transaction_request_id,
+      lifecycle_event_id,
+      row_fingerprint,
+      error_message,
+      correlation_id,
+      decided_at
+    )
+    VALUES (
+      'csv-import-row-outcome-trace-undecided-001',
+      'csv-import-job-trace-001',
+      'csv-row-trace-undecided-001',
+      'transfer',
+      'failed',
+      NULL,
+      NULL,
+      'fingerprint-csv-row-trace-undecided-001',
+      'synthetic transfer target missing',
+      'csv-import-row-outcome-correlation-trace-undecided-001',
+      '2026-06-03T12:00:00+09:00'
+    );
+  `);
+  const statusWithUndecidedFailure = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: jobCorrelationId,
+  });
+  db.prepare(
+    `
+      UPDATE audit_event
+      SET subject_id = ?
+      WHERE correlation_id = 'ops-decision-correlation-trace-001'
+    `,
+  ).run(
+    `local-ops-job-${statusWithUndecidedFailure.evidenceVersion}-review-refresh`,
+  );
+  db.prepare(
+    `
+      UPDATE local_ops_failure_decision
+      SET evidence_version = ?
+      WHERE job_correlation_id = ?
+    `,
+  ).run(statusWithUndecidedFailure.evidenceVersion, jobCorrelationId);
+  assertTraceThrows(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun: {
+          ...dryRun,
+          acceptedRows: [
+            ...dryRun.acceptedRows,
+            {
+              ...dryRun.acceptedRows[1]!,
+              rowId: "csv-row-trace-undecided-001",
+            },
+          ],
+          diffs: [
+            ...dryRun.diffs,
+            {
+              ...dryRun.diffs[1]!,
+              rowId: "csv-row-trace-undecided-001",
+              evidence: {
+                ...dryRun.diffs[1]!.evidence,
+                correlationId: "csv-import-csv-row-trace-undecided-001",
+              },
+            },
+          ],
+        },
+        appliedJobCorrelationId: jobCorrelationId,
+        deniedExport,
+        requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+      }),
+    "MVP-D trace requires DLQ decision evidence for every failed CSV row",
+  );
+  db.exec(`
+    DELETE FROM csv_import_row_outcome
+    WHERE id = 'csv-import-row-outcome-trace-undecided-001';
+  `);
+  db.prepare(
+    `
+      UPDATE audit_event
+      SET subject_id = ?
+      WHERE correlation_id = 'ops-decision-correlation-trace-001'
+    `,
+  ).run(`local-ops-job-${status.evidenceVersion}-review-restore`);
+  db.prepare(
+    `
+      UPDATE local_ops_failure_decision
+      SET evidence_version = ?
+      WHERE job_correlation_id = ?
+    `,
+  ).run(status.evidenceVersion, jobCorrelationId);
 
   db.exec(`
     UPDATE local_ops_failure_decision
