@@ -213,6 +213,11 @@ export function readTerminationTraceEndedEmployment(
     );
   }
   const row = rows[0];
+  if (row && row.start_date > payload.effectiveDate) {
+    throwTerminationTraceError(
+      "MVP-C termination trace ended employment evidence must not start after the termination effective date",
+    );
+  }
   return row
     ? {
         id: row.id,
@@ -264,6 +269,11 @@ export function readTerminationTraceEndedAssignment(
     );
   }
   const row = rows[0];
+  if (row && row.start_date > payload.effectiveDate) {
+    throwTerminationTraceError(
+      "MVP-C termination trace ended assignment evidence must not start after the termination effective date",
+    );
+  }
   return row ? mapTerminationTraceAssignmentRow(row) : undefined;
 }
 

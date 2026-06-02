@@ -191,6 +191,25 @@ function assertTerminationTraceBindings(input: {
     );
   }
   if (
+    input.approvalAuditEvent !== undefined &&
+    input.applyAuditEvent !== undefined &&
+    input.approvalAuditEvent.occurredAt > input.applyAuditEvent.occurredAt
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace approval audit timing must not postdate apply evidence",
+    );
+  }
+  if (
+    input.approvalAuditEvent !== undefined &&
+    input.applyAuditEvent === undefined &&
+    input.lifecycleEvent !== undefined &&
+    input.approvalAuditEvent.occurredAt > input.lifecycleEvent.occurredAt
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace approval audit timing must not postdate lifecycle evidence",
+    );
+  }
+  if (
     input.applyAuditEvent !== undefined &&
     input.lifecycleEvent !== undefined &&
     terminationTraceTimestampDate(input.applyAuditEvent.occurredAt) <
@@ -306,7 +325,23 @@ function assertTerminationTraceBindings(input: {
         "MVP-C termination trace requires mock Okta disable projection evidence linked to the termination transaction and apply evidence",
       );
     }
+    if (
+      !isSuccessfulTerminationOktaProjectionStatus(
+        input.oktaProjection.profile.status,
+      ) ||
+      !isSuccessfulTerminationOktaProjectionStatus(
+        input.oktaProjection.groups.status,
+      )
+    ) {
+      throwTerminationTraceError(
+        "MVP-C termination trace requires successful mock Okta disable projection evidence before closeout",
+      );
+    }
   }
+}
+
+function isSuccessfulTerminationOktaProjectionStatus(status: string): boolean {
+  return status === "projected" || status === "already_projected";
 }
 
 function terminationTraceTimestampDate(timestamp: string): string {
