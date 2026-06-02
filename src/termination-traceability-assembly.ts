@@ -2,6 +2,7 @@ import type { OnboardingTransactionRequestDatabase } from "./onboarding-transact
 import {
   buildOnboardingApplyAuditEventId,
   buildOnboardingApplyLifecycleEventIdForRequest,
+  buildOnboardingDecisionAuditEventId,
 } from "./onboarding-transaction-request-ids.js";
 import { encodeProjectionKeyPart } from "./okta-mastering-adapter-metadata.js";
 import { remainingMvpCTerminationProductionReadinessGates } from "./termination-traceability-production-gates.js";
@@ -187,6 +188,21 @@ function assertTerminationTraceBindings(input: {
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace approval evidence requires approved or completed termination request state",
+    );
+  }
+  if (
+    input.approvalAuditEvent !== undefined &&
+    input.approvalAuditEvent.id !==
+      buildOnboardingDecisionAuditEventId({
+        transactionRequestId: input.request.transaction_request_id,
+        decision: "approve",
+        decidedAt: input.approvalAuditEvent.occurredAt,
+        decidedBy: input.approvalAuditEvent.actorId,
+        correlationId: input.approvalAuditEvent.correlationId,
+      })
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace approval audit evidence must use the canonical approval audit id",
     );
   }
   const expectedLifecycleEventId =

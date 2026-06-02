@@ -17,6 +17,7 @@ import {
 import {
   buildOnboardingApplyAuditEventId,
   buildOnboardingApplyLifecycleEventIdForRequest,
+  buildOnboardingDecisionAuditEventId,
 } from "./onboarding-transaction-request-ids.js";
 import { openSchemaBackedDatabase } from "./test-helpers/database.js";
 import { workerAttemptCorrelationId } from "./test-helpers/onboarding.js";
@@ -142,11 +143,47 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
     );
     db.prepare(
       `
-	        UPDATE transaction_request
-	        SET status_code = ?
-	        WHERE id = ?
-	      `,
+		        UPDATE transaction_request
+		        SET status_code = ?
+		        WHERE id = ?
+		      `,
     ).run("completed", "transaction-request-termination-001");
+    const canonicalApprovalAuditEventId = buildOnboardingDecisionAuditEventId({
+      transactionRequestId: "transaction-request-termination-001",
+      decision: "approve",
+      decidedAt: "2026-08-01T01:00:00Z",
+      decidedBy: "operator-people-ops-termination-001",
+      correlationId: rootCorrelationId,
+    });
+    db.prepare(
+      `
+		        UPDATE audit_event
+		        SET id = ?
+		        WHERE id = ?
+		      `,
+    ).run(
+      "audit-event-termination-trace-approval-noncanonical",
+      canonicalApprovalAuditEventId,
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: false,
+        }),
+      /MVP-C termination trace approval audit evidence must use the canonical approval audit id/,
+    );
+    db.prepare(
+      `
+		        UPDATE audit_event
+		        SET id = ?
+		        WHERE id = ?
+		      `,
+    ).run(
+      canonicalApprovalAuditEventId,
+      "audit-event-termination-trace-approval-noncanonical",
+    );
     const canonicalLifecycleEventId =
       buildOnboardingApplyLifecycleEventIdForRequest(
         "transaction-request-termination-001",
