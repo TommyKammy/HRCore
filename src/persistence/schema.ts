@@ -711,6 +711,121 @@ export const onboarding_apply_job_run = sqliteTable(
   ],
 );
 
+export const csv_import_job = sqliteTable(
+  "csv_import_job",
+  {
+    id: syntheticId(),
+    correlationId: text("correlation_id").notNull(),
+    importFingerprint: text("import_fingerprint").notNull(),
+    templateVersion: text("template_version").notNull(),
+    tenantEnvironmentId: text("tenant_environment_id").notNull(),
+    statusCode: text("status_code", {
+      enum: ["applied", "failed"],
+    }).notNull(),
+    requestedAt: text("requested_at").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    acceptedRows: integer("accepted_rows").notNull(),
+    failedRows: integer("failed_rows").notNull(),
+  },
+  (table) => [
+    uniqueIndex("csv_import_job_correlation_unique").on(table.correlationId),
+    check("csv_import_job_id_non_empty", sql`length(${table.id}) > 0`),
+    check(
+      "csv_import_job_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "csv_import_job_import_fingerprint_non_empty",
+      sql`length(${table.importFingerprint}) > 0`,
+    ),
+    check(
+      "csv_import_job_template_version_allowed",
+      sql`${table.templateVersion} = 'mvp_d_lifecycle_support_v1'`,
+    ),
+    check(
+      "csv_import_job_tenant_environment_allowed",
+      sql`${table.tenantEnvironmentId} = 'repo_owned_synthetic_mvp_d_csv'`,
+    ),
+    check(
+      "csv_import_job_status_allowed",
+      sql`${table.statusCode} in ('applied', 'failed')`,
+    ),
+    check(
+      "csv_import_job_requested_at_date",
+      sql`${table.requestedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "csv_import_job_requested_by_non_empty",
+      sql`length(${table.requestedBy}) > 0`,
+    ),
+    check(
+      "csv_import_job_counts_non_negative",
+      sql`${table.acceptedRows} >= 0 and ${table.failedRows} >= 0`,
+    ),
+  ],
+);
+
+export const csv_import_row_outcome = sqliteTable(
+  "csv_import_row_outcome",
+  {
+    id: syntheticId(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => csv_import_job.id),
+    rowId: text("row_id").notNull(),
+    lifecycleType: text("lifecycle_type", {
+      enum: ["onboarding", "transfer", "termination"],
+    }).notNull(),
+    statusCode: text("status_code", {
+      enum: ["applied", "failed", "idempotent"],
+    }).notNull(),
+    transactionRequestId: text("transaction_request_id"),
+    lifecycleEventId: text("lifecycle_event_id"),
+    rowFingerprint: text("row_fingerprint").notNull(),
+    errorMessage: text("error_message"),
+    correlationId: text("correlation_id").notNull(),
+    decidedAt: text("decided_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("csv_import_row_outcome_job_row_unique").on(
+      table.jobId,
+      table.rowId,
+    ),
+    uniqueIndex("csv_import_row_outcome_correlation_unique").on(
+      table.correlationId,
+    ),
+    check("csv_import_row_outcome_id_non_empty", sql`length(${table.id}) > 0`),
+    check(
+      "csv_import_row_outcome_row_id_non_empty",
+      sql`length(${table.rowId}) > 0`,
+    ),
+    check(
+      "csv_import_row_outcome_lifecycle_type_allowed",
+      sql`${table.lifecycleType} in ('onboarding', 'transfer', 'termination')`,
+    ),
+    check(
+      "csv_import_row_outcome_status_allowed",
+      sql`${table.statusCode} in ('applied', 'failed', 'idempotent')`,
+    ),
+    check(
+      "csv_import_row_outcome_row_fingerprint_non_empty",
+      sql`length(${table.rowFingerprint}) > 0`,
+    ),
+    check(
+      "csv_import_row_outcome_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "csv_import_row_outcome_decided_at_date",
+      sql`${table.decidedAt} glob '????-??-??*'`,
+    ),
+    check(
+      "csv_import_row_outcome_status_payload_pair",
+      sql`(${table.statusCode} in ('applied', 'idempotent') and ${table.transactionRequestId} is not null and ${table.lifecycleEventId} is not null and ${table.errorMessage} is null) or (${table.statusCode} = 'failed' and ${table.transactionRequestId} is null and ${table.lifecycleEventId} is null and ${table.errorMessage} is not null and length(${table.errorMessage}) > 0)`,
+    ),
+  ],
+);
+
 export const schema = {
   person,
   employment,
@@ -725,4 +840,6 @@ export const schema = {
   audit_event,
   onboarding_apply_job_attempt,
   onboarding_apply_job_run,
+  csv_import_job,
+  csv_import_row_outcome,
 };
