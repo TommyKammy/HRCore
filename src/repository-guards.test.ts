@@ -416,6 +416,66 @@ test("MVP-B transfer traceability verifier stays split by responsibility", async
   );
 });
 
+test("MVP-C termination traceability verifier stays split by responsibility", async () => {
+  const modulePaths = [
+    "src/termination-transaction-request.ts",
+    "src/termination-traceability-assembly.ts",
+    "src/termination-traceability-db-reads.ts",
+    "src/termination-traceability-production-gates.ts",
+    "src/termination-traceability-types.ts",
+  ] as const;
+  const sources = Object.fromEntries(
+    await Promise.all(
+      modulePaths.map(async (path) => [path, await readRepoFile(path)]),
+    ),
+  ) as Record<(typeof modulePaths)[number], string>;
+
+  assert.match(
+    sources["src/termination-transaction-request.ts"],
+    /from "\.\/termination-traceability-assembly\.js"/u,
+  );
+  assert.match(
+    sources["src/termination-transaction-request.ts"],
+    /from "\.\/termination-traceability-types\.js"/u,
+  );
+  assert.doesNotMatch(
+    sources["src/termination-transaction-request.ts"],
+    /export function verifyMvpCTerminationCorrelationTrace/u,
+    "public termination facade must not own termination trace assembly runtime",
+  );
+  assert.doesNotMatch(
+    sources["src/termination-transaction-request.ts"],
+    /class MvpCTerminationCorrelationTraceError/u,
+    "public termination facade must not own termination trace error types",
+  );
+  assert.doesNotMatch(
+    sources["src/termination-transaction-request.ts"],
+    /remainingMvpCTerminationProductionReadinessGates/u,
+    "public termination facade must not own production gate wording constants",
+  );
+
+  assert.match(
+    sources["src/termination-traceability-assembly.ts"],
+    /export function verifyMvpCTerminationCorrelationTrace/u,
+  );
+  assert.match(
+    sources["src/termination-traceability-assembly.ts"],
+    /assertTerminationTraceBindings/u,
+  );
+  assert.match(
+    sources["src/termination-traceability-db-reads.ts"],
+    /readTerminationTraceRequestByCorrelationId/u,
+  );
+  assert.match(
+    sources["src/termination-traceability-production-gates.ts"],
+    /owner-acknowledged defer/u,
+  );
+  assert.match(
+    sources["src/termination-traceability-types.ts"],
+    /export class MvpCTerminationCorrelationTraceError/u,
+  );
+});
+
 test("repository-owned review policy supports single-maintainer protection", async () => {
   const [codeowners, branchProtection, pullRequestTemplate] = await Promise.all(
     [
