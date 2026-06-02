@@ -326,8 +326,6 @@ export function recordLocalOpsFailureDecision(
       throw new Error("local ops failure decision retry limit exceeded");
     }
 
-    requireCurrentLocalOpsFailureEvidence(db, command);
-
     const failureStatus = failureStatusForDecision(command.decision);
     const resultRow: LocalOpsFailureDecisionRow = {
       id: decisionId,
@@ -344,6 +342,8 @@ export function recordLocalOpsFailureDecision(
 
     db.exec("SAVEPOINT local_ops_failure_decision");
     try {
+      lockCurrentLocalOpsFailureEvidence(db, command);
+      requireCurrentLocalOpsFailureEvidence(db, command);
       insertLocalOpsFailureDecisionAuditEvent(
         db,
         command,
@@ -1019,6 +1019,19 @@ function requireCurrentLocalOpsFailureEvidence(
   if (!failureRow || failureRow.status !== "failed") {
     throw new Error("local ops failure decision requires a failed row");
   }
+}
+
+function lockCurrentLocalOpsFailureEvidence(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): void {
+  db.prepare(
+    `
+      UPDATE csv_import_job
+      SET requested_at = requested_at
+      WHERE correlation_id = ?
+    `,
+  ).run(input.correlationId);
 }
 
 function isRetryAttemptConflict(error: unknown): boolean {

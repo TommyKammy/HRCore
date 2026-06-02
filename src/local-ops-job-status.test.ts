@@ -248,6 +248,7 @@ function withConcurrentLocalOpsFailureDecision(
     afterMissingDecisionRead?: () => void;
     afterRetryCountRead?: () => void;
     beforeFailureDecisionSavepoint?: () => void;
+    afterFailureEvidenceLock?: () => void;
     beforeFailureDecisionInsert?: () => void;
   },
 ): OnboardingTransactionRequestDatabase {
@@ -280,6 +281,14 @@ function withConcurrentLocalOpsFailureDecision(
           return statement.all(...values) as Record<string, unknown>[];
         },
         run(...values: SqlValue[]): unknown {
+          if (
+            sql.includes("UPDATE csv_import_job") &&
+            sql.includes("SET requested_at = requested_at")
+          ) {
+            const result = statement.run(...values);
+            hooks.afterFailureEvidenceLock?.();
+            return result;
+          }
           if (sql.includes("INSERT INTO local_ops_failure_decision (")) {
             hooks.beforeFailureDecisionInsert?.();
           }
@@ -1389,6 +1398,75 @@ test("MVP-D local ops failure decisions reject stale CSV provenance and row iden
   );
 });
 
+test("MVP-D local ops failure decisions reject delimiter-colliding row evidence drift", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-row-delimiter-001",
+    correlationId: "csv-import-dlq-row-delimiter-001",
+    rowId: "csv-row-dlq-row-delimiter-001",
+    requestedAt: "2026-06-03T11:19:00+09:00",
+  });
+  db.exec(`
+    UPDATE csv_import_row_outcome
+    SET row_fingerprint = 'a:b',
+        error_message = 'c'
+    WHERE id = 'csv-import-row-outcome-csv-row-dlq-row-delimiter-001';
+  `);
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-row-delimiter-001",
+  });
+
+  db.exec(`
+    UPDATE csv_import_row_outcome
+    SET row_fingerprint = 'a',
+        error_message = 'b:c'
+    WHERE id = 'csv-import-row-outcome-csv-row-dlq-row-delimiter-001';
+  `);
+
+  assert.notEqual(
+    readLocalOpsJobStatus(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-row-delimiter-001",
+    }).evidenceVersion,
+    status.evidenceVersion,
+  );
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-row-delimiter-001",
+        rowId: "csv-row-dlq-row-delimiter-001",
+        decision: "ignore",
+        reason: "reviewed original delimiter-sensitive row evidence",
+        decidedAt: "2026-06-03T11:20:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId:
+          "dlq-decision-correlation-row-delimiter-stale-001",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision requires current evidence/,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-row-delimiter-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+  );
+});
+
 test("MVP-D local ops failure decisions require matching audit evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {
@@ -1669,6 +1747,91 @@ test("MVP-D local ops failure decisions recheck source evidence before insert re
         .get(),
     ),
     { count: 0 },
+  );
+});
+
+test("MVP-D local ops failure decisions guard final evidence recheck with a source write lock", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-evidence-lock-001",
+    correlationId: "csv-import-dlq-evidence-lock-001",
+    rowId: "csv-row-dlq-evidence-lock-001",
+    requestedAt: "2026-06-03T12:00:00+09:00",
+  });
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-evidence-lock-001",
+  });
+
+  let evidenceLocked = false;
+  const lockedEvidenceDb = withConcurrentLocalOpsFailureDecision(db, {
+    afterFailureEvidenceLock: () => {
+      evidenceLocked = true;
+    },
+    beforeFailureDecisionInsert: () => {
+      if (evidenceLocked) {
+        return;
+      }
+      db.exec(`
+        UPDATE csv_import_job
+        SET status_code = 'applied',
+            accepted_rows = 1,
+            failed_rows = 0
+        WHERE id = 'csv-import-job-dlq-evidence-lock-001';
+
+        UPDATE csv_import_row_outcome
+        SET status_code = 'applied',
+            transaction_request_id = 'csv-import-transaction-request-dlq-evidence-lock-001',
+            lifecycle_event_id = 'csv-import-lifecycle-event-dlq-evidence-lock-001',
+            error_message = NULL,
+            correlation_id = 'csv-import-row-outcome-correlation-dlq-evidence-lock-applied-001',
+            decided_at = '2026-06-03T12:01:00+09:00'
+        WHERE id = 'csv-import-row-outcome-csv-row-dlq-evidence-lock-001';
+      `);
+    },
+  });
+
+  const result = recordLocalOpsFailureDecision(lockedEvidenceDb, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-evidence-lock-001",
+    rowId: "csv-row-dlq-evidence-lock-001",
+    decision: "retry",
+    reason: "retry must be guarded by locked source evidence",
+    decidedAt: "2026-06-03T12:02:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "dlq-decision-correlation-evidence-lock-001",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+
+  assert.equal(evidenceLocked, true);
+  assert.equal(result.failureStatus, "open");
+  assert.equal(
+    readLocalOpsJobStatus(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-evidence-lock-001",
+    }).status,
+    "failed",
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT decision, decision_correlation_id
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-evidence-lock-001'
+          `,
+        )
+        .get(),
+    ),
+    {
+      decision: "retry",
+      decision_correlation_id: "dlq-decision-correlation-evidence-lock-001",
+    },
   );
 });
 
