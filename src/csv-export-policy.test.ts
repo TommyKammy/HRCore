@@ -5,6 +5,7 @@ import {
   exportSyntheticLifecycleCsv,
   mvpDCsvExportAllowedFields,
   mvpDCsvExportDeniedFields,
+  mvpDCsvExportDownloadPermission,
   mvpDCsvExportMaskingProfile,
   mvpDCsvExportRequiredPermission,
 } from "./csv-export-policy.js";
@@ -24,7 +25,10 @@ test("MVP-D bounded synthetic CSV export succeeds only for explicit allowed fiel
     requestedBy: "operator-mvp-d-csv-export",
     requestedAt: "2026-06-02T22:00:00+09:00",
     correlationId: "csv-export-correlation-001",
-    permissions: [mvpDCsvExportRequiredPermission],
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
     fields: [
       "row_id",
       "lifecycle_type",
@@ -148,7 +152,10 @@ test("MVP-D bounded synthetic CSV export fails closed on raw, regulated, real-da
     requestedBy: "operator-mvp-d-csv-export",
     requestedAt: "2026-06-02T22:00:00+09:00",
     correlationId: "csv-export-correlation-denied",
-    permissions: [mvpDCsvExportRequiredPermission],
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
     fields: ["row_id"],
     rows: [{ row_id: "csv-export-row-denied" }],
   } as const;
@@ -159,6 +166,8 @@ test("MVP-D bounded synthetic CSV export fails closed on raw, regulated, real-da
     { ...baseline, fields: ["live_provider_payload"] },
     { ...baseline, fields: ["unsupported_field"] },
     { ...baseline, permissions: [] },
+    { ...baseline, permissions: [mvpDCsvExportRequiredPermission] },
+    { ...baseline, permissions: [mvpDCsvExportDownloadPermission] },
     { ...baseline, scope: "all" },
     { ...baseline, scope: "production" },
     {
@@ -231,13 +240,18 @@ test("MVP-D bounded synthetic CSV export keeps review-regression guards fail clo
     requestedBy: "operator-mvp-d-csv-export",
     requestedAt: "2026-06-02T22:00:00+09:00",
     correlationId: "csv-export-correlation-review-regression",
-    permissions: [mvpDCsvExportRequiredPermission],
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
     fields: ["row_id"],
     rows: [{ row_id: "csv-export-row-review-regression" }],
   } as const;
 
   for (const deniedInput of [
     { ...baseline, permissions: [] },
+    { ...baseline, permissions: [mvpDCsvExportRequiredPermission] },
+    { ...baseline, permissions: [mvpDCsvExportDownloadPermission] },
     {
       ...baseline,
       rows: [
@@ -299,7 +313,10 @@ test("MVP-D bounded synthetic CSV export neutralizes spreadsheet formulas and gi
     requestedBy: "operator-mvp-d-csv-export",
     requestedAt: "2026-06-02T22:00:00+09:00",
     correlationId: "csv-export-correlation-repeatable",
-    permissions: [mvpDCsvExportRequiredPermission],
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
     fields: ["row_id", "display_name", "target_manager_reference"],
     rows: [
       {

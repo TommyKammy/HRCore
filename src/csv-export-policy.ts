@@ -5,6 +5,7 @@ import type { OnboardingTransactionRequestDatabase } from "./onboarding-transact
 
 export const mvpDCsvExportScope = "repo_owned_synthetic_mvp_d_csv";
 export const mvpDCsvExportRequiredPermission = "mvp_d.synthetic_csv_export";
+export const mvpDCsvExportDownloadPermission = "mvp_d.synthetic_csv_download";
 export const mvpDCsvExportMaskingProfile =
   "work_email_local_part_masked_synthetic_only";
 
@@ -184,7 +185,10 @@ function normalizeExportRequest(input: MvpDCsvExportInput): {
   if (requestedBy.length === 0 || correlationId.length === 0) {
     throwOutsidePolicy();
   }
-  if (!input.permissions.includes(mvpDCsvExportRequiredPermission)) {
+  if (
+    !input.permissions.includes(mvpDCsvExportRequiredPermission) ||
+    !input.permissions.includes(mvpDCsvExportDownloadPermission)
+  ) {
     throwOutsidePolicy();
   }
   if (!isValidIsoTimestamp(requestedAt)) {
