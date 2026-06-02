@@ -5,6 +5,7 @@ import {
   exportSyntheticLifecycleCsv,
   mvpDCsvExportAllowedFields,
   mvpDCsvExportDeniedFields,
+  mvpDCsvExportMaskingProfile,
   mvpDCsvExportRequiredPermission,
 } from "./csv-export-policy.js";
 import {
@@ -48,6 +49,7 @@ test("MVP-D bounded synthetic CSV export succeeds only for explicit allowed fiel
   assert.equal(result.audit.downloadIntent, "synthetic_bounded_csv_export");
   assert.match(result.audit.auditEventId, /^audit-event-csv-export-/);
   assert.match(result.audit.evidenceHash, /^[a-f0-9]{64}$/u);
+  assert.equal(result.audit.maskingProfile, mvpDCsvExportMaskingProfile);
   assert.equal(result.audit.rowCount, 1);
   assert.deepEqual(result.audit.exportedFields, [
     "row_id",
@@ -66,6 +68,7 @@ test("MVP-D bounded synthetic CSV export succeeds only for explicit allowed fiel
       "# correlation_id,csv-export-correlation-001",
       `# evidence_sha256,${result.audit.evidenceHash}`,
       "# row_count,1",
+      "# masking_profile,work_email_local_part_masked_synthetic_only",
       '# exported_fields,"row_id,lifecycle_type,display_name,work_email,effective_date"',
       "",
       "row_id,lifecycle_type,display_name,work_email,effective_date",
@@ -94,25 +97,22 @@ test("MVP-D bounded synthetic CSV export succeeds only for explicit allowed fiel
       .all(),
   );
   assert.equal(auditRows.length, 1);
-  assert.deepEqual(
-    {
-      ...auditRows[0],
-      subject_id: String(auditRows[0]?.subject_id).replace(
-        /^mvp-d-synthetic-csv-evidence-.+/u,
-        "mvp-d-synthetic-csv-evidence-<hash>",
-      ),
-    },
-    {
-      id: result.audit.auditEventId,
-      actor_id: "operator-mvp-d-csv-export",
-      action: "mvp_d.csv_export.synthetic_download_intent",
-      subject_table: "lifecycle_event",
-      subject_id: "mvp-d-synthetic-csv-evidence-<hash>",
-      occurred_at: "2026-06-02T22:00:00+09:00",
-      poc_marker: "synthetic_poc",
-      correlation_id: "csv-export-correlation-001",
-    },
-  );
+  assert.deepEqual(auditRows[0], {
+    id: result.audit.auditEventId,
+    actor_id: "operator-mvp-d-csv-export",
+    action: "mvp_d.csv_export.synthetic_download_intent",
+    subject_table: "lifecycle_event",
+    subject_id: [
+      "mvp-d-synthetic-csv-evidence",
+      "fields-row_id+lifecycle_type+display_name+work_email+effective_date",
+      "rows-1",
+      `masking-${mvpDCsvExportMaskingProfile}`,
+      `sha256-${result.audit.evidenceHash}`,
+    ].join("-"),
+    occurred_at: "2026-06-02T22:00:00+09:00",
+    poc_marker: "synthetic_poc",
+    correlation_id: "csv-export-correlation-001",
+  });
 });
 
 test("MVP-D bounded synthetic CSV export fails closed on raw, regulated, real-data, live-provider, broad, and unsupported requests", async (t) => {
@@ -242,6 +242,9 @@ test("MVP-D bounded synthetic CSV export neutralizes spreadsheet formulas and gi
   );
   assert.ok(first.csv.includes(`# audit_event_id,${first.audit.auditEventId}`));
   assert.ok(
+    first.csv.includes(`# masking_profile,${mvpDCsvExportMaskingProfile}`),
+  );
+  assert.ok(
     second.csv.includes(`# audit_event_id,${second.audit.auditEventId}`),
   );
   assert.equal(first.audit.evidenceHash, second.audit.evidenceHash);
@@ -260,6 +263,15 @@ test("MVP-D bounded synthetic CSV export neutralizes spreadsheet formulas and gi
   );
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0]?.id, rows[1]?.id);
-  assert.match(String(rows[0]?.subject_id), /^mvp-d-synthetic-csv-evidence-/);
-  assert.match(String(rows[1]?.subject_id), /^mvp-d-synthetic-csv-evidence-/);
+  assert.equal(
+    rows[0]?.subject_id,
+    [
+      "mvp-d-synthetic-csv-evidence",
+      "fields-row_id+display_name+target_manager_reference",
+      "rows-1",
+      `masking-${mvpDCsvExportMaskingProfile}`,
+      `sha256-${first.audit.evidenceHash}`,
+    ].join("-"),
+  );
+  assert.equal(rows[0]?.subject_id, rows[1]?.subject_id);
 });

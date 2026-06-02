@@ -5,6 +5,8 @@ import type { OnboardingTransactionRequestDatabase } from "./onboarding-transact
 
 export const mvpDCsvExportScope = "repo_owned_synthetic_mvp_d_csv";
 export const mvpDCsvExportRequiredPermission = "mvp_d.synthetic_csv_export";
+export const mvpDCsvExportMaskingProfile =
+  "work_email_local_part_masked_synthetic_only";
 
 export const mvpDCsvExportAllowedFields = [
   "row_id",
@@ -80,6 +82,7 @@ export interface MvpDCsvExportResult {
     auditEventId: string;
     correlationId: string;
     evidenceHash: string;
+    maskingProfile: typeof mvpDCsvExportMaskingProfile;
     requestedBy: string;
     requestedAt: string;
     rowCount: number;
@@ -154,6 +157,7 @@ export function exportSyntheticLifecycleCsv(
       auditEventId,
       correlationId: request.correlationId,
       evidenceHash,
+      maskingProfile: mvpDCsvExportMaskingProfile,
       requestedBy: request.requestedBy,
       requestedAt: request.requestedAt,
       rowCount: request.rows.length,
@@ -271,6 +275,7 @@ function serializeCsvArtifact(
     serializeCsvTraceLine("correlation_id", request.correlationId),
     serializeCsvTraceLine("evidence_sha256", trace.evidenceHash),
     serializeCsvTraceLine("row_count", String(trace.rowCount)),
+    serializeCsvTraceLine("masking_profile", mvpDCsvExportMaskingProfile),
     serializeCsvTraceLine("exported_fields", request.fields.join(",")),
     "",
     serializeCsvData(request.fields, request.rows).trimEnd(),
@@ -364,12 +369,13 @@ function buildEvidenceSubjectId(
   request: ReturnType<typeof normalizeExportRequest>,
   evidenceHash: string,
 ): string {
-  return `mvp-d-synthetic-csv-evidence-${encodeStableKey([
-    mvpDCsvExportScope,
-    request.fields.join(","),
-    String(request.rows.length),
-    evidenceHash,
-  ])}`;
+  return [
+    "mvp-d-synthetic-csv-evidence",
+    `fields-${request.fields.join("+")}`,
+    `rows-${request.rows.length}`,
+    `masking-${mvpDCsvExportMaskingProfile}`,
+    `sha256-${evidenceHash}`,
+  ].join("-");
 }
 
 function sha256(value: string): string {
