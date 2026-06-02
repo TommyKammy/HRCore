@@ -876,6 +876,64 @@ function recordIdempotentCsvImportRowOutcome(
   jobRowIds: ReturnType<typeof buildApplyJobRowIds>,
   rowFingerprint: string,
 ): void {
+  const rowId = row.row_id.trim();
+  const jobId = buildCsvImportJobId(input.correlationId);
+  const existingOutcome = readCsvImportRowOutcomeForJob(db, jobId, rowId);
+
+  if (existingOutcome) {
+    if (matchesAppliedOutcome(existingOutcome, row, rowIds, rowFingerprint)) {
+      return;
+    }
+    if (
+      existingOutcome.status_code !== "failed" ||
+      existingOutcome.lifecycle_type !== row.lifecycle_type ||
+      existingOutcome.row_fingerprint !== rowFingerprint ||
+      existingOutcome.transaction_request_id !== null ||
+      existingOutcome.lifecycle_event_id !== null ||
+      existingOutcome.error_message === null
+    ) {
+      throw new Error(
+        `CSV import row ${rowId} conflicts with existing outcome evidence`,
+      );
+    }
+
+    const result = db
+      .prepare(
+        `
+          UPDATE csv_import_row_outcome
+          SET
+            lifecycle_type = ?,
+            status_code = 'idempotent',
+            transaction_request_id = ?,
+            lifecycle_event_id = ?,
+            row_fingerprint = ?,
+            error_message = NULL,
+            correlation_id = ?,
+            decided_at = ?
+          WHERE job_id = ?
+            AND row_id = ?
+            AND status_code = 'failed'
+        `,
+      )
+      .run(
+        row.lifecycle_type,
+        rowIds.transactionRequestId,
+        rowIds.lifecycleEventId,
+        rowFingerprint,
+        jobRowIds.rowOutcomeCorrelationId,
+        input.appliedAt,
+        jobId,
+        rowId,
+      ) as { changes: number };
+
+    if (result.changes !== 1) {
+      throw new Error(
+        `CSV import row ${rowId} conflicts with existing outcome evidence`,
+      );
+    }
+    return;
+  }
+
   db.prepare(
     `
       INSERT INTO csv_import_row_outcome (
@@ -896,8 +954,8 @@ function recordIdempotentCsvImportRowOutcome(
     `,
   ).run(
     jobRowIds.rowOutcomeId,
-    buildCsvImportJobId(input.correlationId),
-    row.row_id.trim(),
+    jobId,
+    rowId,
     row.lifecycle_type,
     rowIds.transactionRequestId,
     rowIds.lifecycleEventId,
@@ -1016,23 +1074,38 @@ function buildCanonicalCsvRow(row: AcceptedParsedCsvRow): ParsedCsvRow {
 
 function isValidIsoTimestamp(value: string): boolean {
   const match =
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(
       value,
     );
   if (!match) {
     return false;
   }
 
-  const [, year, month, day, hour, minute, second] = match;
+  const [, year, month, day, hour, minute, second, millisecond, offset] = match;
+  const localDate = new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      Number((millisecond ?? "").padEnd(3, "0")),
+    ),
+  );
   const date = new Date(value);
+  const offsetHour = offset === "Z" ? 0 : Number(offset.slice(1, 3));
+  const offsetMinute = offset === "Z" ? 0 : Number(offset.slice(4, 6));
   return (
     !Number.isNaN(date.getTime()) &&
-    date.getUTCFullYear() === Number(year) &&
-    date.getUTCMonth() + 1 === Number(month) &&
-    date.getUTCDate() === Number(day) &&
-    date.getUTCHours() === Number(hour) &&
-    date.getUTCMinutes() === Number(minute) &&
-    date.getUTCSeconds() === Number(second)
+    offsetHour <= 23 &&
+    offsetMinute <= 59 &&
+    localDate.getUTCFullYear() === Number(year) &&
+    localDate.getUTCMonth() + 1 === Number(month) &&
+    localDate.getUTCDate() === Number(day) &&
+    localDate.getUTCHours() === Number(hour) &&
+    localDate.getUTCMinutes() === Number(minute) &&
+    localDate.getUTCSeconds() === Number(second)
   );
 }
 
