@@ -1,4 +1,6 @@
 import { isValidIsoDate } from "./onboarding-transaction-request-validation.js";
+import { rollbackNamedSavepoint } from "./onboarding-transaction-request-shared.js";
+import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
 
 export const mvpDCsvImportTemplateVersion = "mvp_d_lifecycle_support_v1";
 export const mvpDCsvImportTenantEnvironmentId =
@@ -64,7 +66,52 @@ export interface MvpDCsvImportDryRunResult {
   diffs: MvpDCsvImportDryRunDiff[];
 }
 
+export interface MvpDCsvImportApplyInput {
+  csvInput: string;
+  dryRun: MvpDCsvImportDryRunResult;
+  appliedAt: string;
+  appliedBy: string;
+  correlationId: string;
+}
+
+export interface MvpDCsvImportAppliedRow {
+  rowId: string;
+  lifecycleType: MvpDCsvLifecycleType;
+  status: "applied" | "idempotent";
+  transactionRequestId: string;
+  lifecycleEventId: string;
+}
+
+export interface MvpDCsvImportFailedApplyRow {
+  rowId: string;
+  lifecycleType: MvpDCsvLifecycleType;
+  status: "failed";
+  reason: string;
+}
+
+export interface MvpDCsvImportApplyResult {
+  summary: {
+    appliedRows: number;
+    failedRows: number;
+    idempotentRows: number;
+  };
+  rows: Array<MvpDCsvImportAppliedRow | MvpDCsvImportFailedApplyRow>;
+  correlationId: string;
+}
+
 type ParsedCsvRow = Record<MvpDCsvImportColumn, string>;
+type AcceptedParsedCsvRow = ParsedCsvRow & {
+  lifecycle_type: MvpDCsvLifecycleType;
+};
+
+type ExistingCsvImportRowOutcome = {
+  row_id: string;
+  lifecycle_type: string;
+  status_code: string;
+  transaction_request_id: string | null;
+  lifecycle_event_id: string | null;
+  error_message: string | null;
+};
 
 const supportedColumnSet = new Set<string>(mvpDCsvImportTemplateColumns);
 const requiredCommonFields: readonly MvpDCsvImportColumn[] = [
@@ -208,6 +255,122 @@ export function dryRunSyntheticLifecycleCsvImport(
   };
 }
 
+export function applySyntheticLifecycleCsvImport(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+): MvpDCsvImportApplyResult {
+  validateApplyCommand(input);
+
+  const currentDryRun = dryRunSyntheticLifecycleCsvImport(input.csvInput);
+  if (!matchesDryRunContract(input.dryRun, currentDryRun)) {
+    throw new Error(
+      "CSV import apply requires a current dry-run result for the exact CSV input",
+    );
+  }
+  if (currentDryRun.summary.rejectedRows > 0) {
+    throw new Error(
+      "CSV import apply requires a dry-run with no rejected rows",
+    );
+  }
+
+  const acceptedRows = readAcceptedCsvRows(input.csvInput);
+  const rowsById = new Map(acceptedRows.map((row) => [row.row_id.trim(), row]));
+  const applyRows: Array<
+    MvpDCsvImportAppliedRow | MvpDCsvImportFailedApplyRow
+  > = [];
+  let appliedRows = 0;
+  let idempotentRows = 0;
+  let failedRows = 0;
+  let savepointStarted = false;
+
+  try {
+    db.exec("SAVEPOINT mvp_d_csv_import_apply");
+    savepointStarted = true;
+
+    recordCsvImportJob(db, input, {
+      acceptedRows: currentDryRun.summary.acceptedRows,
+      failedRows: currentDryRun.summary.rejectedRows,
+    });
+
+    for (const dryRunRow of currentDryRun.acceptedRows) {
+      const row = rowsById.get(dryRunRow.rowId);
+      if (!row) {
+        throw new Error(
+          `CSV import apply row ${dryRunRow.rowId} is missing from the CSV input`,
+        );
+      }
+
+      const rowIds = buildApplyRowIds(row);
+      const existingOutcome = readCsvImportRowOutcome(db, dryRunRow.rowId);
+      if (existingOutcome) {
+        if (!matchesAppliedOutcome(existingOutcome, row, rowIds)) {
+          throw new Error(
+            `CSV import row ${dryRunRow.rowId} conflicts with existing outcome evidence`,
+          );
+        }
+        applyRows.push({
+          rowId: dryRunRow.rowId,
+          lifecycleType: dryRunRow.lifecycleType,
+          status: "idempotent",
+          transactionRequestId: rowIds.transactionRequestId,
+          lifecycleEventId: rowIds.lifecycleEventId,
+        });
+        idempotentRows += 1;
+        continue;
+      }
+
+      try {
+        db.exec("SAVEPOINT mvp_d_csv_import_apply_row");
+        applyAcceptedCsvRow(db, input, row, rowIds);
+        db.exec("RELEASE SAVEPOINT mvp_d_csv_import_apply_row");
+        applyRows.push({
+          rowId: dryRunRow.rowId,
+          lifecycleType: dryRunRow.lifecycleType,
+          status: "applied",
+          transactionRequestId: rowIds.transactionRequestId,
+          lifecycleEventId: rowIds.lifecycleEventId,
+        });
+        appliedRows += 1;
+      } catch (error) {
+        rollbackNamedSavepoint(db, "mvp_d_csv_import_apply_row");
+        const reason =
+          error instanceof Error ? error.message : "unknown CSV import failure";
+        recordFailedCsvImportRowOutcome(db, input, row, rowIds, reason);
+        applyRows.push({
+          rowId: dryRunRow.rowId,
+          lifecycleType: dryRunRow.lifecycleType,
+          status: "failed",
+          reason,
+        });
+        failedRows += 1;
+      }
+    }
+
+    finalizeCsvImportJob(db, input, {
+      appliedRows,
+      failedRows,
+      idempotentRows,
+    });
+
+    db.exec("RELEASE SAVEPOINT mvp_d_csv_import_apply");
+  } catch (error) {
+    if (savepointStarted) {
+      rollbackNamedSavepoint(db, "mvp_d_csv_import_apply");
+    }
+    throw error;
+  }
+
+  return {
+    summary: {
+      appliedRows,
+      failedRows,
+      idempotentRows,
+    },
+    rows: applyRows,
+    correlationId: input.correlationId,
+  };
+}
+
 function validateCsvImportRow(row: ParsedCsvRow): string[] {
   const reasons: string[] = [];
 
@@ -267,6 +430,352 @@ function validateCsvImportRow(row: ParsedCsvRow): string[] {
   }
 
   return reasons;
+}
+
+function validateApplyCommand(input: MvpDCsvImportApplyInput): void {
+  if (input.appliedAt.trim().length === 0 || !input.appliedAt.includes("T")) {
+    throw new Error("CSV import apply requires an ISO timestamp");
+  }
+  if (input.appliedBy.trim().length === 0) {
+    throw new Error("CSV import apply requires an authenticated actor");
+  }
+  if (input.correlationId.trim().length === 0) {
+    throw new Error("CSV import apply requires a correlation id");
+  }
+}
+
+function matchesDryRunContract(
+  expected: MvpDCsvImportDryRunResult,
+  actual: MvpDCsvImportDryRunResult,
+): boolean {
+  return JSON.stringify(expected) === JSON.stringify(actual);
+}
+
+function readAcceptedCsvRows(csvInput: string): AcceptedParsedCsvRow[] {
+  const records = parseCsvRecords(csvInput);
+  const header = records[0] ?? [];
+  const acceptedRows: AcceptedParsedCsvRow[] = [];
+
+  for (const record of records.slice(1)) {
+    if (record.length !== header.length) {
+      continue;
+    }
+    const row = toCsvRow(header, record);
+    const lifecycleType = row.lifecycle_type.trim();
+    if (
+      validateCsvImportRow(row).length === 0 &&
+      isMvpDCsvLifecycleType(lifecycleType)
+    ) {
+      acceptedRows.push({
+        ...row,
+        lifecycle_type: lifecycleType,
+      });
+    }
+  }
+
+  return acceptedRows;
+}
+
+function recordCsvImportJob(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+  counts: { acceptedRows: number; failedRows: number },
+): void {
+  db.prepare(
+    `
+      INSERT INTO csv_import_job (
+        id,
+        correlation_id,
+        template_version,
+        tenant_environment_id,
+        status_code,
+        requested_at,
+        requested_by,
+        accepted_rows,
+        failed_rows
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(correlation_id) DO NOTHING
+    `,
+  ).run(
+    buildCsvImportJobId(input.correlationId),
+    input.correlationId,
+    mvpDCsvImportTemplateVersion,
+    mvpDCsvImportTenantEnvironmentId,
+    counts.failedRows > 0 ? "failed" : "applied",
+    input.appliedAt,
+    input.appliedBy,
+    counts.acceptedRows,
+    counts.failedRows,
+  );
+}
+
+function finalizeCsvImportJob(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+  counts: {
+    appliedRows: number;
+    failedRows: number;
+    idempotentRows: number;
+  },
+): void {
+  db.prepare(
+    `
+      UPDATE csv_import_job
+      SET
+        status_code = ?,
+        accepted_rows = ?,
+        failed_rows = ?
+      WHERE correlation_id = ?
+    `,
+  ).run(
+    counts.failedRows > 0 ? "failed" : "applied",
+    counts.appliedRows + counts.idempotentRows,
+    counts.failedRows,
+    input.correlationId,
+  );
+}
+
+function applyAcceptedCsvRow(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+  row: AcceptedParsedCsvRow,
+  rowIds: ReturnType<typeof buildApplyRowIds>,
+): void {
+  if (row.lifecycle_type === "onboarding") {
+    db.prepare(
+      `
+        INSERT INTO person (id, display_name, created_at)
+        VALUES (?, ?, ?)
+      `,
+    ).run(row.person_id.trim(), row.display_name.trim(), input.appliedAt);
+  } else {
+    assertCurrentAssignmentReference(db, row);
+  }
+
+  db.prepare(
+    `
+      INSERT INTO transaction_request (
+        id,
+        person_id,
+        request_type,
+        status_code,
+        requested_at,
+        correlation_id
+      )
+      VALUES (?, ?, ?, 'completed', ?, ?)
+    `,
+  ).run(
+    rowIds.transactionRequestId,
+    row.person_id.trim(),
+    requestTypeForLifecycleType(row.lifecycle_type),
+    input.appliedAt,
+    rowIds.rowCorrelationId,
+  );
+
+  db.prepare(
+    `
+      INSERT INTO lifecycle_event (
+        id,
+        person_id,
+        transaction_request_id,
+        contact_point_id,
+        event_type,
+        effective_date,
+        occurred_at
+      )
+      VALUES (?, ?, ?, NULL, ?, ?, ?)
+    `,
+  ).run(
+    rowIds.lifecycleEventId,
+    row.person_id.trim(),
+    rowIds.transactionRequestId,
+    eventTypeForLifecycleType(row.lifecycle_type),
+    row.effective_date.trim(),
+    input.appliedAt,
+  );
+
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id,
+        actor_id,
+        action,
+        subject_table,
+        subject_id,
+        occurred_at,
+        correlation_id,
+        poc_marker
+      )
+      VALUES (?, ?, 'mvp_d.csv_import.apply_row', 'lifecycle_event', ?, ?, ?, 'synthetic_poc')
+    `,
+  ).run(
+    rowIds.auditEventId,
+    input.appliedBy,
+    rowIds.lifecycleEventId,
+    input.appliedAt,
+    input.correlationId,
+  );
+
+  db.prepare(
+    `
+      INSERT INTO csv_import_row_outcome (
+        id,
+        job_id,
+        row_id,
+        lifecycle_type,
+        status_code,
+        transaction_request_id,
+        lifecycle_event_id,
+        error_message,
+        correlation_id,
+        decided_at
+      )
+      VALUES (?, ?, ?, ?, 'applied', ?, ?, NULL, ?, ?)
+    `,
+  ).run(
+    rowIds.rowOutcomeId,
+    buildCsvImportJobId(input.correlationId),
+    row.row_id.trim(),
+    row.lifecycle_type,
+    rowIds.transactionRequestId,
+    rowIds.lifecycleEventId,
+    rowIds.rowCorrelationId,
+    input.appliedAt,
+  );
+}
+
+function assertCurrentAssignmentReference(
+  db: OnboardingTransactionRequestDatabase,
+  row: AcceptedParsedCsvRow,
+): void {
+  const currentAssignment = db
+    .prepare(
+      `
+      SELECT id
+      FROM assignment
+      WHERE id = ?
+        AND person_id = ?
+    `,
+    )
+    .get(row.current_assignment_id.trim(), row.person_id.trim());
+
+  if (!currentAssignment) {
+    throw new Error(
+      "CSV import apply requires current_assignment_id to match an existing assignment for the person",
+    );
+  }
+}
+
+function recordFailedCsvImportRowOutcome(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+  row: AcceptedParsedCsvRow,
+  rowIds: ReturnType<typeof buildApplyRowIds>,
+  reason: string,
+): void {
+  db.prepare(
+    `
+      INSERT INTO csv_import_row_outcome (
+        id,
+        job_id,
+        row_id,
+        lifecycle_type,
+        status_code,
+        transaction_request_id,
+        lifecycle_event_id,
+        error_message,
+        correlation_id,
+        decided_at
+      )
+      VALUES (?, ?, ?, ?, 'failed', NULL, NULL, ?, ?, ?)
+      ON CONFLICT(row_id) DO NOTHING
+    `,
+  ).run(
+    rowIds.rowOutcomeId,
+    buildCsvImportJobId(input.correlationId),
+    row.row_id.trim(),
+    row.lifecycle_type,
+    reason,
+    rowIds.rowCorrelationId,
+    input.appliedAt,
+  );
+}
+
+function readCsvImportRowOutcome(
+  db: OnboardingTransactionRequestDatabase,
+  rowId: string,
+): ExistingCsvImportRowOutcome | undefined {
+  return db
+    .prepare(
+      `
+      SELECT
+        row_id,
+        lifecycle_type,
+        status_code,
+        transaction_request_id,
+        lifecycle_event_id,
+        error_message
+      FROM csv_import_row_outcome
+      WHERE row_id = ?
+    `,
+    )
+    .get(rowId) as ExistingCsvImportRowOutcome | undefined;
+}
+
+function matchesAppliedOutcome(
+  existing: ExistingCsvImportRowOutcome,
+  row: AcceptedParsedCsvRow,
+  rowIds: ReturnType<typeof buildApplyRowIds>,
+): boolean {
+  return (
+    existing.lifecycle_type === row.lifecycle_type &&
+    existing.status_code === "applied" &&
+    existing.transaction_request_id === rowIds.transactionRequestId &&
+    existing.lifecycle_event_id === rowIds.lifecycleEventId &&
+    existing.error_message === null
+  );
+}
+
+function buildApplyRowIds(row: AcceptedParsedCsvRow) {
+  const rowId = row.row_id.trim();
+  return {
+    rowOutcomeId: `csv-import-row-outcome-${rowId}`,
+    transactionRequestId: `csv-import-transaction-request-${rowId}`,
+    lifecycleEventId: `csv-import-lifecycle-event-${rowId}`,
+    auditEventId: `audit-event-csv-import-lifecycle-event-${rowId}-applied`,
+    rowCorrelationId: `csv-import-${rowId}`,
+  };
+}
+
+function buildCsvImportJobId(correlationId: string): string {
+  return `csv-import-job-${correlationId}`;
+}
+
+function requestTypeForLifecycleType(
+  lifecycleType: MvpDCsvLifecycleType,
+): "hire" | "transfer" | "terminate" {
+  switch (lifecycleType) {
+    case "onboarding":
+      return "hire";
+    case "transfer":
+      return "transfer";
+    case "termination":
+      return "terminate";
+  }
+}
+
+function eventTypeForLifecycleType(
+  lifecycleType: MvpDCsvLifecycleType,
+): "hire" | "assignment_change" | "termination" {
+  switch (lifecycleType) {
+    case "onboarding":
+      return "hire";
+    case "transfer":
+      return "assignment_change";
+    case "termination":
+      return "termination";
+  }
 }
 
 function requireCsvCell(
