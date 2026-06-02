@@ -1,0 +1,324 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  dryRunSyntheticLifecycleCsvImport,
+  mvpDCsvImportTemplateColumns,
+} from "./csv-import-contract.js";
+import {
+  exportSyntheticLifecycleCsv,
+  mvpDCsvExportRequiredPermission,
+} from "./csv-export-policy.js";
+import {
+  recordLocalOpsFailureDecision,
+  readLocalOpsJobStatus,
+  recordLocalOpsOperatorDecision,
+} from "./local-ops-job-status.js";
+import {
+  MvpDCsvOpsDlqTraceabilityError,
+  verifyMvpDCsvOpsDlqTraceability,
+  type MvpDDeniedCsvExportGuardEvidence,
+} from "./mvp-d-csv-ops-dlq-traceability.js";
+import {
+  normalizeRow,
+  openSchemaBackedDatabase,
+} from "./test-helpers/database.js";
+
+function csv(lines: string[]): string {
+  return `${lines.join("\n")}\n`;
+}
+
+function mixedDryRunCsvInput(): string {
+  return csv([
+    mvpDCsvImportTemplateColumns.join(","),
+    [
+      "mvp_d_lifecycle_support_v1",
+      "csv-row-trace-applied-001",
+      "termination",
+      "repo_owned_synthetic_mvp_d_csv",
+      "person-csv-row-trace-applied-001",
+      "CSV Trace Applied",
+      "2026-08-31",
+      "",
+      "",
+      "",
+      "",
+      "assignment-current-csv-row-trace-applied-001",
+      "",
+      "",
+      "",
+      "resignation",
+    ].join(","),
+    [
+      "mvp_d_lifecycle_support_v1",
+      "csv-row-trace-rejected-001",
+      "transfer",
+      "repo_owned_synthetic_mvp_d_csv",
+      "person-csv-row-trace-rejected-001",
+      "CSV Trace Rejected",
+      "2026-07-15",
+      "",
+      "",
+      "",
+      "",
+      "assignment-current-csv-row-trace-rejected-001",
+      "organization-product",
+      "department-product",
+      "manager-product-001",
+      "unsupported_reason",
+    ].join(","),
+  ]);
+}
+
+test("MVP-D CSV/Ops/DLQ traceability verifier covers bounded synthetic success, rejection, denied export, operator action, and DLQ paths", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  const jobCorrelationId = "csv-import-trace-job-001";
+  db.exec(`
+    INSERT INTO csv_import_job (
+      id,
+      correlation_id,
+      import_fingerprint,
+      template_version,
+      tenant_environment_id,
+      status_code,
+      requested_at,
+      requested_by,
+      accepted_rows,
+      failed_rows
+    )
+    VALUES (
+      'csv-import-job-trace-001',
+      '${jobCorrelationId}',
+      'fingerprint-csv-import-job-trace-001',
+      'mvp_d_lifecycle_support_v1',
+      'repo_owned_synthetic_mvp_d_csv',
+      'failed',
+      '2026-06-03T12:00:00+09:00',
+      'operator-mvp-d-csv-import',
+      1,
+      4
+    );
+    INSERT INTO csv_import_row_outcome (
+      id,
+      job_id,
+      row_id,
+      lifecycle_type,
+      status_code,
+      transaction_request_id,
+      lifecycle_event_id,
+      row_fingerprint,
+      error_message,
+      correlation_id,
+      decided_at
+    )
+    VALUES
+      (
+        'csv-import-row-outcome-trace-applied-001',
+        'csv-import-job-trace-001',
+        'csv-row-trace-applied-001',
+        'termination',
+        'applied',
+        'csv-import-transaction-request-csv-row-trace-applied-001',
+        'csv-import-lifecycle-event-csv-row-trace-applied-001',
+        'fingerprint-csv-row-trace-applied-001',
+        NULL,
+        'csv-import-row-outcome-correlation-trace-applied-001',
+        '2026-06-03T12:00:00+09:00'
+      ),
+      (
+        'csv-import-row-outcome-trace-retry-001',
+        'csv-import-job-trace-001',
+        'csv-row-trace-retry-001',
+        'transfer',
+        'failed',
+        NULL,
+        NULL,
+        'fingerprint-csv-row-trace-retry-001',
+        'synthetic transfer target missing',
+        'csv-import-row-outcome-correlation-trace-retry-001',
+        '2026-06-03T12:00:00+09:00'
+      ),
+      (
+        'csv-import-row-outcome-trace-replay-001',
+        'csv-import-job-trace-001',
+        'csv-row-trace-replay-001',
+        'transfer',
+        'failed',
+        NULL,
+        NULL,
+        'fingerprint-csv-row-trace-replay-001',
+        'synthetic transfer target missing',
+        'csv-import-row-outcome-correlation-trace-replay-001',
+        '2026-06-03T12:00:00+09:00'
+      ),
+      (
+        'csv-import-row-outcome-trace-ignore-001',
+        'csv-import-job-trace-001',
+        'csv-row-trace-ignore-001',
+        'transfer',
+        'failed',
+        NULL,
+        NULL,
+        'fingerprint-csv-row-trace-ignore-001',
+        'synthetic transfer target missing',
+        'csv-import-row-outcome-correlation-trace-ignore-001',
+        '2026-06-03T12:00:00+09:00'
+      ),
+      (
+        'csv-import-row-outcome-trace-close-001',
+        'csv-import-job-trace-001',
+        'csv-row-trace-close-001',
+        'transfer',
+        'failed',
+        NULL,
+        NULL,
+        'fingerprint-csv-row-trace-close-001',
+        'synthetic transfer target missing',
+        'csv-import-row-outcome-correlation-trace-close-001',
+        '2026-06-03T12:00:00+09:00'
+      );
+  `);
+
+  const dryRun = dryRunSyntheticLifecycleCsvImport(mixedDryRunCsvInput());
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: jobCorrelationId,
+  });
+  assert.equal(status.counts.applied, 1);
+  assert.equal(status.counts.failed, 4);
+
+  recordLocalOpsOperatorDecision(db, {
+    workflow: "csv_import",
+    correlationId: jobCorrelationId,
+    decision: "acknowledge_failure",
+    reason: "bounded synthetic traceability failure reviewed",
+    decidedAt: "2026-06-03T12:01:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "ops-decision-correlation-trace-001",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+  for (const [decision, rowId, decidedAt] of [
+    ["retry", "csv-row-trace-retry-001", "2026-06-03T12:02:00+09:00"],
+    ["replay", "csv-row-trace-replay-001", "2026-06-03T12:03:00+09:00"],
+    ["ignore", "csv-row-trace-ignore-001", "2026-06-03T12:04:00+09:00"],
+    ["close", "csv-row-trace-close-001", "2026-06-03T12:05:00+09:00"],
+  ] as const) {
+    recordLocalOpsFailureDecision(db, {
+      workflow: "csv_import",
+      correlationId: jobCorrelationId,
+      rowId,
+      decision,
+      reason: `bounded synthetic ${decision} decision`,
+      decidedAt,
+      decidedBy: "operator-mvp-d-csv-import",
+      decisionCorrelationId: `dlq-decision-correlation-trace-${decision}-001`,
+      expectedEvidenceVersion: status.evidenceVersion,
+    });
+  }
+
+  const deniedExport = captureDeniedExportEvidence(db);
+  const trace = verifyMvpDCsvOpsDlqTraceability(db, {
+    dryRun,
+    appliedJobCorrelationId: jobCorrelationId,
+    deniedExport,
+    requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+  });
+
+  assert.equal(trace.readiness, "bounded_synthetic_only_not_production_ready");
+  assert.deepEqual(trace.dryRun.acceptedRowIds, ["csv-row-trace-applied-001"]);
+  assert.deepEqual(trace.dryRun.rejectedRowIds, ["csv-row-trace-rejected-001"]);
+  assert.deepEqual(
+    trace.failureDecisions.map((decision) => decision.decision),
+    ["retry", "replay", "ignore", "close"],
+  );
+  assert.equal(trace.deniedExport.auditEventCountAfter, 0);
+
+  db.exec(`
+    UPDATE audit_event
+    SET correlation_id = 'dlq-decision-correlation-trace-close-mismatched'
+    WHERE correlation_id = 'dlq-decision-correlation-trace-close-001';
+  `);
+  assert.throws(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun,
+        appliedJobCorrelationId: jobCorrelationId,
+        deniedExport,
+        requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+      }),
+    MvpDCsvOpsDlqTraceabilityError,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM audit_event
+            WHERE action = 'mvp_d.csv_export.synthetic_download_intent'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+    "denied export guard evidence must not create synthetic download audit rows",
+  );
+});
+
+function captureDeniedExportEvidence(
+  db: NonNullable<Awaited<ReturnType<typeof openSchemaBackedDatabase>>>,
+): MvpDDeniedCsvExportGuardEvidence {
+  const correlationId = "csv-export-denied-trace-001";
+  const before = countDeniedExportAuditRows(db, correlationId);
+  let errorMessage = "";
+  assert.throws(
+    () =>
+      exportSyntheticLifecycleCsv(db, {
+        scope: "repo_owned_synthetic_mvp_d_csv",
+        requestedBy: "operator-mvp-d-csv-export",
+        requestedAt: "2026-06-03T12:06:00+09:00",
+        correlationId,
+        permissions: [mvpDCsvExportRequiredPermission],
+        fields: ["row_id"],
+        rows: [{ row_id: "csv-export-denied-trace-row-001" }],
+      }),
+    (error) => {
+      errorMessage = error instanceof Error ? error.message : "";
+      return (
+        errorMessage ===
+        "CSV export request is outside the bounded synthetic MVP-D policy"
+      );
+    },
+  );
+
+  return {
+    scope: "repo_owned_synthetic_mvp_d_csv",
+    requestedBy: "operator-mvp-d-csv-export",
+    requestedAt: "2026-06-03T12:06:00+09:00",
+    correlationId,
+    errorMessage,
+    auditEventCountBefore: before,
+    auditEventCountAfter: countDeniedExportAuditRows(db, correlationId),
+  };
+}
+
+function countDeniedExportAuditRows(
+  db: NonNullable<Awaited<ReturnType<typeof openSchemaBackedDatabase>>>,
+  correlationId: string,
+): number {
+  const row = db
+    .prepare(
+      `
+        SELECT count(*) AS count
+        FROM audit_event
+        WHERE action = 'mvp_d.csv_export.synthetic_download_intent'
+          AND correlation_id = ?
+      `,
+    )
+    .get(correlationId) as { count: number | bigint };
+  return Number(row.count);
+}

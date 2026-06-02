@@ -29,3 +29,19 @@ Unsupported CSV columns fail closed, including real employee data, regulated
 data, raw provider payloads, retention/deletion fields, live-provider fields,
 and future-extension fields. Downstream Ops/DLQ work should reuse this contract
 instead of redefining the MVP-D template.
+
+## Bounded Traceability Path
+
+`src/mvp-d-csv-ops-dlq-traceability.ts` verifies the bounded synthetic trace
+path for this wave. The expected evidence starts with a non-mutating CSV dry-run
+that includes deterministic accepted-row diff correlations and rejected-row
+reasons, then follows one persisted CSV import job correlation through row
+outcomes, local Ops status, operator action audit evidence, and DLQ
+retry/replay/ignore/close decisions. Denied export evidence is represented as a
+guard failure with an explicit export correlation id and unchanged download
+audit count.
+
+This is repo-owned synthetic traceability evidence only. It does not introduce
+production audit immutability, WORM/Object Lock, broad audit or support search,
+live-provider evidence, real employee data, unrestricted raw-payload access, or
+production queue/DLQ readiness.
