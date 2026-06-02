@@ -1226,6 +1226,22 @@ test("MVP-D local ops failure decisions replay committed evidence before mutable
     replay,
   );
 
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-idempotent-001",
+        rowId: "csv-row-dlq-idempotent-001",
+        decision: "replay",
+        reason: "second replay stays blocked after row applied",
+        decidedAt: "2026-06-03T11:11:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-idempotent-replay-002",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision rejects duplicate replay/,
+  );
+
   assert.deepEqual(
     normalizeRow(
       db

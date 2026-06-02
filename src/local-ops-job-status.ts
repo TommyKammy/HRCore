@@ -287,7 +287,7 @@ export function recordLocalOpsFailureDecision(
     return buildFailureDecisionResult(existingDecision);
   }
 
-  rejectTerminalLocalOpsFailureState(db, command);
+  rejectPriorLocalOpsFailureState(db, command);
 
   const current = readLocalOpsJobStatus(db, command);
   if (current.evidenceVersion !== command.expectedEvidenceVersion) {
@@ -298,15 +298,8 @@ export function recordLocalOpsFailureDecision(
     throw new Error("local ops failure decision requires a failed row");
   }
 
-  if (
-    command.decision === "replay" &&
-    hasPriorLocalOpsFailureDecision(db, command, "replay")
-  ) {
-    throw new Error("local ops failure decision rejects duplicate replay");
-  }
-
   while (true) {
-    rejectTerminalLocalOpsFailureState(db, command);
+    rejectPriorLocalOpsFailureState(db, command);
 
     const priorRetryCount = countPriorLocalOpsFailureRetries(db, command);
     const retryCount =
@@ -351,13 +344,7 @@ export function recordLocalOpsFailureDecision(
         );
         return buildFailureDecisionResult(committedDecision);
       }
-      if (
-        command.decision === "replay" &&
-        hasPriorLocalOpsFailureDecision(db, command, "replay")
-      ) {
-        throw new Error("local ops failure decision rejects duplicate replay");
-      }
-      rejectTerminalLocalOpsFailureState(db, command);
+      rejectPriorLocalOpsFailureState(db, command);
       if (command.decision === "retry") {
         const durableRetryCount = countPriorLocalOpsFailureRetries(db, command);
         if (durableRetryCount >= maxLocalOpsFailureRetries) {
@@ -1025,6 +1012,19 @@ function rejectTerminalLocalOpsFailureState(
     throw new Error(
       "local ops failure decision rejects terminal failure state",
     );
+  }
+}
+
+function rejectPriorLocalOpsFailureState(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): void {
+  rejectTerminalLocalOpsFailureState(db, input);
+  if (
+    input.decision === "replay" &&
+    hasPriorLocalOpsFailureDecision(db, input, "replay")
+  ) {
+    throw new Error("local ops failure decision rejects duplicate replay");
   }
 }
 
