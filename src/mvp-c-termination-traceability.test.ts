@@ -14,6 +14,10 @@ import {
   buildOktaMasteringAdapter,
   createSyntheticOktaUserFixture,
 } from "./okta-mastering-adapter.js";
+import {
+  buildOnboardingApplyAuditEventId,
+  buildOnboardingApplyLifecycleEventIdForRequest,
+} from "./onboarding-transaction-request-ids.js";
 import { openSchemaBackedDatabase } from "./test-helpers/database.js";
 import { workerAttemptCorrelationId } from "./test-helpers/onboarding.js";
 
@@ -120,6 +124,104 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
       "#14 owner-acknowledged defer / production-like blocked",
       "Production audit immutability, WORM archive custody, raw/export access, backup/restore readiness, ops/DLQ replay, legal/privacy review, two-key approval, real-data readiness, and live Okta tenant readiness remain blocked.",
     ]);
+    db.prepare(
+      `
+	        UPDATE transaction_request
+	        SET status_code = ?
+	        WHERE id = ?
+	      `,
+    ).run("submitted", "transaction-request-termination-001");
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: false,
+        }),
+      /MVP-C termination trace approval evidence requires approved or completed termination request state/,
+    );
+    db.prepare(
+      `
+	        UPDATE transaction_request
+	        SET status_code = ?
+	        WHERE id = ?
+	      `,
+    ).run("completed", "transaction-request-termination-001");
+    const canonicalLifecycleEventId =
+      buildOnboardingApplyLifecycleEventIdForRequest(
+        "transaction-request-termination-001",
+      );
+    const canonicalApplyAuditEventId = buildOnboardingApplyAuditEventId(
+      canonicalLifecycleEventId,
+    );
+    const nonCanonicalLifecycleEventId =
+      "lifecycle-event-termination-trace-noncanonical";
+    db.prepare(
+      `
+	        UPDATE lifecycle_event
+	        SET id = ?
+	        WHERE id = ?
+	      `,
+    ).run(nonCanonicalLifecycleEventId, canonicalLifecycleEventId);
+    db.prepare(
+      `
+	        UPDATE audit_event
+	        SET subject_id = ?
+	        WHERE id = ?
+	      `,
+    ).run(nonCanonicalLifecycleEventId, canonicalApplyAuditEventId);
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+        }),
+      /MVP-C termination trace lifecycle evidence must use the canonical apply lifecycle id/,
+    );
+    db.prepare(
+      `
+	        UPDATE audit_event
+	        SET subject_id = ?
+	        WHERE id = ?
+	      `,
+    ).run(canonicalLifecycleEventId, canonicalApplyAuditEventId);
+    db.prepare(
+      `
+	        UPDATE lifecycle_event
+	        SET id = ?
+	        WHERE id = ?
+	      `,
+    ).run(canonicalLifecycleEventId, nonCanonicalLifecycleEventId);
+    db.prepare(
+      `
+	        UPDATE audit_event
+	        SET id = ?
+	        WHERE id = ?
+	      `,
+    ).run(
+      "audit-event-termination-trace-noncanonical",
+      canonicalApplyAuditEventId,
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+        }),
+      /MVP-C termination trace apply audit evidence must use the canonical apply audit id/,
+    );
+    db.prepare(
+      `
+	        UPDATE audit_event
+	        SET id = ?
+	        WHERE id = ?
+	      `,
+    ).run(
+      canonicalApplyAuditEventId,
+      "audit-event-termination-trace-noncanonical",
+    );
 
     assertTerminationTraceThrows(
       () =>

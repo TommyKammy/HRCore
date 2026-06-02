@@ -1,4 +1,8 @@
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request.js";
+import {
+  buildOnboardingApplyAuditEventId,
+  buildOnboardingApplyLifecycleEventIdForRequest,
+} from "./onboarding-transaction-request-ids.js";
 import { encodeProjectionKeyPart } from "./okta-mastering-adapter-metadata.js";
 import { remainingMvpCTerminationProductionReadinessGates } from "./termination-traceability-production-gates.js";
 import {
@@ -177,12 +181,42 @@ function assertTerminationTraceBindings(input: {
     );
   }
   if (
+    input.approvalAuditEvent !== undefined &&
+    input.request.status_code !== "approved" &&
+    input.request.status_code !== "completed"
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace approval evidence requires approved or completed termination request state",
+    );
+  }
+  const expectedLifecycleEventId =
+    buildOnboardingApplyLifecycleEventIdForRequest(
+      input.request.transaction_request_id,
+    );
+  if (
     input.applyAuditEvent !== undefined &&
     input.lifecycleEvent !== undefined &&
     input.applyAuditEvent.subjectId !== input.lifecycleEvent.id
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace apply audit evidence must be linked to the lifecycle event",
+    );
+  }
+  if (
+    input.lifecycleEvent !== undefined &&
+    input.lifecycleEvent.id !== expectedLifecycleEventId
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace lifecycle evidence must use the canonical apply lifecycle id",
+    );
+  }
+  if (
+    input.applyAuditEvent !== undefined &&
+    input.applyAuditEvent.id !==
+      buildOnboardingApplyAuditEventId(expectedLifecycleEventId)
+  ) {
+    throwTerminationTraceError(
+      "MVP-C termination trace apply audit evidence must use the canonical apply audit id",
     );
   }
   if (
