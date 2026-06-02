@@ -43,6 +43,7 @@ The final P2B-02 behavior-preserving transfer refactor wave closeout is recorded
 The final P2C-01 bounded/non-production MVP-C termination readiness review closeout is recorded in [MVP-C P2C-01 Readiness Review Closeout](docs/mvp-c-p2c-01-readiness-review-closeout.md).
 The final P2C-02 behavior-preserving termination refactor wave closeout is recorded in [MVP-C P2C-02 Refactor Wave Closeout](docs/mvp-c-p2c-02-refactor-wave-closeout.md).
 The bounded dry-run-only MVP-D CSV import contract is recorded in [MVP-D CSV Import Contract](docs/mvp-d-csv-import-contract.md).
+The final P2D-01 bounded/non-production MVP-D CSV/Ops/DLQ readiness review closeout is recorded in [MVP-D P2D-01 Readiness Review Closeout](docs/mvp-d-p2d-01-readiness-review-closeout.md).
 
 ## Baseline structure
 
@@ -154,6 +155,10 @@ The bounded dry-run-only MVP-D CSV import contract is recorded in [MVP-D CSV Imp
 - `docs/mvp-d-csv-import-contract.md` records the bounded/non-production
   MVP-D CSV template, dry-run-only diff behavior, and fail-closed prohibited
   field boundary.
+- `docs/mvp-d-p2d-01-readiness-review-closeout.md` records the independent
+  P2D-01 bounded/non-production MVP-D CSV/Ops/DLQ readiness review, child issue
+  evidence, verification commands, residual stronger-readiness blockers, and
+  blocked production-like verdict.
 
 ## Local verification
 
