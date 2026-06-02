@@ -111,6 +111,12 @@ type ExistingCsvImportRowOutcome = {
   transaction_request_id: string | null;
   lifecycle_event_id: string | null;
   error_message: string | null;
+  row_fingerprint: string;
+};
+
+type ExistingCsvImportJob = {
+  correlation_id: string;
+  import_fingerprint: string;
 };
 
 const supportedColumnSet = new Set<string>(mvpDCsvImportTemplateColumns);
@@ -275,6 +281,7 @@ export function applySyntheticLifecycleCsvImport(
 
   const acceptedRows = readAcceptedCsvRows(input.csvInput);
   const rowsById = new Map(acceptedRows.map((row) => [row.row_id.trim(), row]));
+  const importFingerprint = buildImportFingerprint(acceptedRows);
   const applyRows: Array<
     MvpDCsvImportAppliedRow | MvpDCsvImportFailedApplyRow
   > = [];
@@ -287,7 +294,7 @@ export function applySyntheticLifecycleCsvImport(
     db.exec("SAVEPOINT mvp_d_csv_import_apply");
     savepointStarted = true;
 
-    recordCsvImportJob(db, input, {
+    recordCsvImportJob(db, input, importFingerprint, {
       acceptedRows: currentDryRun.summary.acceptedRows,
       failedRows: currentDryRun.summary.rejectedRows,
     });
@@ -301,13 +308,25 @@ export function applySyntheticLifecycleCsvImport(
       }
 
       const rowIds = buildApplyRowIds(row);
+      const jobRowIds = buildApplyJobRowIds(input, row);
+      const rowFingerprint = buildRowFingerprint(row);
       const existingOutcome = readCsvImportRowOutcome(db, dryRunRow.rowId);
       if (existingOutcome) {
-        if (!matchesAppliedOutcome(existingOutcome, row, rowIds)) {
+        if (
+          !matchesAppliedOutcome(existingOutcome, row, rowIds, rowFingerprint)
+        ) {
           throw new Error(
             `CSV import row ${dryRunRow.rowId} conflicts with existing outcome evidence`,
           );
         }
+        recordIdempotentCsvImportRowOutcome(
+          db,
+          input,
+          row,
+          rowIds,
+          jobRowIds,
+          rowFingerprint,
+        );
         applyRows.push({
           rowId: dryRunRow.rowId,
           lifecycleType: dryRunRow.lifecycleType,
@@ -321,7 +340,7 @@ export function applySyntheticLifecycleCsvImport(
 
       try {
         db.exec("SAVEPOINT mvp_d_csv_import_apply_row");
-        applyAcceptedCsvRow(db, input, row, rowIds);
+        applyAcceptedCsvRow(db, input, row, rowIds, jobRowIds, rowFingerprint);
         db.exec("RELEASE SAVEPOINT mvp_d_csv_import_apply_row");
         applyRows.push({
           rowId: dryRunRow.rowId,
@@ -335,7 +354,14 @@ export function applySyntheticLifecycleCsvImport(
         rollbackNamedSavepoint(db, "mvp_d_csv_import_apply_row");
         const reason =
           error instanceof Error ? error.message : "unknown CSV import failure";
-        recordFailedCsvImportRowOutcome(db, input, row, rowIds, reason);
+        recordFailedCsvImportRowOutcome(
+          db,
+          input,
+          row,
+          jobRowIds,
+          rowFingerprint,
+          reason,
+        );
         applyRows.push({
           rowId: dryRunRow.rowId,
           lifecycleType: dryRunRow.lifecycleType,
@@ -433,7 +459,7 @@ function validateCsvImportRow(row: ParsedCsvRow): string[] {
 }
 
 function validateApplyCommand(input: MvpDCsvImportApplyInput): void {
-  if (input.appliedAt.trim().length === 0 || !input.appliedAt.includes("T")) {
+  if (!isValidIsoTimestamp(input.appliedAt.trim())) {
     throw new Error("CSV import apply requires an ISO timestamp");
   }
   if (input.appliedBy.trim().length === 0) {
@@ -479,13 +505,25 @@ function readAcceptedCsvRows(csvInput: string): AcceptedParsedCsvRow[] {
 function recordCsvImportJob(
   db: OnboardingTransactionRequestDatabase,
   input: MvpDCsvImportApplyInput,
+  importFingerprint: string,
   counts: { acceptedRows: number; failedRows: number },
 ): void {
+  const existingJob = readCsvImportJob(db, input.correlationId);
+  if (existingJob) {
+    if (existingJob.import_fingerprint !== importFingerprint) {
+      throw new Error(
+        "CSV import apply correlation id already belongs to a different import",
+      );
+    }
+    return;
+  }
+
   db.prepare(
     `
       INSERT INTO csv_import_job (
         id,
         correlation_id,
+        import_fingerprint,
         template_version,
         tenant_environment_id,
         status_code,
@@ -494,12 +532,12 @@ function recordCsvImportJob(
         accepted_rows,
         failed_rows
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(correlation_id) DO NOTHING
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     buildCsvImportJobId(input.correlationId),
     input.correlationId,
+    importFingerprint,
     mvpDCsvImportTemplateVersion,
     mvpDCsvImportTenantEnvironmentId,
     counts.failedRows > 0 ? "failed" : "applied",
@@ -508,6 +546,21 @@ function recordCsvImportJob(
     counts.acceptedRows,
     counts.failedRows,
   );
+}
+
+function readCsvImportJob(
+  db: OnboardingTransactionRequestDatabase,
+  correlationId: string,
+): ExistingCsvImportJob | undefined {
+  return db
+    .prepare(
+      `
+      SELECT correlation_id, import_fingerprint
+      FROM csv_import_job
+      WHERE correlation_id = ?
+    `,
+    )
+    .get(correlationId) as ExistingCsvImportJob | undefined;
 }
 
 function finalizeCsvImportJob(
@@ -541,6 +594,8 @@ function applyAcceptedCsvRow(
   input: MvpDCsvImportApplyInput,
   row: AcceptedParsedCsvRow,
   rowIds: ReturnType<typeof buildApplyRowIds>,
+  jobRowIds: ReturnType<typeof buildApplyJobRowIds>,
+  rowFingerprint: string,
 ): void {
   if (row.lifecycle_type === "onboarding") {
     db.prepare(
@@ -627,20 +682,22 @@ function applyAcceptedCsvRow(
         status_code,
         transaction_request_id,
         lifecycle_event_id,
+        row_fingerprint,
         error_message,
         correlation_id,
         decided_at
       )
-      VALUES (?, ?, ?, ?, 'applied', ?, ?, NULL, ?, ?)
+      VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, NULL, ?, ?)
     `,
   ).run(
-    rowIds.rowOutcomeId,
+    jobRowIds.rowOutcomeId,
     buildCsvImportJobId(input.correlationId),
     row.row_id.trim(),
     row.lifecycle_type,
     rowIds.transactionRequestId,
     rowIds.lifecycleEventId,
-    rowIds.rowCorrelationId,
+    rowFingerprint,
+    jobRowIds.rowOutcomeCorrelationId,
     input.appliedAt,
   );
 }
@@ -656,13 +713,14 @@ function assertCurrentAssignmentReference(
       FROM assignment
       WHERE id = ?
         AND person_id = ?
+        AND end_date IS NULL
     `,
     )
     .get(row.current_assignment_id.trim(), row.person_id.trim());
 
   if (!currentAssignment) {
     throw new Error(
-      "CSV import apply requires current_assignment_id to match an existing assignment for the person",
+      "CSV import apply requires current_assignment_id to match an open assignment for the person",
     );
   }
 }
@@ -671,7 +729,8 @@ function recordFailedCsvImportRowOutcome(
   db: OnboardingTransactionRequestDatabase,
   input: MvpDCsvImportApplyInput,
   row: AcceptedParsedCsvRow,
-  rowIds: ReturnType<typeof buildApplyRowIds>,
+  jobRowIds: ReturnType<typeof buildApplyJobRowIds>,
+  rowFingerprint: string,
   reason: string,
 ): void {
   db.prepare(
@@ -684,20 +743,61 @@ function recordFailedCsvImportRowOutcome(
         status_code,
         transaction_request_id,
         lifecycle_event_id,
+        row_fingerprint,
         error_message,
         correlation_id,
         decided_at
       )
-      VALUES (?, ?, ?, ?, 'failed', NULL, NULL, ?, ?, ?)
-      ON CONFLICT(row_id) DO NOTHING
+      VALUES (?, ?, ?, ?, 'failed', NULL, NULL, ?, ?, ?, ?)
+      ON CONFLICT(job_id, row_id) DO NOTHING
     `,
   ).run(
-    rowIds.rowOutcomeId,
+    jobRowIds.rowOutcomeId,
     buildCsvImportJobId(input.correlationId),
     row.row_id.trim(),
     row.lifecycle_type,
+    rowFingerprint,
     reason,
-    rowIds.rowCorrelationId,
+    jobRowIds.rowOutcomeCorrelationId,
+    input.appliedAt,
+  );
+}
+
+function recordIdempotentCsvImportRowOutcome(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+  row: AcceptedParsedCsvRow,
+  rowIds: ReturnType<typeof buildApplyRowIds>,
+  jobRowIds: ReturnType<typeof buildApplyJobRowIds>,
+  rowFingerprint: string,
+): void {
+  db.prepare(
+    `
+      INSERT INTO csv_import_row_outcome (
+        id,
+        job_id,
+        row_id,
+        lifecycle_type,
+        status_code,
+        transaction_request_id,
+        lifecycle_event_id,
+        row_fingerprint,
+        error_message,
+        correlation_id,
+        decided_at
+      )
+      VALUES (?, ?, ?, ?, 'idempotent', ?, ?, ?, NULL, ?, ?)
+      ON CONFLICT(job_id, row_id) DO NOTHING
+    `,
+  ).run(
+    jobRowIds.rowOutcomeId,
+    buildCsvImportJobId(input.correlationId),
+    row.row_id.trim(),
+    row.lifecycle_type,
+    rowIds.transactionRequestId,
+    rowIds.lifecycleEventId,
+    rowFingerprint,
+    jobRowIds.rowOutcomeCorrelationId,
     input.appliedAt,
   );
 }
@@ -715,9 +815,12 @@ function readCsvImportRowOutcome(
         status_code,
         transaction_request_id,
         lifecycle_event_id,
+        row_fingerprint,
         error_message
       FROM csv_import_row_outcome
       WHERE row_id = ?
+      ORDER BY decided_at, id
+      LIMIT 1
     `,
     )
     .get(rowId) as ExistingCsvImportRowOutcome | undefined;
@@ -727,12 +830,15 @@ function matchesAppliedOutcome(
   existing: ExistingCsvImportRowOutcome,
   row: AcceptedParsedCsvRow,
   rowIds: ReturnType<typeof buildApplyRowIds>,
+  rowFingerprint: string,
 ): boolean {
   return (
     existing.lifecycle_type === row.lifecycle_type &&
-    existing.status_code === "applied" &&
+    (existing.status_code === "applied" ||
+      existing.status_code === "idempotent") &&
     existing.transaction_request_id === rowIds.transactionRequestId &&
     existing.lifecycle_event_id === rowIds.lifecycleEventId &&
+    existing.row_fingerprint === rowFingerprint &&
     existing.error_message === null
   );
 }
@@ -740,7 +846,6 @@ function matchesAppliedOutcome(
 function buildApplyRowIds(row: AcceptedParsedCsvRow) {
   const rowId = row.row_id.trim();
   return {
-    rowOutcomeId: `csv-import-row-outcome-${rowId}`,
     transactionRequestId: `csv-import-transaction-request-${rowId}`,
     lifecycleEventId: `csv-import-lifecycle-event-${rowId}`,
     auditEventId: `audit-event-csv-import-lifecycle-event-${rowId}-applied`,
@@ -748,8 +853,55 @@ function buildApplyRowIds(row: AcceptedParsedCsvRow) {
   };
 }
 
+function buildApplyJobRowIds(
+  input: MvpDCsvImportApplyInput,
+  row: AcceptedParsedCsvRow,
+) {
+  const rowId = row.row_id.trim();
+  return {
+    rowOutcomeId: `csv-import-row-outcome-${input.correlationId}-${rowId}`,
+    rowOutcomeCorrelationId: `csv-import-${input.correlationId}-${rowId}`,
+  };
+}
+
 function buildCsvImportJobId(correlationId: string): string {
   return `csv-import-job-${correlationId}`;
+}
+
+function buildImportFingerprint(rows: AcceptedParsedCsvRow[]): string {
+  return JSON.stringify(rows.map((row) => buildCanonicalCsvRow(row)));
+}
+
+function buildRowFingerprint(row: AcceptedParsedCsvRow): string {
+  return JSON.stringify(buildCanonicalCsvRow(row));
+}
+
+function buildCanonicalCsvRow(row: AcceptedParsedCsvRow): ParsedCsvRow {
+  return Object.fromEntries(
+    mvpDCsvImportTemplateColumns.map((column) => [column, row[column].trim()]),
+  ) as ParsedCsvRow;
+}
+
+function isValidIsoTimestamp(value: string): boolean {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(
+      value,
+    );
+  if (!match) {
+    return false;
+  }
+
+  const [, year, month, day, hour, minute, second] = match;
+  const date = new Date(value);
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getUTCFullYear() === Number(year) &&
+    date.getUTCMonth() + 1 === Number(month) &&
+    date.getUTCDate() === Number(day) &&
+    date.getUTCHours() === Number(hour) &&
+    date.getUTCMinutes() === Number(minute) &&
+    date.getUTCSeconds() === Number(second)
+  );
 }
 
 function requestTypeForLifecycleType(

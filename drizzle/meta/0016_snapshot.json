@@ -324,6 +324,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "import_fingerprint": {
+          "name": "import_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "template_version": {
           "name": "template_version",
           "type": "text",
@@ -392,6 +399,10 @@
         "csv_import_job_correlation_id_non_empty": {
           "name": "csv_import_job_correlation_id_non_empty",
           "value": "length(\"csv_import_job\".\"correlation_id\") > 0"
+        },
+        "csv_import_job_import_fingerprint_non_empty": {
+          "name": "csv_import_job_import_fingerprint_non_empty",
+          "value": "length(\"csv_import_job\".\"import_fingerprint\") > 0"
         },
         "csv_import_job_template_version_allowed": {
           "name": "csv_import_job_template_version_allowed",
@@ -471,6 +482,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "row_fingerprint": {
+          "name": "row_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "error_message": {
           "name": "error_message",
           "type": "text",
@@ -494,9 +512,9 @@
         }
       },
       "indexes": {
-        "csv_import_row_outcome_row_unique": {
-          "name": "csv_import_row_outcome_row_unique",
-          "columns": ["row_id"],
+        "csv_import_row_outcome_job_row_unique": {
+          "name": "csv_import_row_outcome_job_row_unique",
+          "columns": ["job_id", "row_id"],
           "isUnique": true
         },
         "csv_import_row_outcome_correlation_unique": {
@@ -533,7 +551,11 @@
         },
         "csv_import_row_outcome_status_allowed": {
           "name": "csv_import_row_outcome_status_allowed",
-          "value": "\"csv_import_row_outcome\".\"status_code\" in ('applied', 'failed')"
+          "value": "\"csv_import_row_outcome\".\"status_code\" in ('applied', 'failed', 'idempotent')"
+        },
+        "csv_import_row_outcome_row_fingerprint_non_empty": {
+          "name": "csv_import_row_outcome_row_fingerprint_non_empty",
+          "value": "length(\"csv_import_row_outcome\".\"row_fingerprint\") > 0"
         },
         "csv_import_row_outcome_correlation_id_non_empty": {
           "name": "csv_import_row_outcome_correlation_id_non_empty",
@@ -545,7 +567,7 @@
         },
         "csv_import_row_outcome_status_payload_pair": {
           "name": "csv_import_row_outcome_status_payload_pair",
-          "value": "(\"csv_import_row_outcome\".\"status_code\" = 'applied' and \"csv_import_row_outcome\".\"transaction_request_id\" is not null and \"csv_import_row_outcome\".\"lifecycle_event_id\" is not null and \"csv_import_row_outcome\".\"error_message\" is null) or (\"csv_import_row_outcome\".\"status_code\" = 'failed' and \"csv_import_row_outcome\".\"transaction_request_id\" is null and \"csv_import_row_outcome\".\"lifecycle_event_id\" is null and \"csv_import_row_outcome\".\"error_message\" is not null and length(\"csv_import_row_outcome\".\"error_message\") > 0)"
+          "value": "(\"csv_import_row_outcome\".\"status_code\" in ('applied', 'idempotent') and \"csv_import_row_outcome\".\"transaction_request_id\" is not null and \"csv_import_row_outcome\".\"lifecycle_event_id\" is not null and \"csv_import_row_outcome\".\"error_message\" is null) or (\"csv_import_row_outcome\".\"status_code\" = 'failed' and \"csv_import_row_outcome\".\"transaction_request_id\" is null and \"csv_import_row_outcome\".\"lifecycle_event_id\" is null and \"csv_import_row_outcome\".\"error_message\" is not null and length(\"csv_import_row_outcome\".\"error_message\") > 0)"
         }
       }
     },

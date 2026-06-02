@@ -716,6 +716,7 @@ export const csv_import_job = sqliteTable(
   {
     id: syntheticId(),
     correlationId: text("correlation_id").notNull(),
+    importFingerprint: text("import_fingerprint").notNull(),
     templateVersion: text("template_version").notNull(),
     tenantEnvironmentId: text("tenant_environment_id").notNull(),
     statusCode: text("status_code", {
@@ -732,6 +733,10 @@ export const csv_import_job = sqliteTable(
     check(
       "csv_import_job_correlation_id_non_empty",
       sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "csv_import_job_import_fingerprint_non_empty",
+      sql`length(${table.importFingerprint}) > 0`,
     ),
     check(
       "csv_import_job_template_version_allowed",
@@ -772,16 +777,20 @@ export const csv_import_row_outcome = sqliteTable(
       enum: ["onboarding", "transfer", "termination"],
     }).notNull(),
     statusCode: text("status_code", {
-      enum: ["applied", "failed"],
+      enum: ["applied", "failed", "idempotent"],
     }).notNull(),
     transactionRequestId: text("transaction_request_id"),
     lifecycleEventId: text("lifecycle_event_id"),
+    rowFingerprint: text("row_fingerprint").notNull(),
     errorMessage: text("error_message"),
     correlationId: text("correlation_id").notNull(),
     decidedAt: text("decided_at").notNull(),
   },
   (table) => [
-    uniqueIndex("csv_import_row_outcome_row_unique").on(table.rowId),
+    uniqueIndex("csv_import_row_outcome_job_row_unique").on(
+      table.jobId,
+      table.rowId,
+    ),
     uniqueIndex("csv_import_row_outcome_correlation_unique").on(
       table.correlationId,
     ),
@@ -796,7 +805,11 @@ export const csv_import_row_outcome = sqliteTable(
     ),
     check(
       "csv_import_row_outcome_status_allowed",
-      sql`${table.statusCode} in ('applied', 'failed')`,
+      sql`${table.statusCode} in ('applied', 'failed', 'idempotent')`,
+    ),
+    check(
+      "csv_import_row_outcome_row_fingerprint_non_empty",
+      sql`length(${table.rowFingerprint}) > 0`,
     ),
     check(
       "csv_import_row_outcome_correlation_id_non_empty",
@@ -808,7 +821,7 @@ export const csv_import_row_outcome = sqliteTable(
     ),
     check(
       "csv_import_row_outcome_status_payload_pair",
-      sql`(${table.statusCode} = 'applied' and ${table.transactionRequestId} is not null and ${table.lifecycleEventId} is not null and ${table.errorMessage} is null) or (${table.statusCode} = 'failed' and ${table.transactionRequestId} is null and ${table.lifecycleEventId} is null and ${table.errorMessage} is not null and length(${table.errorMessage}) > 0)`,
+      sql`(${table.statusCode} in ('applied', 'idempotent') and ${table.transactionRequestId} is not null and ${table.lifecycleEventId} is not null and ${table.errorMessage} is null) or (${table.statusCode} = 'failed' and ${table.transactionRequestId} is null and ${table.lifecycleEventId} is null and ${table.errorMessage} is not null and length(${table.errorMessage}) > 0)`,
     ),
   ],
 );
