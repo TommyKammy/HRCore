@@ -281,13 +281,25 @@ export function recordLocalOpsFailureDecision(
   const action = `${failureDecisionActionPrefix}.${command.workflow}.${command.decision}`;
   const decisionId = buildFailureDecisionId(command);
   const auditEventId = buildFailureDecisionAuditEventId(command);
-  const existingDecision = readLocalOpsFailureDecision(db, decisionId);
+  const existingDecision = readMatchingLocalOpsFailureDecision(
+    db,
+    command,
+    decisionId,
+    action,
+  );
   if (existingDecision) {
-    assertFailureDecisionMatchesExisting(existingDecision, command, action);
-    return buildFailureDecisionResult(existingDecision);
+    return existingDecision;
   }
 
-  rejectPriorLocalOpsFailureState(db, command);
+  const priorDecision = readMatchingOrRejectPriorLocalOpsFailureState(
+    db,
+    command,
+    decisionId,
+    action,
+  );
+  if (priorDecision) {
+    return priorDecision;
+  }
 
   const current = readLocalOpsJobStatus(db, command);
   if (current.evidenceVersion !== command.expectedEvidenceVersion) {
@@ -299,7 +311,15 @@ export function recordLocalOpsFailureDecision(
   }
 
   while (true) {
-    rejectPriorLocalOpsFailureState(db, command);
+    const loopPriorDecision = readMatchingOrRejectPriorLocalOpsFailureState(
+      db,
+      command,
+      decisionId,
+      action,
+    );
+    if (loopPriorDecision) {
+      return loopPriorDecision;
+    }
 
     const priorRetryCount = countPriorLocalOpsFailureRetries(db, command);
     const retryCount =
@@ -335,16 +355,24 @@ export function recordLocalOpsFailureDecision(
       return buildFailureDecisionResult(resultRow);
     } catch (error) {
       rollbackLocalOpsFailureDecisionSavepoint(db);
-      const committedDecision = readLocalOpsFailureDecision(db, decisionId);
+      const committedDecision = readMatchingLocalOpsFailureDecision(
+        db,
+        command,
+        decisionId,
+        action,
+      );
       if (committedDecision) {
-        assertFailureDecisionMatchesExisting(
-          committedDecision,
-          command,
-          action,
-        );
-        return buildFailureDecisionResult(committedDecision);
+        return committedDecision;
       }
-      rejectPriorLocalOpsFailureState(db, command);
+      const catchPriorDecision = readMatchingOrRejectPriorLocalOpsFailureState(
+        db,
+        command,
+        decisionId,
+        action,
+      );
+      if (catchPriorDecision) {
+        return catchPriorDecision;
+      }
       if (command.decision === "retry") {
         const durableRetryCount = countPriorLocalOpsFailureRetries(db, command);
         if (durableRetryCount >= maxLocalOpsFailureRetries) {
@@ -1015,17 +1043,66 @@ function rejectTerminalLocalOpsFailureState(
   }
 }
 
-function rejectPriorLocalOpsFailureState(
+function readMatchingLocalOpsFailureDecision(
   db: OnboardingTransactionRequestDatabase,
   input: RecordLocalOpsFailureDecisionInput,
-): void {
-  rejectTerminalLocalOpsFailureState(db, input);
+  decisionId: string,
+  action: string,
+): LocalOpsFailureDecisionResult | undefined {
+  const existingDecision = readLocalOpsFailureDecision(db, decisionId);
+  if (!existingDecision) {
+    return undefined;
+  }
+  assertFailureDecisionMatchesExisting(existingDecision, input, action);
+  return buildFailureDecisionResult(existingDecision);
+}
+
+function readMatchingOrRejectPriorLocalOpsFailureState(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+  decisionId: string,
+  action: string,
+): LocalOpsFailureDecisionResult | undefined {
+  const existingDecision = readMatchingLocalOpsFailureDecision(
+    db,
+    input,
+    decisionId,
+    action,
+  );
+  if (existingDecision) {
+    return existingDecision;
+  }
+
+  try {
+    rejectTerminalLocalOpsFailureState(db, input);
+  } catch (error) {
+    const racedDecision = readMatchingLocalOpsFailureDecision(
+      db,
+      input,
+      decisionId,
+      action,
+    );
+    if (racedDecision) {
+      return racedDecision;
+    }
+    throw error;
+  }
   if (
     input.decision === "replay" &&
     hasPriorLocalOpsFailureDecision(db, input, "replay")
   ) {
+    const racedDecision = readMatchingLocalOpsFailureDecision(
+      db,
+      input,
+      decisionId,
+      action,
+    );
+    if (racedDecision) {
+      return racedDecision;
+    }
     throw new Error("local ops failure decision rejects duplicate replay");
   }
+  return undefined;
 }
 
 function isRetryAttemptConflict(error: unknown): boolean {
