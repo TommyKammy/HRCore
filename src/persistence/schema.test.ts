@@ -25,6 +25,7 @@ const expectedTables = [
   "writeback_provider_refresh",
   "writeback_work_email_conflict",
   "writeback_work_email_conflict_resolution",
+  "local_ops_failure_decision",
 ] as const;
 
 const requiredColumnsByTable = {
@@ -123,6 +124,23 @@ const requiredColumnsByTable = {
     "decided_by",
     "correlation_id",
     "poc_marker",
+  ],
+  local_ops_failure_decision: [
+    "id",
+    "workflow",
+    "source_type",
+    "job_correlation_id",
+    "row_id",
+    "decision",
+    "failure_status",
+    "retry_count",
+    "evidence_version",
+    "reason",
+    "decided_at",
+    "decided_by",
+    "decision_correlation_id",
+    "audit_event_id",
+    "created_at",
   ],
 } as const;
 
@@ -239,6 +257,23 @@ test("minimum DDL migration preserves skeleton scope and PoC audit boundary", as
   assert.match(
     migrationSql,
     /FOREIGN KEY \(`writeback_event_id`\) REFERENCES `writeback_event`\(`id`\)/,
+  );
+  assert.match(migrationSql, /local_ops_failure_decision/);
+  assert.match(
+    migrationSql,
+    /FOREIGN KEY \(`audit_event_id`\) REFERENCES `audit_event`\(`id`\)/,
+  );
+  assert.match(
+    migrationSql,
+    /CREATE UNIQUE INDEX `local_ops_failure_decision_replay_unique`/,
+  );
+  assert.match(
+    migrationSql,
+    /CREATE TRIGGER `local_ops_failure_decision_retry_limit`/,
+  );
+  assert.match(
+    migrationSql,
+    /CREATE TRIGGER `local_ops_failure_decision_terminal_guard`/,
   );
   assert.doesNotMatch(migrationSql, /worm|hash_chain|object_lock/i);
   assert.doesNotMatch(
