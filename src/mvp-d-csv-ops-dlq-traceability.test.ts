@@ -372,6 +372,16 @@ test("MVP-D CSV/Ops/DLQ traceability verifier covers bounded synthetic success, 
       verifyMvpDCsvOpsDlqTraceability(db, {
         dryRun,
         appliedJobCorrelationId: jobCorrelationId,
+        deniedExport,
+        requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+      }),
+    "MVP-D trace requires denied export guard evidence without audit writes",
+  );
+  assertTraceThrows(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun,
+        appliedJobCorrelationId: jobCorrelationId,
         deniedExport: {
           ...deniedExport,
           auditEventCountBefore: 1,

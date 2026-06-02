@@ -96,6 +96,8 @@ type FailureDecisionTraceRow = {
   audit_actor_id: string | null;
   audit_action: string | null;
   audit_correlation_id: string | null;
+  row_outcome_status: string | null;
+  row_outcome_correlation_id: string | null;
 };
 
 const operatorActionPrefix = "mvp_d.ops_job.operator_decision.csv_import.";
@@ -312,12 +314,14 @@ function verifyDeniedExportGuardEvidence(
     evidence.errorMessage,
     "MVP-D trace requires denied export guard error evidence",
   );
+  const persistedDownloadAuditCount = countExportAuditEvents(
+    db,
+    evidence.correlationId,
+  );
   if (
     evidence.auditEventCountBefore !== 0 ||
     evidence.auditEventCountAfter !== 0 ||
-    evidence.auditEventCountBefore !== evidence.auditEventCountAfter ||
-    evidence.auditEventCountAfter !==
-      countExportAuditEvents(db, evidence.correlationId)
+    persistedDownloadAuditCount !== 0
   ) {
     throwTraceError(
       "MVP-D trace requires denied export guard evidence without audit writes",
@@ -396,8 +400,15 @@ function readFailureDecisions(
         decision.audit_event_id,
         audit_event.actor_id AS audit_actor_id,
         audit_event.action AS audit_action,
-        audit_event.correlation_id AS audit_correlation_id
+        audit_event.correlation_id AS audit_correlation_id,
+        row_outcome.status_code AS row_outcome_status,
+        row_outcome.correlation_id AS row_outcome_correlation_id
       FROM local_ops_failure_decision AS decision
+      LEFT JOIN csv_import_job AS job
+        ON job.correlation_id = decision.job_correlation_id
+      LEFT JOIN csv_import_row_outcome AS row_outcome
+        ON row_outcome.job_id = job.id
+        AND row_outcome.row_id = decision.row_id
       LEFT JOIN audit_event
         ON audit_event.id = decision.audit_event_id
       WHERE decision.workflow = 'csv_import'
@@ -444,6 +455,14 @@ function verifyFailureDecisions(
     if (!failedJobRowIds.has(decision.row_id)) {
       throwTraceError(
         "MVP-D trace requires DLQ decisions to match failed CSV row outcomes",
+      );
+    }
+    if (
+      decision.row_outcome_status !== "failed" ||
+      !decision.row_outcome_correlation_id?.trim()
+    ) {
+      throwTraceError(
+        "MVP-D trace requires DLQ decisions to join failed CSV row outcomes",
       );
     }
     if (
