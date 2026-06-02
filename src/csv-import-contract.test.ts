@@ -154,6 +154,52 @@ test("MVP-D CSV dry-run reports deterministic validation reasons without mutatin
   assert.deepEqual(result.diffs, []);
 });
 
+test("MVP-D CSV dry-run normalizes lifecycle type before emitting diffs", () => {
+  const result = dryRunSyntheticLifecycleCsvImport(
+    csv([
+      mvpDCsvImportTemplateColumns.join(","),
+      [
+        "mvp_d_lifecycle_support_v1",
+        "csv-row-normalized",
+        " transfer ",
+        "repo_owned_synthetic_mvp_d_csv",
+        "person-csv-normalized",
+        "CSV Normalized",
+        "2026-07-15",
+        "",
+        "",
+        "",
+        "",
+        "assignment-current-csv-normalized",
+        "organization-product",
+        "department-product",
+        "manager-product-001",
+        "team_change",
+      ].join(","),
+    ]),
+  );
+
+  assert.deepEqual(result.acceptedRows, [
+    {
+      rowNumber: 2,
+      rowId: "csv-row-normalized",
+      lifecycleType: "transfer",
+    },
+  ]);
+  assert.deepEqual(result.diffs, [
+    {
+      rowId: "csv-row-normalized",
+      lifecycleType: "transfer",
+      operation: "would_create_transfer_request",
+      evidence: {
+        personId: "person-csv-normalized",
+        effectiveDate: "2026-07-15",
+        correlationId: "csv-import-csv-row-normalized",
+      },
+    },
+  ]);
+});
+
 test("MVP-D CSV dry-run fails closed on unsupported prohibited fields and malformed CSV", () => {
   for (const prohibitedColumn of [
     "realEmployeeData",
@@ -185,5 +231,26 @@ test("MVP-D CSV dry-run fails closed on unsupported prohibited fields and malfor
         `${mvpDCsvImportTemplateColumns.join(",")}\n"unterminated`,
       ),
     /CSV input is malformed: unterminated quoted field/,
+  );
+
+  assert.throws(
+    () =>
+      dryRunSyntheticLifecycleCsvImport(
+        `${mvpDCsvImportTemplateColumns.join(",")}\n"person-1"extra,2026-07-01`,
+      ),
+    /CSV input is malformed: characters after closing quoted field/,
+  );
+});
+
+test("MVP-D CSV dry-run rejects duplicate headers before mapping rows", () => {
+  assert.throws(
+    () =>
+      dryRunSyntheticLifecycleCsvImport(
+        csv([
+          `${mvpDCsvImportTemplateColumns.join(",")},lifecycle_type`,
+          `mvp_d_lifecycle_support_v1,csv-row-duplicate-header,onboarding,repo_owned_synthetic_mvp_d_csv,person-csv-duplicate-header,CSV Duplicate Header,2026-07-01,EMP-CSV-DUPLICATE-HEADER,ASN-CSV-DUPLICATE-HEADER,organization-engineering,csv.duplicate.header@example.test,,,,,,transfer`,
+        ]),
+      ),
+    /CSV header contains duplicate columns: lifecycle_type/,
   );
 });

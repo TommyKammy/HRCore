@@ -129,6 +129,13 @@ export function dryRunSyntheticLifecycleCsvImport(
     );
   }
 
+  const duplicateColumns = collectDuplicateValues(header);
+  if (duplicateColumns.length > 0) {
+    throw new Error(
+      `CSV header contains duplicate columns: ${duplicateColumns.join(", ")}`,
+    );
+  }
+
   const missingColumns = mvpDCsvImportTemplateColumns.filter(
     (column) => !header.includes(column),
   );
@@ -175,7 +182,7 @@ export function dryRunSyntheticLifecycleCsvImport(
       continue;
     }
 
-    const lifecycleType = row.lifecycle_type as MvpDCsvLifecycleType;
+    const lifecycleType = row.lifecycle_type.trim() as MvpDCsvLifecycleType;
     acceptedRows.push({ rowNumber, rowId, lifecycleType });
     diffs.push({
       rowId,
@@ -291,6 +298,18 @@ function isMvpDCsvLifecycleType(value: string): value is MvpDCsvLifecycleType {
   );
 }
 
+function collectDuplicateValues(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      duplicates.add(value);
+    }
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
 function toCsvRow(header: string[], record: string[]): ParsedCsvRow {
   const row = Object.create(null) as ParsedCsvRow;
   for (const column of mvpDCsvImportTemplateColumns) {
@@ -307,6 +326,7 @@ function parseCsvRecords(input: string): string[][] {
   let record: string[] = [];
   let field = "";
   let quoted = false;
+  let quotedFieldClosed = false;
 
   for (let index = 0; index < input.length; index += 1) {
     const character = input[index];
@@ -317,9 +337,38 @@ function parseCsvRecords(input: string): string[][] {
           index += 1;
         } else {
           quoted = false;
+          quotedFieldClosed = true;
         }
       } else {
         field += character;
+      }
+      continue;
+    }
+
+    if (quotedFieldClosed) {
+      if (character === ",") {
+        record.push(field);
+        field = "";
+        quotedFieldClosed = false;
+      } else if (character === "\n") {
+        record.push(field);
+        records.push(record);
+        record = [];
+        field = "";
+        quotedFieldClosed = false;
+      } else if (character === "\r") {
+        if (input[index + 1] === "\n") {
+          continue;
+        }
+        record.push(field);
+        records.push(record);
+        record = [];
+        field = "";
+        quotedFieldClosed = false;
+      } else {
+        throw new Error(
+          "CSV input is malformed: characters after closing quoted field",
+        );
       }
       continue;
     }
