@@ -573,6 +573,37 @@ test("MVP-D CSV apply records idempotent row evidence for fresh correlation retr
     ],
   );
   assert.deepEqual(
+    normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT
+              csv_import_job.correlation_id,
+              csv_import_job.accepted_rows,
+              count(csv_import_row_outcome.id) AS outcome_rows
+            FROM csv_import_job
+            LEFT JOIN csv_import_row_outcome
+              ON csv_import_row_outcome.job_id = csv_import_job.id
+            GROUP BY csv_import_job.id
+            ORDER BY csv_import_job.correlation_id
+          `,
+        )
+        .all(),
+    ),
+    [
+      {
+        correlation_id: "csv-import-apply-correlation-retry-first",
+        accepted_rows: 1,
+        outcome_rows: 1,
+      },
+      {
+        correlation_id: "csv-import-apply-correlation-retry-second",
+        accepted_rows: 1,
+        outcome_rows: 1,
+      },
+    ],
+  );
+  assert.deepEqual(
     normalizeRow(
       db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
     ),
@@ -1037,6 +1068,24 @@ test("MVP-D CSV apply rejects historical assignment references", async (t) => {
       "",
       "resignation",
     ].join(","),
+    [
+      "mvp_d_lifecycle_support_v1",
+      "csv-row-historical-transfer-001",
+      "transfer",
+      "repo_owned_synthetic_mvp_d_csv",
+      "person-csv-historical-001",
+      "CSV Historical Synthetic One",
+      "2026-08-31",
+      "",
+      "",
+      "",
+      "",
+      "assignment-historical-csv-001",
+      "organization-product",
+      "department-product",
+      "manager-product-001",
+      "team_change",
+    ].join(","),
   ]);
 
   const result = applySyntheticLifecycleCsvImport(db, {
@@ -1049,26 +1098,37 @@ test("MVP-D CSV apply rejects historical assignment references", async (t) => {
 
   assert.deepEqual(result.summary, {
     appliedRows: 0,
-    failedRows: 1,
+    failedRows: 2,
     idempotentRows: 0,
   });
   assert.deepEqual(
-    normalizeRow(
+    normalizeRows(
       db
         .prepare(
           `
-            SELECT status_code, error_message
+            SELECT row_id, lifecycle_type, status_code, error_message
             FROM csv_import_row_outcome
-            WHERE row_id = 'csv-row-historical-001'
+            ORDER BY row_id
           `,
         )
-        .get(),
+        .all(),
     ),
-    {
-      status_code: "failed",
-      error_message:
-        "CSV import apply requires current_assignment_id to match an open assignment for the person",
-    },
+    [
+      {
+        row_id: "csv-row-historical-001",
+        lifecycle_type: "termination",
+        status_code: "failed",
+        error_message:
+          "CSV import apply requires current_assignment_id to match an open assignment for the person",
+      },
+      {
+        row_id: "csv-row-historical-transfer-001",
+        lifecycle_type: "transfer",
+        status_code: "failed",
+        error_message:
+          "CSV import apply requires current_assignment_id to match an open assignment for the person",
+      },
+    ],
   );
   assert.deepEqual(
     normalizeRow(
@@ -1125,6 +1185,17 @@ test("MVP-D CSV apply rejects row-id reuse with changed row payload", async (t) 
     correlationId: "csv-import-apply-correlation-payload-first",
   });
 
+  assert.throws(
+    () =>
+      applySyntheticLifecycleCsvImport(db, {
+        csvInput: changedCsvInput,
+        dryRun: dryRunSyntheticLifecycleCsvImport(changedCsvInput),
+        appliedAt: "2026-06-02T12:05:00Z",
+        appliedBy: "operator-mvp-d-csv-import",
+        correlationId: "csv-import-apply-correlation-payload-first",
+      }),
+    /CSV import apply correlation id already belongs to a different import/,
+  );
   assert.throws(
     () =>
       applySyntheticLifecycleCsvImport(db, {
