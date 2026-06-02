@@ -1,7 +1,3 @@
-import {
-  buildOnboardingApplyAuditEventId,
-  buildOnboardingApplyLifecycleEventId,
-} from "./onboarding-transaction-request-ids.js";
 import { parseApplyApprovedOnboardingTransactionRequestInput } from "./onboarding-transaction-request-parser.js";
 import { readOnboardingTransactionRequestById } from "./onboarding-transaction-request-readers.js";
 import {
@@ -15,6 +11,10 @@ import type {
 import type { ExistingOnboardingTransactionRequestRow } from "./onboarding-transaction-request-types.js";
 import { parseTerminationPayload } from "./termination-transaction-request-contract.js";
 import type { TerminationTransactionRequestPayload } from "./termination-transaction-request-contract.js";
+import {
+  buildTerminationApplyAuditEventId,
+  buildTerminationApplyLifecycleEventId,
+} from "./termination-transaction-request-ids.js";
 
 export type ApplyApprovedTerminationTransactionRequestInput =
   ApplyApprovedOnboardingTransactionRequestInput;
@@ -81,8 +81,8 @@ export function applyApprovedTerminationTransactionRequest(
   input: unknown,
 ): AppliedTerminationTransactionRequestResult {
   const apply = parseApplyApprovedOnboardingTransactionRequestInput(input);
-  const lifecycleEventId = buildOnboardingApplyLifecycleEventId(apply);
-  const auditEventId = buildOnboardingApplyAuditEventId(lifecycleEventId);
+  const lifecycleEventId = buildTerminationApplyLifecycleEventId(apply);
+  const auditEventId = buildTerminationApplyAuditEventId(lifecycleEventId);
   const existing = readOnboardingTransactionRequestById(
     db,
     apply.transactionRequestId,
@@ -592,7 +592,7 @@ function assertCompletedTerminationApplyMatchesInput(
     existing.assignment_start_date > payload.effectiveDate ||
     existing.assignment_end_date !== payload.effectiveDate ||
     existing.audit_event_id !==
-      buildOnboardingApplyAuditEventId(lifecycleEventId) ||
+      buildTerminationApplyAuditEventId(lifecycleEventId) ||
     existing.audit_actor_id !== apply.appliedBy ||
     existing.audit_action !== "mvp_c.termination.apply" ||
     existing.audit_subject_table !== "lifecycle_event" ||

@@ -1,4 +1,3 @@
-import { buildOnboardingDecisionAuditEventId } from "./onboarding-transaction-request-ids.js";
 import { parseOnboardingApprovalDecisionInput } from "./onboarding-transaction-request-parser.js";
 import {
   readAuditEventById,
@@ -17,6 +16,7 @@ import type {
   OnboardingApprovalDecisionResult,
   OnboardingTransactionRequestDatabase,
 } from "./onboarding-transaction-request.js";
+import { buildTerminationDecisionAuditEventId } from "./termination-transaction-request-ids.js";
 
 export function decideTerminationTransactionRequest(
   db: OnboardingTransactionRequestDatabase,
@@ -27,7 +27,7 @@ export function decideTerminationTransactionRequest(
     decision.decision,
     "mvp_c.termination",
   );
-  const auditEventId = buildOnboardingDecisionAuditEventId(decision);
+  const auditEventId = buildTerminationDecisionAuditEventId(decision);
   const scope = {
     requestType: "terminate",
     label: "termination transaction request",
