@@ -287,12 +287,7 @@ export function recordLocalOpsFailureDecision(
     return buildFailureDecisionResult(existingDecision);
   }
 
-  const terminalDecision = readTerminalLocalOpsFailureDecision(db, command);
-  if (terminalDecision) {
-    throw new Error(
-      "local ops failure decision rejects terminal failure state",
-    );
-  }
+  rejectTerminalLocalOpsFailureState(db, command);
 
   const current = readLocalOpsJobStatus(db, command);
   if (current.evidenceVersion !== command.expectedEvidenceVersion) {
@@ -310,50 +305,71 @@ export function recordLocalOpsFailureDecision(
     throw new Error("local ops failure decision rejects duplicate replay");
   }
 
-  const priorRetryCount = countPriorLocalOpsFailureRetries(db, command);
-  const retryCount =
-    command.decision === "retry" ? priorRetryCount + 1 : priorRetryCount;
-  if (retryCount > maxLocalOpsFailureRetries) {
-    throw new Error("local ops failure decision retry limit exceeded");
-  }
+  while (true) {
+    rejectTerminalLocalOpsFailureState(db, command);
 
-  const failureStatus = failureStatusForDecision(command.decision);
-  const resultRow: LocalOpsFailureDecisionRow = {
-    id: decisionId,
-    audit_event_id: auditEventId,
-    action,
-    evidence_version: command.expectedEvidenceVersion,
-    failure_status: failureStatus,
-    retry_count: retryCount,
-    decided_by: command.decidedBy,
-    decided_at: command.decidedAt,
-    reason: command.reason,
-    decision_correlation_id: command.decisionCorrelationId,
-  };
-
-  db.exec("SAVEPOINT local_ops_failure_decision");
-  try {
-    insertLocalOpsFailureDecisionAuditEvent(db, command, action, auditEventId);
-    insertLocalOpsFailureDecision(db, command, resultRow);
-    db.exec("RELEASE SAVEPOINT local_ops_failure_decision");
-  } catch (error) {
-    rollbackLocalOpsFailureDecisionSavepoint(db);
-    if (
-      command.decision === "replay" &&
-      hasPriorLocalOpsFailureDecision(db, command, "replay")
-    ) {
-      throw new Error("local ops failure decision rejects duplicate replay");
-    }
-    if (
-      command.decision === "retry" &&
-      countPriorLocalOpsFailureRetries(db, command) >= maxLocalOpsFailureRetries
-    ) {
+    const priorRetryCount = countPriorLocalOpsFailureRetries(db, command);
+    const retryCount =
+      command.decision === "retry" ? priorRetryCount + 1 : priorRetryCount;
+    if (retryCount > maxLocalOpsFailureRetries) {
       throw new Error("local ops failure decision retry limit exceeded");
     }
-    throw error;
-  }
 
-  return buildFailureDecisionResult(resultRow);
+    const failureStatus = failureStatusForDecision(command.decision);
+    const resultRow: LocalOpsFailureDecisionRow = {
+      id: decisionId,
+      audit_event_id: auditEventId,
+      action,
+      evidence_version: command.expectedEvidenceVersion,
+      failure_status: failureStatus,
+      retry_count: retryCount,
+      decided_by: command.decidedBy,
+      decided_at: command.decidedAt,
+      reason: command.reason,
+      decision_correlation_id: command.decisionCorrelationId,
+    };
+
+    db.exec("SAVEPOINT local_ops_failure_decision");
+    try {
+      insertLocalOpsFailureDecisionAuditEvent(
+        db,
+        command,
+        action,
+        auditEventId,
+      );
+      insertLocalOpsFailureDecision(db, command, resultRow);
+      db.exec("RELEASE SAVEPOINT local_ops_failure_decision");
+      return buildFailureDecisionResult(resultRow);
+    } catch (error) {
+      rollbackLocalOpsFailureDecisionSavepoint(db);
+      const committedDecision = readLocalOpsFailureDecision(db, decisionId);
+      if (committedDecision) {
+        assertFailureDecisionMatchesExisting(
+          committedDecision,
+          command,
+          action,
+        );
+        return buildFailureDecisionResult(committedDecision);
+      }
+      if (
+        command.decision === "replay" &&
+        hasPriorLocalOpsFailureDecision(db, command, "replay")
+      ) {
+        throw new Error("local ops failure decision rejects duplicate replay");
+      }
+      rejectTerminalLocalOpsFailureState(db, command);
+      if (command.decision === "retry") {
+        const durableRetryCount = countPriorLocalOpsFailureRetries(db, command);
+        if (durableRetryCount >= maxLocalOpsFailureRetries) {
+          throw new Error("local ops failure decision retry limit exceeded");
+        }
+        if (isRetryAttemptConflict(error)) {
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
 }
 
 export function rejectBroadLocalOpsJobSearch(input: {
@@ -845,6 +861,21 @@ function ensureLocalOpsFailureDecisionTable(
       SELECT RAISE(ABORT, 'local ops failure decision retry limit exceeded');
     END
   `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_terminal_guard
+    BEFORE INSERT ON local_ops_failure_decision
+    WHEN EXISTS (
+      SELECT 1
+      FROM local_ops_failure_decision
+      WHERE workflow = NEW.workflow
+        AND job_correlation_id = NEW.job_correlation_id
+        AND row_id = NEW.row_id
+        AND failure_status IN ('ignored', 'closed')
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'local ops failure decision rejects terminal failure state');
+    END
+  `);
 }
 
 function readLocalOpsFailureDecision(
@@ -954,6 +985,25 @@ function countPriorLocalOpsFailureRetries(
     | undefined;
 
   return row?.count ?? 0;
+}
+
+function rejectTerminalLocalOpsFailureState(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): void {
+  const terminalDecision = readTerminalLocalOpsFailureDecision(db, input);
+  if (terminalDecision) {
+    throw new Error(
+      "local ops failure decision rejects terminal failure state",
+    );
+  }
+}
+
+function isRetryAttemptConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(
+    "UNIQUE constraint failed: local_ops_failure_decision.workflow, local_ops_failure_decision.job_correlation_id, local_ops_failure_decision.row_id, local_ops_failure_decision.decision, local_ops_failure_decision.retry_count",
+  );
 }
 
 function insertLocalOpsFailureDecisionAuditEvent(

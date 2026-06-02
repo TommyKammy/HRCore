@@ -24,6 +24,15 @@ import {
   normalizeRows,
   openSchemaBackedDatabase,
 } from "./test-helpers/database.js";
+import { encodeStableKey } from "./onboarding-transaction-request-shared.js";
+import type {
+  OnboardingTransactionRequestDatabase,
+  SqlValue,
+} from "./onboarding-transaction-request-types.js";
+
+type SchemaBackedDatabase = NonNullable<
+  Awaited<ReturnType<typeof openSchemaBackedDatabase>>
+>;
 
 function csv(lines: string[]): string {
   return `${lines.join("\n")}\n`;
@@ -51,6 +60,230 @@ function terminationCsvInput(rowId: string): string {
       "resignation",
     ].join(","),
   ]);
+}
+
+function seedFailedCsvImportJob(
+  db: OnboardingTransactionRequestDatabase,
+  input: {
+    jobId: string;
+    correlationId: string;
+    rowId: string;
+    requestedAt: string;
+  },
+): void {
+  db.exec(`
+    INSERT INTO csv_import_job (
+      id,
+      correlation_id,
+      import_fingerprint,
+      template_version,
+      tenant_environment_id,
+      status_code,
+      requested_at,
+      requested_by,
+      accepted_rows,
+      failed_rows
+    )
+    VALUES (
+      '${input.jobId}',
+      '${input.correlationId}',
+      'fingerprint-${input.jobId}',
+      'mvp_d_lifecycle_support_v1',
+      'repo_owned_synthetic_mvp_d_csv',
+      'failed',
+      '${input.requestedAt}',
+      'operator-mvp-d-csv-import',
+      0,
+      1
+    );
+    INSERT INTO csv_import_row_outcome (
+      id,
+      job_id,
+      row_id,
+      lifecycle_type,
+      status_code,
+      transaction_request_id,
+      lifecycle_event_id,
+      row_fingerprint,
+      error_message,
+      correlation_id,
+      decided_at
+    )
+    VALUES (
+      'csv-import-row-outcome-${input.rowId}',
+      '${input.jobId}',
+      '${input.rowId}',
+      'transfer',
+      'failed',
+      NULL,
+      NULL,
+      'fingerprint-${input.rowId}',
+      'synthetic transfer target missing',
+      'csv-import-row-outcome-correlation-${input.rowId}',
+      '${input.requestedAt}'
+    );
+  `);
+}
+
+function insertRawFailureDecisionEvidence(
+  db: OnboardingTransactionRequestDatabase,
+  input: {
+    workflow: "csv_import";
+    correlationId: string;
+    rowId: string;
+    decision: "retry" | "replay" | "ignore" | "close";
+    failureStatus: "open" | "replayed" | "ignored" | "closed";
+    retryCount: number;
+    evidenceVersion: string;
+    reason: string;
+    decidedAt: string;
+    decidedBy: string;
+    decisionCorrelationId: string;
+  },
+): { auditEventId: string; decisionId: string } {
+  const decisionId = `local-ops-failure-decision-${encodeStableKey([
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.decision,
+    input.decisionCorrelationId,
+  ])}`;
+  const auditEventId = `audit-event-local-ops-failure-${encodeStableKey([
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.decision,
+    input.decisionCorrelationId,
+  ])}`;
+  const action = `mvp_d.ops_job.failure_decision.${input.workflow}.${input.decision}`;
+  const subjectId = `local-ops-failure-${encodeStableKey([
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.evidenceVersion,
+  ])}`;
+
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id,
+        actor_id,
+        action,
+        subject_table,
+        subject_id,
+        occurred_at,
+        poc_marker,
+        correlation_id
+      )
+      VALUES (?, ?, ?, 'lifecycle_event', ?, ?, 'synthetic_poc', ?)
+    `,
+  ).run(
+    auditEventId,
+    input.decidedBy,
+    action,
+    subjectId,
+    input.decidedAt,
+    input.decisionCorrelationId,
+  );
+  db.prepare(
+    `
+      INSERT INTO local_ops_failure_decision (
+        id,
+        workflow,
+        source_type,
+        job_correlation_id,
+        row_id,
+        decision,
+        failure_status,
+        retry_count,
+        evidence_version,
+        reason,
+        decided_at,
+        decided_by,
+        decision_correlation_id,
+        audit_event_id,
+        created_at
+      )
+      VALUES (
+        ?,
+        ?,
+        'repo_owned_synthetic_mvp_d_csv_failure',
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `,
+  ).run(
+    decisionId,
+    input.workflow,
+    input.correlationId,
+    input.rowId,
+    input.decision,
+    input.failureStatus,
+    input.retryCount,
+    input.evidenceVersion,
+    input.reason,
+    input.decidedAt,
+    input.decidedBy,
+    input.decisionCorrelationId,
+    auditEventId,
+    input.decidedAt,
+  );
+
+  return { auditEventId, decisionId };
+}
+
+function withConcurrentLocalOpsFailureDecision(
+  db: SchemaBackedDatabase,
+  hooks: {
+    afterMissingDecisionRead?: () => void;
+    afterRetryCountRead?: () => void;
+    beforeFailureDecisionInsert?: () => void;
+  },
+): OnboardingTransactionRequestDatabase {
+  return {
+    exec(sql: string): unknown {
+      return db.exec(sql);
+    },
+    prepare(sql: string) {
+      const statement = db.prepare(sql);
+      return {
+        get(...values: SqlValue[]): Record<string, unknown> | undefined {
+          const row = statement.get(...values) as
+            | Record<string, unknown>
+            | undefined;
+          if (!row && sql.includes("WHERE decision.id = ?")) {
+            hooks.afterMissingDecisionRead?.();
+          }
+          if (
+            sql.includes("SELECT count(*) AS count") &&
+            sql.includes("decision = 'retry'")
+          ) {
+            hooks.afterRetryCountRead?.();
+          }
+          return row;
+        },
+        all(...values: SqlValue[]): Record<string, unknown>[] {
+          return statement.all(...values) as Record<string, unknown>[];
+        },
+        run(...values: SqlValue[]): unknown {
+          if (sql.includes("INSERT INTO local_ops_failure_decision (")) {
+            hooks.beforeFailureDecisionInsert?.();
+          }
+          return statement.run(...values);
+        },
+      };
+    },
+  };
 }
 
 test("MVP-D local ops job status exposes bounded CSV import evidence", async (t) => {
@@ -712,6 +945,51 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
 
   assert.throws(
     () =>
+      db
+        .prepare(
+          `
+            INSERT INTO local_ops_failure_decision (
+              id,
+              workflow,
+              source_type,
+              job_correlation_id,
+              row_id,
+              decision,
+              failure_status,
+              retry_count,
+              evidence_version,
+              reason,
+              decided_at,
+              decided_by,
+              decision_correlation_id,
+              audit_event_id,
+              created_at
+            )
+            VALUES (
+              'local-ops-failure-decision-raw-after-close',
+              'csv_import',
+              'repo_owned_synthetic_mvp_d_csv_failure',
+              'csv-import-dlq-guard-001',
+              'csv-row-dlq-failed-001',
+              'retry',
+              'open',
+              3,
+              ?,
+              'raw retry after close must be rejected durably',
+              '2026-06-03T10:20:30+09:00',
+              'operator-mvp-d-csv-import',
+              'dlq-decision-correlation-raw-after-close',
+              'audit-event-local-ops-failure-raw-after-close',
+              '2026-06-03T10:20:30+09:00'
+            )
+          `,
+        )
+        .run(status.evidenceVersion),
+    /local ops failure decision rejects terminal failure state/,
+  );
+
+  assert.throws(
+    () =>
       recordLocalOpsFailureDecision(db, {
         workflow: "csv_import",
         correlationId: "csv-import-dlq-guard-001",
@@ -912,5 +1190,137 @@ test("MVP-D local ops failure decisions replay committed evidence before mutable
         .get(),
     ),
     { count: 1 },
+  );
+});
+
+test("MVP-D local ops failure decisions recover committed insert races", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-race-001",
+    correlationId: "csv-import-dlq-race-001",
+    rowId: "csv-row-dlq-race-001",
+    requestedAt: "2026-06-03T12:00:00+09:00",
+  });
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-race-001",
+  });
+
+  let insertedCommittedDuplicate = false;
+  const sameDecisionDb = withConcurrentLocalOpsFailureDecision(db, {
+    afterMissingDecisionRead: () => {
+      if (insertedCommittedDuplicate) {
+        return;
+      }
+      insertedCommittedDuplicate = true;
+      insertRawFailureDecisionEvidence(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-race-001",
+        rowId: "csv-row-dlq-race-001",
+        decision: "retry",
+        failureStatus: "open",
+        retryCount: 1,
+        evidenceVersion: status.evidenceVersion,
+        reason: "retry committed by a racing local ops caller",
+        decidedAt: "2026-06-03T12:05:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-race-retry-001",
+      });
+    },
+  });
+
+  assert.deepEqual(
+    recordLocalOpsFailureDecision(sameDecisionDb, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-race-001",
+      rowId: "csv-row-dlq-race-001",
+      decision: "retry",
+      reason: "retry committed by a racing local ops caller",
+      decidedAt: "2026-06-03T12:05:00+09:00",
+      decidedBy: "operator-mvp-d-csv-import",
+      decisionCorrelationId: "dlq-decision-correlation-race-retry-001",
+      expectedEvidenceVersion: status.evidenceVersion,
+    }),
+    {
+      decisionId:
+        "local-ops-failure-decision-WyJjc3ZfaW1wb3J0IiwiY3N2LWltcG9ydC1kbHEtcmFjZS0wMDEiLCJjc3Ytcm93LWRscS1yYWNlLTAwMSIsInJldHJ5IiwiZGxxLWRlY2lzaW9uLWNvcnJlbGF0aW9uLXJhY2UtcmV0cnktMDAxIl0",
+      auditEventId:
+        "audit-event-local-ops-failure-WyJjc3ZfaW1wb3J0IiwiY3N2LWltcG9ydC1kbHEtcmFjZS0wMDEiLCJjc3Ytcm93LWRscS1yYWNlLTAwMSIsInJldHJ5IiwiZGxxLWRlY2lzaW9uLWNvcnJlbGF0aW9uLXJhY2UtcmV0cnktMDAxIl0",
+      action: "mvp_d.ops_job.failure_decision.csv_import.retry",
+      correlationId: "dlq-decision-correlation-race-retry-001",
+      evidenceVersion: status.evidenceVersion,
+      failureStatus: "open",
+      retryCount: 1,
+    },
+  );
+
+  let insertedRetryAttemptCollision = false;
+  const retryCollisionDb = withConcurrentLocalOpsFailureDecision(db, {
+    afterRetryCountRead: () => {
+      if (insertedRetryAttemptCollision) {
+        return;
+      }
+      insertedRetryAttemptCollision = true;
+      insertRawFailureDecisionEvidence(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-race-001",
+        rowId: "csv-row-dlq-race-001",
+        decision: "retry",
+        failureStatus: "open",
+        retryCount: 2,
+        evidenceVersion: status.evidenceVersion,
+        reason: "second retry committed by a racing local ops caller",
+        decidedAt: "2026-06-03T12:06:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-race-retry-002",
+      });
+    },
+  });
+
+  const recomputedRetry = recordLocalOpsFailureDecision(retryCollisionDb, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-race-001",
+    rowId: "csv-row-dlq-race-001",
+    decision: "retry",
+    reason: "third retry recomputes after a racing retry insert",
+    decidedAt: "2026-06-03T12:07:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "dlq-decision-correlation-race-retry-003",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+  assert.equal(recomputedRetry.retryCount, 3);
+
+  assert.deepEqual(
+    normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT retry_count, decision_correlation_id
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-race-001'
+              AND decision = 'retry'
+            ORDER BY retry_count
+          `,
+        )
+        .all(),
+    ),
+    [
+      {
+        retry_count: 1,
+        decision_correlation_id: "dlq-decision-correlation-race-retry-001",
+      },
+      {
+        retry_count: 2,
+        decision_correlation_id: "dlq-decision-correlation-race-retry-002",
+      },
+      {
+        retry_count: 3,
+        decision_correlation_id: "dlq-decision-correlation-race-retry-003",
+      },
+    ],
   );
 });
