@@ -1,4 +1,8 @@
-import type { MvpDCsvImportDryRunResult } from "./csv-import-contract.js";
+import type {
+  MvpDCsvImportDryRunDiff,
+  MvpDCsvImportDryRunResult,
+  MvpDCsvLifecycleType,
+} from "./csv-import-contract.js";
 import { mvpDCsvExportScope } from "./csv-export-policy.js";
 import {
   localOpsJobReadiness,
@@ -244,12 +248,19 @@ function verifyDryRunTrace(
     }
     seenDiffRowIds.add(rowId);
     diffsByRowId.set(rowId, diff);
-    diffCorrelationIds.push(
-      requireTraceValue(
-        diff.evidence.correlationId,
-        "MVP-D trace requires dry-run diff correlation evidence",
-      ),
+    const diffCorrelationId = requireTraceValue(
+      diff.evidence.correlationId,
+      "MVP-D trace requires dry-run diff correlation evidence",
     );
+    if (
+      diffCorrelationId !== `csv-import-${rowId}` ||
+      diff.operation !== dryRunOperationForLifecycleType(diff.lifecycleType)
+    ) {
+      throwTraceError(
+        "MVP-D trace requires deterministic dry-run diff evidence",
+      );
+    }
+    diffCorrelationIds.push(diffCorrelationId);
   }
 
   for (const acceptedRow of dryRun.acceptedRows) {
@@ -306,6 +317,16 @@ function verifyDeniedExportGuardEvidence(
     evidence.requestedBy,
     "MVP-D trace requires denied export actor evidence",
   );
+  if (
+    !isValidIsoTimestamp(
+      requireTraceValue(
+        evidence.requestedAt,
+        "MVP-D trace requires denied export timestamp evidence",
+      ),
+    )
+  ) {
+    throwTraceError("MVP-D trace requires denied export timestamp evidence");
+  }
   requireTraceValue(
     evidence.correlationId,
     "MVP-D trace requires denied export correlation evidence",
@@ -436,6 +457,7 @@ function verifyFailureDecisions(
   const failedJobRowIds = new Set(
     jobRows.filter((row) => row.status === "failed").map((row) => row.rowId),
   );
+  const decisionRowIds = new Set<string>();
   for (const decision of decisions) {
     requireTraceValue(
       decision.row_id,
@@ -466,6 +488,18 @@ function verifyFailureDecisions(
         "MVP-D trace requires DLQ decisions to join failed CSV row outcomes",
       );
     }
+    decisionRowIds.add(decision.row_id);
+  }
+
+  for (const failedRowId of failedJobRowIds) {
+    if (!decisionRowIds.has(failedRowId)) {
+      throwTraceError(
+        "MVP-D trace requires DLQ decision evidence for every failed CSV row",
+      );
+    }
+  }
+
+  for (const decision of decisions) {
     if (
       decision.audit_event_id !==
         buildFailureDecisionAuditEventId(
@@ -489,6 +523,54 @@ function verifyFailureDecisions(
       );
     }
   }
+}
+
+function dryRunOperationForLifecycleType(
+  lifecycleType: MvpDCsvLifecycleType,
+): MvpDCsvImportDryRunDiff["operation"] {
+  switch (lifecycleType) {
+    case "onboarding":
+      return "would_create_onboarding_request";
+    case "transfer":
+      return "would_create_transfer_request";
+    case "termination":
+      return "would_create_termination_request";
+  }
+}
+
+function isValidIsoTimestamp(value: string): boolean {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/,
+  );
+  if (!match) {
+    return false;
+  }
+  const [, year, month, day, hour, minute, second, millisecond, offset] = match;
+  const localDate = new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      Number((millisecond ?? "").padEnd(3, "0")),
+    ),
+  );
+  const date = new Date(value);
+  const offsetHour = offset === "Z" ? 0 : Number(offset.slice(1, 3));
+  const offsetMinute = offset === "Z" ? 0 : Number(offset.slice(4, 6));
+  return (
+    !Number.isNaN(date.getTime()) &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59 &&
+    localDate.getUTCFullYear() === Number(year) &&
+    localDate.getUTCMonth() + 1 === Number(month) &&
+    localDate.getUTCDate() === Number(day) &&
+    localDate.getUTCHours() === Number(hour) &&
+    localDate.getUTCMinutes() === Number(minute) &&
+    localDate.getUTCSeconds() === Number(second)
+  );
 }
 
 function isOperatorActionForJob(
