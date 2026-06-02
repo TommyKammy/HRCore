@@ -1174,6 +1174,167 @@ test("MVP-D CSV apply allows fresh-correlation retry after row-level failure", a
   );
 });
 
+test("MVP-D CSV apply replaces failed row outcome on same-correlation retry", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  const csvInput = csv([
+    mvpDCsvImportTemplateColumns.join(","),
+    [
+      "mvp_d_lifecycle_support_v1",
+      "csv-row-same-correlation-retry-001",
+      "transfer",
+      "repo_owned_synthetic_mvp_d_csv",
+      "person-csv-same-correlation-retry-001",
+      "CSV Same Correlation Retry",
+      "2026-07-15",
+      "",
+      "",
+      "",
+      "",
+      "assignment-current-same-correlation-retry-001",
+      "organization-product",
+      "department-product",
+      "manager-product-001",
+      "team_change",
+    ].join(","),
+  ]);
+  const dryRun = dryRunSyntheticLifecycleCsvImport(csvInput);
+  const correlationId = "csv-import-apply-correlation-same-retry";
+
+  const firstAttempt = applySyntheticLifecycleCsvImport(db, {
+    csvInput,
+    dryRun,
+    appliedAt: "2026-06-02T12:00:00Z",
+    appliedBy: "operator-mvp-d-csv-import",
+    correlationId,
+  });
+
+  db.exec(`
+    INSERT INTO person (id, display_name, created_at)
+    VALUES ('person-csv-same-correlation-retry-001', 'CSV Same Correlation Retry', '2026-06-02T12:01:00Z');
+    INSERT INTO employment (
+      id,
+      person_id,
+      employment_code,
+      status_code,
+      start_date,
+      end_date
+    )
+    VALUES (
+      'employment-csv-same-correlation-retry-001',
+      'person-csv-same-correlation-retry-001',
+      'EMP-CURRENT-CSV-SAME-RETRY-001',
+      'active',
+      '2026-01-01',
+      NULL
+    );
+    INSERT INTO assignment (
+      id,
+      person_id,
+      employment_id,
+      assignment_code,
+      organization_code,
+      position_code,
+      start_date,
+      end_date
+    )
+    VALUES (
+      'assignment-current-same-correlation-retry-001',
+      'person-csv-same-correlation-retry-001',
+      'employment-csv-same-correlation-retry-001',
+      'ASN-CURRENT-CSV-SAME-RETRY-001',
+      'organization-engineering',
+      NULL,
+      '2026-01-01',
+      NULL
+    );
+  `);
+
+  const retryAttempt = applySyntheticLifecycleCsvImport(db, {
+    csvInput,
+    dryRun,
+    appliedAt: "2026-06-02T12:05:00Z",
+    appliedBy: "operator-mvp-d-csv-import",
+    correlationId,
+  });
+
+  assert.deepEqual(firstAttempt.summary, {
+    appliedRows: 0,
+    failedRows: 1,
+    idempotentRows: 0,
+  });
+  assert.deepEqual(retryAttempt.summary, {
+    appliedRows: 1,
+    failedRows: 0,
+    idempotentRows: 0,
+  });
+  assert.deepEqual(
+    normalizeRows(
+      db
+        .prepare(
+          `
+            SELECT
+              job_id,
+              row_id,
+              status_code,
+              transaction_request_id,
+              lifecycle_event_id,
+              error_message,
+              decided_at
+            FROM csv_import_row_outcome
+            ORDER BY row_id
+          `,
+        )
+        .all(),
+    ),
+    [
+      {
+        job_id: "csv-import-job-csv-import-apply-correlation-same-retry",
+        row_id: "csv-row-same-correlation-retry-001",
+        status_code: "applied",
+        transaction_request_id:
+          "csv-import-transaction-request-csv-row-same-correlation-retry-001",
+        lifecycle_event_id:
+          "csv-import-lifecycle-event-csv-row-same-correlation-retry-001",
+        error_message: null,
+        decided_at: "2026-06-02T12:05:00Z",
+      },
+    ],
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT correlation_id, status_code, accepted_rows, failed_rows
+            FROM csv_import_job
+            WHERE correlation_id = ?
+          `,
+        )
+        .get(correlationId),
+    ),
+    {
+      correlation_id: correlationId,
+      status_code: "applied",
+      accepted_rows: 1,
+      failed_rows: 0,
+    },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db.prepare("SELECT count(*) AS count FROM lifecycle_event").get(),
+    ),
+    { count: 1 },
+  );
+  assert.deepEqual(
+    normalizeRow(db.prepare("SELECT count(*) AS count FROM audit_event").get()),
+    { count: 1 },
+  );
+});
+
 test("MVP-D CSV apply rejects historical assignment references", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {

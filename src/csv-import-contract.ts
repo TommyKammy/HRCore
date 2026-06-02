@@ -704,33 +704,13 @@ function applyAcceptedCsvRow(
     input.correlationId,
   );
 
-  db.prepare(
-    `
-      INSERT INTO csv_import_row_outcome (
-        id,
-        job_id,
-        row_id,
-        lifecycle_type,
-        status_code,
-        transaction_request_id,
-        lifecycle_event_id,
-        row_fingerprint,
-        error_message,
-        correlation_id,
-        decided_at
-      )
-      VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, NULL, ?, ?)
-    `,
-  ).run(
-    jobRowIds.rowOutcomeId,
-    buildCsvImportJobId(input.correlationId),
-    row.row_id.trim(),
-    row.lifecycle_type,
-    rowIds.transactionRequestId,
-    rowIds.lifecycleEventId,
+  recordAppliedCsvImportRowOutcome(
+    db,
+    input,
+    row,
+    rowIds,
+    jobRowIds,
     rowFingerprint,
-    jobRowIds.rowOutcomeCorrelationId,
-    input.appliedAt,
   );
 }
 
@@ -790,6 +770,99 @@ function recordFailedCsvImportRowOutcome(
     row.lifecycle_type,
     rowFingerprint,
     reason,
+    jobRowIds.rowOutcomeCorrelationId,
+    input.appliedAt,
+  );
+}
+
+function recordAppliedCsvImportRowOutcome(
+  db: OnboardingTransactionRequestDatabase,
+  input: MvpDCsvImportApplyInput,
+  row: AcceptedParsedCsvRow,
+  rowIds: ReturnType<typeof buildApplyRowIds>,
+  jobRowIds: ReturnType<typeof buildApplyJobRowIds>,
+  rowFingerprint: string,
+): void {
+  const rowId = row.row_id.trim();
+  const jobId = buildCsvImportJobId(input.correlationId);
+  const existingOutcome = readCsvImportRowOutcomeForJob(db, jobId, rowId);
+
+  if (existingOutcome) {
+    if (
+      existingOutcome.status_code !== "failed" ||
+      existingOutcome.lifecycle_type !== row.lifecycle_type ||
+      existingOutcome.row_fingerprint !== rowFingerprint ||
+      existingOutcome.transaction_request_id !== null ||
+      existingOutcome.lifecycle_event_id !== null ||
+      existingOutcome.error_message === null
+    ) {
+      throw new Error(
+        `CSV import row ${rowId} conflicts with existing outcome evidence`,
+      );
+    }
+
+    const result = db
+      .prepare(
+        `
+          UPDATE csv_import_row_outcome
+          SET
+            lifecycle_type = ?,
+            status_code = 'applied',
+            transaction_request_id = ?,
+            lifecycle_event_id = ?,
+            row_fingerprint = ?,
+            error_message = NULL,
+            correlation_id = ?,
+            decided_at = ?
+          WHERE job_id = ?
+            AND row_id = ?
+            AND status_code = 'failed'
+        `,
+      )
+      .run(
+        row.lifecycle_type,
+        rowIds.transactionRequestId,
+        rowIds.lifecycleEventId,
+        rowFingerprint,
+        jobRowIds.rowOutcomeCorrelationId,
+        input.appliedAt,
+        jobId,
+        rowId,
+      ) as { changes: number };
+
+    if (result.changes !== 1) {
+      throw new Error(
+        `CSV import row ${rowId} conflicts with existing outcome evidence`,
+      );
+    }
+    return;
+  }
+
+  db.prepare(
+    `
+      INSERT INTO csv_import_row_outcome (
+        id,
+        job_id,
+        row_id,
+        lifecycle_type,
+        status_code,
+        transaction_request_id,
+        lifecycle_event_id,
+        row_fingerprint,
+        error_message,
+        correlation_id,
+        decided_at
+      )
+      VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, NULL, ?, ?)
+    `,
+  ).run(
+    jobRowIds.rowOutcomeId,
+    jobId,
+    rowId,
+    row.lifecycle_type,
+    rowIds.transactionRequestId,
+    rowIds.lifecycleEventId,
+    rowFingerprint,
     jobRowIds.rowOutcomeCorrelationId,
     input.appliedAt,
   );
@@ -857,6 +930,31 @@ function readSuccessfulCsvImportRowOutcome(
     `,
     )
     .get(rowId) as ExistingCsvImportRowOutcome | undefined;
+}
+
+function readCsvImportRowOutcomeForJob(
+  db: OnboardingTransactionRequestDatabase,
+  jobId: string,
+  rowId: string,
+): ExistingCsvImportRowOutcome | undefined {
+  return db
+    .prepare(
+      `
+      SELECT
+        row_id,
+        lifecycle_type,
+        status_code,
+        transaction_request_id,
+        lifecycle_event_id,
+        row_fingerprint,
+        error_message
+      FROM csv_import_row_outcome
+      WHERE job_id = ?
+        AND row_id = ?
+      LIMIT 1
+    `,
+    )
+    .get(jobId, rowId) as ExistingCsvImportRowOutcome | undefined;
 }
 
 function matchesAppliedOutcome(
