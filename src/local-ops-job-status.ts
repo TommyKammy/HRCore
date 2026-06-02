@@ -301,14 +301,7 @@ export function recordLocalOpsFailureDecision(
     return priorDecision;
   }
 
-  const current = readLocalOpsJobStatus(db, command);
-  if (current.evidenceVersion !== command.expectedEvidenceVersion) {
-    throw new Error("local ops failure decision requires current evidence");
-  }
-  const failureRow = current.rows.find((row) => row.rowId === command.rowId);
-  if (!failureRow || failureRow.status !== "failed") {
-    throw new Error("local ops failure decision requires a failed row");
-  }
+  requireCurrentLocalOpsFailureEvidence(db, command);
 
   while (true) {
     const loopPriorDecision = readMatchingOrRejectPriorLocalOpsFailureState(
@@ -327,6 +320,8 @@ export function recordLocalOpsFailureDecision(
     if (retryCount > maxLocalOpsFailureRetries) {
       throw new Error("local ops failure decision retry limit exceeded");
     }
+
+    requireCurrentLocalOpsFailureEvidence(db, command);
 
     const failureStatus = failureStatusForDecision(command.decision);
     const resultRow: LocalOpsFailureDecisionRow = {
@@ -1103,6 +1098,20 @@ function readMatchingOrRejectPriorLocalOpsFailureState(
     throw new Error("local ops failure decision rejects duplicate replay");
   }
   return undefined;
+}
+
+function requireCurrentLocalOpsFailureEvidence(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): void {
+  const current = readLocalOpsJobStatus(db, input);
+  if (current.evidenceVersion !== input.expectedEvidenceVersion) {
+    throw new Error("local ops failure decision requires current evidence");
+  }
+  const failureRow = current.rows.find((row) => row.rowId === input.rowId);
+  if (!failureRow || failureRow.status !== "failed") {
+    throw new Error("local ops failure decision requires a failed row");
+  }
 }
 
 function isRetryAttemptConflict(error: unknown): boolean {

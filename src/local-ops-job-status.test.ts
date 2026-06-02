@@ -1379,6 +1379,102 @@ test("MVP-D local ops failure decisions return exact races before prior-state gu
   );
 });
 
+test("MVP-D local ops failure decisions recheck source evidence before insert retries", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  seedFailedCsvImportJob(db, {
+    jobId: "csv-import-job-dlq-evidence-race-001",
+    correlationId: "csv-import-dlq-evidence-race-001",
+    rowId: "csv-row-dlq-evidence-race-001",
+    requestedAt: "2026-06-03T11:40:00+09:00",
+  });
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-evidence-race-001",
+  });
+
+  let appliedSourceEvidence = false;
+  const staleEvidenceDb = withConcurrentLocalOpsFailureDecision(db, {
+    afterRetryCountRead: () => {
+      if (appliedSourceEvidence) {
+        return;
+      }
+      appliedSourceEvidence = true;
+      db.exec(`
+        UPDATE csv_import_job
+        SET status_code = 'applied',
+            accepted_rows = 1,
+            failed_rows = 0
+        WHERE id = 'csv-import-job-dlq-evidence-race-001';
+
+        UPDATE csv_import_row_outcome
+        SET status_code = 'applied',
+            transaction_request_id = 'csv-import-transaction-request-dlq-evidence-race-001',
+            lifecycle_event_id = 'csv-import-lifecycle-event-dlq-evidence-race-001',
+            error_message = NULL,
+            correlation_id = 'csv-import-row-outcome-correlation-dlq-evidence-race-applied-001',
+            decided_at = '2026-06-03T11:41:00+09:00'
+        WHERE id = 'csv-import-row-outcome-csv-row-dlq-evidence-race-001';
+      `);
+    },
+  });
+
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(staleEvidenceDb, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-evidence-race-001",
+        rowId: "csv-row-dlq-evidence-race-001",
+        decision: "retry",
+        reason: "retry must not commit after source evidence changes",
+        decidedAt: "2026-06-03T11:42:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-evidence-race-001",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision requires current evidence/,
+  );
+
+  assert.notEqual(
+    readLocalOpsJobStatus(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-evidence-race-001",
+    }).evidenceVersion,
+    status.evidenceVersion,
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-evidence-race-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+  );
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM audit_event
+            WHERE correlation_id = 'dlq-decision-correlation-evidence-race-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 0 },
+  );
+});
+
 test("MVP-D local ops failure decisions recover committed insert races", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {
