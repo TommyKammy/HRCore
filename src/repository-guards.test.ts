@@ -2899,6 +2899,66 @@ test("MVP-C P2C-01 readiness review closeout keeps stronger gates blocked", asyn
   );
 });
 
+test("MVP-C P2C-02 refactor wave closeout records behavior-preserving review", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-c-p2c-02-refactor-wave-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-C P2C-02 Refactor Wave Closeout",
+    "Issue: #301",
+    "Part of: #295",
+    "Depends on: #300",
+    "Readiness Verdict",
+    "bounded/non-production MVP-C termination E2E: unchanged",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Reviewed Refactor Artifacts",
+    "termination contract / persistence helper split",
+    "termination decision runtime / test boundary split",
+    "termination apply runtime / retry guard split",
+    "termination worker / mock Okta projection boundary split",
+    "termination traceability verifier / tests split",
+    "Behavior and Boundary Review",
+    "No behavior drift, API drift, migration drift, policy weakening, or readiness-claim broadening was accepted",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Refactor Debt",
+    "Final Verdict",
+    "P2C-02 can close as behavior-preserving maintainability hardening",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2C-02 refactor wave closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "retention/deletion runtime ready: Go",
+    "retention/deletion readiness: Go",
+    "Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2C-02 closeout must not broaden readiness with: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-C P2C-02 Refactor Wave Closeout\]\(docs\/mvp-c-p2c-02-refactor-wave-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
