@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   exportSyntheticLifecycleCsv,
+  type MvpDCsvExportInput,
   mvpDCsvExportAllowedFields,
   mvpDCsvExportDeniedFields,
   mvpDCsvExportDownloadPermission,
@@ -229,13 +230,13 @@ test("MVP-D bounded synthetic CSV export fails closed on raw, regulated, real-da
   );
 });
 
-test("MVP-D bounded synthetic CSV export keeps review-regression guards fail closed before auditing", async (t) => {
+test("MVP-D bounded synthetic CSV export rejects review row-key regressions before auditing", async (t) => {
   const db = await openSchemaBackedDatabase(t);
   if (!db) {
     return;
   }
 
-  const baseline = {
+  const baseline: MvpDCsvExportInput = {
     scope: "repo_owned_synthetic_mvp_d_csv",
     requestedBy: "operator-mvp-d-csv-export",
     requestedAt: "2026-06-02T22:00:00+09:00",
@@ -246,60 +247,117 @@ test("MVP-D bounded synthetic CSV export keeps review-regression guards fail clo
     ],
     fields: ["row_id"],
     rows: [{ row_id: "csv-export-row-review-regression" }],
-  } as const;
+  };
 
-  for (const deniedInput of [
-    { ...baseline, permissions: [] },
-    { ...baseline, permissions: [mvpDCsvExportRequiredPermission] },
-    { ...baseline, permissions: [mvpDCsvExportDownloadPermission] },
+  const rowKeyRegressionCases: ReadonlyArray<{
+    name: string;
+    input: MvpDCsvExportInput;
+  }> = [
     {
-      ...baseline,
-      rows: [
-        {
-          row_id: "csv-export-row-review-regression",
-          individual_number: "synthetic",
-        },
-      ],
+      name: "unclassified individual-number alias",
+      input: {
+        ...baseline,
+        rows: [
+          {
+            row_id: "csv-export-row-review-regression",
+            individual_number: "synthetic",
+          },
+        ],
+      },
     },
     {
-      ...baseline,
-      rows: [
-        {
-          row_id: "csv-export-row-review-regression",
-          medical_history: "synthetic",
-        },
-      ],
+      name: "unclassified medical-history alias",
+      input: {
+        ...baseline,
+        rows: [
+          {
+            row_id: "csv-export-row-review-regression",
+            medical_history: "synthetic",
+          },
+        ],
+      },
     },
     {
-      ...baseline,
-      rows: [
-        {
-          row_id: "csv-export-row-review-regression",
-          metadata: "synthetic",
-        },
-      ],
+      name: "untyped metadata side channel",
+      input: {
+        ...baseline,
+        rows: [
+          {
+            row_id: "csv-export-row-review-regression",
+            metadata: "synthetic",
+          },
+        ],
+      },
     },
     {
-      ...baseline,
-      rows: [
-        {
-          row_id: "csv-export-row-review-regression",
-          " row_id ": "csv-export-row-review-regression-shadow",
-        },
-      ],
+      name: "whitespace-padded duplicate of selected row key",
+      input: {
+        ...baseline,
+        rows: [
+          {
+            row_id: "csv-export-row-review-regression",
+            " row_id ": "csv-export-row-review-regression-shadow",
+          },
+        ],
+      },
     },
-  ]) {
-    assert.throws(
-      () => exportSyntheticLifecycleCsv(db, deniedInput),
-      /CSV export request is outside the bounded synthetic MVP-D policy/,
-    );
+  ];
+
+  for (const { name, input } of rowKeyRegressionCases) {
+    await t.test(name, () => {
+      assertDeniedWithoutAudit(db, input);
+    });
+  }
+});
+
+test("MVP-D bounded synthetic CSV export requires both export and download permissions before auditing", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
   }
 
-  assert.deepEqual(
-    normalizeRows(db.prepare("SELECT * FROM audit_event").all()),
-    [],
-    "review-regression denials must not leave accepted download evidence",
-  );
+  const baseline: MvpDCsvExportInput = {
+    scope: "repo_owned_synthetic_mvp_d_csv",
+    requestedBy: "operator-mvp-d-csv-export",
+    requestedAt: "2026-06-02T22:00:00+09:00",
+    correlationId: "csv-export-correlation-permission-regression",
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
+    fields: ["row_id"],
+    rows: [{ row_id: "csv-export-row-permission-regression" }],
+  };
+
+  const permissionRegressionCases: ReadonlyArray<{
+    name: string;
+    input: MvpDCsvExportInput;
+  }> = [
+    {
+      name: "missing both permissions",
+      input: { ...baseline, permissions: [] },
+    },
+    {
+      name: "missing download permission",
+      input: {
+        ...baseline,
+        permissions: [mvpDCsvExportRequiredPermission],
+      },
+    },
+    {
+      name: "missing export permission",
+      input: {
+        ...baseline,
+        permissions: [mvpDCsvExportDownloadPermission],
+      },
+    },
+  ];
+
+  for (const { name, input } of permissionRegressionCases) {
+    await t.test(name, () => {
+      assertDeniedWithoutAudit(db, input);
+    });
+  }
 });
 
 test("MVP-D bounded synthetic CSV export neutralizes spreadsheet formulas and gives each download a unique audit id", async (t) => {
@@ -373,3 +431,19 @@ test("MVP-D bounded synthetic CSV export neutralizes spreadsheet formulas and gi
   );
   assert.equal(rows[0]?.subject_id, rows[1]?.subject_id);
 });
+
+function assertDeniedWithoutAudit(
+  db: Parameters<typeof exportSyntheticLifecycleCsv>[0],
+  input: MvpDCsvExportInput,
+): void {
+  assert.throws(
+    () => exportSyntheticLifecycleCsv(db, input),
+    /CSV export request is outside the bounded synthetic MVP-D policy/,
+  );
+
+  assert.deepEqual(
+    normalizeRows(db.prepare("SELECT * FROM audit_event").all?.() ?? []),
+    [],
+    "denied export attempts must not leave accepted download evidence",
+  );
+}
