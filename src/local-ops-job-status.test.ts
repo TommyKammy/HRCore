@@ -560,6 +560,51 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
 
   assert.throws(
     () =>
+      db
+        .prepare(
+          `
+            INSERT INTO local_ops_failure_decision (
+              id,
+              workflow,
+              source_type,
+              job_correlation_id,
+              row_id,
+              decision,
+              failure_status,
+              retry_count,
+              evidence_version,
+              reason,
+              decided_at,
+              decided_by,
+              decision_correlation_id,
+              audit_event_id,
+              created_at
+            )
+            VALUES (
+              'local-ops-failure-decision-raw-duplicate-replay',
+              'csv_import',
+              'repo_owned_synthetic_mvp_d_csv_failure',
+              'csv-import-dlq-guard-001',
+              'csv-row-dlq-failed-001',
+              'replay',
+              'replayed',
+              0,
+              ?,
+              'raw duplicate replay must be rejected durably',
+              '2026-06-03T10:05:30+09:00',
+              'operator-mvp-d-csv-import',
+              'dlq-decision-correlation-replay-raw-duplicate',
+              'audit-event-local-ops-failure-raw-duplicate-replay',
+              '2026-06-03T10:05:30+09:00'
+            )
+          `,
+        )
+        .run(status.evidenceVersion),
+    /UNIQUE constraint failed/,
+  );
+
+  assert.throws(
+    () =>
       recordLocalOpsFailureDecision(db, {
         workflow: "csv_import",
         correlationId: "csv-import-dlq-guard-001",
@@ -620,6 +665,22 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
   });
   assert.equal(closeDecision.failureStatus, "closed");
 
+  assert.throws(
+    () =>
+      recordLocalOpsFailureDecision(db, {
+        workflow: "csv_import",
+        correlationId: "csv-import-dlq-guard-001",
+        rowId: "csv-row-dlq-failed-001",
+        decision: "retry",
+        reason: "closed synthetic failures must stay terminal",
+        decidedAt: "2026-06-03T10:21:00+09:00",
+        decidedBy: "operator-mvp-d-csv-import",
+        decisionCorrelationId: "dlq-decision-correlation-after-close-001",
+        expectedEvidenceVersion: status.evidenceVersion,
+      }),
+    /local ops failure decision rejects terminal failure state/,
+  );
+
   assert.deepEqual(
     normalizeRows(
       db
@@ -674,5 +735,137 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
         decision_correlation_id: "dlq-decision-correlation-close-001",
       },
     ],
+  );
+});
+
+test("MVP-D local ops failure decisions replay committed evidence before mutable status checks", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  db.exec(`
+    INSERT INTO csv_import_job (
+      id,
+      correlation_id,
+      import_fingerprint,
+      template_version,
+      tenant_environment_id,
+      status_code,
+      requested_at,
+      requested_by,
+      accepted_rows,
+      failed_rows
+    )
+    VALUES (
+      'csv-import-job-dlq-idempotent-001',
+      'csv-import-dlq-idempotent-001',
+      'fingerprint-csv-import-dlq-idempotent-001',
+      'mvp_d_lifecycle_support_v1',
+      'repo_owned_synthetic_mvp_d_csv',
+      'failed',
+      '2026-06-03T11:00:00+09:00',
+      'operator-mvp-d-csv-import',
+      0,
+      1
+    );
+    INSERT INTO csv_import_row_outcome (
+      id,
+      job_id,
+      row_id,
+      lifecycle_type,
+      status_code,
+      transaction_request_id,
+      lifecycle_event_id,
+      row_fingerprint,
+      error_message,
+      correlation_id,
+      decided_at
+    )
+    VALUES (
+      'csv-import-row-outcome-dlq-idempotent-001',
+      'csv-import-job-dlq-idempotent-001',
+      'csv-row-dlq-idempotent-001',
+      'transfer',
+      'failed',
+      NULL,
+      NULL,
+      'fingerprint-csv-row-dlq-idempotent-001',
+      'synthetic transfer target missing',
+      'csv-import-row-outcome-correlation-dlq-idempotent-001',
+      '2026-06-03T11:00:00+09:00'
+    );
+  `);
+
+  const status = readLocalOpsJobStatus(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-idempotent-001",
+  });
+
+  const replay = recordLocalOpsFailureDecision(db, {
+    workflow: "csv_import",
+    correlationId: "csv-import-dlq-idempotent-001",
+    rowId: "csv-row-dlq-idempotent-001",
+    decision: "replay",
+    reason: "synthetic target is now available",
+    decidedAt: "2026-06-03T11:05:00+09:00",
+    decidedBy: "operator-mvp-d-csv-import",
+    decisionCorrelationId: "dlq-decision-correlation-idempotent-replay-001",
+    expectedEvidenceVersion: status.evidenceVersion,
+  });
+
+  db.exec(`
+    UPDATE csv_import_job
+    SET status_code = 'applied',
+        accepted_rows = 1,
+        failed_rows = 0
+    WHERE id = 'csv-import-job-dlq-idempotent-001';
+
+    UPDATE csv_import_row_outcome
+    SET status_code = 'applied',
+        transaction_request_id = 'csv-import-transaction-request-csv-row-dlq-idempotent-001',
+        lifecycle_event_id = 'csv-import-lifecycle-event-csv-row-dlq-idempotent-001',
+        error_message = NULL,
+        correlation_id = 'csv-import-row-outcome-correlation-dlq-idempotent-applied-001',
+        decided_at = '2026-06-03T11:10:00+09:00'
+    WHERE id = 'csv-import-row-outcome-dlq-idempotent-001';
+  `);
+
+  assert.notEqual(
+    readLocalOpsJobStatus(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-idempotent-001",
+    }).evidenceVersion,
+    status.evidenceVersion,
+  );
+
+  assert.deepEqual(
+    recordLocalOpsFailureDecision(db, {
+      workflow: "csv_import",
+      correlationId: "csv-import-dlq-idempotent-001",
+      rowId: "csv-row-dlq-idempotent-001",
+      decision: "replay",
+      reason: "synthetic target is now available",
+      decidedAt: "2026-06-03T11:05:00+09:00",
+      decidedBy: "operator-mvp-d-csv-import",
+      decisionCorrelationId: "dlq-decision-correlation-idempotent-replay-001",
+      expectedEvidenceVersion: status.evidenceVersion,
+    }),
+    replay,
+  );
+
+  assert.deepEqual(
+    normalizeRow(
+      db
+        .prepare(
+          `
+            SELECT count(*) AS count
+            FROM local_ops_failure_decision
+            WHERE job_correlation_id = 'csv-import-dlq-idempotent-001'
+          `,
+        )
+        .get(),
+    ),
+    { count: 1 },
   );
 });

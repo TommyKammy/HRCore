@@ -278,15 +278,6 @@ export function recordLocalOpsFailureDecision(
 
   ensureLocalOpsFailureDecisionTable(db);
 
-  const current = readLocalOpsJobStatus(db, command);
-  if (current.evidenceVersion !== command.expectedEvidenceVersion) {
-    throw new Error("local ops failure decision requires current evidence");
-  }
-  const failureRow = current.rows.find((row) => row.rowId === command.rowId);
-  if (!failureRow || failureRow.status !== "failed") {
-    throw new Error("local ops failure decision requires a failed row");
-  }
-
   const action = `${failureDecisionActionPrefix}.${command.workflow}.${command.decision}`;
   const decisionId = buildFailureDecisionId(command);
   const auditEventId = buildFailureDecisionAuditEventId(command);
@@ -294,6 +285,22 @@ export function recordLocalOpsFailureDecision(
   if (existingDecision) {
     assertFailureDecisionMatchesExisting(existingDecision, command, action);
     return buildFailureDecisionResult(existingDecision);
+  }
+
+  const terminalDecision = readTerminalLocalOpsFailureDecision(db, command);
+  if (terminalDecision) {
+    throw new Error(
+      "local ops failure decision rejects terminal failure state",
+    );
+  }
+
+  const current = readLocalOpsJobStatus(db, command);
+  if (current.evidenceVersion !== command.expectedEvidenceVersion) {
+    throw new Error("local ops failure decision requires current evidence");
+  }
+  const failureRow = current.rows.find((row) => row.rowId === command.rowId);
+  if (!failureRow || failureRow.status !== "failed") {
+    throw new Error("local ops failure decision requires a failed row");
   }
 
   if (
@@ -331,6 +338,12 @@ export function recordLocalOpsFailureDecision(
     db.exec("RELEASE SAVEPOINT local_ops_failure_decision");
   } catch (error) {
     rollbackLocalOpsFailureDecisionSavepoint(db);
+    if (
+      command.decision === "replay" &&
+      hasPriorLocalOpsFailureDecision(db, command, "replay")
+    ) {
+      throw new Error("local ops failure decision rejects duplicate replay");
+    }
     throw error;
   }
 
@@ -794,6 +807,11 @@ function ensureLocalOpsFailureDecisionTable(
       CHECK(created_at glob '????-??-??*')
     )
   `);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS local_ops_failure_decision_replay_unique
+    ON local_ops_failure_decision (workflow, job_correlation_id, row_id, decision)
+    WHERE decision = 'replay'
+  `);
 }
 
 function readLocalOpsFailureDecision(
@@ -859,6 +877,28 @@ function hasPriorLocalOpsFailureDecision(
     | undefined;
 
   return Boolean(row);
+}
+
+function readTerminalLocalOpsFailureDecision(
+  db: OnboardingTransactionRequestDatabase,
+  input: RecordLocalOpsFailureDecisionInput,
+): { id: string } | undefined {
+  return db
+    .prepare(
+      `
+        SELECT id
+        FROM local_ops_failure_decision
+        WHERE workflow = ?
+          AND job_correlation_id = ?
+          AND row_id = ?
+          AND failure_status IN ('ignored', 'closed')
+        ORDER BY decided_at DESC, id DESC
+        LIMIT 1
+      `,
+    )
+    .get(input.workflow, input.correlationId, input.rowId) as
+    | { id: string }
+    | undefined;
 }
 
 function countPriorLocalOpsFailureRetries(
