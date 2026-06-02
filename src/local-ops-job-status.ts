@@ -835,6 +835,35 @@ function ensureLocalOpsFailureDecisionTable(
     WHERE decision = 'replay'
   `);
   db.exec(`
+    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_status_consistency
+    BEFORE INSERT ON local_ops_failure_decision
+    WHEN NOT (
+      (NEW.decision = 'retry' AND NEW.failure_status = 'open')
+      OR (NEW.decision = 'replay' AND NEW.failure_status = 'replayed')
+      OR (NEW.decision = 'ignore' AND NEW.failure_status = 'ignored')
+      OR (NEW.decision = 'close' AND NEW.failure_status = 'closed')
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'local ops failure decision requires consistent failure status');
+    END
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS local_ops_failure_decision_replay_guard
+    BEFORE INSERT ON local_ops_failure_decision
+    WHEN NEW.decision = 'replay'
+      AND EXISTS (
+        SELECT 1
+        FROM local_ops_failure_decision
+        WHERE workflow = NEW.workflow
+          AND job_correlation_id = NEW.job_correlation_id
+          AND row_id = NEW.row_id
+          AND decision = 'replay'
+      )
+    BEGIN
+      SELECT RAISE(ABORT, 'local ops failure decision rejects duplicate replay');
+    END
+  `);
+  db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS local_ops_failure_decision_retry_attempt_unique
     ON local_ops_failure_decision (
       workflow,

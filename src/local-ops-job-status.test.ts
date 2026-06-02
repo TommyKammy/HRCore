@@ -837,7 +837,7 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
           `,
         )
         .run(status.evidenceVersion),
-    /UNIQUE constraint failed/,
+    /local ops failure decision rejects duplicate replay/,
   );
 
   assert.throws(
@@ -946,6 +946,51 @@ test("MVP-D local ops failure decisions are reasoned, idempotent, and fail close
     expectedEvidenceVersion: status.evidenceVersion,
   });
   assert.equal(closeDecision.failureStatus, "closed");
+
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `
+            INSERT INTO local_ops_failure_decision (
+              id,
+              workflow,
+              source_type,
+              job_correlation_id,
+              row_id,
+              decision,
+              failure_status,
+              retry_count,
+              evidence_version,
+              reason,
+              decided_at,
+              decided_by,
+              decision_correlation_id,
+              audit_event_id,
+              created_at
+            )
+            VALUES (
+              'local-ops-failure-decision-raw-ignore-open-status',
+              'csv_import',
+              'repo_owned_synthetic_mvp_d_csv_failure',
+              'csv-import-dlq-guard-001',
+              'csv-row-dlq-failed-002',
+              'ignore',
+              'open',
+              0,
+              ?,
+              'raw ignore must not bypass terminal state',
+              '2026-06-03T10:19:00+09:00',
+              'operator-mvp-d-csv-import',
+              'dlq-decision-correlation-raw-ignore-open',
+              'audit-event-local-ops-failure-raw-ignore-open',
+              '2026-06-03T10:19:00+09:00'
+            )
+          `,
+        )
+        .run(status.evidenceVersion),
+    /local ops failure decision requires consistent failure status/,
+  );
 
   assert.throws(
     () =>
