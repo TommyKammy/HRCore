@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { encodeStableKey } from "./onboarding-transaction-request-shared.js";
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
 
 export const mvpDCsvExportScope = "repo_owned_synthetic_mvp_d_csv";
+export const mvpDCsvExportRequiredPermission = "mvp_d.synthetic_csv_export";
 
 export const mvpDCsvExportAllowedFields = [
   "row_id",
@@ -61,6 +64,7 @@ export interface MvpDCsvExportInput {
   requestedBy: string;
   requestedAt: string;
   correlationId: string;
+  permissions: readonly string[];
   fields: readonly string[];
   rows: readonly MvpDCsvExportRow[];
 }
@@ -73,9 +77,12 @@ export interface MvpDCsvExportResult {
   audit: {
     downloadIntent: "synthetic_bounded_csv_export";
     exportedFields: MvpDCsvExportAllowedField[];
+    auditEventId: string;
     correlationId: string;
+    evidenceHash: string;
     requestedBy: string;
     requestedAt: string;
+    rowCount: number;
   };
 }
 
@@ -94,13 +101,22 @@ const realOrRegulatedMarkers = new Set([
   "sensitive_personal_information",
   "live_provider_payload",
 ]);
+const auditAction = "mvp_d.csv_export.synthetic_download_intent";
 
 export function exportSyntheticLifecycleCsv(
   db: OnboardingTransactionRequestDatabase,
   input: MvpDCsvExportInput,
 ): MvpDCsvExportResult {
   const request = normalizeExportRequest(input);
-  const csv = serializeCsv(request.fields, request.rows);
+  const dataCsv = serializeCsvData(request.fields, request.rows);
+  const evidenceHash = sha256(dataCsv);
+  const auditEventId = buildAuditEventId(db, request);
+  const evidenceSubjectId = buildEvidenceSubjectId(request, evidenceHash);
+  const csv = serializeCsvArtifact(request, {
+    auditEventId,
+    evidenceHash,
+    rowCount: request.rows.length,
+  });
 
   db.prepare(
     `
@@ -117,11 +133,11 @@ export function exportSyntheticLifecycleCsv(
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
-    `audit-event-csv-export-${encodeStableKey([request.correlationId])}`,
+    auditEventId,
     request.requestedBy,
-    "mvp_d.csv_export.synthetic_download_intent",
+    auditAction,
     "lifecycle_event",
-    mvpDCsvExportScope,
+    evidenceSubjectId,
     request.requestedAt,
     "synthetic_poc",
     request.correlationId,
@@ -135,9 +151,12 @@ export function exportSyntheticLifecycleCsv(
     audit: {
       downloadIntent: "synthetic_bounded_csv_export",
       exportedFields: [...request.fields],
+      auditEventId,
       correlationId: request.correlationId,
+      evidenceHash,
       requestedBy: request.requestedBy,
       requestedAt: request.requestedAt,
+      rowCount: request.rows.length,
     },
   };
 }
@@ -159,6 +178,9 @@ function normalizeExportRequest(input: MvpDCsvExportInput): {
     throwOutsidePolicy();
   }
   if (requestedBy.length === 0 || correlationId.length === 0) {
+    throwOutsidePolicy();
+  }
+  if (!input.permissions.includes(mvpDCsvExportRequiredPermission)) {
     throwOutsidePolicy();
   }
   if (!isValidIsoTimestamp(requestedAt)) {
@@ -183,7 +205,7 @@ function normalizeExportRequest(input: MvpDCsvExportInput): {
     return trimmedField as MvpDCsvExportAllowedField;
   });
 
-  const rows = input.rows.map((row) => normalizeExportRow(row));
+  const rows = input.rows.map((row) => normalizeExportRow(row, seenFields));
   return {
     scope: mvpDCsvExportScope,
     requestedBy,
@@ -194,9 +216,17 @@ function normalizeExportRequest(input: MvpDCsvExportInput): {
   };
 }
 
-function normalizeExportRow(row: MvpDCsvExportRow): MvpDCsvExportRow {
+function normalizeExportRow(
+  row: MvpDCsvExportRow,
+  selectedFieldSet: ReadonlySet<string>,
+): MvpDCsvExportRow {
   for (const [key, value] of Object.entries(row)) {
-    if (deniedSurfaceSet.has(normalizeSurface(key))) {
+    const trimmedKey = key.trim();
+    if (
+      trimmedKey.length === 0 ||
+      deniedSurfaceSet.has(normalizeSurface(trimmedKey)) ||
+      !selectedFieldSet.has(trimmedKey)
+    ) {
       throwOutsidePolicy();
     }
 
@@ -212,11 +242,47 @@ function normalizeExportRow(row: MvpDCsvExportRow): MvpDCsvExportRow {
   }
 
   return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key, value?.trim() ?? ""]),
+    Object.entries(row).map(([key, value]) => [
+      key.trim(),
+      value?.trim() ?? "",
+    ]),
   ) as MvpDCsvExportRow;
 }
 
-function serializeCsv(
+function serializeCsvArtifact(
+  request: ReturnType<typeof normalizeExportRequest>,
+  trace: {
+    auditEventId: string;
+    evidenceHash: string;
+    rowCount: number;
+  },
+): string {
+  return [
+    serializeCsvTraceLine(
+      "hrcore_export_surface",
+      "mvp_d_bounded_synthetic_csv",
+    ),
+    serializeCsvTraceLine(
+      "readiness",
+      "bounded_synthetic_only_not_production_ready",
+    ),
+    serializeCsvTraceLine("scope", mvpDCsvExportScope),
+    serializeCsvTraceLine("audit_event_id", trace.auditEventId),
+    serializeCsvTraceLine("correlation_id", request.correlationId),
+    serializeCsvTraceLine("evidence_sha256", trace.evidenceHash),
+    serializeCsvTraceLine("row_count", String(trace.rowCount)),
+    serializeCsvTraceLine("exported_fields", request.fields.join(",")),
+    "",
+    serializeCsvData(request.fields, request.rows).trimEnd(),
+    "",
+  ].join("\n");
+}
+
+function serializeCsvTraceLine(label: string, value: string): string {
+  return `# ${label},${serializeCsvCell(value)}`;
+}
+
+function serializeCsvData(
   fields: readonly MvpDCsvExportAllowedField[],
   rows: readonly MvpDCsvExportRow[],
 ): string {
@@ -225,7 +291,7 @@ function serializeCsv(
     ...rows.map((row) =>
       fields
         .map((field) =>
-          escapeCsvValue(maskExportValue(field, row[field] ?? "")),
+          serializeCsvCell(maskExportValue(field, row[field] ?? "")),
         )
         .join(","),
     ),
@@ -255,6 +321,59 @@ function escapeCsvValue(value: string): string {
   }
 
   return `"${value.replace(/"/gu, '""')}"`;
+}
+
+function serializeCsvCell(value: string): string {
+  return escapeCsvValue(neutralizeSpreadsheetFormula(value));
+}
+
+function neutralizeSpreadsheetFormula(value: string): string {
+  if (/^[=+\-@]/u.test(value)) {
+    return `'${value}`;
+  }
+
+  return value;
+}
+
+function buildAuditEventId(
+  db: OnboardingTransactionRequestDatabase,
+  request: ReturnType<typeof normalizeExportRequest>,
+): string {
+  const row = db
+    .prepare(
+      `
+        SELECT COUNT(*) AS count
+        FROM audit_event
+        WHERE action = ?
+          AND correlation_id = ?
+      `,
+    )
+    .get(auditAction, request.correlationId) as
+    | { count: number | bigint }
+    | undefined;
+  const downloadSequence = Number(row?.count ?? 0) + 1;
+  return `audit-event-csv-export-${encodeStableKey([
+    request.correlationId,
+    request.requestedAt,
+    request.requestedBy,
+    String(downloadSequence),
+  ])}`;
+}
+
+function buildEvidenceSubjectId(
+  request: ReturnType<typeof normalizeExportRequest>,
+  evidenceHash: string,
+): string {
+  return `mvp-d-synthetic-csv-evidence-${encodeStableKey([
+    mvpDCsvExportScope,
+    request.fields.join(","),
+    String(request.rows.length),
+    evidenceHash,
+  ])}`;
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 function normalizeSurface(value: string): string {
