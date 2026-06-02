@@ -513,13 +513,9 @@ function terminationTraceTimestampMillis(timestamp: string): number {
 }
 
 function terminationTraceTimestampDate(timestamp: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}/u.test(timestamp)) {
-    throwTerminationTraceError(
-      "MVP-C termination trace timing evidence must include an ISO date prefix",
-    );
-  }
-
-  return timestamp.slice(0, 10);
+  return new Date(terminationTraceTimestampMillis(timestamp))
+    .toISOString()
+    .slice(0, 10);
 }
 
 function isRootLinkedTerminationTraceApplyJobAttempt(input: {

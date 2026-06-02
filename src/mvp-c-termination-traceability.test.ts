@@ -40,7 +40,7 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
     });
     const workerCorrelationId = `${rootCorrelationId}:future-date-worker`;
     const workerResult = applyDueTerminationTransactionRequests(db, {
-      now: "2026-08-15T00:00:00Z",
+      now: "2026-08-14T23:30:00-02:00",
       workerId: "worker-termination-future-apply-001",
       correlationId: workerCorrelationId,
       batchLimit: 1,
@@ -48,7 +48,7 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
     const oktaProjection =
       await applyApprovedTerminationTransactionRequestWithOktaProjection(db, {
         transactionRequestId: "transaction-request-termination-001",
-        appliedAt: "2026-08-15T00:00:00Z",
+        appliedAt: "2026-08-14T23:30:00-02:00",
         appliedBy: "worker-termination-future-apply-001",
         correlationId: workerAttemptCorrelationId(
           workerCorrelationId,
@@ -100,7 +100,7 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
       personId: "person-termination-001",
       eventType: "termination",
       effectiveDate: "2026-08-15",
-      occurredAt: "2026-08-15T00:00:00Z",
+      occurredAt: "2026-08-14T23:30:00-02:00",
     });
     assert.equal(trace.endedEmployment?.statusCode, "terminated");
     assert.equal(trace.endedEmployment?.endDate, "2026-08-15");
@@ -278,7 +278,7 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
         SET occurred_at = ?
         WHERE action = 'mvp_c.termination.approve'
       `,
-    ).run("2026-08-14T23:30:00-02:00");
+    ).run("2026-08-14T23:45:00-02:00");
     assertTerminationTraceThrows(
       () =>
         verifyMvpCTerminationCorrelationTrace(db, {
