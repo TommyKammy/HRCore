@@ -455,6 +455,79 @@ test("MVP-D CSV/Ops/DLQ traceability verifier covers bounded synthetic success, 
   `);
 
   db.exec(`
+    INSERT INTO audit_event (
+      id,
+      actor_id,
+      action,
+      subject_table,
+      subject_id,
+      occurred_at,
+      poc_marker,
+      correlation_id
+    )
+    VALUES (
+      'audit-event-local-ops-failure-orphan-row',
+      'operator-mvp-d-csv-import',
+      'mvp_d.ops_job.failure_decision.csv_import.retry',
+      'lifecycle_event',
+      'local-ops-failure-orphan-row',
+      '2026-06-03T12:06:00+09:00',
+      'synthetic_poc',
+      'dlq-decision-correlation-trace-orphan-001'
+    );
+    INSERT INTO local_ops_failure_decision (
+      id,
+      workflow,
+      source_type,
+      job_correlation_id,
+      row_id,
+      decision,
+      failure_status,
+      retry_count,
+      evidence_version,
+      reason,
+      decided_at,
+      decided_by,
+      decision_correlation_id,
+      audit_event_id,
+      created_at
+    )
+    VALUES (
+      'local-ops-failure-decision-orphan-row',
+      'csv_import',
+      'repo_owned_synthetic_mvp_d_csv_failure',
+      '${jobCorrelationId}',
+      'csv-row-trace-orphan-001',
+      'retry',
+      'open',
+      0,
+      '${status.evidenceVersion}',
+      'bounded synthetic orphan retry decision',
+      '2026-06-03T12:06:00+09:00',
+      'operator-mvp-d-csv-import',
+      'dlq-decision-correlation-trace-orphan-001',
+      'audit-event-local-ops-failure-orphan-row',
+      '2026-06-03T12:06:00+09:00'
+    );
+  `);
+  assertTraceThrows(
+    () =>
+      verifyMvpDCsvOpsDlqTraceability(db, {
+        dryRun,
+        appliedJobCorrelationId: jobCorrelationId,
+        deniedExport,
+        requiredFailureDecisions: ["retry", "replay", "ignore", "close"],
+      }),
+    "MVP-D trace requires DLQ decisions to match failed CSV row outcomes",
+  );
+  db.exec(`
+    DELETE FROM local_ops_failure_decision
+    WHERE id = 'local-ops-failure-decision-orphan-row';
+    DELETE FROM audit_event
+    WHERE id = 'audit-event-local-ops-failure-orphan-row';
+  `);
+
+  db.exec(`
     UPDATE audit_event
     SET correlation_id = 'dlq-decision-correlation-trace-close-mismatched'
     WHERE correlation_id = 'dlq-decision-correlation-trace-close-001';

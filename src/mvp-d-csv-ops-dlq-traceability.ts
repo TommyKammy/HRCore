@@ -141,16 +141,7 @@ export function verifyMvpDCsvOpsDlqTraceability(
     throwTraceError("MVP-D trace requires operator action evidence");
   }
 
-  const failureDecisionCount = countFailureDecisionRows(
-    db,
-    appliedJobCorrelationId,
-  );
   const failureDecisions = readFailureDecisions(db, appliedJobCorrelationId);
-  if (failureDecisions.length !== failureDecisionCount) {
-    throwTraceError(
-      "MVP-D trace requires DLQ decisions to match failed CSV row outcomes",
-    );
-  }
   verifyFailureDecisions(
     failureDecisions,
     input.requiredFailureDecisions,
@@ -415,7 +406,7 @@ function readFailureDecisions(
       FROM local_ops_failure_decision AS decision
       INNER JOIN csv_import_job AS job
         ON job.correlation_id = decision.job_correlation_id
-      INNER JOIN csv_import_row_outcome AS row_outcome
+      LEFT JOIN csv_import_row_outcome AS row_outcome
         ON row_outcome.job_id = job.id
         AND row_outcome.row_id = decision.row_id
         AND row_outcome.status_code = 'failed'
@@ -431,23 +422,6 @@ function readFailureDecisions(
   }
 
   return statement.all(correlationId) as FailureDecisionTraceRow[];
-}
-
-function countFailureDecisionRows(
-  db: OnboardingTransactionRequestDatabase,
-  correlationId: string,
-): number {
-  const row = db
-    .prepare(
-      `
-        SELECT count(*) AS count
-        FROM local_ops_failure_decision
-        WHERE workflow = 'csv_import'
-          AND job_correlation_id = ?
-      `,
-    )
-    .get(correlationId) as { count: number | bigint } | undefined;
-  return Number(row?.count ?? 0);
 }
 
 function verifyFailureDecisions(
