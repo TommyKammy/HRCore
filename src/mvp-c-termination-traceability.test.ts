@@ -158,8 +158,36 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
         }),
       /MVP-C termination trace requires successful mock Okta disable projection evidence before closeout/,
     );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: {
+            ...oktaProjection.oktaProjection,
+            profile: {
+              ...oktaProjection.oktaProjection.profile,
+              status: "failed",
+            },
+            groups: {
+              status: "skipped",
+              skippedReason: "profile_projection_not_successful",
+            },
+          },
+        }),
+      /MVP-C termination trace requires successful mock Okta disable projection evidence before closeout/,
+    );
     const oktaGroupsResult = oktaProjection.oktaProjection.groups.result;
     assert.ok(oktaGroupsResult);
+    const oktaProfileResult = oktaProjection.oktaProjection.profile.result;
+    if (oktaProfileResult.outcome !== "success") {
+      throw new Error(
+        "Expected successful mock Okta profile projection fixture",
+      );
+    }
     assertTerminationTraceThrows(
       () =>
         verifyMvpCTerminationCorrelationTrace(db, {
@@ -173,8 +201,29 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
             profile: {
               ...oktaProjection.oktaProjection.profile,
               result: {
-                ...oktaProjection.oktaProjection.profile.result,
+                ...oktaProfileResult,
                 employeeNumber: "EMP-TERMINATION-UNRELATED",
+              },
+            },
+          },
+        }),
+      /MVP-C termination trace requires mock Okta disable projection identity details linked to ended employment and apply evidence/,
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: {
+            ...oktaProjection.oktaProjection,
+            profile: {
+              ...oktaProjection.oktaProjection.profile,
+              result: {
+                ...oktaProfileResult,
+                operation: "update",
               },
             },
           },
@@ -196,6 +245,27 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
               result: {
                 ...oktaGroupsResult,
                 groupKeys: ["DEPT-unrelated"],
+              },
+            },
+          },
+        }),
+      /MVP-C termination trace requires mock Okta disable projection identity details linked to ended employment and apply evidence/,
+    );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: {
+            ...oktaProjection.oktaProjection,
+            groups: {
+              ...oktaProjection.oktaProjection.groups,
+              result: {
+                ...oktaGroupsResult,
+                effectiveAt: "2026-08-16T00:00:00Z",
               },
             },
           },
@@ -323,6 +393,25 @@ test("MVP-C termination evidence is traceable from one root correlation id", asy
       "2026-08-01",
       null,
     );
+    assertTerminationTraceThrows(
+      () =>
+        verifyMvpCTerminationCorrelationTrace(db, {
+          correlationId: rootCorrelationId,
+          requireApproval: true,
+          requireApply: true,
+          requireApplyJobAttempt: true,
+          requireOktaProjection: true,
+          oktaProjection: oktaProjection.oktaProjection,
+        }),
+      /MVP-C termination trace requires no sibling assignment extending beyond the termination effective date/,
+    );
+    db.prepare(
+      `
+        UPDATE assignment
+        SET end_date = ?
+        WHERE id = ?
+      `,
+    ).run("2026-08-16", "assignment-surviving-termination-001");
     assertTerminationTraceThrows(
       () =>
         verifyMvpCTerminationCorrelationTrace(db, {
