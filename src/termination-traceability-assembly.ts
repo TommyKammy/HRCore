@@ -1,10 +1,10 @@
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request.js";
+import { buildOnboardingApplyJobAttemptId } from "./onboarding-transaction-request-ids.js";
 import {
-  buildOnboardingApplyAuditEventId,
-  buildOnboardingApplyJobAttemptId,
-  buildOnboardingApplyLifecycleEventIdForRequest,
-  buildOnboardingDecisionAuditEventId,
-} from "./onboarding-transaction-request-ids.js";
+  buildTerminationApplyAuditEventId,
+  buildTerminationApplyLifecycleEventIdForRequest,
+  buildTerminationDecisionAuditEventId,
+} from "./termination-transaction-request-ids.js";
 import { encodeProjectionKeyPart } from "./okta-mastering-adapter-metadata.js";
 import { remainingMvpCTerminationProductionReadinessGates } from "./termination-traceability-production-gates.js";
 import {
@@ -194,7 +194,7 @@ function assertTerminationTraceBindings(input: {
   if (
     input.approvalAuditEvent !== undefined &&
     input.approvalAuditEvent.id !==
-      buildOnboardingDecisionAuditEventId({
+      buildTerminationDecisionAuditEventId({
         transactionRequestId: input.request.transaction_request_id,
         decision: "approve",
         decidedAt: input.approvalAuditEvent.occurredAt,
@@ -207,7 +207,7 @@ function assertTerminationTraceBindings(input: {
     );
   }
   const expectedLifecycleEventId =
-    buildOnboardingApplyLifecycleEventIdForRequest(
+    buildTerminationApplyLifecycleEventIdForRequest(
       input.request.transaction_request_id,
     );
   if (
@@ -230,7 +230,7 @@ function assertTerminationTraceBindings(input: {
   if (
     input.applyAuditEvent !== undefined &&
     input.applyAuditEvent.id !==
-      buildOnboardingApplyAuditEventId(expectedLifecycleEventId)
+      buildTerminationApplyAuditEventId(expectedLifecycleEventId)
   ) {
     throwTerminationTraceError(
       "MVP-C termination trace apply audit evidence must use the canonical apply audit id",
