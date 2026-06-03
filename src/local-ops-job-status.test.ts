@@ -7,6 +7,9 @@ import {
   mvpDCsvImportTemplateColumns,
 } from "./csv-import-contract.js";
 import {
+  buildLocalOpsEvidenceVersion,
+  describeLocalOpsFailureDecision,
+  determineLocalOpsJobPresentationStatus,
   recordLocalOpsFailureDecision,
   readLocalOpsJobStatus,
   recordLocalOpsOperatorDecision,
@@ -124,6 +127,93 @@ function seedFailedCsvImportJob(
     );
   `);
 }
+
+test("MVP-D local ops helper boundaries keep status, failure decision, and evidence formatting explicit", () => {
+  assert.equal(
+    determineLocalOpsJobPresentationStatus({
+      workflow: "csv_import",
+      sourceStatus: "failed",
+      attempted: 2,
+      failed: 1,
+    }),
+    "failed",
+  );
+  assert.equal(
+    determineLocalOpsJobPresentationStatus({
+      workflow: "csv_import",
+      sourceStatus: "applied",
+      attempted: 1,
+      failed: 0,
+    }),
+    "applied",
+  );
+  assert.throws(
+    () =>
+      determineLocalOpsJobPresentationStatus({
+        workflow: "csv_import",
+        sourceStatus: "production_queued",
+        attempted: 1,
+        failed: 0,
+      }),
+    /local ops job status rejects unsupported source status/,
+  );
+  assert.equal(
+    determineLocalOpsJobPresentationStatus({
+      workflow: "onboarding_apply",
+      sourceStatus: "completed",
+      attempted: 0,
+      failed: 0,
+    }),
+    "empty",
+  );
+  assert.equal(
+    determineLocalOpsJobPresentationStatus({
+      workflow: "onboarding_apply",
+      sourceStatus: "completed",
+      attempted: 3,
+      failed: 0,
+    }),
+    "completed",
+  );
+
+  assert.deepEqual(describeLocalOpsFailureDecision("retry"), {
+    failureStatus: "open",
+    actionSuffix: "retry",
+    retryConsumesAttempt: true,
+    terminal: false,
+  });
+  assert.deepEqual(describeLocalOpsFailureDecision("replay"), {
+    failureStatus: "replayed",
+    actionSuffix: "replay",
+    retryConsumesAttempt: false,
+    terminal: false,
+  });
+  assert.deepEqual(describeLocalOpsFailureDecision("ignore"), {
+    failureStatus: "ignored",
+    actionSuffix: "ignore",
+    retryConsumesAttempt: false,
+    terminal: true,
+  });
+  assert.deepEqual(describeLocalOpsFailureDecision("close"), {
+    failureStatus: "closed",
+    actionSuffix: "close",
+    retryConsumesAttempt: false,
+    terminal: true,
+  });
+  assert.throws(
+    () => describeLocalOpsFailureDecision("production_requeue"),
+    /local ops failure decision rejects unsupported transition/,
+  );
+
+  assert.equal(
+    buildLocalOpsEvidenceVersion(["csv_import", "job-001", "row:with:colon"]),
+    `local-ops-evidence-${encodeStableKey([
+      "csv_import",
+      "job-001",
+      "row:with:colon",
+    ])}`,
+  );
+});
 
 function insertRawFailureDecisionEvidence(
   db: OnboardingTransactionRequestDatabase,

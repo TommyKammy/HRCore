@@ -92,6 +92,20 @@ export interface LocalOpsFailureDecisionResult {
   retryCount: number;
 }
 
+export interface LocalOpsJobPresentationStatusInput {
+  workflow: LocalOpsJobWorkflow;
+  sourceStatus: string;
+  attempted: number;
+  failed: number;
+}
+
+export interface LocalOpsFailureDecisionDescription {
+  failureStatus: LocalOpsFailureStatus;
+  actionSuffix: LocalOpsFailureDecision;
+  retryConsumesAttempt: boolean;
+  terminal: boolean;
+}
+
 type CsvImportJobRow = {
   id: string;
   correlation_id: string;
@@ -466,8 +480,13 @@ function readCsvImportOpsJobStatus(
     correlationId: job.correlation_id,
     scope: repoOwnedSyntheticScope,
     readiness: localOpsJobReadiness,
-    status: job.status_code === "failed" ? "failed" : "applied",
-    evidenceVersion: buildEvidenceVersion([
+    status: determineLocalOpsJobPresentationStatus({
+      workflow: "csv_import",
+      sourceStatus: job.status_code,
+      attempted: outcomes.length,
+      failed: failed.length,
+    }),
+    evidenceVersion: buildLocalOpsEvidenceVersion([
       "csv_import",
       job.id,
       job.status_code,
@@ -584,9 +603,13 @@ function readOnboardingApplyOpsJobStatus(
     correlationId: run.correlation_id,
     scope: repoOwnedSyntheticScope,
     readiness: localOpsJobReadiness,
-    status:
-      run.failed > 0 ? "failed" : run.attempted === 0 ? "empty" : "completed",
-    evidenceVersion: buildEvidenceVersion([
+    status: determineLocalOpsJobPresentationStatus({
+      workflow: "onboarding_apply",
+      sourceStatus: "completed",
+      attempted: run.attempted,
+      failed: run.failed,
+    }),
+    evidenceVersion: buildLocalOpsEvidenceVersion([
       "onboarding_apply",
       run.correlation_id,
       run.worker_id,
@@ -746,8 +769,72 @@ function isLocalOpsFailureDecision(
   );
 }
 
-function buildEvidenceVersion(parts: string[]): string {
+export function buildLocalOpsEvidenceVersion(parts: string[]): string {
   return `local-ops-evidence-${encodeStableKey(parts)}`;
+}
+
+export function determineLocalOpsJobPresentationStatus(
+  input: LocalOpsJobPresentationStatusInput,
+): LocalOpsJobStatus["status"] {
+  if (input.workflow === "csv_import") {
+    if (input.sourceStatus === "failed") {
+      return "failed";
+    }
+    if (input.sourceStatus === "applied") {
+      return "applied";
+    }
+    throw new Error("local ops job status rejects unsupported source status");
+  }
+
+  if (input.failed > 0) {
+    return "failed";
+  }
+  if (input.attempted === 0) {
+    return "empty";
+  }
+  return "completed";
+}
+
+export function describeLocalOpsFailureDecision(
+  decision: string,
+): LocalOpsFailureDecisionDescription {
+  if (!isLocalOpsFailureDecision(decision)) {
+    throw new Error(
+      "local ops failure decision rejects unsupported transition",
+    );
+  }
+
+  if (decision === "retry") {
+    return {
+      failureStatus: "open",
+      actionSuffix: decision,
+      retryConsumesAttempt: true,
+      terminal: false,
+    };
+  }
+  if (decision === "replay") {
+    return {
+      failureStatus: "replayed",
+      actionSuffix: decision,
+      retryConsumesAttempt: false,
+      terminal: false,
+    };
+  }
+  if (decision === "ignore") {
+    return {
+      failureStatus: "ignored",
+      actionSuffix: decision,
+      retryConsumesAttempt: false,
+      terminal: true,
+    };
+  }
+
+  return {
+    failureStatus: "closed",
+    actionSuffix: decision,
+    retryConsumesAttempt: false,
+    terminal: true,
+  };
 }
 
 function buildOperatorDecisionAuditEventId(
@@ -810,17 +897,7 @@ function buildFailureDecisionSubjectId(
 function failureStatusForDecision(
   decision: LocalOpsFailureDecision,
 ): LocalOpsFailureStatus {
-  if (decision === "replay") {
-    return "replayed";
-  }
-  if (decision === "ignore") {
-    return "ignored";
-  }
-  if (decision === "close") {
-    return "closed";
-  }
-
-  return "open";
+  return describeLocalOpsFailureDecision(decision).failureStatus;
 }
 
 function readLocalOpsFailureDecision(
