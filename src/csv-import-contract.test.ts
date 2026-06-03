@@ -13,6 +13,10 @@ import {
   normalizeRows,
   openSchemaBackedDatabase,
 } from "./test-helpers/database.js";
+import { buildApplyRowIds } from "./csv-import-apply-ids.js";
+import { decideCsvImportRowOutcome } from "./csv-import-apply-idempotency.js";
+import { buildRowFingerprint } from "./csv-import-contract-helpers.js";
+import type { AcceptedParsedCsvRow } from "./csv-import-contract-helpers.js";
 
 function csv(lines: string[]): string {
   return `${lines.join("\n")}\n`;
@@ -300,6 +304,86 @@ test("MVP-D CSV helper boundary evaluates parser normalization and validation de
   assert.deepEqual(
     stripRowFingerprints(evaluation.diffs),
     stripRowFingerprints(dryRunSyntheticLifecycleCsvImport(csvInput).diffs),
+  );
+});
+
+test("MVP-D CSV idempotency helper classifies successful, retryable, and conflicting row outcomes", () => {
+  const row: AcceptedParsedCsvRow = {
+    template_version: "mvp_d_lifecycle_support_v1",
+    row_id: "csv-row-idempotency-helper-001",
+    lifecycle_type: "transfer",
+    tenant_environment_id: "repo_owned_synthetic_mvp_d_csv",
+    person_id: "person-csv-idempotency-helper-001",
+    display_name: "CSV Idempotency Helper",
+    effective_date: "2026-07-15",
+    employment_code: "",
+    assignment_code: "",
+    organization_reference: "",
+    work_email: "",
+    current_assignment_id: "assignment-current-idempotency-helper-001",
+    target_organization_reference: "organization-product",
+    target_department_reference: "department-product",
+    target_manager_reference: "manager-product-001",
+    reason_code: "team_change",
+  };
+  const rowIds = buildApplyRowIds(row);
+  const rowFingerprint = buildRowFingerprint(row);
+
+  assert.deepEqual(
+    decideCsvImportRowOutcome(
+      {
+        row_id: row.row_id,
+        lifecycle_type: "transfer",
+        status_code: "applied",
+        transaction_request_id: rowIds.transactionRequestId,
+        lifecycle_event_id: rowIds.lifecycleEventId,
+        row_fingerprint: rowFingerprint,
+        error_message: null,
+      },
+      row,
+      rowIds,
+      rowFingerprint,
+    ),
+    { status: "matched_success" },
+  );
+  assert.deepEqual(
+    decideCsvImportRowOutcome(
+      {
+        row_id: row.row_id,
+        lifecycle_type: "transfer",
+        status_code: "failed",
+        transaction_request_id: null,
+        lifecycle_event_id: null,
+        row_fingerprint: rowFingerprint,
+        error_message:
+          "CSV import apply requires current_assignment_id to match an open assignment for the person",
+      },
+      row,
+      rowIds,
+      rowFingerprint,
+    ),
+    { status: "retry_failed_outcome" },
+  );
+  assert.deepEqual(
+    decideCsvImportRowOutcome(
+      {
+        row_id: row.row_id,
+        lifecycle_type: "transfer",
+        status_code: "applied",
+        transaction_request_id: rowIds.transactionRequestId,
+        lifecycle_event_id: "csv-import-lifecycle-event-different-row",
+        row_fingerprint: rowFingerprint,
+        error_message: null,
+      },
+      row,
+      rowIds,
+      rowFingerprint,
+    ),
+    {
+      status: "conflict",
+      reason:
+        "CSV import row csv-row-idempotency-helper-001 conflicts with existing outcome evidence",
+    },
   );
 });
 
