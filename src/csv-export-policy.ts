@@ -90,6 +90,61 @@ export interface MvpDCsvExportResult {
   };
 }
 
+export type MvpDCsvExportDeniedReason =
+  | "unsupported_scope"
+  | "missing_request_identity"
+  | "missing_required_permissions"
+  | "invalid_requested_at"
+  | "missing_fields"
+  | "denied_field_surface"
+  | "unsupported_field_surface"
+  | "duplicate_field"
+  | "denied_row_surface"
+  | "unsupported_row_surface"
+  | "duplicate_row_key"
+  | "real_or_regulated_row_value"
+  | "non_synthetic_marker";
+
+export type MvpDCsvExportSurfaceClassification =
+  | {
+      kind: "allowed_field";
+      field: MvpDCsvExportAllowedField;
+    }
+  | {
+      kind: "denied_surface";
+      normalizedSurface: string;
+    }
+  | {
+      kind: "unsupported_surface";
+      normalizedSurface: string;
+    };
+
+export interface MvpDCsvExportNormalizedRequest {
+  scope: typeof mvpDCsvExportScope;
+  requestedBy: string;
+  requestedAt: string;
+  correlationId: string;
+  fields: MvpDCsvExportAllowedField[];
+  rows: MvpDCsvExportRow[];
+}
+
+export type MvpDCsvExportPolicyEvaluation =
+  | {
+      outcome: "allowed";
+      request: MvpDCsvExportNormalizedRequest;
+    }
+  | {
+      outcome: "denied";
+      reason: MvpDCsvExportDeniedReason;
+    };
+
+export interface MvpDCsvExportAuditEvidence {
+  auditEventId: string;
+  evidenceHash: string;
+  evidenceSubjectId: string;
+  rowCount: number;
+}
+
 const allowedFieldSet = new Set<string>(mvpDCsvExportAllowedFields);
 const deniedSurfaceSet = new Set(
   mvpDCsvExportDeniedFields.map((field) => normalizeSurface(field)),
@@ -111,15 +166,18 @@ export function exportSyntheticLifecycleCsv(
   db: OnboardingTransactionRequestDatabase,
   input: MvpDCsvExportInput,
 ): MvpDCsvExportResult {
-  const request = normalizeExportRequest(input);
+  const evaluation = evaluateMvpDCsvExportPolicy(input);
+  if (evaluation.outcome === "denied") {
+    throwOutsidePolicy();
+  }
+
+  const request = evaluation.request;
   const dataCsv = serializeCsvData(request.fields, request.rows);
-  const evidenceHash = sha256(dataCsv);
-  const auditEventId = buildAuditEventId(db, request);
-  const evidenceSubjectId = buildEvidenceSubjectId(request, evidenceHash);
+  const auditEvidence = buildMvpDCsvExportAuditEvidence(db, request, dataCsv);
   const csv = serializeCsvArtifact(request, {
-    auditEventId,
-    evidenceHash,
-    rowCount: request.rows.length,
+    auditEventId: auditEvidence.auditEventId,
+    evidenceHash: auditEvidence.evidenceHash,
+    rowCount: auditEvidence.rowCount,
   });
 
   db.prepare(
@@ -137,11 +195,11 @@ export function exportSyntheticLifecycleCsv(
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
-    auditEventId,
+    auditEvidence.auditEventId,
     request.requestedBy,
     auditAction,
     "lifecycle_event",
-    evidenceSubjectId,
+    auditEvidence.evidenceSubjectId,
     request.requestedAt,
     "synthetic_poc",
     request.correlationId,
@@ -155,113 +213,182 @@ export function exportSyntheticLifecycleCsv(
     audit: {
       downloadIntent: "synthetic_bounded_csv_export",
       exportedFields: [...request.fields],
-      auditEventId,
+      auditEventId: auditEvidence.auditEventId,
       correlationId: request.correlationId,
-      evidenceHash,
+      evidenceHash: auditEvidence.evidenceHash,
       maskingProfile: mvpDCsvExportMaskingProfile,
       requestedBy: request.requestedBy,
       requestedAt: request.requestedAt,
-      rowCount: request.rows.length,
+      rowCount: auditEvidence.rowCount,
     },
   };
 }
 
-function normalizeExportRequest(input: MvpDCsvExportInput): {
-  scope: typeof mvpDCsvExportScope;
-  requestedBy: string;
-  requestedAt: string;
-  correlationId: string;
-  fields: MvpDCsvExportAllowedField[];
-  rows: MvpDCsvExportRow[];
-} {
+export function evaluateMvpDCsvExportPolicy(
+  input: MvpDCsvExportInput,
+): MvpDCsvExportPolicyEvaluation {
   const scope = input.scope.trim();
   const requestedBy = input.requestedBy.trim();
   const requestedAt = input.requestedAt.trim();
   const correlationId = input.correlationId.trim();
 
   if (scope !== mvpDCsvExportScope) {
-    throwOutsidePolicy();
+    return denyMvpDCsvExport("unsupported_scope");
   }
   if (requestedBy.length === 0 || correlationId.length === 0) {
-    throwOutsidePolicy();
+    return denyMvpDCsvExport("missing_request_identity");
   }
   if (
     !input.permissions.includes(mvpDCsvExportRequiredPermission) ||
     !input.permissions.includes(mvpDCsvExportDownloadPermission)
   ) {
-    throwOutsidePolicy();
+    return denyMvpDCsvExport("missing_required_permissions");
   }
   if (!isValidIsoTimestamp(requestedAt)) {
-    throwOutsidePolicy();
+    return denyMvpDCsvExport("invalid_requested_at");
   }
   if (input.fields.length === 0) {
-    throwOutsidePolicy();
+    return denyMvpDCsvExport("missing_fields");
   }
 
   const seenFields = new Set<string>();
-  const fields = input.fields.map((field) => {
+  const fields: MvpDCsvExportAllowedField[] = [];
+  for (const field of input.fields) {
     const trimmedField = field.trim();
-    if (
-      trimmedField.length === 0 ||
-      seenFields.has(trimmedField) ||
-      deniedSurfaceSet.has(normalizeSurface(trimmedField)) ||
-      !allowedFieldSet.has(trimmedField)
-    ) {
-      throwOutsidePolicy();
+    if (trimmedField.length === 0) {
+      return denyMvpDCsvExport("unsupported_field_surface");
     }
-    seenFields.add(trimmedField);
-    return trimmedField as MvpDCsvExportAllowedField;
-  });
+    if (seenFields.has(trimmedField)) {
+      return denyMvpDCsvExport("duplicate_field");
+    }
 
-  const rows = input.rows.map((row) => normalizeExportRow(row, seenFields));
+    const classification = classifyMvpDCsvExportSurface(trimmedField);
+    if (classification.kind === "denied_surface") {
+      return denyMvpDCsvExport("denied_field_surface");
+    }
+    if (classification.kind === "unsupported_surface") {
+      return denyMvpDCsvExport("unsupported_field_surface");
+    }
+
+    seenFields.add(trimmedField);
+    fields.push(classification.field);
+  }
+
+  const rows: MvpDCsvExportRow[] = [];
+  for (const row of input.rows) {
+    const normalized = normalizeExportRow(row, seenFields);
+    if (normalized.outcome === "denied") {
+      return denyMvpDCsvExport(normalized.reason);
+    }
+    rows.push(normalized.row);
+  }
+
   return {
-    scope: mvpDCsvExportScope,
-    requestedBy,
-    requestedAt,
-    correlationId,
-    fields,
-    rows,
+    outcome: "allowed",
+    request: {
+      scope: mvpDCsvExportScope,
+      requestedBy,
+      requestedAt,
+      correlationId,
+      fields,
+      rows,
+    },
+  };
+}
+
+export function classifyMvpDCsvExportSurface(
+  value: string,
+): MvpDCsvExportSurfaceClassification {
+  const normalizedSurface = normalizeSurface(value);
+  if (deniedSurfaceSet.has(normalizedSurface)) {
+    return {
+      kind: "denied_surface",
+      normalizedSurface,
+    };
+  }
+  if (allowedFieldSet.has(value)) {
+    return {
+      kind: "allowed_field",
+      field: value as MvpDCsvExportAllowedField,
+    };
+  }
+  return {
+    kind: "unsupported_surface",
+    normalizedSurface,
   };
 }
 
 function normalizeExportRow(
   row: MvpDCsvExportRow,
   selectedFieldSet: ReadonlySet<string>,
-): MvpDCsvExportRow {
+):
+  | {
+      outcome: "allowed";
+      row: MvpDCsvExportRow;
+    }
+  | {
+      outcome: "denied";
+      reason: MvpDCsvExportDeniedReason;
+    } {
   const seenRowKeys = new Set<string>();
+  const entries: [string, string][] = [];
   for (const [key, value] of Object.entries(row)) {
     const trimmedKey = key.trim();
+    if (trimmedKey.length === 0) {
+      return denyMvpDCsvExportRow("unsupported_row_surface");
+    }
+    if (seenRowKeys.has(trimmedKey)) {
+      return denyMvpDCsvExportRow("duplicate_row_key");
+    }
+
+    const classification = classifyMvpDCsvExportSurface(trimmedKey);
+    if (classification.kind === "denied_surface") {
+      return denyMvpDCsvExportRow("denied_row_surface");
+    }
     if (
-      trimmedKey.length === 0 ||
-      seenRowKeys.has(trimmedKey) ||
-      deniedSurfaceSet.has(normalizeSurface(trimmedKey)) ||
+      classification.kind === "unsupported_surface" ||
       !selectedFieldSet.has(trimmedKey)
     ) {
-      throwOutsidePolicy();
+      return denyMvpDCsvExportRow("unsupported_row_surface");
     }
     seenRowKeys.add(trimmedKey);
 
     const normalizedValue = normalizeSurface(value ?? "");
-    if (
-      realOrRegulatedMarkers.has(normalizedValue) ||
-      (normalizeSurface(key).endsWith("marker") &&
-        normalizedValue.length > 0 &&
-        !syntheticOnlyMarkers.has(normalizedValue))
-    ) {
-      throwOutsidePolicy();
+    if (realOrRegulatedMarkers.has(normalizedValue)) {
+      return denyMvpDCsvExportRow("real_or_regulated_row_value");
     }
+    if (
+      normalizeSurface(key).endsWith("marker") &&
+      normalizedValue.length > 0 &&
+      !syntheticOnlyMarkers.has(normalizedValue)
+    ) {
+      return denyMvpDCsvExportRow("non_synthetic_marker");
+    }
+    entries.push([trimmedKey, value?.trim() ?? ""]);
   }
 
-  return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [
-      key.trim(),
-      value?.trim() ?? "",
-    ]),
-  ) as MvpDCsvExportRow;
+  return {
+    outcome: "allowed",
+    row: Object.fromEntries(entries) as MvpDCsvExportRow,
+  };
+}
+
+export function buildMvpDCsvExportAuditEvidence(
+  db: OnboardingTransactionRequestDatabase,
+  request: MvpDCsvExportNormalizedRequest,
+  dataCsv: string,
+): MvpDCsvExportAuditEvidence {
+  const evidenceHash = sha256(dataCsv);
+  return {
+    auditEventId: buildAuditEventId(db, request),
+    evidenceHash,
+    evidenceSubjectId: buildEvidenceSubjectId(request, evidenceHash),
+    rowCount: request.rows.length,
+  };
 }
 
 function serializeCsvArtifact(
-  request: ReturnType<typeof normalizeExportRequest>,
+  request: MvpDCsvExportNormalizedRequest,
   trace: {
     auditEventId: string;
     evidenceHash: string;
@@ -351,7 +478,7 @@ function neutralizeSpreadsheetFormula(value: string): string {
 
 function buildAuditEventId(
   db: OnboardingTransactionRequestDatabase,
-  request: ReturnType<typeof normalizeExportRequest>,
+  request: MvpDCsvExportNormalizedRequest,
 ): string {
   const row = db
     .prepare(
@@ -375,7 +502,7 @@ function buildAuditEventId(
 }
 
 function buildEvidenceSubjectId(
-  request: ReturnType<typeof normalizeExportRequest>,
+  request: MvpDCsvExportNormalizedRequest,
   evidenceHash: string,
 ): string {
   return [
@@ -404,6 +531,25 @@ function throwOutsidePolicy(): never {
   throw new Error(
     "CSV export request is outside the bounded synthetic MVP-D policy",
   );
+}
+
+function denyMvpDCsvExport(
+  reason: MvpDCsvExportDeniedReason,
+): MvpDCsvExportPolicyEvaluation {
+  return {
+    outcome: "denied",
+    reason,
+  };
+}
+
+function denyMvpDCsvExportRow(reason: MvpDCsvExportDeniedReason): {
+  outcome: "denied";
+  reason: MvpDCsvExportDeniedReason;
+} {
+  return {
+    outcome: "denied",
+    reason,
+  };
 }
 
 function isValidIsoTimestamp(value: string): boolean {

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildMvpDCsvExportAuditEvidence,
+  classifyMvpDCsvExportSurface,
+  evaluateMvpDCsvExportPolicy,
   exportSyntheticLifecycleCsv,
   type MvpDCsvExportInput,
   mvpDCsvExportAllowedFields,
@@ -14,6 +17,168 @@ import {
   normalizeRows,
   openSchemaBackedDatabase,
 } from "./test-helpers/database.js";
+
+test("MVP-D CSV export helper boundaries classify allowed, denied, and unsupported surfaces", () => {
+  assert.deepEqual(classifyMvpDCsvExportSurface("work_email"), {
+    kind: "allowed_field",
+    field: "work_email",
+  });
+  assert.deepEqual(classifyMvpDCsvExportSurface("rawPayload"), {
+    kind: "denied_surface",
+    normalizedSurface: "raw_payload",
+  });
+  assert.deepEqual(classifyMvpDCsvExportSurface("individual_number"), {
+    kind: "unsupported_surface",
+    normalizedSurface: "individual_number",
+  });
+});
+
+test("MVP-D CSV export policy helper returns fail-closed denial reasons before auditing", () => {
+  const baseline: MvpDCsvExportInput = {
+    scope: "repo_owned_synthetic_mvp_d_csv",
+    requestedBy: "operator-mvp-d-csv-export",
+    requestedAt: "2026-06-02T22:00:00+09:00",
+    correlationId: "csv-export-correlation-policy-helper",
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
+    fields: ["row_id"],
+    rows: [{ row_id: "csv-export-row-policy-helper" }],
+  };
+
+  assert.deepEqual(evaluateMvpDCsvExportPolicy(baseline), {
+    outcome: "allowed",
+    request: {
+      scope: "repo_owned_synthetic_mvp_d_csv",
+      requestedBy: "operator-mvp-d-csv-export",
+      requestedAt: "2026-06-02T22:00:00+09:00",
+      correlationId: "csv-export-correlation-policy-helper",
+      fields: ["row_id"],
+      rows: [{ row_id: "csv-export-row-policy-helper" }],
+    },
+  });
+
+  assert.deepEqual(
+    evaluateMvpDCsvExportPolicy({
+      ...baseline,
+      fields: ["raw_payload"],
+    }),
+    {
+      outcome: "denied",
+      reason: "denied_field_surface",
+    },
+  );
+  assert.deepEqual(
+    evaluateMvpDCsvExportPolicy({
+      ...baseline,
+      fields: ["unsupported_field"],
+    }),
+    {
+      outcome: "denied",
+      reason: "unsupported_field_surface",
+    },
+  );
+  assert.deepEqual(
+    evaluateMvpDCsvExportPolicy({
+      ...baseline,
+      permissions: [mvpDCsvExportRequiredPermission],
+    }),
+    {
+      outcome: "denied",
+      reason: "missing_required_permissions",
+    },
+  );
+  assert.deepEqual(
+    evaluateMvpDCsvExportPolicy({
+      ...baseline,
+      rows: [
+        {
+          row_id: "csv-export-row-policy-helper",
+          data_marker: "real_employee_data",
+        },
+      ],
+    }),
+    {
+      outcome: "denied",
+      reason: "unsupported_row_surface",
+    },
+  );
+  assert.deepEqual(
+    evaluateMvpDCsvExportPolicy({
+      ...baseline,
+      fields: ["row_id", "display_name"],
+      rows: [
+        {
+          row_id: "csv-export-row-policy-helper",
+          display_name: "real_employee_data",
+        },
+      ],
+    }),
+    {
+      outcome: "denied",
+      reason: "real_or_regulated_row_value",
+    },
+  );
+});
+
+test("MVP-D CSV export audit helper builds deterministic evidence without writing audit rows", async (t) => {
+  const db = await openSchemaBackedDatabase(t);
+  if (!db) {
+    return;
+  }
+
+  const evaluation = evaluateMvpDCsvExportPolicy({
+    scope: "repo_owned_synthetic_mvp_d_csv",
+    requestedBy: "operator-mvp-d-csv-export",
+    requestedAt: "2026-06-02T22:00:00+09:00",
+    correlationId: "csv-export-correlation-audit-helper",
+    permissions: [
+      mvpDCsvExportRequiredPermission,
+      mvpDCsvExportDownloadPermission,
+    ],
+    fields: ["row_id", "work_email"],
+    rows: [
+      {
+        row_id: "csv-export-row-audit-helper",
+        work_email: "csv.export.audit.helper@example.test",
+      },
+    ],
+  });
+  assert.equal(evaluation.outcome, "allowed");
+  if (evaluation.outcome !== "allowed") {
+    return;
+  }
+
+  const evidence = buildMvpDCsvExportAuditEvidence(
+    db,
+    evaluation.request,
+    [
+      "row_id,work_email",
+      "csv-export-row-audit-helper,c***@example.test",
+      "",
+    ].join("\n"),
+  );
+
+  assert.match(evidence.auditEventId, /^audit-event-csv-export-/);
+  assert.match(evidence.evidenceHash, /^[a-f0-9]{64}$/u);
+  assert.equal(evidence.rowCount, 1);
+  assert.equal(
+    evidence.evidenceSubjectId,
+    [
+      "mvp-d-synthetic-csv-evidence",
+      "fields-row_id+work_email",
+      "rows-1",
+      `masking-${mvpDCsvExportMaskingProfile}`,
+      `sha256-${evidence.evidenceHash}`,
+    ].join("-"),
+  );
+  assert.deepEqual(
+    normalizeRows(db.prepare("SELECT * FROM audit_event").all()),
+    [],
+    "audit helper must not persist accepted download evidence by itself",
+  );
+});
 
 test("MVP-D bounded synthetic CSV export succeeds only for explicit allowed fields and records audit evidence", async (t) => {
   const db = await openSchemaBackedDatabase(t);
