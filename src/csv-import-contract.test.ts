@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   applySyntheticLifecycleCsvImport,
   dryRunSyntheticLifecycleCsvImport,
+  evaluateMvpDCsvImportRows,
   mvpDCsvImportTemplateColumns,
   type MvpDCsvImportDryRunDiff,
 } from "./csv-import-contract.js";
@@ -232,6 +233,74 @@ test("MVP-D CSV dry-run normalizes lifecycle type before emitting diffs", () => 
     },
   ]);
   assertDryRunDiffFingerprints(result.diffs);
+});
+
+test("MVP-D CSV helper boundary evaluates parser normalization and validation deterministically", () => {
+  const csvInput = csv([
+    mvpDCsvImportTemplateColumns.join(","),
+    [
+      "mvp_d_lifecycle_support_v1",
+      "csv-row-helper-accepted",
+      " termination ",
+      "repo_owned_synthetic_mvp_d_csv",
+      "person-csv-helper-accepted",
+      "CSV Helper Accepted",
+      "2026-09-30",
+      "",
+      "",
+      "",
+      "",
+      "assignment-current-csv-helper",
+      "",
+      "",
+      "",
+      "resignation",
+    ].join(","),
+    [
+      "mvp_d_lifecycle_support_v1",
+      "csv-row-helper-accepted",
+      "transfer",
+      "repo_owned_synthetic_mvp_d_csv",
+      "person-csv-helper-rejected",
+      "CSV Helper Rejected",
+      "2026-09-31",
+      "",
+      "",
+      "",
+      "",
+      "assignment-current-csv-helper",
+      "organization-product",
+      "department-product",
+      "manager-product-001",
+      "unsupported_reason",
+    ].join(","),
+  ]);
+
+  const evaluation = evaluateMvpDCsvImportRows(csvInput);
+
+  assert.deepEqual(evaluation.acceptedRows, [
+    {
+      rowNumber: 2,
+      rowId: "csv-row-helper-accepted",
+      lifecycleType: "termination",
+    },
+  ]);
+  assert.deepEqual(evaluation.rejectedRows, [
+    {
+      rowNumber: 3,
+      rowId: "csv-row-helper-accepted",
+      reasons: [
+        "row_id duplicates an earlier row",
+        "effective_date must be an ISO date",
+        "reason_code must be team_change, manager_change, or organization_change",
+      ],
+    },
+  ]);
+  assert.equal(evaluation.acceptedParsedRows[0]?.lifecycle_type, "termination");
+  assert.deepEqual(
+    stripRowFingerprints(evaluation.diffs),
+    stripRowFingerprints(dryRunSyntheticLifecycleCsvImport(csvInput).diffs),
+  );
 });
 
 test("MVP-D CSV dry-run fails closed on unsupported prohibited fields and malformed CSV", () => {
