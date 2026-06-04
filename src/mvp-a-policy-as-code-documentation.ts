@@ -192,7 +192,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
   const prohibitedClaims: Array<[string, RegExp]> = [
     [
       "HR practical-use readiness",
-      /\bHR\s+practical-use(?:\s+|-)read(?:y|iness)\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bpractical-use\s+readiness\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bready\s+for\s+HR\s+practical-use\b/iu,
+      /\bHR\s+practical-use(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bHR\s+practical-use(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b|\bpractical-use\s+readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b|\bready\s+for\s+HR\s+practical-use\b/iu,
     ],
     [
       "production-like readiness",

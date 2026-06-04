@@ -419,6 +419,8 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
   await writeFile(
     join(fixtureCwd, benignMentionPath),
     [
+      "HR practical-use readiness review is documentation-only.",
+      "This updates the HR practical-use readiness checklist.",
       "The production-like readiness blocker remains in force.",
       "The production-like readiness review is documentation-only.",
     ].join("\n"),
@@ -450,7 +452,7 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
         finding.path === benignMentionPath,
     ),
     false,
-    "expected non-affirmative production-like readiness mentions to stay allowed",
+    "expected non-affirmative P2X readiness mentions to stay allowed",
   );
 });
 

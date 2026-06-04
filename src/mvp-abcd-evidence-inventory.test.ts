@@ -223,6 +223,8 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
   assert.deepEqual(
     p2xBoundedPracticalUseArtifactOverclaims(
       [
+        "HR practical-use readiness review is documentation-only.",
+        "This updates the HR practical-use readiness checklist.",
         "The production-like readiness blocker remains in force.",
         "The production-like readiness review is documentation-only.",
       ].join("\n"),
@@ -356,7 +358,7 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
 const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   [
     "HR practical-use readiness",
-    /\bHR\s+practical-use(?:\s+|-)read(?:y|iness)\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bpractical-use\s+readiness\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bready\s+for\s+HR\s+practical-use\b/iu,
+    /\bHR\s+practical-use(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bHR\s+practical-use(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b|\bpractical-use\s+readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b|\bready\s+for\s+HR\s+practical-use\b/iu,
   ],
   [
     "production-like readiness",
