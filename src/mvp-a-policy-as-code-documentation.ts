@@ -265,7 +265,7 @@ function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
 }
 
 function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
-  return segment.replace(/\|/gu, " ").replace(/\s+/gu, " ").trim();
+  return segment.replace(/\s+/gu, " ").trim();
 }
 
 const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [

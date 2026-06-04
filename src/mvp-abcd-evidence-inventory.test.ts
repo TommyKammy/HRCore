@@ -286,7 +286,7 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
 }
 
 function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
-  return segment.replace(/\|/gu, " ").replace(/\s+/gu, " ").trim();
+  return segment.replace(/\s+/gu, " ").trim();
 }
 
 function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
