@@ -51,6 +51,7 @@ The P2X solo-maintainer governance boundary review is recorded in [P2X Solo-Main
 The final P2X-01 cross-suite closeout and next-wave recommendation is recorded in [P2X-01 Next-Wave Recommendation Closeout](docs/p2x-01-next-wave-recommendation-closeout.md).
 The P2X local bounded operator review procedure is recorded in [P2X Local Bounded Operator Runbook](docs/p2x-local-bounded-operator-runbook.md).
 The P2X synthetic practical-use rehearsal checklist is recorded in [P2X Synthetic Practical-Use Rehearsal Checklist](docs/p2x-synthetic-practical-use-rehearsal-checklist.md).
+The P2X cross-flow audit and correlation lookup map is recorded in [P2X Cross-Flow Audit and Correlation Lookup Map](docs/p2x-cross-flow-audit-correlation-lookup-map.md).
 
 ## Baseline structure
 
@@ -187,6 +188,11 @@ The P2X synthetic practical-use rehearsal checklist is recorded in [P2X Syntheti
   synthetic practical-use rehearsal checklist for onboarding, transfer,
   termination, CSV/Ops/DLQ, audit lookup, failed-path, and cleanup evidence
   while keeping HR practical-use and production-like readiness blocked.
+- `docs/p2x-cross-flow-audit-correlation-lookup-map.md` records the P2X
+  cross-flow bounded audit and correlation lookup map for onboarding, transfer,
+  termination, CSV import/export guard, local Ops job status, and DLQ
+  decisions while keeping production audit readiness and production-like
+  readiness blocked.
 
 ## Local verification
 
