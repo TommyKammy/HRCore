@@ -47,6 +47,7 @@ The final P2D-01 bounded/non-production MVP-D CSV/Ops/DLQ readiness review close
 The final P2D-02 behavior-preserving MVP-D CSV/Ops/DLQ refactor wave closeout is recorded in [MVP-D P2D-02 Refactor Wave Closeout](docs/mvp-d-p2d-02-refactor-wave-closeout.md).
 The P2X bounded/non-production HR practical-use gap assessment is recorded in [P2X HR Practical-Use Gap Assessment](docs/p2x-hr-practical-use-gap-assessment.md).
 The P2X production-like blocker ledger is recorded in [P2X Production-Like Blocker Matrix](docs/p2x-production-like-blocker-matrix.md).
+The P2X solo-maintainer governance boundary review is recorded in [P2X Solo-Maintainer Governance Boundary Review](docs/p2x-solo-maintainer-governance-boundary-review.md).
 
 ## Baseline structure
 
@@ -168,6 +169,9 @@ The P2X production-like blocker ledger is recorded in [P2X Production-Like Block
   CSV export, production scheduler/queue/DLQ, production ops, legal/privacy
   runtime, retention/deletion, future-extension surfaces, and required
   follow-up decision evidence.
+- `docs/p2x-solo-maintainer-governance-boundary-review.md` records the P2X
+  solo-maintainer governance boundary review for #11/#12/#14 and #240,
+  preserving owner-acknowledged defer rather than Accepted two-key approval.
 
 ## Local verification
 

@@ -3120,6 +3120,80 @@ test("P2X practical-use gap assessment preserves bounded and stronger-readiness 
   );
 });
 
+test("P2X solo-maintainer governance boundary review keeps remaining gates blocked", async () => {
+  const [review, readme] = await Promise.all([
+    readRepoFile("docs/p2x-solo-maintainer-governance-boundary-review.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedReview = review.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X Solo-Maintainer Governance Boundary Review",
+    "Issue: #340",
+    "Part of: #336",
+    "Depends on: #339",
+    "Review scope: remaining #11/#12/#14 stronger-readiness gates after the P2X production-like blocker matrix",
+    "Governance Boundary",
+    "owner acknowledgement: repository-owner acknowledgement of bounded, non-production continuation and explicit deferral",
+    "owner acknowledgement is not Accepted two-key approval",
+    "#240 records the solo-maintainer governance posture and closeout only",
+    "P0-R05 / #11: Open; owner-acknowledged defer",
+    "P0-R06 / #12: Open; owner-acknowledged defer",
+    "P0-R08 / #14: Open; owner-acknowledged defer",
+    "ADR 0011: Proposed",
+    "ADR 0012: Proposed",
+    "ADR 0014: Proposed",
+    "Minimum Evidence Before Stronger Claims",
+    "named Approver",
+    "independent Counter-approver",
+    "completed ADR 0000 review-window evidence",
+    "real independent legal/security/operator review",
+    "Production-Like Readiness Verdict",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No production-like readiness surface",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2X solo-maintainer governance boundary review"',
+    "npm run verify:pre-pr",
+  ]) {
+    assert.ok(
+      normalizedReview.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X governance boundary review text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "is Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedReview.includes(forbiddenText),
+      `P2X governance review must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    review,
+    /#240[\s\S]{0,180}\bis\s+Accepted two-key approval\b/u,
+    "P2X governance review must not convert #240 owner acknowledgement into Accepted two-key approval",
+  );
+  assert.match(
+    readme,
+    /\[P2X Solo-Maintainer Governance Boundary Review\]\(docs\/p2x-solo-maintainer-governance-boundary-review\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
