@@ -161,7 +161,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   const claimText = stripReviewMetadata(segment);
   const subjectSource = subjectPattern.source;
   const sameClauseBlockerBeforeSubject = new RegExp(
-    `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b[^,|.;]{0,180}\\b(?:${subjectSource})\\b`,
+    `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const noListBlockerBeforeSubject = new RegExp(
@@ -204,11 +204,11 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "live IdP/Okta readiness",
-      /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider)\b/iu,
+      /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
     ],
     [
       "unrestricted raw payload readiness",
-      /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|viewing)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
+      /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
     ],
     [
       "production queue/DLQ readiness",
@@ -252,7 +252,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta/iu,
+    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)/iu,
   ],
   [
     "unrestricted raw payload readiness",

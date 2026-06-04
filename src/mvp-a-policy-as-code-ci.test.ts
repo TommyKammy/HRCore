@@ -350,6 +350,7 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       "docs/p2x-local-bounded-operator-runbook.md",
       [
         "No real employee data, but HR practical-use readiness: Go.",
+        "No real employee data but practical-use readiness is Go.",
         "No unrestricted raw payload | production-like readiness: Go.",
         "Unrestricted raw payload is enabled.",
         "Raw payload access is approved.",
@@ -362,7 +363,11 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
     ],
     [
       "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
-      "Real-data processing is approved and live-provider operation is enabled.",
+      [
+        "Real-data processing is approved and live-provider operation is enabled.",
+        "Live tenant data is approved.",
+        "Live tenant export is enabled.",
+      ].join("\n"),
       ["real employee data readiness", "live IdP/Okta readiness"],
     ],
     [
@@ -423,6 +428,7 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
       "This updates the HR practical-use readiness checklist.",
       "The production-like readiness blocker remains in force.",
       "The production-like readiness review is documentation-only.",
+      "Raw payload viewing remains closed.",
     ].join("\n"),
   );
 

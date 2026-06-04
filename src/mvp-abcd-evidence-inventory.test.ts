@@ -196,9 +196,12 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
       [
         "HR practical-use readiness: Go.",
         "No real employee data, but HR practical-use readiness: Go.",
+        "No real employee data but practical-use readiness is Go.",
         "production-like ready: Go.",
         "real employee data is ready.",
         "live-provider operation is enabled.",
+        "live tenant data is approved.",
+        "live tenant export is enabled.",
         "Raw payload access is approved.",
         "production scheduler/queue/DLQ ready: Go.",
         "retention/deletion requests are allowed.",
@@ -227,6 +230,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "This updates the HR practical-use readiness checklist.",
         "The production-like readiness blocker remains in force.",
         "The production-like readiness review is documentation-only.",
+        "Raw payload viewing remains closed.",
       ].join("\n"),
     ),
     [],
@@ -337,7 +341,7 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
   const subjectSource = subjectPattern.source;
   return (
     new RegExp(
-      `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b[^,|.;]{0,180}\\b(?:${subjectSource})\\b`,
+      `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
       "iu",
     ).test(line) ||
     new RegExp(
@@ -370,11 +374,11 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider)\b/iu,
+    /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
   ],
   [
     "unrestricted raw payload readiness",
-    /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|viewing)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
+    /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
   ],
   [
     "production queue/DLQ readiness",
@@ -409,7 +413,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta/iu,
+    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)/iu,
   ],
   [
     "unrestricted raw payload readiness",
