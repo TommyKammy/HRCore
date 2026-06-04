@@ -57,6 +57,7 @@ const requiredNonProductionDocumentationPaths = [
 ] as const;
 
 const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-01-next-wave-recommendation-closeout.md",
   "docs/p2x-hr-practical-use-gap-assessment.md",
   "docs/p2x-local-bounded-operator-runbook.md",
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
@@ -172,7 +173,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const doNotUseListBlockerBeforeSubject = new RegExp(
-    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve)|not\\s+(?:require|introduce|approve))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const sameClauseBlockedShapeBeforeSubject = new RegExp(
@@ -261,7 +262,7 @@ function hasAffirmativeStatusAttachedToSubject(
 }
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
-  return /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/iu.test(
+  return /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
     value,
   );
 }
@@ -299,7 +300,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "production queue/DLQ readiness",
-      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
+      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b/iu,
     ],
     [
       "production ops readiness",
@@ -316,6 +317,10 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     [
       "production audit/archive readiness",
       /\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b/iu,
+    ],
+    [
+      "production backup/restore readiness",
+      /\b(?:production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval))\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|processing|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|processing|complete)\b[^.;]{0,60}\b(?:production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval))\b/iu,
     ],
     [
       "support-console readiness",
@@ -343,11 +348,29 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
   ];
 
-  return prohibitedClaims.flatMap(([subject, pattern]) =>
-    claimSegments
-      .filter((claimSegment) => pattern.test(claimSegment))
-      .map((claimSegment) => ({ subject, claimSegment })),
-  );
+  const claimsBySubject = new Map<string, string>();
+  for (const claimSegment of claimSegments) {
+    for (const [subject, pattern] of prohibitedClaims) {
+      if (pattern.test(claimSegment) && !claimsBySubject.has(subject)) {
+        claimsBySubject.set(subject, claimSegment);
+      }
+    }
+
+    for (const [subject, subjectPattern] of p2xBlockedSubjectPatterns) {
+      if (
+        subjectPattern.test(claimSegment) &&
+        hasAffirmativeStatusAttachedToSubject(claimSegment, subjectPattern) &&
+        !claimsBySubject.has(subject)
+      ) {
+        claimsBySubject.set(subject, claimSegment);
+      }
+    }
+  }
+
+  return [...claimsBySubject].map(([subject, claimSegment]) => ({
+    subject,
+    claimSegment,
+  }));
 }
 
 function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
@@ -410,7 +433,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production queue/DLQ readiness",
-    /production\s+(?:queue|DLQ|queue\/DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
+    /production\s+(?:queue\/DLQ|queue|DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
   ],
   [
     "production ops readiness",
@@ -427,6 +450,10 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   [
     "production audit/archive readiness",
     /production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock/iu,
+  ],
+  [
+    "production backup/restore readiness",
+    /production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval)/iu,
   ],
   [
     "support-console readiness",

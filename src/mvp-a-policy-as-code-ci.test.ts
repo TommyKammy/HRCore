@@ -108,6 +108,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "expected P0-GOV-01 closeout to be scanned by policy-as-code",
   );
   for (const path of [
+    "docs/p2x-01-next-wave-recommendation-closeout.md",
     "docs/p2x-hr-practical-use-gap-assessment.md",
     "docs/p2x-local-bounded-operator-runbook.md",
     "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
@@ -348,6 +349,22 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
   await writeMinimalPolicyInputRepository(fixtureCwd);
   const p2xFixtureClaims = [
     [
+      "docs/p2x-01-next-wave-recommendation-closeout.md",
+      [
+        "Production backup is approved.",
+        "Production restore approval is complete.",
+        "| Surface | Status |",
+        "| --- | --- |",
+        "| live IdP/Okta | complete |",
+        "| production queue/DLQ | processing |",
+      ].join("\n"),
+      [
+        "production backup/restore readiness",
+        "live IdP/Okta readiness",
+        "production queue/DLQ readiness",
+      ],
+    ],
+    [
       "docs/p2x-hr-practical-use-gap-assessment.md",
       [
         "HR practical-use readiness: Go.",
@@ -458,8 +475,8 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
     [
       "| Surface | Evidence | Status |",
       "| --- | --- | --- |",
-      "| real employee data | #203 | available |",
-      "| live IdP/Okta | #204 | available |",
+      "| real employee data | #203 | complete |",
+      "| live IdP/Okta | #204 | processing |",
     ].join("\n"),
   );
   await writeFile(
@@ -524,6 +541,8 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
       "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
       "live IdP/Okta | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | enabled",
       "regulated identifiers | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | available",
+      "production backup | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | complete",
+      "production restore | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | processing",
     ].join("\n"),
   );
   await writeFile(
@@ -558,6 +577,7 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
     [pipeTablePath, "real employee data readiness"],
     [pipeTablePath, "live IdP/Okta readiness"],
     [pipeTablePath, "regulated data/credential readiness"],
+    [pipeTablePath, "production backup/restore readiness"],
     [scopedBlockerPath, "real employee data readiness"],
     [approvalMetadataPath, "legal/privacy acceptance"],
     [approvalMetadataPath, "two-key Accepted approval"],

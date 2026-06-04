@@ -211,6 +211,9 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "production authorization/RLS is approved.",
         "production audit immutability is accepted.",
         "production audit readiness: Go.",
+        "production backup is approved.",
+        "production restore approval is complete.",
+        "backup/restore operation is ready.",
         "Do not use production credentials, support-console custody is approved.",
         "support-console custody is approved.",
         "production support process is enabled.",
@@ -238,6 +241,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
       "production authorization/RLS readiness",
       "production audit immutability readiness",
       "production audit/archive readiness",
+      "production backup/restore readiness",
       "support-console readiness",
       "regulated data/credential readiness",
       "retention/deletion runtime readiness",
@@ -270,10 +274,11 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
       [
         "| Surface | Status |",
         "| --- | --- |",
-        "| real employee data | available |",
-        "| live IdP/Okta | available |",
+        "| real employee data | complete |",
+        "| live IdP/Okta | processing |",
         "| support-console custody | available |",
         "| regulated identifiers | available |",
+        "| production backup | complete |",
       ].join("\n"),
     ),
     [
@@ -281,8 +286,38 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
       "live IdP/Okta readiness",
       "support-console readiness",
       "regulated data/credential readiness",
+      "production backup/restore readiness",
     ],
     "guard must fail closed for P2X table-cell status overclaims",
+  );
+});
+
+test("P2X final closeout stays inside stronger-readiness guard coverage", async () => {
+  const closeout = await readRepoFile(
+    "docs/p2x-01-next-wave-recommendation-closeout.md",
+  );
+  const normalizedText = closeout.replace(/\s+/gu, " ");
+
+  for (const blocker of [
+    /HR practical-use ready: Blocked/u,
+    /production-like ready: Blocked/u,
+    /real employee data: Blocked/u,
+    /live Okta tenant operation: Blocked/u,
+    /production queue\/DLQ ready: Blocked/u,
+    /retention\/deletion runtime ready: Blocked/u,
+    /two-key acceptance .*: Blocked/u,
+  ]) {
+    assert.match(
+      normalizedText,
+      blocker,
+      "P2X final closeout must preserve stronger-readiness blockers",
+    );
+  }
+
+  assert.deepEqual(
+    p2xBoundedPracticalUseArtifactOverclaims(closeout),
+    [],
+    "P2X final closeout must not contain stronger readiness overclaims",
   );
 });
 
@@ -308,6 +343,21 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
       )) {
         if (
           pattern.test(claimSegment) &&
+          !p2xLineBlocksSubject(claimSegment, subject) &&
+          !findings.includes(subject)
+        ) {
+          findings.push(subject);
+        }
+      }
+    }
+
+    for (const [subject, subjectPattern] of p2xBlockedSubjectPatterns) {
+      for (const claimSegment of p2xClaimSegmentsForSurfaceStatus(
+        normalizedLine,
+      )) {
+        if (
+          subjectPattern.test(claimSegment) &&
+          hasAffirmativeStatusAttachedToSubject(claimSegment, subjectPattern) &&
           !p2xLineBlocksSubject(claimSegment, subject) &&
           !findings.includes(subject)
         ) {
@@ -454,7 +504,7 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
       "iu",
     ).test(line) ||
     new RegExp(
-      `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve)|not\\s+(?:require|introduce|approve))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
       "iu",
     ).test(line) ||
     new RegExp(
@@ -497,7 +547,7 @@ function hasAffirmativeStatusAttachedToSubject(
     const subjectSuffix = line.slice(subjectEndIndex, nextBreakIndex);
 
     if (
-      /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/iu.test(
+      /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
         subjectSuffix,
       )
     ) {
@@ -539,7 +589,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production queue/DLQ readiness",
-    /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
+    /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b/iu,
   ],
   [
     "production ops readiness",
@@ -556,6 +606,10 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   [
     "production audit/archive readiness",
     /\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b/iu,
+  ],
+  [
+    "production backup/restore readiness",
+    /\b(?:production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval))\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|processing|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|processing|complete)\b[^.;]{0,60}\b(?:production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval))\b/iu,
   ],
   [
     "support-console readiness",
@@ -606,7 +660,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production queue/DLQ readiness",
-    /production\s+(?:queue|DLQ|queue\/DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
+    /production\s+(?:queue\/DLQ|queue|DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
   ],
   [
     "production ops readiness",
@@ -623,6 +677,10 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   [
     "production audit/archive readiness",
     /production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock/iu,
+  ],
+  [
+    "production backup/restore readiness",
+    /production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval)/iu,
   ],
   [
     "support-console readiness",
