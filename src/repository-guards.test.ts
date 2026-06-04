@@ -3426,7 +3426,8 @@ test("P2X synthetic practical-use rehearsal checklist stays bounded and syntheti
     "production queue/DLQ ready: Go",
     "retention/deletion runtime ready: Go",
     "is Accepted two-key approval",
-    "support console authority",
+    "support console authority: Go",
+    "support-console authority: Go",
     "production ticket binding: Go",
   ]) {
     assert.ok(
