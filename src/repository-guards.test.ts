@@ -3447,6 +3447,95 @@ test("P2X synthetic practical-use rehearsal checklist stays bounded and syntheti
   );
 });
 
+test("P2X synthetic test-data governance note blocks real-data and runtime expansion", async () => {
+  const [governanceNote, readme] = await Promise.all([
+    readRepoFile("docs/p2x-synthetic-test-data-governance.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedGovernanceNote = governanceNote.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X Synthetic Test-Data Governance",
+    "Issue: #351",
+    "Part of: #347",
+    "Depends on: #350",
+    "Review scope: synthetic or explicitly approved non-production test-data governance for bounded MVP-A/B/C/D rehearsal only",
+    "Data Governance Boundary",
+    "bounded synthetic test data: Allowed",
+    "explicitly approved non-production examples: Allowed",
+    "approval placeholders: Blocked",
+    "real employee data: Blocked",
+    "live tenant data: Blocked",
+    "production credentials: Blocked",
+    "regulated identifiers: Blocked",
+    "sensitive personal information: Blocked",
+    "raw payloads: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Allowed Synthetic Fixture Shape",
+    "fixture name",
+    "scenario intent",
+    "evidence owner",
+    "source classification",
+    "allowed fields",
+    "prohibited aliases",
+    "cleanup evidence",
+    "Approval Placeholder Rejection",
+    "Cleanup Expectations",
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    'npm test -- --test-name-pattern "P2X synthetic test-data governance"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No HR practical-use readiness",
+    "No production-like readiness surface",
+  ]) {
+    assert.ok(
+      normalizedGovernanceNote.includes(
+        requiredText.replace(/\s+/gu, " ").trim(),
+      ),
+      `missing P2X synthetic test-data governance text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live tenant data: Go",
+    "production credentials: Go",
+    "regulated identifiers: Go",
+    "sensitive personal information: Go",
+    "raw payloads: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+    "approval placeholder accepted",
+    "approval placeholder may authorize",
+  ]) {
+    assert.ok(
+      !normalizedGovernanceNote.includes(forbiddenText),
+      `P2X synthetic test-data governance must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    governanceNote,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X synthetic test-data governance must not include workstation-local absolute paths",
+  );
+  assert.match(
+    readme,
+    /\[P2X Synthetic Test-Data Governance\]\(docs\/p2x-synthetic-test-data-governance\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),

@@ -52,6 +52,7 @@ The final P2X-01 cross-suite closeout and next-wave recommendation is recorded i
 The P2X local bounded operator review procedure is recorded in [P2X Local Bounded Operator Runbook](docs/p2x-local-bounded-operator-runbook.md).
 The P2X synthetic practical-use rehearsal checklist is recorded in [P2X Synthetic Practical-Use Rehearsal Checklist](docs/p2x-synthetic-practical-use-rehearsal-checklist.md).
 The P2X cross-flow audit and correlation lookup map is recorded in [P2X Cross-Flow Audit and Correlation Lookup Map](docs/p2x-cross-flow-audit-correlation-lookup-map.md).
+The P2X synthetic test-data governance note is recorded in [P2X Synthetic Test-Data Governance](docs/p2x-synthetic-test-data-governance.md).
 
 ## Baseline structure
 
