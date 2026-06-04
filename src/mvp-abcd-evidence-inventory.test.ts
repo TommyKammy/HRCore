@@ -219,6 +219,30 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
     ],
     "guard must fail closed for prohibited P2X readiness and data-surface claims",
   );
+
+  assert.deepEqual(
+    p2xBoundedPracticalUseArtifactOverclaims(
+      [
+        "The production-like readiness blocker remains in force.",
+        "The production-like readiness review is documentation-only.",
+      ].join("\n"),
+    ),
+    [],
+    "guard must allow non-affirmative P2X surface mentions",
+  );
+
+  assert.deepEqual(
+    p2xBoundedPracticalUseArtifactOverclaims(
+      [
+        "| Surface | Status |",
+        "| --- | --- |",
+        "| real employee data | approved |",
+        "| live IdP/Okta | enabled |",
+      ].join("\n"),
+    ),
+    ["real employee data readiness", "live IdP/Okta readiness"],
+    "guard must fail closed for P2X table-cell status overclaims",
+  );
 });
 
 const p2xBoundedPracticalUseArtifactPaths = [
@@ -237,8 +261,10 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
     }
 
     for (const [subject, pattern] of p2xProhibitedClaimPatterns) {
+      const claimLine =
+        normalizeP2XClaimSegmentForSurfaceStatus(normalizedLine);
       if (
-        pattern.test(normalizedLine) &&
+        pattern.test(claimLine) &&
         !p2xLineBlocksSubject(normalizedLine, subject) &&
         !findings.includes(subject)
       ) {
@@ -248,6 +274,10 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
   }
 
   return findings;
+}
+
+function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
+  return segment.replace(/\|/gu, " ").replace(/\s+/gu, " ").trim();
 }
 
 function p2xClaimSegments(text: string): string[] {
@@ -330,7 +360,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production-like readiness",
-    /\bproduction-like(?:\s+|-)read(?:y|iness)\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b/iu,
+    /\bproduction-like(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bproduction-like(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b/iu,
   ],
   [
     "real employee data readiness",
@@ -342,7 +372,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "unrestricted raw payload readiness",
-    /\b(?:unrestricted\s+)?raw[-\s]+payloads?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|access|viewing)\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^|.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?\b/iu,
+    /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|viewing)\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^|.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
   ],
   [
     "production queue/DLQ readiness",

@@ -188,6 +188,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
 function p2xBoundedPracticalUseArtifactOverclaimSubjects(
   segment: string,
 ): string[] {
+  const claimSegment = normalizeP2XClaimSegmentForSurfaceStatus(segment);
   const prohibitedClaims: Array<[string, RegExp]> = [
     [
       "HR practical-use readiness",
@@ -195,7 +196,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "production-like readiness",
-      /\bproduction-like(?:\s+|-)read(?:y|iness)\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b/iu,
+      /\bproduction-like(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bproduction-like(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b/iu,
     ],
     [
       "real employee data readiness",
@@ -207,7 +208,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "unrestricted raw payload readiness",
-      /\b(?:unrestricted\s+)?raw[-\s]+payloads?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|access|viewing)\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^|.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?\b/iu,
+      /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|viewing)\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^|.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
     ],
     [
       "production queue/DLQ readiness",
@@ -228,8 +229,12 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
   ];
 
   return prohibitedClaims
-    .filter(([, pattern]) => pattern.test(segment))
+    .filter(([, pattern]) => pattern.test(claimSegment))
     .map(([subject]) => subject);
+}
+
+function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
+  return segment.replace(/\|/gu, " ").replace(/\s+/gu, " ").trim();
 }
 
 const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [

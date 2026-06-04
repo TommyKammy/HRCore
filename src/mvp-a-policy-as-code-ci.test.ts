@@ -400,6 +400,60 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
   }
 });
 
+test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const tableStatusPath = "docs/p2x-local-bounded-operator-runbook.md";
+  const benignMentionPath =
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md";
+  await writeFile(
+    join(fixtureCwd, tableStatusPath),
+    [
+      "| Surface | Status |",
+      "| --- | --- |",
+      "| real employee data | approved |",
+      "| live IdP/Okta | enabled |",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, benignMentionPath),
+    [
+      "The production-like readiness blocker remains in force.",
+      "The production-like readiness review is documentation-only.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const subject of [
+    "real employee data readiness",
+    "live IdP/Okta readiness",
+  ]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === tableStatusPath &&
+          finding.subject === subject,
+      ),
+      `expected table-status P2X overclaim to fail for ${subject}`,
+    );
+  }
+
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === benignMentionPath,
+    ),
+    false,
+    "expected non-affirmative production-like readiness mentions to stay allowed",
+  );
+});
+
 test("MVP-A policy-as-code gate carries ADR document identity into status claims", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const findings = checkMvpAPolicyAsCode({
