@@ -160,8 +160,16 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
 
   const claimText = stripReviewMetadata(segment);
   const subjectSource = subjectPattern.source;
-  const blockerBeforeSubject = new RegExp(
-    `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance|No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b[^|.;]{0,500}\\b(?:${subjectSource})\\b`,
+  const sameClauseBlockerBeforeSubject = new RegExp(
+    `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b[^,|.;]{0,180}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const noListBlockerBeforeSubject = new RegExp(
+    `\\bNo\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const blockedShapeBeforeSubject = new RegExp(
+    `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const subjectBeforeBlocker = new RegExp(
@@ -170,7 +178,10 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   );
 
   return (
-    blockerBeforeSubject.test(claimText) || subjectBeforeBlocker.test(claimText)
+    sameClauseBlockerBeforeSubject.test(claimText) ||
+    noListBlockerBeforeSubject.test(claimText) ||
+    blockedShapeBeforeSubject.test(claimText) ||
+    subjectBeforeBlocker.test(claimText)
   );
 }
 
@@ -188,7 +199,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "real employee data readiness",
-      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|processing)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)?|uses?)\b[^|.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
+      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|processing)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)|uses?)\b[^|.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
     ],
     [
       "live IdP/Okta readiness",
@@ -385,7 +396,7 @@ function splitClaimSegments(text: string): string[] {
 
     segments.push(
       ...normalizedProse
-        .split(/(?<!\b\d)\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
+        .split(/(?<!\b\d)\.(?=\s+|$)/u)
         .map((segment) =>
           applyCurrentGateHeadingContext(
             segment.replace(/\s+/gu, " ").trim(),

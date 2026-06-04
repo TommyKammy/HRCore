@@ -195,6 +195,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
     p2xBoundedPracticalUseArtifactOverclaims(
       [
         "HR practical-use readiness: Go.",
+        "No real employee data, but HR practical-use readiness: Go.",
         "production-like ready: Go.",
         "real employee data is ready.",
         "live IdP/Okta operation is enabled.",
@@ -231,15 +232,16 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
   const findings: string[] = [];
   for (const segment of p2xClaimSegments(text)) {
     const normalizedLine = segment.replace(/\s+/gu, " ").trim();
-    if (
-      normalizedLine.length === 0 ||
-      p2xLineIsExplicitlyBlocked(normalizedLine)
-    ) {
+    if (normalizedLine.length === 0) {
       continue;
     }
 
     for (const [subject, pattern] of p2xProhibitedClaimPatterns) {
-      if (pattern.test(normalizedLine) && !findings.includes(subject)) {
+      if (
+        pattern.test(normalizedLine) &&
+        !p2xLineBlocksSubject(normalizedLine, subject) &&
+        !findings.includes(subject)
+      ) {
         findings.push(subject);
       }
     }
@@ -257,7 +259,15 @@ function p2xClaimSegments(text: string): string[] {
       return;
     }
 
-    segments.push(proseLines.join(" "));
+    segments.push(
+      ...proseLines
+        .join(" ")
+        .replace(/\s+/gu, " ")
+        .trim()
+        .split(/(?<!\b\d)\.(?=\s+|$)/u)
+        .map((segment) => segment.replace(/\s+/gu, " ").trim())
+        .filter((segment) => segment.length > 0),
+    );
     proseLines = [];
   };
 
@@ -284,9 +294,32 @@ function p2xClaimSegments(text: string): string[] {
   return segments;
 }
 
-function p2xLineIsExplicitlyBlocked(line: string): boolean {
-  return /\b(?:Blocked|Blocked shape|Generic production acceptance|No|not|not HR practical-use readiness|not production-like readiness|does not require|does not introduce|does not approve|does not define|is introduced by|readiness upgrade|remain(?:s)? blocked)\b/iu.test(
-    line,
+function p2xLineBlocksSubject(line: string, subject: string): boolean {
+  const subjectPattern = p2xBlockedSubjectPatterns.find(
+    ([blockedSubject]) => blockedSubject === subject,
+  )?.[1];
+  if (subjectPattern === undefined) {
+    throw new Error(`blocked subject pattern exists for ${subject}`);
+  }
+
+  const subjectSource = subjectPattern.source;
+  return (
+    new RegExp(
+      `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b[^,|.;]{0,180}\\b(?:${subjectSource})\\b`,
+      "iu",
+    ).test(line) ||
+    new RegExp(
+      `\\bNo\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      "iu",
+    ).test(line) ||
+    new RegExp(
+      `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      "iu",
+    ).test(line) ||
+    new RegExp(
+      `\\b(?:${subjectSource})\\b[^|.;]{0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+      "iu",
+    ).test(line)
   );
 }
 
@@ -301,7 +334,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "real employee data readiness",
-    /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|processing)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)?|uses?)\b[^|.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
+    /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|processing)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)|uses?)\b[^|.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
   ],
   [
     "live IdP/Okta readiness",
@@ -326,6 +359,42 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   [
     "two-key Accepted approval",
     /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
+  ],
+];
+
+const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
+  [
+    "HR practical-use readiness",
+    /HR\s+practical-use(?:\s+|-)read(?:y|iness)|practical-use\s+readiness|ready\s+for\s+HR\s+practical-use/iu,
+  ],
+  [
+    "production-like readiness",
+    /production-like(?:\s+|-)read(?:y|iness)|production-like\s+readiness\s+surface/iu,
+  ],
+  [
+    "real employee data readiness",
+    /real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data/iu,
+  ],
+  [
+    "live IdP/Okta readiness",
+    /live\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live\s+IdP\/Okta/iu,
+  ],
+  [
+    "unrestricted raw payload readiness",
+    /(?:unrestricted\s+)?raw[-\s]+payloads?/iu,
+  ],
+  [
+    "production queue/DLQ readiness",
+    /production\s+(?:queue|DLQ|queue\/DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
+  ],
+  [
+    "retention/deletion runtime readiness",
+    /retention\/deletion(?:\s+runtime)?/iu,
+  ],
+  ["broad export readiness", /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export/iu],
+  [
+    "two-key Accepted approval",
+    /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|Accepted))/iu,
   ],
 ];
 

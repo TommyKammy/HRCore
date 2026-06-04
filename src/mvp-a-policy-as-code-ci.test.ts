@@ -349,7 +349,7 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
     [
       "docs/p2x-local-bounded-operator-runbook.md",
       [
-        "HR practical-use readiness: Go.",
+        "No real employee data, but HR practical-use readiness: Go.",
         "No unrestricted raw payload | production-like readiness: Go.",
         "Unrestricted raw payload is allowed.",
       ].join("\n"),
