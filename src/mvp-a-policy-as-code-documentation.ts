@@ -352,29 +352,36 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
   ];
 
-  const claimsBySubject = new Map<string, string>();
+  const claims: Array<{ subject: string; claimSegment: string }> = [];
+  const claimKeys = new Set<string>();
+  const addClaim = (subject: string, claimSegment: string): void => {
+    const claimKey = `${subject}\u0000${claimSegment}`;
+    if (claimKeys.has(claimKey)) {
+      return;
+    }
+
+    claimKeys.add(claimKey);
+    claims.push({ subject, claimSegment });
+  };
+
   for (const claimSegment of claimSegments) {
     for (const [subject, pattern] of prohibitedClaims) {
-      if (pattern.test(claimSegment) && !claimsBySubject.has(subject)) {
-        claimsBySubject.set(subject, claimSegment);
+      if (pattern.test(claimSegment)) {
+        addClaim(subject, claimSegment);
       }
     }
 
     for (const [subject, subjectPattern] of p2xBlockedSubjectPatterns) {
       if (
         subjectPattern.test(claimSegment) &&
-        hasAffirmativeStatusAttachedToSubject(claimSegment, subjectPattern) &&
-        !claimsBySubject.has(subject)
+        hasAffirmativeStatusAttachedToSubject(claimSegment, subjectPattern)
       ) {
-        claimsBySubject.set(subject, claimSegment);
+        addClaim(subject, claimSegment);
       }
     }
   }
 
-  return [...claimsBySubject].map(([subject, claimSegment]) => ({
-    subject,
-    claimSegment,
-  }));
+  return claims;
 }
 
 function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {

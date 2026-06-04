@@ -531,6 +531,8 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
 
   const pipeTablePath = "docs/p2x-cross-flow-audit-correlation-lookup-map.md";
   const scopedBlockerPath = "docs/p2x-synthetic-test-data-governance.md";
+  const leadingBlockerCellPath =
+    "docs/p2x-01-next-wave-recommendation-closeout.md";
   const approvalMetadataPath = "docs/p2x-hr-practical-use-gap-assessment.md";
   const commaListBypassPath = "docs/p2x-local-bounded-operator-runbook.md";
   await writeFile(
@@ -551,6 +553,14 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
       "| Surface | Status | Note |",
       "| --- | --- | --- |",
       "| real employee data | approved | No real employee data remains blocked |",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, leadingBlockerCellPath),
+    [
+      "| Note | Status | Surface |",
+      "| --- | --- | --- |",
+      "| No real employee data remains blocked | approved | real employee data |",
     ].join("\n"),
   );
   await writeFile(
@@ -579,6 +589,7 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
     [pipeTablePath, "regulated data/credential readiness"],
     [pipeTablePath, "production backup/restore readiness"],
     [scopedBlockerPath, "real employee data readiness"],
+    [leadingBlockerCellPath, "real employee data readiness"],
     [approvalMetadataPath, "legal/privacy acceptance"],
     [approvalMetadataPath, "two-key Accepted approval"],
     [commaListBypassPath, "HR practical-use readiness"],
