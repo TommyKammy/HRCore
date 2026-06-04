@@ -3353,6 +3353,99 @@ test("P2X local bounded operator runbook stays scoped to synthetic local review"
   );
 });
 
+test("P2X synthetic practical-use rehearsal checklist stays bounded and synthetic", async () => {
+  const [checklist, readme] = await Promise.all([
+    readRepoFile("docs/p2x-synthetic-practical-use-rehearsal-checklist.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedChecklist = checklist.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X Synthetic Practical-Use Rehearsal Checklist",
+    "Issue: #349",
+    "Part of: #347",
+    "Depends on: #348",
+    "Review scope: synthetic or explicitly approved non-production rehearsal only",
+    "Checklist Boundary",
+    "bounded synthetic practical-use rehearsal: Allowed",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live IdP/Okta operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Evidence Fields",
+    "actor",
+    "reason",
+    "subject binding",
+    "tenant/environment",
+    "correlation id",
+    "evidence version",
+    "cleanup status",
+    "Rehearsal Checklist",
+    "onboarding",
+    "transfer",
+    "termination",
+    "CSV import/export denial",
+    "local Ops job status",
+    "DLQ retry/replay/ignore/close",
+    "audit lookup",
+    "failed paths",
+    "cleanup",
+    "provider mock projection",
+    "writeback where applicable",
+    "CSV/Ops/DLQ evidence",
+    "Preserved Evidence Boundaries",
+    "P2A/P2B/P2C/P2D accepted evidence boundaries",
+    "P2X-01 blocker matrix",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2X synthetic practical-use rehearsal checklist"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No HR practical-use readiness",
+    "No production-like readiness surface",
+  ]) {
+    assert.ok(
+      normalizedChecklist.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X synthetic rehearsal checklist text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live IdP/Okta operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+    "support console authority",
+    "production ticket binding: Go",
+  ]) {
+    assert.ok(
+      !normalizedChecklist.includes(forbiddenText),
+      `P2X synthetic rehearsal checklist must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    checklist,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X synthetic rehearsal checklist must not include workstation-local absolute paths",
+  );
+  assert.match(
+    readme,
+    /\[P2X Synthetic Practical-Use Rehearsal Checklist\]\(docs\/p2x-synthetic-practical-use-rehearsal-checklist\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),

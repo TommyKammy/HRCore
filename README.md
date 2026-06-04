@@ -50,6 +50,7 @@ The P2X production-like blocker ledger is recorded in [P2X Production-Like Block
 The P2X solo-maintainer governance boundary review is recorded in [P2X Solo-Maintainer Governance Boundary Review](docs/p2x-solo-maintainer-governance-boundary-review.md).
 The final P2X-01 cross-suite closeout and next-wave recommendation is recorded in [P2X-01 Next-Wave Recommendation Closeout](docs/p2x-01-next-wave-recommendation-closeout.md).
 The P2X local bounded operator review procedure is recorded in [P2X Local Bounded Operator Runbook](docs/p2x-local-bounded-operator-runbook.md).
+The P2X synthetic practical-use rehearsal checklist is recorded in [P2X Synthetic Practical-Use Rehearsal Checklist](docs/p2x-synthetic-practical-use-rehearsal-checklist.md).
 
 ## Baseline structure
 
@@ -182,6 +183,10 @@ The P2X local bounded operator review procedure is recorded in [P2X Local Bounde
   operator review map for synthetic or explicitly approved non-production
   MVP-A/B/C/D evidence, failed-path checks, cleanup expectations, and
   repo-relative verification commands.
+- `docs/p2x-synthetic-practical-use-rehearsal-checklist.md` records the P2X
+  synthetic practical-use rehearsal checklist for onboarding, transfer,
+  termination, CSV/Ops/DLQ, audit lookup, failed-path, and cleanup evidence
+  while keeping HR practical-use and production-like readiness blocked.
 
 ## Local verification
 
