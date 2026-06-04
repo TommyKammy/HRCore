@@ -198,12 +198,12 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "No real employee data, but HR practical-use readiness: Go.",
         "production-like ready: Go.",
         "real employee data is ready.",
-        "live IdP/Okta operation is enabled.",
-        "Unrestricted raw payload is allowed.",
-        "production queue/DLQ ready: Go.",
-        "retention/deletion runtime ready: Go.",
+        "live-provider operation is enabled.",
+        "Raw payload access is approved.",
+        "production scheduler/queue/DLQ ready: Go.",
+        "retention/deletion requests are allowed.",
         "broad CSV/export is allowed.",
-        "two-key Accepted approval is complete.",
+        "two-key approval is complete.",
       ].join("\n"),
     ),
     [
@@ -338,7 +338,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /\blive\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive\s+(?:IdP|Okta|provider)\b/iu,
+    /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider)\b/iu,
   ],
   [
     "unrestricted raw payload readiness",
@@ -346,11 +346,11 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production queue/DLQ readiness",
-    /\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b/iu,
+    /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
   ],
   [
     "retention/deletion runtime readiness",
-    /\bretention\/deletion\s+runtime\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bretention\/deletion\s+runtime\b/iu,
+    /\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b/iu,
   ],
   [
     "broad export readiness",
@@ -358,7 +358,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "two-key Accepted approval",
-    /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
+    /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
   ],
 ];
 
@@ -377,7 +377,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /live\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live\s+IdP\/Okta/iu,
+    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta/iu,
   ],
   [
     "unrestricted raw payload readiness",

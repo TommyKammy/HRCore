@@ -351,7 +351,8 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       [
         "No real employee data, but HR practical-use readiness: Go.",
         "No unrestricted raw payload | production-like readiness: Go.",
-        "Unrestricted raw payload is allowed.",
+        "Unrestricted raw payload is enabled.",
+        "Raw payload access is approved.",
       ].join("\n"),
       [
         "HR practical-use readiness",
@@ -361,17 +362,17 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
     ],
     [
       "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
-      "Real-data processing is approved and live Okta operation is enabled.",
+      "Real-data processing is approved and live-provider operation is enabled.",
       ["real employee data readiness", "live IdP/Okta readiness"],
     ],
     [
       "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
-      "Production queue/DLQ ready: Go. Broad CSV/export is allowed.",
+      "Production scheduler/queue/DLQ ready: Go. Broad CSV/export is allowed.",
       ["production queue/DLQ readiness", "broad export readiness"],
     ],
     [
       "docs/p2x-synthetic-test-data-governance.md",
-      "Retention/deletion runtime ready: Go. Two-key Accepted approval is complete.",
+      "Retention/deletion jobs are enabled. Two-key approval is approved.",
       ["retention/deletion runtime readiness", "two-key Accepted approval"],
     ],
   ] as const;

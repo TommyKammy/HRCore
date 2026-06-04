@@ -203,7 +203,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "live IdP/Okta readiness",
-      /\blive\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive\s+(?:IdP|Okta|provider)\b/iu,
+      /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider)\b/iu,
     ],
     [
       "unrestricted raw payload readiness",
@@ -211,11 +211,11 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "production queue/DLQ readiness",
-      /\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b/iu,
+      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
     ],
     [
       "retention/deletion runtime readiness",
-      /\bretention\/deletion\s+runtime\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bretention\/deletion\s+runtime\b/iu,
+      /\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b/iu,
     ],
     [
       "broad export readiness",
@@ -223,7 +223,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "two-key Accepted approval",
-      /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
+      /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
     ],
   ];
 
@@ -247,7 +247,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /live\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live\s+IdP\/Okta/iu,
+    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta/iu,
   ],
   [
     "unrestricted raw payload readiness",
