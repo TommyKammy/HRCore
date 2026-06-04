@@ -107,6 +107,17 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     ),
     "expected P0-GOV-01 closeout to be scanned by policy-as-code",
   );
+  for (const path of [
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-synthetic-test-data-governance.md",
+  ] as const) {
+    assert.ok(
+      mvpAPolicyAsCodeDocumentationPaths.includes(path),
+      `expected ${path} to be scanned by policy-as-code`,
+    );
+  }
   assert.deepEqual(
     mvpAPolicyAsCodeDocumentationPaths.filter((path) =>
       path.startsWith("docs/adr/"),
@@ -329,6 +340,72 @@ test("MVP-A policy-as-code gate scans ADR-path table rows as gate claims", async
       `expected ${subject} ADR-path table overclaim to fail the policy gate`,
     );
   }
+});
+
+test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifacts", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  const p2xFixtureClaims = [
+    [
+      "docs/p2x-local-bounded-operator-runbook.md",
+      "HR practical-use readiness: Go.",
+      "HR practical-use readiness",
+    ],
+    [
+      "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+      "Real employee data is ready and live Okta operation is enabled.",
+      "real employee data readiness",
+    ],
+    [
+      "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+      "Production queue/DLQ ready: Go. Broad CSV export is allowed.",
+      "production queue/DLQ readiness",
+    ],
+    [
+      "docs/p2x-synthetic-test-data-governance.md",
+      "Retention/deletion runtime ready: Go. Two-key Accepted approval is complete.",
+      "retention/deletion runtime readiness",
+    ],
+  ] as const;
+
+  for (const [path, text] of p2xFixtureClaims) {
+    await writeFile(join(fixtureCwd, path), text);
+  }
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, , subject] of p2xFixtureClaims) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === path &&
+          finding.subject === subject,
+      ),
+      `expected loader-read ${path} overclaim to fail for ${subject}`,
+    );
+  }
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path ===
+          "docs/p2x-cross-flow-audit-correlation-lookup-map.md" &&
+        finding.subject === "broad export readiness",
+    ),
+    "expected broad export readiness overclaim to fail",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === "docs/p2x-synthetic-test-data-governance.md" &&
+        finding.subject === "two-key Accepted approval",
+    ),
+    "expected two-key Accepted approval overclaim to fail",
+  );
 });
 
 test("MVP-A policy-as-code gate carries ADR document identity into status claims", async () => {

@@ -56,6 +56,13 @@ const requiredNonProductionDocumentationPaths = [
   "docs/mvp-a-onboarding-non-production-data-gate.md",
 ] as const;
 
+const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-local-bounded-operator-runbook.md",
+  "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+  "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+  "docs/p2x-synthetic-test-data-governance.md",
+] as const;
+
 export function collectDocumentationFindings(
   inputs: MvpAPolicyAsCodeInputs,
 ): MvpAPolicyAsCodeFinding[] {
@@ -94,8 +101,97 @@ export function collectDocumentationFindings(
   }
 
   findings.push(...collectAffectedReadinessGateFindings(inputs));
+  findings.push(...collectP2XBoundedPracticalUseArtifactFindings(inputs));
 
   return findings;
+}
+
+function collectP2XBoundedPracticalUseArtifactFindings(
+  inputs: MvpAPolicyAsCodeInputs,
+): MvpAPolicyAsCodeFinding[] {
+  const findings: MvpAPolicyAsCodeFinding[] = [];
+
+  for (const path of p2xBoundedPracticalUseArtifactPaths) {
+    const text = inputs.documentationTextByPath.get(path);
+    if (text === undefined) {
+      findings.push({
+        surface: "documentation",
+        path,
+        subject: "P2X bounded practical-use artifact",
+        message:
+          "P2X bounded practical-use artifact must be scanned by policy-as-code",
+      });
+      continue;
+    }
+
+    for (const rawSegment of splitClaimSegments(text)) {
+      const segment = stripReviewMetadata(rawSegment);
+      const subject = p2xBoundedPracticalUseArtifactOverclaimSubject(segment);
+      if (
+        subject === undefined ||
+        isP2XBoundedPracticalUseArtifactClaimBlocked(rawSegment) ||
+        isExplicitlyBlockedOrDeferred(rawSegment)
+      ) {
+        continue;
+      }
+
+      findings.push({
+        surface: "documentation",
+        path,
+        subject,
+        message:
+          "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
+      });
+    }
+  }
+
+  return findings;
+}
+
+function isP2XBoundedPracticalUseArtifactClaimBlocked(
+  segment: string,
+): boolean {
+  return /(?:^|[\s|:;-])Blocked\b|\bBlocked shape\b|\bGeneric production acceptance\b|\bNo\b[^|.;]{0,320}\b(?:real employee data|live IdP\/Okta|unrestricted raw payload|broad CSV export|production queue\/DLQ|retention\/deletion runtime|two-key\s+Accepted claim|HR practical-use readiness|production-like readiness)\b|\b(?:does not|do not|must not|not|remain(?:s)? blocked)\b[^|.;]{0,180}\b(?:HR practical-use readiness|production-like readiness|real employee data|live IdP|Okta|production queue|DLQ|retention\/deletion runtime|broad CSV export|two-key\s+Accepted)\b/iu.test(
+    segment,
+  );
+}
+
+function p2xBoundedPracticalUseArtifactOverclaimSubject(
+  segment: string,
+): string | undefined {
+  const prohibitedClaims: Array<[string, RegExp]> = [
+    [
+      "HR practical-use readiness",
+      /\bHR\s+practical-use(?:\s+|-)read(?:y|iness)\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bpractical-use\s+readiness\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bready\s+for\s+HR\s+practical-use\b/iu,
+    ],
+    ["production-like readiness", /\bproduction-like(?:\s+|-)ready\b/iu],
+    [
+      "real employee data readiness",
+      /\breal\s+employee\s+data\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\breal\s+employee\s+data\b/iu,
+    ],
+    [
+      "live IdP/Okta readiness",
+      /\blive\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive\s+(?:IdP|Okta|provider)\b/iu,
+    ],
+    [
+      "production queue/DLQ readiness",
+      /\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b/iu,
+    ],
+    [
+      "retention/deletion runtime readiness",
+      /\bretention\/deletion\s+runtime\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bretention\/deletion\s+runtime\b/iu,
+    ],
+    [
+      "broad export readiness",
+      /\bbroad\s+(?:CSV\s+)?export\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bbroad\s+(?:CSV\s+)?export\b/iu,
+    ],
+    [
+      "two-key Accepted approval",
+      /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
+    ],
+  ];
+
+  return prohibitedClaims.find(([, pattern]) => pattern.test(segment))?.[0];
 }
 
 function collectAffectedReadinessGateFindings(

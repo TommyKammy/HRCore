@@ -129,6 +129,161 @@ test("P2X production-like blocker matrix keeps stronger readiness blocked", asyn
   assert.doesNotMatch(matrix, /HR practical-use ready:\s*Go/u);
 });
 
+test("P2X bounded practical-use artifacts keep stronger readiness blocked", async () => {
+  const artifacts = await Promise.all(
+    p2xBoundedPracticalUseArtifactPaths.map(async (path) => ({
+      path,
+      text: await readRepoFile(path),
+    })),
+  );
+
+  for (const { path, text } of artifacts) {
+    const normalizedText = text.replace(/\s+/gu, " ");
+    assert.match(
+      normalizedText,
+      /No real employee data/u,
+      `${path} must preserve the real employee data blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No live IdP\/Okta/u,
+      `${path} must preserve the live IdP/Okta blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No unrestricted raw payload/u,
+      `${path} must preserve the unrestricted raw payload blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No broad CSV export/u,
+      `${path} must preserve the broad CSV export blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No production queue\/DLQ/u,
+      `${path} must preserve the production queue/DLQ blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No retention\/deletion runtime/u,
+      `${path} must preserve the retention/deletion blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No two-key\s+Accepted claim/u,
+      `${path} must preserve the two-key Accepted blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No HR practical-use readiness/u,
+      `${path} must preserve the HR practical-use blocker`,
+    );
+    assert.match(
+      normalizedText,
+      /No production-like readiness/u,
+      `${path} must preserve the production-like blocker`,
+    );
+    assert.deepEqual(
+      p2xBoundedPracticalUseArtifactOverclaims(text),
+      [],
+      `${path} must not contain stronger readiness overclaims`,
+    );
+  }
+
+  assert.deepEqual(
+    p2xBoundedPracticalUseArtifactOverclaims(
+      [
+        "HR practical-use readiness: Go.",
+        "production-like ready: Go.",
+        "real employee data is ready.",
+        "live IdP/Okta operation is enabled.",
+        "production queue/DLQ ready: Go.",
+        "retention/deletion runtime ready: Go.",
+        "broad CSV export is allowed.",
+        "two-key Accepted approval is complete.",
+      ].join("\n"),
+    ),
+    [
+      "HR practical-use readiness",
+      "production-like readiness",
+      "real employee data readiness",
+      "live IdP/Okta readiness",
+      "production queue/DLQ readiness",
+      "retention/deletion runtime readiness",
+      "broad export readiness",
+      "two-key Accepted approval",
+    ],
+    "guard must fail closed for prohibited P2X readiness and data-surface claims",
+  );
+});
+
+const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-local-bounded-operator-runbook.md",
+  "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+  "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+  "docs/p2x-synthetic-test-data-governance.md",
+] as const;
+
+function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
+  const findings: string[] = [];
+  for (const line of text.split(/\r?\n/u)) {
+    const normalizedLine = line.replace(/\s+/gu, " ").trim();
+    if (
+      normalizedLine.length === 0 ||
+      p2xLineIsExplicitlyBlocked(normalizedLine)
+    ) {
+      continue;
+    }
+
+    for (const [subject, pattern] of p2xProhibitedClaimPatterns) {
+      if (pattern.test(normalizedLine) && !findings.includes(subject)) {
+        findings.push(subject);
+      }
+    }
+  }
+
+  return findings;
+}
+
+function p2xLineIsExplicitlyBlocked(line: string): boolean {
+  return /\b(?:Blocked|Blocked shape|Generic production acceptance|No|not|not HR practical-use readiness|not production-like readiness|does not require|does not introduce|does not approve|is introduced by|readiness upgrade|remain(?:s)? blocked)\b/iu.test(
+    line,
+  );
+}
+
+const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
+  [
+    "HR practical-use readiness",
+    /\bHR\s+practical-use(?:\s+|-)read(?:y|iness)\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bpractical-use\s+readiness\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bready\s+for\s+HR\s+practical-use\b/iu,
+  ],
+  ["production-like readiness", /\bproduction-like(?:\s+|-)ready\b/iu],
+  [
+    "real employee data readiness",
+    /\breal\s+employee\s+data\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\breal\s+employee\s+data\b/iu,
+  ],
+  [
+    "live IdP/Okta readiness",
+    /\blive\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive\s+(?:IdP|Okta|provider)\b/iu,
+  ],
+  [
+    "production queue/DLQ readiness",
+    /\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bproduction\s+(?:queue|DLQ|queue\/DLQ)\b/iu,
+  ],
+  [
+    "retention/deletion runtime readiness",
+    /\bretention\/deletion\s+runtime\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bretention\/deletion\s+runtime\b/iu,
+  ],
+  [
+    "broad export readiness",
+    /\bbroad\s+(?:CSV\s+)?export\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bbroad\s+(?:CSV\s+)?export\b/iu,
+  ],
+  [
+    "two-key Accepted approval",
+    /\btwo-key\b[^|.;]{0,60}\b(?:Accepted|approval\s+(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^|.;]{0,60}\btwo-key\s+approval\b/iu,
+  ],
+];
+
 function gateStatusClaimsFromProductionLikeBlockerMatrix(
   matrix: string,
 ): string[] {
