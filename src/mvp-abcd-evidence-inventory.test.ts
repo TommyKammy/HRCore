@@ -197,6 +197,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "HR practical-use readiness: Go.",
         "No real employee data, but HR practical-use readiness: Go.",
         "No real employee data but practical-use readiness is Go.",
+        "HR practical-use readiness: Go, but real employee data remains blocked.",
         "production-like ready: Go.",
         "real employee data is ready.",
         "live-provider operation is enabled.",
@@ -231,6 +232,9 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "The production-like readiness blocker remains in force.",
         "The production-like readiness review is documentation-only.",
         "Raw payload viewing remains closed.",
+        "| Allowed bounded surface | Blocked surface |",
+        "| --- | --- |",
+        "| explicitly approved non-production data | real employee data |",
       ].join("\n"),
     ),
     [],
@@ -267,10 +271,9 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
     }
 
     for (const [subject, pattern] of p2xProhibitedClaimPatterns) {
-      const claimLine =
-        normalizeP2XClaimSegmentForSurfaceStatus(normalizedLine);
+      const claimSegments = p2xClaimSegmentsForSurfaceStatus(normalizedLine);
       if (
-        pattern.test(claimLine) &&
+        claimSegments.some((claimSegment) => pattern.test(claimSegment)) &&
         !p2xLineBlocksSubject(normalizedLine, subject) &&
         !findings.includes(subject)
       ) {
@@ -284,6 +287,48 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
 
 function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
   return segment.replace(/\|/gu, " ").replace(/\s+/gu, " ").trim();
+}
+
+function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
+  if (!isTableRowSegment(segment)) {
+    return [normalizeP2XClaimSegmentForSurfaceStatus(segment)];
+  }
+
+  const cells = parseMarkdownTableCells(segment).filter(
+    (cell) => cell.length > 0,
+  );
+  const claimSegments = [...cells];
+  for (let index = 0; index < cells.length - 1; index += 1) {
+    const leftCell = cells[index];
+    const rightCell = cells[index + 1];
+    if (isSimpleP2XAffirmativeStatusCell(rightCell)) {
+      claimSegments.push(`${leftCell} ${rightCell}`);
+    }
+    if (isSimpleP2XAffirmativeStatusCell(leftCell)) {
+      claimSegments.push(`${leftCell} ${rightCell}`);
+    }
+  }
+
+  return claimSegments.map(normalizeP2XClaimSegmentForSurfaceStatus);
+}
+
+function isTableRowSegment(segment: string): boolean {
+  return /^\s*\|.*\|\s*$/u.test(segment);
+}
+
+function parseMarkdownTableCells(line: string): string[] {
+  const trimmedLine = line.trim();
+  const content =
+    trimmedLine.startsWith("|") && trimmedLine.endsWith("|")
+      ? trimmedLine.slice(1, -1)
+      : trimmedLine;
+  return content.split("|").map((cell) => cell.replace(/\s+/gu, " ").trim());
+}
+
+function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
+  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)$/iu.test(
+    cell.replace(/\s+/gu, " ").trim(),
+  );
 }
 
 function p2xClaimSegments(text: string): string[] {
@@ -353,7 +398,7 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
       "iu",
     ).test(line) ||
     new RegExp(
-      `\\b(?:${subjectSource})\\b[^|.;]{0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+      `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
       "iu",
     ).test(line)
   );

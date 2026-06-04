@@ -173,7 +173,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const subjectBeforeBlocker = new RegExp(
-    `\\b(?:${subjectSource})\\b[^|.;]{0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+    `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
   );
 
@@ -188,7 +188,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
 function p2xBoundedPracticalUseArtifactOverclaimSubjects(
   segment: string,
 ): string[] {
-  const claimSegment = normalizeP2XClaimSegmentForSurfaceStatus(segment);
+  const claimSegments = p2xClaimSegmentsForSurfaceStatus(segment);
   const prohibitedClaims: Array<[string, RegExp]> = [
     [
       "HR practical-use readiness",
@@ -229,8 +229,39 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
   ];
 
   return prohibitedClaims
-    .filter(([, pattern]) => pattern.test(claimSegment))
+    .filter(([, pattern]) =>
+      claimSegments.some((claimSegment) => pattern.test(claimSegment)),
+    )
     .map(([subject]) => subject);
+}
+
+function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
+  if (!isTableRowSegment(segment)) {
+    return [normalizeP2XClaimSegmentForSurfaceStatus(segment)];
+  }
+
+  const cells = parseMarkdownTableCells(segment).filter(
+    (cell) => cell.length > 0,
+  );
+  const claimSegments = [...cells];
+  for (let index = 0; index < cells.length - 1; index += 1) {
+    const leftCell = cells[index];
+    const rightCell = cells[index + 1];
+    if (isSimpleP2XAffirmativeStatusCell(rightCell)) {
+      claimSegments.push(`${leftCell} ${rightCell}`);
+    }
+    if (isSimpleP2XAffirmativeStatusCell(leftCell)) {
+      claimSegments.push(`${leftCell} ${rightCell}`);
+    }
+  }
+
+  return claimSegments.map(normalizeP2XClaimSegmentForSurfaceStatus);
+}
+
+function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
+  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)$/iu.test(
+    cell.replace(/\s+/gu, " ").trim(),
+  );
 }
 
 function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
@@ -399,17 +430,36 @@ function splitClaimSegments(text: string): string[] {
       return;
     }
 
-    segments.push(
-      ...normalizedProse
-        .split(/(?<!\b\d)\.(?=\s+|$)/u)
-        .map((segment) =>
-          applyCurrentGateHeadingContext(
-            segment.replace(/\s+/gu, " ").trim(),
-            currentGateHeading?.text,
-          ),
-        )
-        .filter((segment) => segment.length > 0),
-    );
+    const proseSegments = normalizedProse
+      .split(/(?<!\b\d)\.(?=\s+|$)/u)
+      .map((segment) => segment.replace(/\s+/gu, " ").trim())
+      .filter((segment) => segment.length > 0);
+    let pendingGateSentenceContext: string | undefined = undefined;
+    for (const proseSegment of proseSegments) {
+      let contextualSegment = applyCurrentGateHeadingContext(
+        proseSegment,
+        currentGateHeading?.text,
+      );
+      const segmentMentionsAffectedGate = affectedReadinessGateClaims.some(
+        (gate) => mentionsAffectedGate(contextualSegment, gate.aliases),
+      );
+      if (
+        pendingGateSentenceContext !== undefined &&
+        !segmentMentionsAffectedGate &&
+        isStatusOrReadinessSegment(contextualSegment)
+      ) {
+        contextualSegment = `${pendingGateSentenceContext} ${contextualSegment}`;
+        pendingGateSentenceContext = undefined;
+      } else {
+        pendingGateSentenceContext =
+          segmentMentionsAffectedGate &&
+          !isStatusOrReadinessSegment(contextualSegment)
+            ? contextualSegment
+            : undefined;
+      }
+
+      segments.push(contextualSegment);
+    }
   };
 
   for (const line of text.split(/\r?\n/u)) {

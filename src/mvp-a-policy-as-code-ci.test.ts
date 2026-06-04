@@ -351,6 +351,7 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       [
         "No real employee data, but HR practical-use readiness: Go.",
         "No real employee data but practical-use readiness is Go.",
+        "HR practical-use readiness: Go, but real employee data remains blocked.",
         "No unrestricted raw payload | production-like readiness: Go.",
         "Unrestricted raw payload is enabled.",
         "Raw payload access is approved.",
@@ -429,6 +430,9 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
       "The production-like readiness blocker remains in force.",
       "The production-like readiness review is documentation-only.",
       "Raw payload viewing remains closed.",
+      "| Allowed bounded surface | Blocked surface |",
+      "| --- | --- |",
+      "| explicitly approved non-production data | real employee data |",
     ].join("\n"),
   );
 
@@ -459,6 +463,28 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
     ),
     false,
     "expected non-affirmative P2X readiness mentions to stay allowed",
+  );
+});
+
+test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-lowercase-readiness-status-context.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [path, "P0-R05 / #11. production-like ready: Go."],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected lowercase production-like status sentence to keep gate context",
   );
 });
 
