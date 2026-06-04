@@ -597,6 +597,72 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
   }
 });
 
+test("MVP-A policy-as-code P2X guard covers current review-thread probes", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const currentReviewProbeClaims = [
+    [
+      "docs/p2x-01-next-wave-recommendation-closeout.md",
+      [
+        "HR practical-use readiness: Go.",
+        "Production backup is approved.",
+        "Production restore policy is ready.",
+      ].join("\n"),
+      ["HR practical-use readiness", "production backup/restore readiness"],
+    ],
+    [
+      "docs/p2x-hr-practical-use-gap-assessment.md",
+      [
+        "No real employee data, but HR practical-use readiness: Go.",
+        "Raw payload access is approved.",
+      ].join("\n"),
+      ["HR practical-use readiness", "unrestricted raw payload readiness"],
+    ],
+    [
+      "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+      [
+        "Surface | Evidence | Status",
+        "--- | --- | ---",
+        "support-console custody | bounded note | available",
+        "regulated identifiers | bounded note | available",
+      ].join("\n"),
+      ["support-console readiness", "regulated data/credential readiness"],
+    ],
+    [
+      "docs/p2x-synthetic-test-data-governance.md",
+      [
+        "| Surface | Evidence | Status |",
+        "| --- | --- | --- |",
+        "| production credentials | bounded note | available |",
+      ].join("\n"),
+      ["regulated data/credential readiness"],
+    ],
+  ] as const;
+
+  for (const [path, text] of currentReviewProbeClaims) {
+    await writeFile(join(fixtureCwd, path), text);
+  }
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, , expectedSubjects] of currentReviewProbeClaims) {
+    for (const subject of expectedSubjects) {
+      assert.ok(
+        findings.some(
+          (finding) =>
+            finding.surface === "documentation" &&
+            finding.path === path &&
+            finding.subject === subject,
+        ),
+        `expected current review probe ${path} to fail for ${subject}`,
+      );
+    }
+  }
+});
+
 test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const path = "docs/fixture-lowercase-readiness-status-context.md";
