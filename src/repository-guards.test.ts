@@ -3194,6 +3194,83 @@ test("P2X solo-maintainer governance boundary review keeps remaining gates block
   );
 });
 
+test("P2X final closeout recommends the next bounded wave without stronger-readiness overclaim", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/p2x-01-next-wave-recommendation-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X-01 Next-Wave Recommendation Closeout",
+    "Issue: #341",
+    "Part of: #336",
+    "Depends on: #340",
+    "Final verdict: Accepted as cross-suite assessment only",
+    "Stronger-readiness claims remain blocked",
+    "Child Output Review",
+    "#337",
+    "#338",
+    "#339",
+    "#340",
+    "Safest next runnable wave: bounded practical-use follow-up",
+    "Alternative 1: production-like prerequisite wave",
+    "Alternative 2: governance/two-key evidence wave",
+    "Alternative 3: narrow cleanup wave",
+    "Recommended first child",
+    "local bounded operator runbook",
+    "Residual Risks",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2X final closeout"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No production-like readiness surface",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X final closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2X final closeout must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    closeout,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X final closeout must not include workstation-local absolute paths",
+  );
+  assert.match(
+    readme,
+    /\[P2X-01 Next-Wave Recommendation Closeout\]\(docs\/p2x-01-next-wave-recommendation-closeout\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
