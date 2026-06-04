@@ -45,6 +45,7 @@ The final P2C-02 behavior-preserving termination refactor wave closeout is recor
 The bounded dry-run-only MVP-D CSV import contract is recorded in [MVP-D CSV Import Contract](docs/mvp-d-csv-import-contract.md).
 The final P2D-01 bounded/non-production MVP-D CSV/Ops/DLQ readiness review closeout is recorded in [MVP-D P2D-01 Readiness Review Closeout](docs/mvp-d-p2d-01-readiness-review-closeout.md).
 The final P2D-02 behavior-preserving MVP-D CSV/Ops/DLQ refactor wave closeout is recorded in [MVP-D P2D-02 Refactor Wave Closeout](docs/mvp-d-p2d-02-refactor-wave-closeout.md).
+The P2X bounded/non-production HR practical-use gap assessment is recorded in [P2X HR Practical-Use Gap Assessment](docs/p2x-hr-practical-use-gap-assessment.md).
 
 ## Baseline structure
 
