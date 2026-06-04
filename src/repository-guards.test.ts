@@ -3536,6 +3536,89 @@ test("P2X synthetic test-data governance note blocks real-data and runtime expan
   );
 });
 
+test("P2X-02 independent closeout accepts bounded follow-up without readiness overclaim", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/p2x-02-bounded-practical-use-follow-up-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X-02 Bounded Practical-Use Follow-Up Closeout",
+    "Issue: #353",
+    "Part of: #347",
+    "Depends on: #352",
+    "Final verdict: Accepted as bounded practical-use follow-up evidence only",
+    "HR practical-use readiness remains blocked",
+    "production-like readiness remains blocked",
+    "Child Output Review",
+    "#348",
+    "#349",
+    "#350",
+    "#351",
+    "#352",
+    "Guard Coverage Review",
+    "bounded practical-use follow-up: Accepted",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live IdP/Okta operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Next Safest Wave",
+    "Recommended next wave: bounded closeout synchronization and narrow cleanup",
+    "Alternative 1: production-like prerequisite wave",
+    "Alternative 2: governance/two-key evidence wave",
+    "Alternative 3: bounded practical-use follow-up extension",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2X-02 independent closeout"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No HR practical-use readiness",
+    "No production-like readiness surface",
+    "Epic Update Boundary",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-02 closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live IdP/Okta operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+    "real employee data approved",
+    "live-provider ready",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2X-02 closeout must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    closeout,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X-02 closeout must not include workstation-local absolute paths",
+  );
+  assert.match(
+    readme,
+    /\[P2X-02 Bounded Practical-Use Follow-Up Closeout\]\(docs\/p2x-02-bounded-practical-use-follow-up-closeout\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
