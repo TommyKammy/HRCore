@@ -56,6 +56,15 @@ const requiredNonProductionDocumentationPaths = [
   "docs/mvp-a-onboarding-non-production-data-gate.md",
 ] as const;
 
+const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-01-next-wave-recommendation-closeout.md",
+  "docs/p2x-hr-practical-use-gap-assessment.md",
+  "docs/p2x-local-bounded-operator-runbook.md",
+  "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+  "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+  "docs/p2x-synthetic-test-data-governance.md",
+] as const;
+
 export function collectDocumentationFindings(
   inputs: MvpAPolicyAsCodeInputs,
 ): MvpAPolicyAsCodeFinding[] {
@@ -94,9 +103,395 @@ export function collectDocumentationFindings(
   }
 
   findings.push(...collectAffectedReadinessGateFindings(inputs));
+  findings.push(...collectP2XBoundedPracticalUseArtifactFindings(inputs));
 
   return findings;
 }
+
+function collectP2XBoundedPracticalUseArtifactFindings(
+  inputs: MvpAPolicyAsCodeInputs,
+): MvpAPolicyAsCodeFinding[] {
+  const findings: MvpAPolicyAsCodeFinding[] = [];
+
+  for (const path of p2xBoundedPracticalUseArtifactPaths) {
+    const text = inputs.documentationTextByPath.get(path);
+    if (text === undefined) {
+      findings.push({
+        surface: "documentation",
+        path,
+        subject: "P2X bounded practical-use artifact",
+        message:
+          "P2X bounded practical-use artifact must be scanned by policy-as-code",
+      });
+      continue;
+    }
+
+    for (const rawSegment of splitClaimSegments(text)) {
+      for (const {
+        subject,
+        claimSegment,
+      } of p2xBoundedPracticalUseArtifactOverclaimClaims(rawSegment)) {
+        if (
+          isP2XBoundedPracticalUseArtifactClaimBlocked(claimSegment, subject)
+        ) {
+          continue;
+        }
+
+        findings.push({
+          surface: "documentation",
+          path,
+          subject,
+          message:
+            "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
+        });
+      }
+    }
+  }
+
+  return findings;
+}
+
+function isP2XBoundedPracticalUseArtifactClaimBlocked(
+  segment: string,
+  subject: string,
+): boolean {
+  const subjectPattern = p2xBlockedSubjectPatterns.find(
+    ([blockedSubject]) => blockedSubject === subject,
+  )?.[1];
+  if (subjectPattern === undefined) {
+    return false;
+  }
+
+  const claimText = stripReviewMetadata(segment);
+  const subjectSource = subjectPattern.source;
+  const sameClauseBlockerBeforeSubject = new RegExp(
+    `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const noListBlockerBeforeSubject = new RegExp(
+    `\\bNo\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const doNotUseListBlockerBeforeSubject = new RegExp(
+    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const sameClauseBlockedShapeBeforeSubject = new RegExp(
+    `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const blockedShapeBeforeSubject = new RegExp(
+    `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const sameClauseCannotClaimBeforeSubject = new RegExp(
+    `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const cannotClaimListBlockerBeforeSubject = new RegExp(
+    `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const subjectBeforeBlocker = new RegExp(
+    `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+    "iu",
+  );
+
+  if (
+    sameClauseBlockerBeforeSubject.test(claimText) ||
+    sameClauseBlockedShapeBeforeSubject.test(claimText) ||
+    sameClauseCannotClaimBeforeSubject.test(claimText) ||
+    subjectBeforeBlocker.test(claimText)
+  ) {
+    return true;
+  }
+
+  if (hasAffirmativeStatusAttachedToSubject(claimText, subjectPattern)) {
+    return false;
+  }
+
+  return (
+    noListBlockerBeforeSubject.test(claimText) ||
+    doNotUseListBlockerBeforeSubject.test(claimText) ||
+    blockedShapeBeforeSubject.test(claimText) ||
+    cannotClaimListBlockerBeforeSubject.test(claimText)
+  );
+}
+
+function hasAffirmativeStatusAttachedToSubject(
+  segment: string,
+  subjectPattern: RegExp,
+): boolean {
+  const globalSubjectPattern = new RegExp(subjectPattern.source, "giu");
+  for (const match of segment.matchAll(globalSubjectPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const subjectStartIndex = match.index;
+    const subjectEndIndex = subjectStartIndex + match[0].length;
+    const previousBreakIndex = Math.max(
+      segment.lastIndexOf(",", subjectStartIndex),
+      segment.lastIndexOf("|", subjectStartIndex),
+      segment.lastIndexOf(";", subjectStartIndex),
+      segment.lastIndexOf(".", subjectStartIndex),
+    );
+    const nextBreakIndexes = [",", "|", ";", "."]
+      .map((breakChar) => segment.indexOf(breakChar, subjectEndIndex))
+      .filter((index) => index !== -1);
+    const nextBreakIndex =
+      nextBreakIndexes.length === 0
+        ? segment.length
+        : Math.min(...nextBreakIndexes);
+    const subjectPrefix = segment.slice(
+      previousBreakIndex + 1,
+      subjectStartIndex,
+    );
+    const subjectSuffix = segment.slice(subjectEndIndex, nextBreakIndex);
+
+    if (hasAffirmativeStatusSuffix(subjectSuffix)) {
+      return true;
+    }
+
+    if (hasAffirmativeStatusPrefix(subjectPrefix)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasAffirmativeStatusSuffix(value: string): boolean {
+  return /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
+    value,
+  );
+}
+
+function hasAffirmativeStatusPrefix(value: string): boolean {
+  return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+    value,
+  );
+}
+
+function p2xBoundedPracticalUseArtifactOverclaimClaims(
+  segment: string,
+): Array<{ subject: string; claimSegment: string }> {
+  const claimSegments = p2xClaimSegmentsForSurfaceStatus(segment);
+  const prohibitedClaims: Array<[string, RegExp]> = [
+    [
+      "HR practical-use readiness",
+      /\bHR\s+practical-use(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bHR\s+practical-use(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b|\bpractical-use\s+readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b|\bready\s+for\s+HR\s+practical-use\b/iu,
+    ],
+    [
+      "production-like readiness",
+      /\bproduction-like(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bproduction-like(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b/iu,
+    ],
+    [
+      "real employee data readiness",
+      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
+    ],
+    [
+      "live IdP/Okta readiness",
+      /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
+    ],
+    [
+      "unrestricted raw payload readiness",
+      /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
+    ],
+    [
+      "production queue/DLQ readiness",
+      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b/iu,
+    ],
+    [
+      "production ops readiness",
+      /\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b/iu,
+    ],
+    [
+      "production authorization/RLS readiness",
+      /\bproduction\s+authorization\/RLS\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+authorization\/RLS\b/iu,
+    ],
+    [
+      "production audit immutability readiness",
+      /\bproduction\s+audit\s+immutability\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+audit\s+immutability\b/iu,
+    ],
+    [
+      "production audit/archive readiness",
+      /\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b/iu,
+    ],
+    [
+      "production backup/restore readiness",
+      /\b(?:production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval))\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|processing|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|processing|complete)\b[^.;]{0,60}\b(?:production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval))\b/iu,
+    ],
+    [
+      "support-console readiness",
+      /\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b/iu,
+    ],
+    [
+      "regulated data/credential readiness",
+      /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
+    ],
+    [
+      "production infrastructure access readiness",
+      /\b(?:production\s+(?:database|DB)\s+access|cloud\s+accounts?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|uses?)\b[^.;]{0,60}\b(?:production\s+(?:database|DB)\s+access|cloud\s+accounts?)\b/iu,
+    ],
+    [
+      "retention/deletion runtime readiness",
+      /\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b/iu,
+    ],
+    [
+      "broad export readiness",
+      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|go|enabled|available)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b/iu,
+    ],
+    [
+      "legal/privacy acceptance",
+      /\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b/iu,
+    ],
+    [
+      "two-key Accepted approval",
+      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go)|acceptance(?:\s+(?:is\s+)?(?:accepted|approved|complete|ready|go|enabled)|\s*:\s*(?:Go|Accepted|Yes|ready|allowed|approved|enabled)))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+(?:approval|acceptance)\b/iu,
+    ],
+  ];
+
+  const claims: Array<{ subject: string; claimSegment: string }> = [];
+  const claimKeys = new Set<string>();
+  const addClaim = (subject: string, claimSegment: string): void => {
+    const claimKey = `${subject}\u0000${claimSegment}`;
+    if (claimKeys.has(claimKey)) {
+      return;
+    }
+
+    claimKeys.add(claimKey);
+    claims.push({ subject, claimSegment });
+  };
+
+  for (const claimSegment of claimSegments) {
+    for (const [subject, pattern] of prohibitedClaims) {
+      if (pattern.test(claimSegment)) {
+        addClaim(subject, claimSegment);
+      }
+    }
+
+    for (const [subject, subjectPattern] of p2xBlockedSubjectPatterns) {
+      if (
+        subjectPattern.test(claimSegment) &&
+        hasAffirmativeStatusAttachedToSubject(claimSegment, subjectPattern)
+      ) {
+        addClaim(subject, claimSegment);
+      }
+    }
+  }
+
+  return claims;
+}
+
+function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
+  if (!isTableRowSegment(segment)) {
+    return [normalizeP2XClaimSegmentForSurfaceStatus(segment)];
+  }
+
+  const cells = parseMarkdownTableCells(segment).filter(
+    (cell) => cell.length > 0,
+  );
+  const claimSegments = [...cells];
+  for (const statusCell of cells) {
+    if (!isSimpleP2XAffirmativeStatusCell(statusCell)) {
+      continue;
+    }
+    for (const subjectCell of cells) {
+      if (
+        subjectCell === statusCell ||
+        isSimpleP2XAffirmativeStatusCell(subjectCell)
+      ) {
+        continue;
+      }
+      claimSegments.push(`${subjectCell} ${statusCell}`);
+    }
+  }
+
+  return claimSegments.map(normalizeP2XClaimSegmentForSurfaceStatus);
+}
+
+function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
+  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)$/iu.test(
+    cell.replace(/\s+/gu, " ").trim(),
+  );
+}
+
+function normalizeP2XClaimSegmentForSurfaceStatus(segment: string): string {
+  return segment.replace(/\s+/gu, " ").trim();
+}
+
+const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
+  [
+    "HR practical-use readiness",
+    /HR\s+practical-use(?:\s+|-)read(?:y|iness)|practical-use\s+readiness|ready\s+for\s+HR\s+practical-use/iu,
+  ],
+  [
+    "production-like readiness",
+    /production-like(?:\s+|-)read(?:y|iness)|production-like\s+readiness\s+surface/iu,
+  ],
+  [
+    "real employee data readiness",
+    /real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data/iu,
+  ],
+  [
+    "live IdP/Okta readiness",
+    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)/iu,
+  ],
+  [
+    "unrestricted raw payload readiness",
+    /(?:unrestricted\s+)?raw[-\s]+payloads?/iu,
+  ],
+  [
+    "production queue/DLQ readiness",
+    /production\s+(?:queue\/DLQ|queue|DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
+  ],
+  [
+    "production ops readiness",
+    /production\s+(?:ops|operations)(?:\s+(?:readiness|authority))?/iu,
+  ],
+  [
+    "production authorization/RLS readiness",
+    /production\s+authorization\/RLS/iu,
+  ],
+  [
+    "production audit immutability readiness",
+    /production\s+audit\s+immutability/iu,
+  ],
+  [
+    "production audit/archive readiness",
+    /production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock/iu,
+  ],
+  [
+    "production backup/restore readiness",
+    /production\s+(?:backup|restore|backup\/restore|backup\s+and\s+restore)|backup\/restore\s+operation|production\s+restore\s+(?:policy|approval)/iu,
+  ],
+  [
+    "support-console readiness",
+    /support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model/iu,
+  ],
+  [
+    "regulated data/credential readiness",
+    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
+  ],
+  [
+    "production infrastructure access readiness",
+    /production\s+(?:database|DB)\s+access|cloud\s+accounts?/iu,
+  ],
+  [
+    "retention/deletion runtime readiness",
+    /retention\/deletion(?:\s+runtime)?|legal[-\s]+hold|anonymization(?:\s+jobs?)?/iu,
+  ],
+  ["broad export readiness", /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export/iu],
+  [
+    "legal/privacy acceptance",
+    /legal\/privacy(?:\s+(?:acceptance|runtime))?/iu,
+  ],
+  [
+    "two-key Accepted approval",
+    /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|acceptance|Accepted))/iu,
+  ],
+];
 
 function collectAffectedReadinessGateFindings(
   inputs: MvpAPolicyAsCodeInputs,
@@ -224,17 +619,36 @@ function splitClaimSegments(text: string): string[] {
       return;
     }
 
-    segments.push(
-      ...normalizedProse
-        .split(/(?<!\b\d)\.(?=\s+(?:[#*A-Z0-9-])|$)/u)
-        .map((segment) =>
-          applyCurrentGateHeadingContext(
-            segment.replace(/\s+/gu, " ").trim(),
-            currentGateHeading?.text,
-          ),
-        )
-        .filter((segment) => segment.length > 0),
-    );
+    const proseSegments = normalizedProse
+      .split(/(?<!\b\d)\.(?=\s+|$)/u)
+      .map((segment) => segment.replace(/\s+/gu, " ").trim())
+      .filter((segment) => segment.length > 0);
+    let pendingGateSentenceContext: string | undefined = undefined;
+    for (const proseSegment of proseSegments) {
+      let contextualSegment = applyCurrentGateHeadingContext(
+        proseSegment,
+        currentGateHeading?.text,
+      );
+      const segmentMentionsAffectedGate = affectedReadinessGateClaims.some(
+        (gate) => mentionsAffectedGate(contextualSegment, gate.aliases),
+      );
+      if (
+        pendingGateSentenceContext !== undefined &&
+        !segmentMentionsAffectedGate &&
+        isStatusOrReadinessSegment(contextualSegment)
+      ) {
+        contextualSegment = `${pendingGateSentenceContext} ${contextualSegment}`;
+        pendingGateSentenceContext = undefined;
+      } else {
+        pendingGateSentenceContext =
+          segmentMentionsAffectedGate &&
+          !isStatusOrReadinessSegment(contextualSegment)
+            ? contextualSegment
+            : undefined;
+      }
+
+      segments.push(contextualSegment);
+    }
   };
 
   for (const line of text.split(/\r?\n/u)) {
@@ -497,7 +911,7 @@ function findNextHardClaimBreak(segment: string, startIndex: number): number {
 }
 
 function isTableRowSegment(segment: string): boolean {
-  return /^\s*\|.*\|\s*$/u.test(segment);
+  return parseMarkdownTableCells(segment).length > 1;
 }
 
 function findOtherAffectedGateAliasIndexes(

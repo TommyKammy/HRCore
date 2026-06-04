@@ -56,17 +56,17 @@ production-like readiness from this assessment.
 
 ## Stronger-Readiness Blockers Kept Separate
 
-| Stronger blocker             | Why it remains outside bounded practical-use follow-up                                                                                               | Required separate evidence before any stronger claim                                                                                                        |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| real employee data           | Current evidence is synthetic or explicitly non-production only.                                                                                     | Legal/privacy basis, data-owner approval, processing-purpose evidence, data classification, masking profile, and real-data operational custody.             |
-| live IdP/Okta                | Mock-first provider evidence is not trusted tenant binding or credential custody.                                                                    | Explicit tenant binding, trusted credential source, secret rotation, webhook custody, provider audit search, rollback behavior, and fail-closed tests.      |
-| production authorization/RLS | Bounded actor, subject, tenant, and environment checks are not production RBAC/RLS authority.                                                        | Accepted authorization/data-scope design, role binding, trusted proxy identity boundary, PostgreSQL RLS source of truth, and negative enforcement tests.    |
-| raw payload and broad export | Existing gates intentionally block unrestricted raw payload and broad CSV/export.                                                                    | Accepted raw-view/export permissions, redaction and masking profile, template allowlist, watermark or manifest, download-log evidence, and legal approval.  |
-| production queue/DLQ         | Local Ops/DLQ evidence is bounded and synthetic.                                                                                                     | Production scheduler and queue ownership, DLQ authorization, replay guardrails, monitoring, alerting, support-console custody, and incident workflow.       |
-| retention/deletion runtime   | MVP-C and ADR anchors keep retention, anonymization, deletion jobs, legal hold, and retention-log behavior outside current runtime.                  | Accepted retention/deletion ADR evidence, legal basis, jurisdiction/legal-entity applicability, all-or-nothing writes, restore cleanup, and audit evidence. |
-| legal/privacy acceptance     | Repository tests and closeout docs are not legal, privacy, security, data-owner, or project-owner approval.                                          | Named approvals for the exact runtime claim and evidence that the approval applies to the requested data, tenant, provider, and operating boundary.         |
-| two-key acceptance           | Solo-maintainer owner acknowledgement is not an independent second key under ADR 0000.                                                               | Named Approver, independent Counter-approver, completed review-window evidence, and ADR metadata for each sensitive boundary.                               |
-| production-like readiness    | Production-like operation depends on all stronger blockers above, plus operational ownership and support process evidence not present in this suite. | A separate readiness review that proves every production-like gate and explicitly approves the stronger claim.                                              |
+| Stronger blocker             | Why it remains outside bounded practical-use follow-up                                                                                               | Required separate evidence before any stronger claim                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| real employee data           | Current evidence is synthetic or explicitly non-production only.                                                                                     | Legal/privacy basis, data-owner approval, processing-purpose evidence, data classification, masking profile, and real-data operational custody.            |
+| live IdP/Okta                | Mock-first provider evidence is not trusted tenant binding or credential custody.                                                                    | Explicit tenant binding, trusted credential source, secret rotation, webhook custody, provider audit search, rollback behavior, and fail-closed tests.     |
+| production authorization/RLS | Bounded actor, subject, tenant, and environment checks are not production RBAC/RLS authority.                                                        | Accepted authorization/data-scope design, role binding, trusted proxy identity boundary, PostgreSQL RLS source of truth, and negative enforcement tests.   |
+| raw payload and broad export | Existing gates intentionally block unrestricted raw payload and broad CSV/export.                                                                    | Accepted raw-view/export permissions, redaction and masking profile, template allowlist, watermark or manifest, download-log evidence, and legal approval. |
+| production queue/DLQ         | Local Ops/DLQ evidence is bounded and synthetic.                                                                                                     | Production scheduler and queue ownership, DLQ authorization, replay guardrails, monitoring, alerting, support-console custody, and incident workflow.      |
+| retention/deletion runtime   | MVP-C and ADR anchors keep retention, anonymization, deletion jobs, legal hold, and retention-log behavior outside current runtime.                  | Future retention/deletion ADR evidence, legal basis, jurisdiction/legal-entity applicability, all-or-nothing writes, restore cleanup, and audit evidence.  |
+| legal/privacy acceptance     | Repository tests and closeout docs are not legal, privacy, security, data-owner, or project-owner approval.                                          | Named approvals for the exact runtime claim and evidence that the approval applies to the requested data, tenant, provider, and operating boundary.        |
+| two-key acceptance           | Solo-maintainer owner acknowledgement is not an independent second key under ADR 0000.                                                               | Named Approver, independent Counter-approver, completed review-window evidence, and ADR metadata for each sensitive boundary.                              |
+| production-like readiness    | Production-like operation depends on all stronger blockers above, plus operational ownership and support process evidence not present in this suite. | A separate readiness review that proves every production-like gate and explicitly approves the stronger claim.                                             |
 
 ## Recommended Bounded Follow-Ups
 
@@ -77,16 +77,16 @@ production-like readiness from this assessment.
    audit lookup, failed-path evidence, and cleanup expectations.
 3. Add a test-data governance note for synthetic fixture names, prohibited
    aliases, approval-placeholder rejection, and cleanup evidence.
-4. Add focused guards for any new runbook or checklist so later edits cannot
-   claim real employee data, live-provider, production queue/DLQ,
-   retention/deletion, two-key Accepted, or production-like readiness.
+4. Add focused guards for any new runbook or checklist so later edits keep the
+   real employee data, live-provider, production queue/DLQ, retention/deletion,
+   two-key approval, and production-like readiness blockers intact.
 
 ## No Surface Expansion Confirmation
 
 No real employee data, No live IdP/Okta, No unrestricted raw payload, No broad
 CSV export, No production queue/DLQ, No retention/deletion runtime, No two-key
-Accepted claim, and No production-like readiness is introduced by this
-assessment.
+Accepted claim, No HR practical-use readiness, and No production-like readiness
+is introduced by this assessment.
 
 ## Verification Commands
 

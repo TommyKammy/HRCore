@@ -107,6 +107,19 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     ),
     "expected P0-GOV-01 closeout to be scanned by policy-as-code",
   );
+  for (const path of [
+    "docs/p2x-01-next-wave-recommendation-closeout.md",
+    "docs/p2x-hr-practical-use-gap-assessment.md",
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-synthetic-test-data-governance.md",
+  ] as const) {
+    assert.ok(
+      mvpAPolicyAsCodeDocumentationPaths.includes(path),
+      `expected ${path} to be scanned by policy-as-code`,
+    );
+  }
   assert.deepEqual(
     mvpAPolicyAsCodeDocumentationPaths.filter((path) =>
       path.startsWith("docs/adr/"),
@@ -329,6 +342,401 @@ test("MVP-A policy-as-code gate scans ADR-path table rows as gate claims", async
       `expected ${subject} ADR-path table overclaim to fail the policy gate`,
     );
   }
+});
+
+test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifacts", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+  const p2xFixtureClaims = [
+    [
+      "docs/p2x-01-next-wave-recommendation-closeout.md",
+      [
+        "Production backup is approved.",
+        "Production restore approval is complete.",
+        "| Surface | Status |",
+        "| --- | --- |",
+        "| live IdP/Okta | complete |",
+        "| production queue/DLQ | processing |",
+      ].join("\n"),
+      [
+        "production backup/restore readiness",
+        "live IdP/Okta readiness",
+        "production queue/DLQ readiness",
+      ],
+    ],
+    [
+      "docs/p2x-hr-practical-use-gap-assessment.md",
+      [
+        "HR practical-use readiness: Go.",
+        "Real employee data is ready.",
+        "Production ops readiness: Go.",
+        "Production operations authority is approved.",
+        "Production authorization/RLS is approved.",
+        "Production audit immutability is accepted.",
+        "Production audit readiness: Go.",
+        "Broad audit search is approved.",
+        "Compliance archive is enabled.",
+        "WORM/Object Lock is approved.",
+        "Legal/privacy acceptance is approved.",
+        "Legal/privacy runtime is accepted.",
+        "Two-key acceptance is approved.",
+        "Two-key acceptance: Go.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "production ops readiness",
+        "production authorization/RLS readiness",
+        "production audit immutability readiness",
+        "production audit/archive readiness",
+        "legal/privacy acceptance",
+        "two-key Accepted approval",
+      ],
+    ],
+    [
+      "docs/p2x-local-bounded-operator-runbook.md",
+      [
+        "No real employee data, but HR practical-use readiness: Go.",
+        "No real employee data but practical-use readiness is Go.",
+        "HR practical-use readiness: Go, but real employee data remains blocked.",
+        "No unrestricted raw payload | production-like readiness: Go.",
+        "Unrestricted raw payload is enabled.",
+        "Raw payload access is approved.",
+        "Support-console custody is approved.",
+        "Production support process is enabled.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "unrestricted raw payload readiness",
+        "support-console readiness",
+      ],
+    ],
+    [
+      "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+      [
+        "Real-data processing is approved and live-provider operation is enabled.",
+        "Live tenant data is approved.",
+        "Live tenant export is enabled.",
+        "Production credentials are enabled.",
+        "Regulated identifiers are allowed.",
+        "Sensitive personal information is approved.",
+      ].join("\n"),
+      [
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "regulated data/credential readiness",
+      ],
+    ],
+    [
+      "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+      "Production scheduler/queue/DLQ ready: Go. Broad CSV/export is allowed.",
+      ["production queue/DLQ readiness", "broad export readiness"],
+    ],
+    [
+      "docs/p2x-synthetic-test-data-governance.md",
+      "Retention/deletion jobs are enabled. Two-key approval is approved.",
+      ["retention/deletion runtime readiness", "two-key Accepted approval"],
+    ],
+  ] as const;
+
+  for (const [path, text] of p2xFixtureClaims) {
+    await writeFile(join(fixtureCwd, path), text);
+  }
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, , expectedSubjects] of p2xFixtureClaims) {
+    for (const subject of expectedSubjects) {
+      assert.ok(
+        findings.some(
+          (finding) =>
+            finding.surface === "documentation" &&
+            finding.path === path &&
+            finding.subject === subject,
+        ),
+        `expected loader-read ${path} overclaim to fail for ${subject}`,
+      );
+    }
+  }
+});
+
+test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const tableStatusPath = "docs/p2x-local-bounded-operator-runbook.md";
+  const benignMentionPath =
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md";
+  await writeFile(
+    join(fixtureCwd, tableStatusPath),
+    [
+      "| Surface | Evidence | Status |",
+      "| --- | --- | --- |",
+      "| real employee data | #203 | complete |",
+      "| live IdP/Okta | #204 | processing |",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, benignMentionPath),
+    [
+      "HR practical-use readiness review is documentation-only.",
+      "This updates the HR practical-use readiness checklist.",
+      "The production-like readiness blocker remains in force.",
+      "The production-like readiness review is documentation-only.",
+      "The real-data processing boundary remains out of scope.",
+      "The real-data processing follow-up stays blocked.",
+      "Raw payload viewing remains closed.",
+      "| Allowed bounded surface | Blocked surface |",
+      "| --- | --- |",
+      "| explicitly approved non-production data | real employee data |",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const subject of [
+    "real employee data readiness",
+    "live IdP/Okta readiness",
+  ]) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === tableStatusPath &&
+          finding.subject === subject,
+      ),
+      `expected table-status P2X overclaim to fail for ${subject}`,
+    );
+  }
+
+  assert.equal(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === benignMentionPath,
+    ),
+    false,
+    "expected non-affirmative P2X readiness mentions to stay allowed",
+  );
+});
+
+test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasses", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const pipeTablePath = "docs/p2x-cross-flow-audit-correlation-lookup-map.md";
+  const scopedBlockerPath = "docs/p2x-synthetic-test-data-governance.md";
+  const leadingBlockerCellPath =
+    "docs/p2x-01-next-wave-recommendation-closeout.md";
+  const approvalMetadataPath = "docs/p2x-hr-practical-use-gap-assessment.md";
+  const commaListBypassPath = "docs/p2x-local-bounded-operator-runbook.md";
+  await writeFile(
+    join(fixtureCwd, pipeTablePath),
+    [
+      "Surface | Evidence | Status",
+      "--- | --- | ---",
+      "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
+      "live IdP/Okta | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | enabled",
+      "regulated identifiers | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | available",
+      "production backup | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | complete",
+      "production restore | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | processing",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, scopedBlockerPath),
+    [
+      "| Surface | Status | Note |",
+      "| --- | --- | --- |",
+      "| real employee data | approved | No real employee data remains blocked |",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, leadingBlockerCellPath),
+    [
+      "| Note | Status | Surface |",
+      "| --- | --- | --- |",
+      "| No real employee data remains blocked | approved | real employee data |",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, approvalMetadataPath),
+    [
+      "Approver: legal/privacy acceptance is approved.",
+      "Counter-approver: two-key acceptance is approved.",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, commaListBypassPath),
+    [
+      "No real employee data, HR practical-use readiness: Go.",
+      "No unrestricted raw payload, production-like readiness: Go.",
+      "Do not use production credentials, support-console custody is approved.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, subject] of [
+    [pipeTablePath, "real employee data readiness"],
+    [pipeTablePath, "live IdP/Okta readiness"],
+    [pipeTablePath, "regulated data/credential readiness"],
+    [pipeTablePath, "production backup/restore readiness"],
+    [scopedBlockerPath, "real employee data readiness"],
+    [leadingBlockerCellPath, "real employee data readiness"],
+    [approvalMetadataPath, "legal/privacy acceptance"],
+    [approvalMetadataPath, "two-key Accepted approval"],
+    [commaListBypassPath, "HR practical-use readiness"],
+    [commaListBypassPath, "production-like readiness"],
+    [commaListBypassPath, "support-console readiness"],
+  ] as const) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === path &&
+          finding.subject === subject,
+      ),
+      `expected ${path} bypass probe to fail for ${subject}`,
+    );
+  }
+});
+
+test("MVP-A policy-as-code P2X guard covers current unresolved review-thread probes", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const currentReviewProbeClaims = [
+    [
+      "docs/p2x-01-next-wave-recommendation-closeout.md",
+      [
+        "HR practical-use readiness: Go.",
+        "Real employee data is approved.",
+        "Production backup is approved.",
+        "Production restore policy is ready.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "production backup/restore readiness",
+      ],
+    ],
+    [
+      "docs/p2x-hr-practical-use-gap-assessment.md",
+      [
+        "HR practical-use readiness: Go.",
+        "Real employee data is approved.",
+        "No real employee data, but HR practical-use readiness: Go.",
+        "Raw payload access is approved.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "unrestricted raw payload readiness",
+      ],
+    ],
+    [
+      "docs/p2x-local-bounded-operator-runbook.md",
+      [
+        "Unrestricted raw payload is enabled.",
+        "Raw payload access is approved.",
+        "Production database access is approved.",
+        "Cloud accounts are enabled.",
+      ].join("\n"),
+      [
+        "unrestricted raw payload readiness",
+        "production infrastructure access readiness",
+      ],
+    ],
+    [
+      "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+      [
+        "Surface | Evidence | Status",
+        "--- | --- | ---",
+        "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
+        "live IdP/Okta | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | available",
+        "support-console custody | bounded note | available",
+        "regulated identifiers | bounded note | available",
+        "production backup | bounded note | complete",
+        "production restore | bounded note | processing",
+      ].join("\n"),
+      [
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "support-console readiness",
+        "regulated data/credential readiness",
+        "production backup/restore readiness",
+      ],
+    ],
+    [
+      "docs/p2x-synthetic-test-data-governance.md",
+      [
+        "| Surface | Status |",
+        "| --- | --- |",
+        "| real employee data | complete |",
+        "| live IdP/Okta | complete |",
+        "| production credentials | available |",
+        "| legal-hold | approved |",
+        "| anonymization job | enabled |",
+      ].join("\n"),
+      [
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "regulated data/credential readiness",
+        "retention/deletion runtime readiness",
+      ],
+    ],
+  ] as const;
+
+  for (const [path, text] of currentReviewProbeClaims) {
+    await writeFile(join(fixtureCwd, path), text);
+  }
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, , expectedSubjects] of currentReviewProbeClaims) {
+    for (const subject of expectedSubjects) {
+      assert.ok(
+        findings.some(
+          (finding) =>
+            finding.surface === "documentation" &&
+            finding.path === path &&
+            finding.subject === subject,
+        ),
+        `expected current review probe ${path} to fail for ${subject}`,
+      );
+    }
+  }
+});
+
+test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/fixture-lowercase-readiness-status-context.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [path, "P0-R05 / #11. production-like ready: Go."],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "P0-R05 / #11",
+    ),
+    "expected lowercase production-like status sentence to keep gate context",
+  );
 });
 
 test("MVP-A policy-as-code gate carries ADR document identity into status claims", async () => {
