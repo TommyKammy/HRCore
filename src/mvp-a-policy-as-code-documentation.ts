@@ -171,6 +171,10 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\bNo\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
+  const doNotUseListBlockerBeforeSubject = new RegExp(
+    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve)|not\\s+(?:require|introduce|approve))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
   const blockedShapeBeforeSubject = new RegExp(
     `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
@@ -187,6 +191,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   return (
     sameClauseBlockerBeforeSubject.test(claimText) ||
     noListBlockerBeforeSubject.test(claimText) ||
+    doNotUseListBlockerBeforeSubject.test(claimText) ||
     blockedShapeBeforeSubject.test(claimText) ||
     cannotClaimListBlockerBeforeSubject.test(claimText) ||
     subjectBeforeBlocker.test(claimText)
@@ -208,11 +213,11 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "real employee data readiness",
-      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
+      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
     ],
     [
       "live IdP/Okta readiness",
-      /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
+      /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
     ],
     [
       "unrestricted raw payload readiness",
@@ -220,31 +225,43 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "production queue/DLQ readiness",
-      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
+      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
     ],
     [
       "production ops readiness",
-      /\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b/iu,
+      /\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b/iu,
     ],
     [
       "production authorization/RLS readiness",
-      /\bproduction\s+authorization\/RLS\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bproduction\s+authorization\/RLS\b/iu,
+      /\bproduction\s+authorization\/RLS\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+authorization\/RLS\b/iu,
     ],
     [
       "production audit immutability readiness",
-      /\bproduction\s+audit\s+immutability\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bproduction\s+audit\s+immutability\b/iu,
+      /\bproduction\s+audit\s+immutability\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+audit\s+immutability\b/iu,
+    ],
+    [
+      "production audit/archive readiness",
+      /\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b/iu,
+    ],
+    [
+      "support-console readiness",
+      /\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b/iu,
+    ],
+    [
+      "regulated data/credential readiness",
+      /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
     ],
     [
       "retention/deletion runtime readiness",
-      /\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b/iu,
+      /\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b/iu,
     ],
     [
       "broad export readiness",
-      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|go|enabled)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b/iu,
+      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|go|enabled|available)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b/iu,
     ],
     [
       "legal/privacy acceptance",
-      /\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b/iu,
+      /\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b/iu,
     ],
     [
       "two-key Accepted approval",
@@ -332,6 +349,18 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   [
     "production audit immutability readiness",
     /production\s+audit\s+immutability/iu,
+  ],
+  [
+    "production audit/archive readiness",
+    /production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock/iu,
+  ],
+  [
+    "support-console readiness",
+    /support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model/iu,
+  ],
+  [
+    "regulated data/credential readiness",
+    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
   ],
   [
     "retention/deletion runtime readiness",

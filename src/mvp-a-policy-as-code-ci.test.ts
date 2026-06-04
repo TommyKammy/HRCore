@@ -356,6 +356,10 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "Production operations authority is approved.",
         "Production authorization/RLS is approved.",
         "Production audit immutability is accepted.",
+        "Production audit readiness: Go.",
+        "Broad audit search is approved.",
+        "Compliance archive is enabled.",
+        "WORM/Object Lock is approved.",
         "Legal/privacy acceptance is approved.",
         "Legal/privacy runtime is accepted.",
         "Two-key acceptance is approved.",
@@ -367,6 +371,7 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "production ops readiness",
         "production authorization/RLS readiness",
         "production audit immutability readiness",
+        "production audit/archive readiness",
         "legal/privacy acceptance",
         "two-key Accepted approval",
       ],
@@ -380,11 +385,14 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "No unrestricted raw payload | production-like readiness: Go.",
         "Unrestricted raw payload is enabled.",
         "Raw payload access is approved.",
+        "Support-console custody is approved.",
+        "Production support process is enabled.",
       ].join("\n"),
       [
         "HR practical-use readiness",
         "production-like readiness",
         "unrestricted raw payload readiness",
+        "support-console readiness",
       ],
     ],
     [
@@ -393,8 +401,15 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "Real-data processing is approved and live-provider operation is enabled.",
         "Live tenant data is approved.",
         "Live tenant export is enabled.",
+        "Production credentials are enabled.",
+        "Regulated identifiers are allowed.",
+        "Sensitive personal information is approved.",
       ].join("\n"),
-      ["real employee data readiness", "live IdP/Okta readiness"],
+      [
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "regulated data/credential readiness",
+      ],
     ],
     [
       "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
@@ -443,8 +458,8 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
     [
       "| Surface | Evidence | Status |",
       "| --- | --- | --- |",
-      "| real employee data | #203 | approved |",
-      "| live IdP/Okta | #204 | enabled |",
+      "| real employee data | #203 | available |",
+      "| live IdP/Okta | #204 | available |",
     ].join("\n"),
   );
   await writeFile(
@@ -507,6 +522,7 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
       "--- | --- | ---",
       "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
       "live IdP/Okta | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | enabled",
+      "regulated identifiers | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | available",
     ].join("\n"),
   );
   await writeFile(
@@ -532,6 +548,7 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
   for (const [path, subject] of [
     [pipeTablePath, "real employee data readiness"],
     [pipeTablePath, "live IdP/Okta readiness"],
+    [pipeTablePath, "regulated data/credential readiness"],
     [scopedBlockerPath, "real employee data readiness"],
     [approvalMetadataPath, "legal/privacy acceptance"],
     [approvalMetadataPath, "two-key Accepted approval"],
