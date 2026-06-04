@@ -208,6 +208,10 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "retention/deletion requests are allowed.",
         "broad CSV/export is allowed.",
         "two-key approval is complete.",
+        "Surface | Evidence | Status",
+        "--- | --- | ---",
+        "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
+        "| real employee data | approved | No real employee data remains blocked |",
       ].join("\n"),
     ),
     [
@@ -272,13 +276,16 @@ function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
     }
 
     for (const [subject, pattern] of p2xProhibitedClaimPatterns) {
-      const claimSegments = p2xClaimSegmentsForSurfaceStatus(normalizedLine);
-      if (
-        claimSegments.some((claimSegment) => pattern.test(claimSegment)) &&
-        !p2xLineBlocksSubject(normalizedLine, subject) &&
-        !findings.includes(subject)
-      ) {
-        findings.push(subject);
+      for (const claimSegment of p2xClaimSegmentsForSurfaceStatus(
+        normalizedLine,
+      )) {
+        if (
+          pattern.test(claimSegment) &&
+          !p2xLineBlocksSubject(claimSegment, subject) &&
+          !findings.includes(subject)
+        ) {
+          findings.push(subject);
+        }
       }
     }
   }
@@ -318,7 +325,7 @@ function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
 }
 
 function isTableRowSegment(segment: string): boolean {
-  return /^\s*\|.*\|\s*$/u.test(segment);
+  return parseMarkdownTableCells(segment).length > 1;
 }
 
 function parseMarkdownTableCells(line: string): string[] {

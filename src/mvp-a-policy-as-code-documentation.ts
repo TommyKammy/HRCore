@@ -126,11 +126,13 @@ function collectP2XBoundedPracticalUseArtifactFindings(
     }
 
     for (const rawSegment of splitClaimSegments(text)) {
-      const segment = stripReviewMetadata(rawSegment);
-      for (const subject of p2xBoundedPracticalUseArtifactOverclaimSubjects(
-        segment,
-      )) {
-        if (isP2XBoundedPracticalUseArtifactClaimBlocked(rawSegment, subject)) {
+      for (const {
+        subject,
+        claimSegment,
+      } of p2xBoundedPracticalUseArtifactOverclaimClaims(rawSegment)) {
+        if (
+          isP2XBoundedPracticalUseArtifactClaimBlocked(claimSegment, subject)
+        ) {
           continue;
         }
 
@@ -191,9 +193,9 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   );
 }
 
-function p2xBoundedPracticalUseArtifactOverclaimSubjects(
+function p2xBoundedPracticalUseArtifactOverclaimClaims(
   segment: string,
-): string[] {
+): Array<{ subject: string; claimSegment: string }> {
   const claimSegments = p2xClaimSegmentsForSurfaceStatus(segment);
   const prohibitedClaims: Array<[string, RegExp]> = [
     [
@@ -250,11 +252,11 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
   ];
 
-  return prohibitedClaims
-    .filter(([, pattern]) =>
-      claimSegments.some((claimSegment) => pattern.test(claimSegment)),
-    )
-    .map(([subject]) => subject);
+  return prohibitedClaims.flatMap(([subject, pattern]) =>
+    claimSegments
+      .filter((claimSegment) => pattern.test(claimSegment))
+      .map((claimSegment) => ({ subject, claimSegment })),
+  );
 }
 
 function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
@@ -764,7 +766,7 @@ function findNextHardClaimBreak(segment: string, startIndex: number): number {
 }
 
 function isTableRowSegment(segment: string): boolean {
-  return /^\s*\|.*\|\s*$/u.test(segment);
+  return parseMarkdownTableCells(segment).length > 1;
 }
 
 function findOtherAffectedGateAliasIndexes(

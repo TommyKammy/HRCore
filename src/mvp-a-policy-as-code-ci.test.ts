@@ -493,6 +493,61 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
   );
 });
 
+test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasses", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const pipeTablePath = "docs/p2x-cross-flow-audit-correlation-lookup-map.md";
+  const scopedBlockerPath = "docs/p2x-synthetic-test-data-governance.md";
+  const approvalMetadataPath = "docs/p2x-hr-practical-use-gap-assessment.md";
+  await writeFile(
+    join(fixtureCwd, pipeTablePath),
+    [
+      "Surface | Evidence | Status",
+      "--- | --- | ---",
+      "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
+      "live IdP/Okta | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | enabled",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, scopedBlockerPath),
+    [
+      "| Surface | Status | Note |",
+      "| --- | --- | --- |",
+      "| real employee data | approved | No real employee data remains blocked |",
+    ].join("\n"),
+  );
+  await writeFile(
+    join(fixtureCwd, approvalMetadataPath),
+    [
+      "Approver: legal/privacy acceptance is approved.",
+      "Counter-approver: two-key acceptance is approved.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  for (const [path, subject] of [
+    [pipeTablePath, "real employee data readiness"],
+    [pipeTablePath, "live IdP/Okta readiness"],
+    [scopedBlockerPath, "real employee data readiness"],
+    [approvalMetadataPath, "legal/privacy acceptance"],
+    [approvalMetadataPath, "two-key Accepted approval"],
+  ] as const) {
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.surface === "documentation" &&
+          finding.path === path &&
+          finding.subject === subject,
+      ),
+      `expected ${path} bypass probe to fail for ${subject}`,
+    );
+  }
+});
+
 test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const path = "docs/fixture-lowercase-readiness-status-context.md";
