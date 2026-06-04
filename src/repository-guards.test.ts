@@ -3046,6 +3046,69 @@ test("MVP-D P2D-01 readiness review closeout keeps CSV/Ops/DLQ bounded", async (
   );
 });
 
+test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
+  const [closeout, readme] = await Promise.all([
+    readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# MVP-D P2D-02 Refactor Wave Closeout",
+    "Issue: #329",
+    "Part of: #323",
+    "Depends on: #328",
+    "Readiness Verdict",
+    "bounded/non-production MVP-D CSV/Ops/DLQ evidence: unchanged",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Reviewed Refactor Artifacts",
+    "CSV import contract / parser / validation helper split",
+    "CSV import apply / persistence / idempotency boundary split",
+    "bounded CSV export policy / audit helper split",
+    "local Ops job status / failure decision boundary split",
+    "CSV/Ops/DLQ traceability verifier / test helper split",
+    "Behavior and Boundary Review",
+    "No behavior drift, API drift, migration drift, policy weakening, or readiness-claim broadening was accepted",
+    "P0-R05 (#11), P0-R06 (#12), and P0-R08 (#14) remain owner-acknowledged defer / production-like blocked",
+    "Verification Commands",
+    "npm run verify:pre-pr",
+    "Residual Refactor Debt",
+    "Final Verdict",
+    "P2D-02 can close as behavior-preserving maintainability hardening",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2D-02 refactor wave closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "unrestricted raw payload/export ready: Go",
+    "Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2D-02 closeout must not broaden readiness with: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[MVP-D P2D-02 Refactor Wave Closeout\]\(docs\/mvp-d-p2d-02-refactor-wave-closeout\.md\)/,
+  );
+});
+
 test("ADR template and process define governance metadata and precedence", async () => {
   const [template, process] = await Promise.all([
     readRepoFile("docs/adr/template.md"),
