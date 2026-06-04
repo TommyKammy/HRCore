@@ -597,7 +597,7 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
   }
 });
 
-test("MVP-A policy-as-code P2X guard covers current review-thread probes", async () => {
+test("MVP-A policy-as-code P2X guard covers current unresolved review-thread probes", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
 
@@ -606,37 +606,72 @@ test("MVP-A policy-as-code P2X guard covers current review-thread probes", async
       "docs/p2x-01-next-wave-recommendation-closeout.md",
       [
         "HR practical-use readiness: Go.",
+        "Real employee data is approved.",
         "Production backup is approved.",
         "Production restore policy is ready.",
       ].join("\n"),
-      ["HR practical-use readiness", "production backup/restore readiness"],
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "production backup/restore readiness",
+      ],
     ],
     [
       "docs/p2x-hr-practical-use-gap-assessment.md",
       [
+        "HR practical-use readiness: Go.",
+        "Real employee data is approved.",
         "No real employee data, but HR practical-use readiness: Go.",
         "Raw payload access is approved.",
       ].join("\n"),
-      ["HR practical-use readiness", "unrestricted raw payload readiness"],
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "unrestricted raw payload readiness",
+      ],
+    ],
+    [
+      "docs/p2x-local-bounded-operator-runbook.md",
+      [
+        "Unrestricted raw payload is enabled.",
+        "Raw payload access is approved.",
+      ].join("\n"),
+      ["unrestricted raw payload readiness"],
     ],
     [
       "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
       [
         "Surface | Evidence | Status",
         "--- | --- | ---",
+        "real employee data | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | approved",
+        "live IdP/Okta | repository-only evidence reference that is intentionally long enough to exceed the prose detector window | available",
         "support-console custody | bounded note | available",
         "regulated identifiers | bounded note | available",
+        "production backup | bounded note | complete",
+        "production restore | bounded note | processing",
       ].join("\n"),
-      ["support-console readiness", "regulated data/credential readiness"],
+      [
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "support-console readiness",
+        "regulated data/credential readiness",
+        "production backup/restore readiness",
+      ],
     ],
     [
       "docs/p2x-synthetic-test-data-governance.md",
       [
-        "| Surface | Evidence | Status |",
-        "| --- | --- | --- |",
-        "| production credentials | bounded note | available |",
+        "| Surface | Status |",
+        "| --- | --- |",
+        "| real employee data | complete |",
+        "| live IdP/Okta | complete |",
+        "| production credentials | available |",
       ].join("\n"),
-      ["regulated data/credential readiness"],
+      [
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "regulated data/credential readiness",
+      ],
     ],
   ] as const;
 
