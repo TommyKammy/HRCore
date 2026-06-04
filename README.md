@@ -46,6 +46,7 @@ The bounded dry-run-only MVP-D CSV import contract is recorded in [MVP-D CSV Imp
 The final P2D-01 bounded/non-production MVP-D CSV/Ops/DLQ readiness review closeout is recorded in [MVP-D P2D-01 Readiness Review Closeout](docs/mvp-d-p2d-01-readiness-review-closeout.md).
 The final P2D-02 behavior-preserving MVP-D CSV/Ops/DLQ refactor wave closeout is recorded in [MVP-D P2D-02 Refactor Wave Closeout](docs/mvp-d-p2d-02-refactor-wave-closeout.md).
 The P2X bounded/non-production HR practical-use gap assessment is recorded in [P2X HR Practical-Use Gap Assessment](docs/p2x-hr-practical-use-gap-assessment.md).
+The P2X production-like blocker ledger is recorded in [P2X Production-Like Blocker Matrix](docs/p2x-production-like-blocker-matrix.md).
 
 ## Baseline structure
 
@@ -161,6 +162,12 @@ The P2X bounded/non-production HR practical-use gap assessment is recorded in [P
   P2D-01 bounded/non-production MVP-D CSV/Ops/DLQ readiness review, child issue
   evidence, verification commands, residual stronger-readiness blockers, and
   blocked production-like verdict.
+- `docs/p2x-production-like-blocker-matrix.md` records the P2X
+  production-like blocker ledger for real-data operation, live Okta/provider
+  operation, production authorization/RLS, audit immutability, raw payload and
+  CSV export, production scheduler/queue/DLQ, production ops, legal/privacy
+  runtime, retention/deletion, future-extension surfaces, and required
+  follow-up decision evidence.
 
 ## Local verification
 
