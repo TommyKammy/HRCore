@@ -195,6 +195,8 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
     p2xBoundedPracticalUseArtifactOverclaims(
       [
         "HR practical-use readiness: Go.",
+        "No real employee data, HR practical-use readiness: Go.",
+        "No unrestricted raw payload, production-like readiness: Go.",
         "No real employee data, but HR practical-use readiness: Go.",
         "No real employee data but practical-use readiness is Go.",
         "HR practical-use readiness: Go, but real employee data remains blocked.",
@@ -209,6 +211,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "production authorization/RLS is approved.",
         "production audit immutability is accepted.",
         "production audit readiness: Go.",
+        "Do not use production credentials, support-console custody is approved.",
         "support-console custody is approved.",
         "production support process is enabled.",
         "payroll data is approved.",
@@ -420,11 +423,32 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
   }
 
   const subjectSource = subjectPattern.source;
-  return (
+  if (
     new RegExp(
       `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
       "iu",
     ).test(line) ||
+    new RegExp(
+      `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      "iu",
+    ).test(line) ||
+    new RegExp(
+      `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      "iu",
+    ).test(line) ||
+    new RegExp(
+      `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+      "iu",
+    ).test(line)
+  ) {
+    return true;
+  }
+
+  if (hasAffirmativeStatusAttachedToSubject(line, subjectPattern)) {
+    return false;
+  }
+
+  return (
     new RegExp(
       `\\bNo\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
       "iu",
@@ -440,12 +464,56 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
     new RegExp(
       `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
       "iu",
-    ).test(line) ||
-    new RegExp(
-      `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
-      "iu",
     ).test(line)
   );
+}
+
+function hasAffirmativeStatusAttachedToSubject(
+  line: string,
+  subjectPattern: RegExp,
+): boolean {
+  const globalSubjectPattern = new RegExp(subjectPattern.source, "giu");
+  for (const match of line.matchAll(globalSubjectPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const subjectStartIndex = match.index;
+    const subjectEndIndex = subjectStartIndex + match[0].length;
+    const previousBreakIndex = Math.max(
+      line.lastIndexOf(",", subjectStartIndex),
+      line.lastIndexOf("|", subjectStartIndex),
+      line.lastIndexOf(";", subjectStartIndex),
+      line.lastIndexOf(".", subjectStartIndex),
+    );
+    const nextBreakIndexes = [",", "|", ";", "."]
+      .map((breakChar) => line.indexOf(breakChar, subjectEndIndex))
+      .filter((index) => index !== -1);
+    const nextBreakIndex =
+      nextBreakIndexes.length === 0
+        ? line.length
+        : Math.min(...nextBreakIndexes);
+    const subjectPrefix = line.slice(previousBreakIndex + 1, subjectStartIndex);
+    const subjectSuffix = line.slice(subjectEndIndex, nextBreakIndex);
+
+    if (
+      /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/iu.test(
+        subjectSuffix,
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+        subjectPrefix,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [

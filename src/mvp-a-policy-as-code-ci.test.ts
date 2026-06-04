@@ -515,6 +515,7 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
   const pipeTablePath = "docs/p2x-cross-flow-audit-correlation-lookup-map.md";
   const scopedBlockerPath = "docs/p2x-synthetic-test-data-governance.md";
   const approvalMetadataPath = "docs/p2x-hr-practical-use-gap-assessment.md";
+  const commaListBypassPath = "docs/p2x-local-bounded-operator-runbook.md";
   await writeFile(
     join(fixtureCwd, pipeTablePath),
     [
@@ -540,6 +541,14 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
       "Counter-approver: two-key acceptance is approved.",
     ].join("\n"),
   );
+  await writeFile(
+    join(fixtureCwd, commaListBypassPath),
+    [
+      "No real employee data, HR practical-use readiness: Go.",
+      "No unrestricted raw payload, production-like readiness: Go.",
+      "Do not use production credentials, support-console custody is approved.",
+    ].join("\n"),
+  );
 
   const findings = checkMvpAPolicyAsCode(
     await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
@@ -552,6 +561,9 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
     [scopedBlockerPath, "real employee data readiness"],
     [approvalMetadataPath, "legal/privacy acceptance"],
     [approvalMetadataPath, "two-key Accepted approval"],
+    [commaListBypassPath, "HR practical-use readiness"],
+    [commaListBypassPath, "production-like readiness"],
+    [commaListBypassPath, "support-console readiness"],
   ] as const) {
     assert.ok(
       findings.some(

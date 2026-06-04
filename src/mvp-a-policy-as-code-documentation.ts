@@ -175,8 +175,16 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve)|not\\s+(?:require|introduce|approve))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
+  const sameClauseBlockedShapeBeforeSubject = new RegExp(
+    `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
   const blockedShapeBeforeSubject = new RegExp(
     `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const sameClauseCannotClaimBeforeSubject = new RegExp(
+    `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const cannotClaimListBlockerBeforeSubject = new RegExp(
@@ -188,13 +196,79 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
 
-  return (
+  if (
     sameClauseBlockerBeforeSubject.test(claimText) ||
+    sameClauseBlockedShapeBeforeSubject.test(claimText) ||
+    sameClauseCannotClaimBeforeSubject.test(claimText) ||
+    subjectBeforeBlocker.test(claimText)
+  ) {
+    return true;
+  }
+
+  if (hasAffirmativeStatusAttachedToSubject(claimText, subjectPattern)) {
+    return false;
+  }
+
+  return (
     noListBlockerBeforeSubject.test(claimText) ||
     doNotUseListBlockerBeforeSubject.test(claimText) ||
     blockedShapeBeforeSubject.test(claimText) ||
-    cannotClaimListBlockerBeforeSubject.test(claimText) ||
-    subjectBeforeBlocker.test(claimText)
+    cannotClaimListBlockerBeforeSubject.test(claimText)
+  );
+}
+
+function hasAffirmativeStatusAttachedToSubject(
+  segment: string,
+  subjectPattern: RegExp,
+): boolean {
+  const globalSubjectPattern = new RegExp(subjectPattern.source, "giu");
+  for (const match of segment.matchAll(globalSubjectPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const subjectStartIndex = match.index;
+    const subjectEndIndex = subjectStartIndex + match[0].length;
+    const previousBreakIndex = Math.max(
+      segment.lastIndexOf(",", subjectStartIndex),
+      segment.lastIndexOf("|", subjectStartIndex),
+      segment.lastIndexOf(";", subjectStartIndex),
+      segment.lastIndexOf(".", subjectStartIndex),
+    );
+    const nextBreakIndexes = [",", "|", ";", "."]
+      .map((breakChar) => segment.indexOf(breakChar, subjectEndIndex))
+      .filter((index) => index !== -1);
+    const nextBreakIndex =
+      nextBreakIndexes.length === 0
+        ? segment.length
+        : Math.min(...nextBreakIndexes);
+    const subjectPrefix = segment.slice(
+      previousBreakIndex + 1,
+      subjectStartIndex,
+    );
+    const subjectSuffix = segment.slice(subjectEndIndex, nextBreakIndex);
+
+    if (hasAffirmativeStatusSuffix(subjectSuffix)) {
+      return true;
+    }
+
+    if (hasAffirmativeStatusPrefix(subjectPrefix)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasAffirmativeStatusSuffix(value: string): boolean {
+  return /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/iu.test(
+    value,
+  );
+}
+
+function hasAffirmativeStatusPrefix(value: string): boolean {
+  return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+    value,
   );
 }
 
