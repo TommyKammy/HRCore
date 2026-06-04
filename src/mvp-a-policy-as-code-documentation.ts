@@ -57,6 +57,7 @@ const requiredNonProductionDocumentationPaths = [
 ] as const;
 
 const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-hr-practical-use-gap-assessment.md",
   "docs/p2x-local-bounded-operator-runbook.md",
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
@@ -172,6 +173,10 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
+  const cannotClaimListBlockerBeforeSubject = new RegExp(
+    `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
   const subjectBeforeBlocker = new RegExp(
     `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
@@ -181,6 +186,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     sameClauseBlockerBeforeSubject.test(claimText) ||
     noListBlockerBeforeSubject.test(claimText) ||
     blockedShapeBeforeSubject.test(claimText) ||
+    cannotClaimListBlockerBeforeSubject.test(claimText) ||
     subjectBeforeBlocker.test(claimText)
   );
 }
@@ -244,14 +250,18 @@ function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
     (cell) => cell.length > 0,
   );
   const claimSegments = [...cells];
-  for (let index = 0; index < cells.length - 1; index += 1) {
-    const leftCell = cells[index];
-    const rightCell = cells[index + 1];
-    if (isSimpleP2XAffirmativeStatusCell(rightCell)) {
-      claimSegments.push(`${leftCell} ${rightCell}`);
+  for (const statusCell of cells) {
+    if (!isSimpleP2XAffirmativeStatusCell(statusCell)) {
+      continue;
     }
-    if (isSimpleP2XAffirmativeStatusCell(leftCell)) {
-      claimSegments.push(`${leftCell} ${rightCell}`);
+    for (const subjectCell of cells) {
+      if (
+        subjectCell === statusCell ||
+        isSimpleP2XAffirmativeStatusCell(subjectCell)
+      ) {
+        continue;
+      }
+      claimSegments.push(`${subjectCell} ${statusCell}`);
     }
   }
 

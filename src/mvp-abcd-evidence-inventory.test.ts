@@ -256,6 +256,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
 });
 
 const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-hr-practical-use-gap-assessment.md",
   "docs/p2x-local-bounded-operator-runbook.md",
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
@@ -298,14 +299,18 @@ function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
     (cell) => cell.length > 0,
   );
   const claimSegments = [...cells];
-  for (let index = 0; index < cells.length - 1; index += 1) {
-    const leftCell = cells[index];
-    const rightCell = cells[index + 1];
-    if (isSimpleP2XAffirmativeStatusCell(rightCell)) {
-      claimSegments.push(`${leftCell} ${rightCell}`);
+  for (const statusCell of cells) {
+    if (!isSimpleP2XAffirmativeStatusCell(statusCell)) {
+      continue;
     }
-    if (isSimpleP2XAffirmativeStatusCell(leftCell)) {
-      claimSegments.push(`${leftCell} ${rightCell}`);
+    for (const subjectCell of cells) {
+      if (
+        subjectCell === statusCell ||
+        isSimpleP2XAffirmativeStatusCell(subjectCell)
+      ) {
+        continue;
+      }
+      claimSegments.push(`${subjectCell} ${statusCell}`);
     }
   }
 
@@ -395,6 +400,10 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
     ).test(line) ||
     new RegExp(
       `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      "iu",
+    ).test(line) ||
+    new RegExp(
+      `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
       "iu",
     ).test(line) ||
     new RegExp(

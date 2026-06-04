@@ -108,6 +108,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "expected P0-GOV-01 closeout to be scanned by policy-as-code",
   );
   for (const path of [
+    "docs/p2x-hr-practical-use-gap-assessment.md",
     "docs/p2x-local-bounded-operator-runbook.md",
     "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
     "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
@@ -347,6 +348,11 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
   await writeMinimalPolicyInputRepository(fixtureCwd);
   const p2xFixtureClaims = [
     [
+      "docs/p2x-hr-practical-use-gap-assessment.md",
+      "HR practical-use readiness: Go. Real employee data is ready.",
+      ["HR practical-use readiness", "real employee data readiness"],
+    ],
+    [
       "docs/p2x-local-bounded-operator-runbook.md",
       [
         "No real employee data, but HR practical-use readiness: Go.",
@@ -416,10 +422,10 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
   await writeFile(
     join(fixtureCwd, tableStatusPath),
     [
-      "| Surface | Status |",
-      "| --- | --- |",
-      "| real employee data | approved |",
-      "| live IdP/Okta | enabled |",
+      "| Surface | Evidence | Status |",
+      "| --- | --- | --- |",
+      "| real employee data | #203 | approved |",
+      "| live IdP/Okta | #204 | enabled |",
     ].join("\n"),
   );
   await writeFile(
