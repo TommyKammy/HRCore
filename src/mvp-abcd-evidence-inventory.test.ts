@@ -63,9 +63,51 @@ test("P2X production-like blocker matrix keeps stronger readiness blocked", asyn
 
   for (const gate of ["P0-R05 / #11", "P0-R06 / #12", "P0-R08 / #14"]) {
     assert.match(matrix, new RegExp(gate, "u"));
-    assert.doesNotMatch(
-      matrix,
-      new RegExp(`${gate}[^\\n|]*(Accepted|production-like ready)`, "iu"),
+  }
+
+  const currentStatusClaims =
+    gateStatusClaimsFromProductionLikeBlockerMatrix(matrix);
+  assert.deepEqual(
+    currentStatusClaims,
+    [],
+    "P0 gates must not claim Accepted or production-like ready in the blocker matrix current-status cells",
+  );
+  assert.deepEqual(
+    gateStatusClaimsFromProductionLikeBlockerMatrix(
+      [
+        "| Blocker surface | Owner gate or anchor | Current status | Required next evidence | Decision required before stronger claim |",
+        "| --- | --- | --- | --- | --- |",
+        "| production authorization/RLS | P0-R05 / #11 | Accepted | follow-up evidence | two-key decision |",
+        "| production audit immutability | P0-R06 / #12 | production-like ready | follow-up evidence | architecture decision |",
+        "| raw payload and CSV export | P0-R08 / #14 | Blocked; requires an Accepted raw-view/export permissions decision | follow-up evidence | legal/privacy decision |",
+      ].join("\n"),
+    ),
+    [
+      "P0-R05 / #11: Accepted",
+      "P0-R06 / #12: production-like ready",
+      "P0-R08 / #14: Blocked; requires an Accepted raw-view/export permissions decision",
+    ],
+    "guard must match forbidden gate status claims when the claim is in a later table cell",
+  );
+
+  for (const [gate, expectedStatus] of [
+    [
+      "P0-R05 / #11",
+      "Blocked; bounded app checks are not production RBAC/RLS authority",
+    ],
+    [
+      "P0-R06 / #12",
+      "Blocked; local audit/correlation evidence is mutable repository proof",
+    ],
+    [
+      "P0-R08 / #14",
+      "Blocked; only bounded synthetic CSV and denied-export evidence exists",
+    ],
+  ] as const) {
+    assert.equal(
+      productionLikeBlockerMatrixStatus(matrix, gate),
+      expectedStatus,
+      `${gate} must remain explicitly blocked in the blocker matrix current-status cell`,
     );
   }
 
@@ -86,3 +128,69 @@ test("P2X production-like blocker matrix keeps stronger readiness blocked", asyn
   assert.doesNotMatch(matrix, /production-like ready:\s*Go/u);
   assert.doesNotMatch(matrix, /HR practical-use ready:\s*Go/u);
 });
+
+function gateStatusClaimsFromProductionLikeBlockerMatrix(
+  matrix: string,
+): string[] {
+  return productionLikeBlockerMatrixRows(matrix)
+    .filter(({ ownerGate }) =>
+      ["P0-R05 / #11", "P0-R06 / #12", "P0-R08 / #14"].some((gate) =>
+        ownerGate.includes(gate),
+      ),
+    )
+    .flatMap(({ ownerGate, currentStatus }) =>
+      ["P0-R05 / #11", "P0-R06 / #12", "P0-R08 / #14"]
+        .filter((gate) => ownerGate.includes(gate))
+        .filter(() =>
+          /\b(?:Accepted|production-like ready)\b/iu.test(currentStatus),
+        )
+        .map((gate) => `${gate}: ${currentStatus}`),
+    );
+}
+
+function productionLikeBlockerMatrixStatus(
+  matrix: string,
+  gate: "P0-R05 / #11" | "P0-R06 / #12" | "P0-R08 / #14",
+): string | undefined {
+  return productionLikeBlockerMatrixRows(matrix).find(({ ownerGate }) =>
+    ownerGate.includes(gate),
+  )?.currentStatus;
+}
+
+function productionLikeBlockerMatrixRows(
+  matrix: string,
+): Array<{ ownerGate: string; currentStatus: string }> {
+  const tableRows = markdownTableRows(matrix);
+  const header = tableRows[0] ?? [];
+  const ownerGateIndex = header.indexOf("Owner gate or anchor");
+  const currentStatusIndex = header.indexOf("Current status");
+  assert.notEqual(
+    ownerGateIndex,
+    -1,
+    "blocker matrix owner-gate column exists",
+  );
+  assert.notEqual(
+    currentStatusIndex,
+    -1,
+    "blocker matrix current-status column exists",
+  );
+
+  return tableRows.slice(1).map((row) => ({
+    ownerGate: row[ownerGateIndex] ?? "",
+    currentStatus: row[currentStatusIndex] ?? "",
+  }));
+}
+
+function markdownTableRows(markdown: string): string[][] {
+  return markdown
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .map((line) =>
+      line
+        .slice(1, -1)
+        .split("|")
+        .map((cell) => cell.trim()),
+    )
+    .filter((row) => !row.every((cell) => /^:?-{3,}:?$/u.test(cell.trim())));
+}
