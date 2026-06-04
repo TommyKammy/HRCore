@@ -349,8 +349,27 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
   const p2xFixtureClaims = [
     [
       "docs/p2x-hr-practical-use-gap-assessment.md",
-      "HR practical-use readiness: Go. Real employee data is ready.",
-      ["HR practical-use readiness", "real employee data readiness"],
+      [
+        "HR practical-use readiness: Go.",
+        "Real employee data is ready.",
+        "Production ops readiness: Go.",
+        "Production operations authority is approved.",
+        "Production authorization/RLS is approved.",
+        "Production audit immutability is accepted.",
+        "Legal/privacy acceptance is approved.",
+        "Legal/privacy runtime is accepted.",
+        "Two-key acceptance is approved.",
+        "Two-key acceptance: Go.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "production ops readiness",
+        "production authorization/RLS readiness",
+        "production audit immutability readiness",
+        "legal/privacy acceptance",
+        "two-key Accepted approval",
+      ],
     ],
     [
       "docs/p2x-local-bounded-operator-runbook.md",
@@ -435,6 +454,8 @@ test("MVP-A policy-as-code P2X guard requires affirmative table statuses", async
       "This updates the HR practical-use readiness checklist.",
       "The production-like readiness blocker remains in force.",
       "The production-like readiness review is documentation-only.",
+      "The real-data processing boundary remains out of scope.",
+      "The real-data processing follow-up stays blocked.",
       "Raw payload viewing remains closed.",
       "| Allowed bounded surface | Blocked surface |",
       "| --- | --- |",

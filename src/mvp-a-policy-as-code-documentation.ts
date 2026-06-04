@@ -206,7 +206,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
     ],
     [
       "real employee data readiness",
-      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|processing)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
+      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
     ],
     [
       "live IdP/Okta readiness",
@@ -221,6 +221,18 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
       /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue|DLQ|queue\/DLQ)|queue\/DLQ)\b/iu,
     ],
     [
+      "production ops readiness",
+      /\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b/iu,
+    ],
+    [
+      "production authorization/RLS readiness",
+      /\bproduction\s+authorization\/RLS\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bproduction\s+authorization\/RLS\b/iu,
+    ],
+    [
+      "production audit immutability readiness",
+      /\bproduction\s+audit\s+immutability\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bproduction\s+audit\s+immutability\b/iu,
+    ],
+    [
       "retention/deletion runtime readiness",
       /\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b/iu,
     ],
@@ -229,8 +241,12 @@ function p2xBoundedPracticalUseArtifactOverclaimSubjects(
       /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|go|enabled)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b/iu,
     ],
     [
+      "legal/privacy acceptance",
+      /\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^.;]{0,60}\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b/iu,
+    ],
+    [
       "two-key Accepted approval",
-      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+approval\b/iu,
+      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go)|acceptance(?:\s+(?:is\s+)?(?:accepted|approved|complete|ready|go|enabled)|\s*:\s*(?:Go|Accepted|Yes|ready|allowed|approved|enabled)))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+(?:approval|acceptance)\b/iu,
     ],
   ];
 
@@ -304,13 +320,29 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     /production\s+(?:queue|DLQ|queue\/DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
   ],
   [
+    "production ops readiness",
+    /production\s+(?:ops|operations)(?:\s+(?:readiness|authority))?/iu,
+  ],
+  [
+    "production authorization/RLS readiness",
+    /production\s+authorization\/RLS/iu,
+  ],
+  [
+    "production audit immutability readiness",
+    /production\s+audit\s+immutability/iu,
+  ],
+  [
     "retention/deletion runtime readiness",
     /retention\/deletion(?:\s+runtime)?/iu,
   ],
   ["broad export readiness", /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export/iu],
   [
+    "legal/privacy acceptance",
+    /legal\/privacy(?:\s+(?:acceptance|runtime))?/iu,
+  ],
+  [
     "two-key Accepted approval",
-    /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|Accepted))/iu,
+    /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|acceptance|Accepted))/iu,
   ],
 ];
 
