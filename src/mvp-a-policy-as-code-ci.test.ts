@@ -635,8 +635,13 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       [
         "Unrestricted raw payload is enabled.",
         "Raw payload access is approved.",
+        "Production database access is approved.",
+        "Cloud accounts are enabled.",
       ].join("\n"),
-      ["unrestricted raw payload readiness"],
+      [
+        "unrestricted raw payload readiness",
+        "production infrastructure access readiness",
+      ],
     ],
     [
       "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
@@ -666,11 +671,14 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "| real employee data | complete |",
         "| live IdP/Okta | complete |",
         "| production credentials | available |",
+        "| legal-hold | approved |",
+        "| anonymization job | enabled |",
       ].join("\n"),
       [
         "real employee data readiness",
         "live IdP/Okta readiness",
         "regulated data/credential readiness",
+        "retention/deletion runtime readiness",
       ],
     ],
   ] as const;

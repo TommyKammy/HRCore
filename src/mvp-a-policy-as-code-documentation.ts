@@ -331,8 +331,12 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
       /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
     ],
     [
+      "production infrastructure access readiness",
+      /\b(?:production\s+(?:database|DB)\s+access|cloud\s+accounts?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|uses?)\b[^.;]{0,60}\b(?:production\s+(?:database|DB)\s+access|cloud\s+accounts?)\b/iu,
+    ],
+    [
       "retention/deletion runtime readiness",
-      /\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bretention\/deletion(?:\s+(?:runtime|jobs?|requests?))?\b/iu,
+      /\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b/iu,
     ],
     [
       "broad export readiness",
@@ -464,8 +468,12 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
   ],
   [
+    "production infrastructure access readiness",
+    /production\s+(?:database|DB)\s+access|cloud\s+accounts?/iu,
+  ],
+  [
     "retention/deletion runtime readiness",
-    /retention\/deletion(?:\s+runtime)?/iu,
+    /retention\/deletion(?:\s+runtime)?|legal[-\s]+hold|anonymization(?:\s+jobs?)?/iu,
   ],
   ["broad export readiness", /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export/iu],
   [
