@@ -3046,6 +3046,80 @@ test("MVP-D P2D-01 readiness review closeout keeps CSV/Ops/DLQ bounded", async (
   );
 });
 
+test("P2X practical-use gap assessment preserves bounded and stronger-readiness separation", async () => {
+  const [assessment, readme] = await Promise.all([
+    readRepoFile("docs/p2x-hr-practical-use-gap-assessment.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedAssessment = assessment.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X HR Practical-Use Gap Assessment",
+    "Issue: #338",
+    "Part of: #336",
+    "Depends on: #337",
+    "Review scope: bounded/non-production practical-use gaps after the MVP-A/B/C/D evidence inventory",
+    "Assessment Boundary",
+    "bounded/non-production practical-use follow-up: Allowed",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live Okta tenant operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Evidence Anchors Reviewed",
+    "docs/mvp-abcd-bounded-evidence-inventory.md",
+    "docs/mvp-a-p2a-03-practical-use-readiness-review-closeout.md",
+    "docs/mvp-d-p2d-01-readiness-review-closeout.md",
+    "Bounded Practical-Use Gaps",
+    "operator workflow",
+    "support evidence",
+    "audit lookup",
+    "CSV/Ops/DLQ usability",
+    "non-production data handling",
+    "test data governance",
+    "local runbook completeness",
+    "Stronger-Readiness Blockers Kept Separate",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No production-like readiness",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2X practical-use gap assessment"',
+    "npm run verify:pre-pr",
+  ]) {
+    assert.ok(
+      normalizedAssessment.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X practical-use gap assessment text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live Okta tenant operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedAssessment.includes(forbiddenText),
+      `P2X assessment must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X HR Practical-Use Gap Assessment\]\(docs\/p2x-hr-practical-use-gap-assessment\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
