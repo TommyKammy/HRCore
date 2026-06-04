@@ -3271,6 +3271,88 @@ test("P2X final closeout recommends the next bounded wave without stronger-readi
   );
 });
 
+test("P2X local bounded operator runbook stays scoped to synthetic local review", async () => {
+  const [runbook, readme] = await Promise.all([
+    readRepoFile("docs/p2x-local-bounded-operator-runbook.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedRunbook = runbook.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X Local Bounded Operator Runbook",
+    "Issue: #348",
+    "Part of: #347",
+    "Depends on: #336",
+    "Review scope: local bounded review of the completed MVP-A/B/C/D suite with synthetic or explicitly approved non-production evidence only",
+    "Runbook Boundary",
+    "bounded/non-production local review: Allowed",
+    "HR practical-use ready: Blocked",
+    "production-like ready: Blocked",
+    "real employee data: Blocked",
+    "live IdP/Okta operation: Blocked",
+    "production queue/DLQ ready: Blocked",
+    "retention/deletion runtime ready: Blocked",
+    "Canonical Flow Review Map",
+    "MVP-A onboarding",
+    "MVP-B transfer",
+    "MVP-C termination",
+    "MVP-D CSV import/export guard",
+    "MVP-D local Ops job status",
+    "MVP-D DLQ decisions",
+    "audit/correlation",
+    "Failed-Path Review Expectations",
+    "Cleanup Expectations",
+    "Command Shapes",
+    "npm run verify:pre-pr",
+    'npm test -- --test-name-pattern "P2X local bounded operator runbook"',
+    'npm test -- --test-name-pattern "MVP-D CSV dry-run"',
+    'npm test -- --test-name-pattern "MVP-D CSV apply"',
+    'npm test -- --test-name-pattern "MVP-D bounded synthetic CSV export"',
+    'npm test -- --test-name-pattern "MVP-D local ops job status"',
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No HR practical-use readiness",
+    "No production-like readiness surface",
+  ]) {
+    assert.ok(
+      normalizedRunbook.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X local bounded operator runbook text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live IdP/Okta operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+    "support console authority",
+  ]) {
+    assert.ok(
+      !normalizedRunbook.includes(forbiddenText),
+      `P2X local runbook must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    runbook,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X local runbook must not include workstation-local absolute paths",
+  );
+  assert.match(
+    readme,
+    /\[P2X Local Bounded Operator Runbook\]\(docs\/p2x-local-bounded-operator-runbook\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),

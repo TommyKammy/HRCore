@@ -49,6 +49,7 @@ The P2X bounded/non-production HR practical-use gap assessment is recorded in [P
 The P2X production-like blocker ledger is recorded in [P2X Production-Like Blocker Matrix](docs/p2x-production-like-blocker-matrix.md).
 The P2X solo-maintainer governance boundary review is recorded in [P2X Solo-Maintainer Governance Boundary Review](docs/p2x-solo-maintainer-governance-boundary-review.md).
 The final P2X-01 cross-suite closeout and next-wave recommendation is recorded in [P2X-01 Next-Wave Recommendation Closeout](docs/p2x-01-next-wave-recommendation-closeout.md).
+The P2X local bounded operator review procedure is recorded in [P2X Local Bounded Operator Runbook](docs/p2x-local-bounded-operator-runbook.md).
 
 ## Baseline structure
 
@@ -177,6 +178,10 @@ The final P2X-01 cross-suite closeout and next-wave recommendation is recorded i
   cross-suite assessment verdict, safest bounded practical-use follow-up
   recommendation, alternatives, residual stronger-readiness blockers, and
   verification boundary.
+- `docs/p2x-local-bounded-operator-runbook.md` records the P2X local bounded
+  operator review map for synthetic or explicitly approved non-production
+  MVP-A/B/C/D evidence, failed-path checks, cleanup expectations, and
+  repo-relative verification commands.
 
 ## Local verification
 
