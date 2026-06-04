@@ -126,22 +126,21 @@ function collectP2XBoundedPracticalUseArtifactFindings(
 
     for (const rawSegment of splitClaimSegments(text)) {
       const segment = stripReviewMetadata(rawSegment);
-      const subject = p2xBoundedPracticalUseArtifactOverclaimSubject(segment);
-      if (
-        subject === undefined ||
-        isP2XBoundedPracticalUseArtifactClaimBlocked(rawSegment) ||
-        isExplicitlyBlockedOrDeferred(rawSegment)
-      ) {
-        continue;
-      }
+      for (const subject of p2xBoundedPracticalUseArtifactOverclaimSubjects(
+        segment,
+      )) {
+        if (isP2XBoundedPracticalUseArtifactClaimBlocked(rawSegment, subject)) {
+          continue;
+        }
 
-      findings.push({
-        surface: "documentation",
-        path,
-        subject,
-        message:
-          "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
-      });
+        findings.push({
+          surface: "documentation",
+          path,
+          subject,
+          message:
+            "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
+        });
+      }
     }
   }
 
@@ -150,28 +149,54 @@ function collectP2XBoundedPracticalUseArtifactFindings(
 
 function isP2XBoundedPracticalUseArtifactClaimBlocked(
   segment: string,
+  subject: string,
 ): boolean {
-  return /(?:^|[\s|:;-])Blocked\b|\bBlocked shape\b|\bGeneric production acceptance\b|\bNo\b[^|.;]{0,320}\b(?:real employee data|live IdP\/Okta|unrestricted raw payload|broad CSV export|production queue\/DLQ|retention\/deletion runtime|two-key\s+Accepted claim|HR practical-use readiness|production-like readiness)\b|\b(?:does not|do not|must not|not|remain(?:s)? blocked)\b[^|.;]{0,180}\b(?:HR practical-use readiness|production-like readiness|real employee data|live IdP|Okta|production queue|DLQ|retention\/deletion runtime|broad CSV export|two-key\s+Accepted)\b/iu.test(
-    segment,
+  const subjectPattern = p2xBlockedSubjectPatterns.find(
+    ([blockedSubject]) => blockedSubject === subject,
+  )?.[1];
+  if (subjectPattern === undefined) {
+    return false;
+  }
+
+  const claimText = stripReviewMetadata(segment);
+  const subjectSource = subjectPattern.source;
+  const blockerBeforeSubject = new RegExp(
+    `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance|No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b[^|.;]{0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const subjectBeforeBlocker = new RegExp(
+    `\\b(?:${subjectSource})\\b[^|.;]{0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+    "iu",
+  );
+
+  return (
+    blockerBeforeSubject.test(claimText) || subjectBeforeBlocker.test(claimText)
   );
 }
 
-function p2xBoundedPracticalUseArtifactOverclaimSubject(
+function p2xBoundedPracticalUseArtifactOverclaimSubjects(
   segment: string,
-): string | undefined {
+): string[] {
   const prohibitedClaims: Array<[string, RegExp]> = [
     [
       "HR practical-use readiness",
       /\bHR\s+practical-use(?:\s+|-)read(?:y|iness)\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bpractical-use\s+readiness\s*(?::\s*)?(?:Go|Accepted|Yes|ready)?\b|\bready\s+for\s+HR\s+practical-use\b/iu,
     ],
-    ["production-like readiness", /\bproduction-like(?:\s+|-)ready\b/iu],
+    [
+      "production-like readiness",
+      /\bproduction-like(?:\s+|-)read(?:y|iness)\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b/iu,
+    ],
     [
       "real employee data readiness",
-      /\breal\s+employee\s+data\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\breal\s+employee\s+data\b/iu,
+      /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|processing)\b|\b(?:ready|approved|go|enabled|process(?:es|ing)?|uses?)\b[^|.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
     ],
     [
       "live IdP/Okta readiness",
       /\blive\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\blive\s+(?:IdP|Okta|provider)\b/iu,
+    ],
+    [
+      "unrestricted raw payload readiness",
+      /\b(?:unrestricted\s+)?raw[-\s]+payloads?\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|access|viewing)\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^|.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?\b/iu,
     ],
     [
       "production queue/DLQ readiness",
@@ -183,7 +208,7 @@ function p2xBoundedPracticalUseArtifactOverclaimSubject(
     ],
     [
       "broad export readiness",
-      /\bbroad\s+(?:CSV\s+)?export\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|accepted|go|enabled)\b[^|.;]{0,60}\bbroad\s+(?:CSV\s+)?export\b/iu,
+      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b[^|.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled)\b|\b(?:ready|approved|go|enabled)\b[^|.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b/iu,
     ],
     [
       "two-key Accepted approval",
@@ -191,8 +216,46 @@ function p2xBoundedPracticalUseArtifactOverclaimSubject(
     ],
   ];
 
-  return prohibitedClaims.find(([, pattern]) => pattern.test(segment))?.[0];
+  return prohibitedClaims
+    .filter(([, pattern]) => pattern.test(segment))
+    .map(([subject]) => subject);
 }
+
+const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
+  [
+    "HR practical-use readiness",
+    /HR\s+practical-use(?:\s+|-)read(?:y|iness)|practical-use\s+readiness|ready\s+for\s+HR\s+practical-use/iu,
+  ],
+  [
+    "production-like readiness",
+    /production-like(?:\s+|-)read(?:y|iness)|production-like\s+readiness\s+surface/iu,
+  ],
+  [
+    "real employee data readiness",
+    /real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data/iu,
+  ],
+  [
+    "live IdP/Okta readiness",
+    /live\s+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live\s+IdP\/Okta/iu,
+  ],
+  [
+    "unrestricted raw payload readiness",
+    /(?:unrestricted\s+)?raw[-\s]+payloads?/iu,
+  ],
+  [
+    "production queue/DLQ readiness",
+    /production\s+(?:queue|DLQ|queue\/DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
+  ],
+  [
+    "retention/deletion runtime readiness",
+    /retention\/deletion(?:\s+runtime)?/iu,
+  ],
+  ["broad export readiness", /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export/iu],
+  [
+    "two-key Accepted approval",
+    /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|Accepted))/iu,
+  ],
+];
 
 function collectAffectedReadinessGateFindings(
   inputs: MvpAPolicyAsCodeInputs,

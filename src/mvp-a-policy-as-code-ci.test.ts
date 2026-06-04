@@ -348,23 +348,31 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
   const p2xFixtureClaims = [
     [
       "docs/p2x-local-bounded-operator-runbook.md",
-      "HR practical-use readiness: Go.",
-      "HR practical-use readiness",
+      [
+        "HR practical-use readiness: Go.",
+        "No unrestricted raw payload | production-like readiness: Go.",
+        "Unrestricted raw payload is allowed.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "unrestricted raw payload readiness",
+      ],
     ],
     [
       "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
-      "Real employee data is ready and live Okta operation is enabled.",
-      "real employee data readiness",
+      "Real-data processing is approved and live Okta operation is enabled.",
+      ["real employee data readiness", "live IdP/Okta readiness"],
     ],
     [
       "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
-      "Production queue/DLQ ready: Go. Broad CSV export is allowed.",
-      "production queue/DLQ readiness",
+      "Production queue/DLQ ready: Go. Broad CSV/export is allowed.",
+      ["production queue/DLQ readiness", "broad export readiness"],
     ],
     [
       "docs/p2x-synthetic-test-data-governance.md",
       "Retention/deletion runtime ready: Go. Two-key Accepted approval is complete.",
-      "retention/deletion runtime readiness",
+      ["retention/deletion runtime readiness", "two-key Accepted approval"],
     ],
   ] as const;
 
@@ -376,36 +384,19 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
     await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
   );
 
-  for (const [path, , subject] of p2xFixtureClaims) {
-    assert.ok(
-      findings.some(
-        (finding) =>
-          finding.surface === "documentation" &&
-          finding.path === path &&
-          finding.subject === subject,
-      ),
-      `expected loader-read ${path} overclaim to fail for ${subject}`,
-    );
+  for (const [path, , expectedSubjects] of p2xFixtureClaims) {
+    for (const subject of expectedSubjects) {
+      assert.ok(
+        findings.some(
+          (finding) =>
+            finding.surface === "documentation" &&
+            finding.path === path &&
+            finding.subject === subject,
+        ),
+        `expected loader-read ${path} overclaim to fail for ${subject}`,
+      );
+    }
   }
-  assert.ok(
-    findings.some(
-      (finding) =>
-        finding.surface === "documentation" &&
-        finding.path ===
-          "docs/p2x-cross-flow-audit-correlation-lookup-map.md" &&
-        finding.subject === "broad export readiness",
-    ),
-    "expected broad export readiness overclaim to fail",
-  );
-  assert.ok(
-    findings.some(
-      (finding) =>
-        finding.surface === "documentation" &&
-        finding.path === "docs/p2x-synthetic-test-data-governance.md" &&
-        finding.subject === "two-key Accepted approval",
-    ),
-    "expected two-key Accepted approval overclaim to fail",
-  );
 });
 
 test("MVP-A policy-as-code gate carries ADR document identity into status claims", async () => {
