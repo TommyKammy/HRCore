@@ -63,6 +63,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
   "docs/p2x-synthetic-test-data-governance.md",
+  "docs/p2x-closeout-reference-inventory.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -184,6 +185,14 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
+  const keepsSubjectListBlocked = new RegExp(
+    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\bblocked\\b`,
+    "iu",
+  );
+  const rejectsSubjectList = new RegExp(
+    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
   const sameClauseCannotClaimBeforeSubject = new RegExp(
     `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
@@ -214,6 +223,8 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     noListBlockerBeforeSubject.test(claimText) ||
     doNotUseListBlockerBeforeSubject.test(claimText) ||
     blockedShapeBeforeSubject.test(claimText) ||
+    keepsSubjectListBlocked.test(claimText) ||
+    rejectsSubjectList.test(claimText) ||
     cannotClaimListBlockerBeforeSubject.test(claimText)
   );
 }

@@ -439,6 +439,21 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       "Retention/deletion jobs are enabled. Two-key approval is approved.",
       ["retention/deletion runtime readiness", "two-key Accepted approval"],
     ],
+    [
+      "docs/p2x-closeout-reference-inventory.md",
+      [
+        "HR practical-use readiness is approved.",
+        "Production-like readiness is approved.",
+        "Real employee data is ready.",
+        "Live IdP/Okta is enabled.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of p2xFixtureClaims) {
