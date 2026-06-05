@@ -70,6 +70,7 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
   "docs/p2x-synthetic-test-data-governance.md",
+  "docs/p2x-closeout-reference-inventory.md",
   "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
   "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
   "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",

@@ -3619,6 +3619,81 @@ test("P2X-02 independent closeout accepts bounded follow-up without readiness ov
   );
 });
 
+test("P2X closeout reference inventory preserves the accepted bounded cleanup boundary", async () => {
+  const [inventory, readme] = await Promise.all([
+    readRepoFile("docs/p2x-closeout-reference-inventory.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedInventory = inventory.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X Closeout Reference Inventory",
+    "Issue: #361",
+    "Part of: #360",
+    "Depends on: #347",
+    "Inventory Boundary",
+    "P2X-02 accepted boundary: bounded practical-use follow-up evidence only",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "Reference Classification",
+    "docs/p2x-01-next-wave-recommendation-closeout.md",
+    "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-synthetic-test-data-governance.md",
+    "current",
+    "stale",
+    "needs narrow cleanup",
+    "Recommended Follow-Up Edits",
+    "No Surface Expansion Confirmation",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No two-key Accepted claim",
+    "No HR practical-use readiness",
+    "No production-like readiness surface",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2X closeout reference inventory"',
+    "npm run verify:pre-pr",
+  ]) {
+    assert.ok(
+      normalizedInventory.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X closeout reference inventory text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use ready: Go",
+    "production-like ready: Go",
+    "real employee data: Go",
+    "live IdP/Okta operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "is Accepted two-key approval",
+    "P2X-02 accepts HR practical-use readiness",
+    "P2X-02 accepts production-like readiness",
+  ]) {
+    assert.ok(
+      !normalizedInventory.includes(forbiddenText),
+      `P2X reference inventory must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.doesNotMatch(
+    inventory,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X reference inventory must not include workstation-local absolute paths",
+  );
+  assert.match(
+    readme,
+    /\[P2X Closeout Reference Inventory\]\(docs\/p2x-closeout-reference-inventory\.md\)/,
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
