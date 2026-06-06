@@ -756,11 +756,17 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
       [
         "No real employee data, but HR practical-use readiness: Go.",
+        "Real employee data approved: Blocked.",
         "rejects stale blockers and live IdP/Okta operation: Go.",
+        "Live IdP/Okta remains blocked, operation: Go.",
         "rejects stale blockers and live IdP/Okta remains blocked pending review and operation: Go.",
         "Keeps live IdP/Okta operation approved and real employee data blocked.",
       ].join("\n"),
-      ["HR practical-use readiness", "live IdP/Okta readiness"],
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+      ],
     ],
     [
       "docs/p2x-closeout-reference-inventory.md",
@@ -795,6 +801,31 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       );
     }
   }
+});
+
+test("MVP-A policy-as-code P2X guard preserves later-Accepted blocker wording", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath = "docs/p2x-02-bounded-practical-use-follow-up-closeout.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    "real employee data remains blocked and requires a later Accepted decision.",
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "real employee data readiness",
+    ),
+    "expected later Accepted prerequisite wording to remain a blocker, not an approval",
+  );
 });
 
 test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {

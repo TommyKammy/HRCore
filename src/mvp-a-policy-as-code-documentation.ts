@@ -300,7 +300,7 @@ function hasSubjectBlockerBeforeLaterAffirmativeStatus(
     }
 
     const subjectEndIndex = match.index + match[0].length;
-    const nextBreakIndexes = [",", "|", ";", "."]
+    const nextBreakIndexes = ["|", ";", "."]
       .map((breakChar) => segment.indexOf(breakChar, subjectEndIndex))
       .filter((index) => index !== -1);
     const nextBreakIndex =
@@ -372,7 +372,7 @@ function hasAffirmativeStatusAttachedToSubject(
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
   if (
-    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b)\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
+    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:ready|processing|complete)\b\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
       value,
     )
   ) {
@@ -395,6 +395,15 @@ function hasLaterAffirmativeStatus(value: string): boolean {
 
     const prefix = value.slice(0, match.index);
     if (/\bnot\s+(?:treated\s+as\s+)?$/iu.test(prefix)) {
+      continue;
+    }
+
+    if (
+      match[0].toLowerCase() === "accepted" &&
+      /\b(?:requires?\s+(?:a\s+)?later|required\s+before|before)\s+$/iu.test(
+        prefix,
+      )
+    ) {
       continue;
     }
 
