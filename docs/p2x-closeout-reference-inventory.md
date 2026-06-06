@@ -44,8 +44,8 @@ runtime, retention/deletion runtime, or readiness claims.
 | `docs/p2x-cross-flow-audit-correlation-lookup-map.md`          | current        | The lookup map anchors each flow to directly linked bounded audit or correlation evidence and rejects inferred sibling or broad-search custody claims.                                                                                                                              |
 | `docs/p2x-synthetic-test-data-governance.md`                   | current        | The governance note permits only bounded synthetic or explicitly approved non-production examples and rejects placeholders, real data, regulated identifiers, raw payloads, and retention/deletion runtime expansion.                                                               |
 | `src/repository-guards.test.ts` P2X guard cluster              | current        | Existing P2X guards protect the P2X-01/P2X-02 documents and child artifacts, and now include this inventory guard so the accepted P2X-02 boundary cannot disappear from closeout synchronization work.                                                                              |
-| `src/mvp-a-policy-as-code-ci.ts` monitored documentation paths | current        | Policy-as-code now loads this inventory path alongside the P2X closeout and bounded follow-up artifacts.                                                                                                                                                                            |
-| `src/mvp-a-policy-as-code-documentation.ts` P2X overclaim scan | current        | The P2X bounded practical-use artifact scan now includes this inventory path, so stronger-readiness overclaims in the inventory fail closed.                                                                                                                                        |
+| `src/mvp-a-policy-as-code-ci.ts` monitored documentation paths | current        | Policy-as-code now loads the P2X-02 closeout and this inventory path alongside the P2X bounded follow-up artifacts.                                                                                                                                                                 |
+| `src/mvp-a-policy-as-code-documentation.ts` P2X overclaim scan | current        | The P2X bounded practical-use artifact scan now includes the P2X-02 closeout and this inventory path, so stronger-readiness overclaims in either document fail closed.                                                                                                              |
 
 ## Stale Wording Scan
 
@@ -69,8 +69,8 @@ bounded follow-up evidence only.
 ## Recommended Follow-Up Edits
 
 - Completed the README discovery link for this inventory.
-- Completed policy-as-code loading and P2X overclaim scanning for this
-  inventory.
+- Completed policy-as-code loading and P2X overclaim scanning for the P2X-02
+  closeout and this inventory.
 - Completed the focused repository guard for this inventory.
 - In later P2X cleanup children, treat the P2X-01 next-wave recommendation as
   historical context once P2X-02 is referenced.

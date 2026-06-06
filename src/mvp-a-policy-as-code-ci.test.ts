@@ -109,6 +109,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
   );
   for (const path of [
     "docs/p2x-01-next-wave-recommendation-closeout.md",
+    "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
     "docs/p2x-hr-practical-use-gap-assessment.md",
     "docs/p2x-local-bounded-operator-runbook.md",
     "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
@@ -440,6 +441,19 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       ["retention/deletion runtime readiness", "two-key Accepted approval"],
     ],
     [
+      "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+      [
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+        "Live IdP/Okta operation is enabled.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "live IdP/Okta readiness",
+      ],
+    ],
+    [
       "docs/p2x-closeout-reference-inventory.md",
       [
         "HR practical-use readiness is approved.",
@@ -707,6 +721,14 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "regulated data/credential readiness",
         "retention/deletion runtime readiness",
       ],
+    ],
+    [
+      "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+      [
+        "No real employee data, but HR practical-use readiness: Go.",
+        "Keeps live IdP/Okta operation approved and real employee data blocked.",
+      ].join("\n"),
+      ["HR practical-use readiness", "live IdP/Okta readiness"],
     ],
     [
       "docs/p2x-closeout-reference-inventory.md",

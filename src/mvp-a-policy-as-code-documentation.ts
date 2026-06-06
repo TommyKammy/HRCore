@@ -58,6 +58,7 @@ const requiredNonProductionDocumentationPaths = [
 
 const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-01-next-wave-recommendation-closeout.md",
+  "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
   "docs/p2x-hr-practical-use-gap-assessment.md",
   "docs/p2x-local-bounded-operator-runbook.md",
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",

@@ -63,6 +63,7 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "docs/mvp-a-p2a-04-refactor-wave-closeout.md",
   "docs/mvp-a-p2a-05-refactor-wave-closeout.md",
   "docs/p2x-01-next-wave-recommendation-closeout.md",
+  "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
   "docs/p2x-production-like-blocker-matrix.md",
   "docs/p2x-solo-maintainer-governance-boundary-review.md",
   "docs/p2x-hr-practical-use-gap-assessment.md",

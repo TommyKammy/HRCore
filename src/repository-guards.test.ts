@@ -3647,7 +3647,7 @@ test("P2X closeout reference inventory preserves the accepted bounded cleanup bo
     "current",
     "stale",
     "Recommended Follow-Up Edits",
-    "Completed policy-as-code loading and P2X overclaim scanning for this inventory",
+    "Completed policy-as-code loading and P2X overclaim scanning for the P2X-02 closeout and this inventory",
     "Completed the focused repository guard for this inventory",
     "No Surface Expansion Confirmation",
     "No real employee data",
