@@ -186,11 +186,11 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const keepsSubjectListBlocked = new RegExp(
-    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\bblocked\\b`,
+    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\\b)[^|.;]){0,500}\\bblocked\\b`,
     "iu",
   );
   const rejectsSubjectList = new RegExp(
-    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    `\\brejects?\\b(?:(?!\\b(?:and|but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const sameClauseCannotClaimBeforeSubject = new RegExp(
@@ -205,6 +205,15 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,180}\\b(?:Blocked|blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
   );
+
+  if (
+    hasKeepsAffirmativeStatusBeforeLaterBlockedSubject(
+      claimText,
+      subjectPattern,
+    )
+  ) {
+    return false;
+  }
 
   if (
     sameClauseBlockerBeforeSubject.test(claimText) ||
@@ -227,6 +236,50 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     rejectsSubjectList.test(claimText) ||
     cannotClaimListBlockerBeforeSubject.test(claimText)
   );
+}
+
+function hasKeepsAffirmativeStatusBeforeLaterBlockedSubject(
+  segment: string,
+  subjectPattern: RegExp,
+): boolean {
+  if (!/\bkeeps?\b/iu.test(segment)) {
+    return false;
+  }
+
+  const globalSubjectPattern = new RegExp(subjectPattern.source, "giu");
+  for (const match of segment.matchAll(globalSubjectPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const subjectStartIndex = match.index;
+    const subjectEndIndex = subjectStartIndex + match[0].length;
+    const prefix = segment.slice(0, subjectStartIndex);
+    if (
+      !/\bkeeps?\b(?:(?!\b(?:but|however|yet)\b)[^|.;]){0,500}$/iu.test(prefix)
+    ) {
+      continue;
+    }
+
+    const nextBreakIndexes = [",", "|", ";", "."]
+      .map((breakChar) => segment.indexOf(breakChar, subjectEndIndex))
+      .filter((index) => index !== -1);
+    const nextBreakIndex =
+      nextBreakIndexes.length === 0
+        ? segment.length
+        : Math.min(...nextBreakIndexes);
+    const subjectSuffix = segment.slice(subjectEndIndex, nextBreakIndex);
+    if (
+      hasAffirmativeStatusSuffix(subjectSuffix) &&
+      /\band\b(?:(?!\b(?:but|however|yet)\b)[^|.;]){0,180}\bblocked\b/iu.test(
+        subjectSuffix,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function hasAffirmativeStatusAttachedToSubject(
@@ -273,7 +326,7 @@ function hasAffirmativeStatusAttachedToSubject(
 }
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
-  return /^\s*(?:(?:access|approval|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
+  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
     value,
   );
 }

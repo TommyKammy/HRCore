@@ -710,8 +710,11 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
     ],
     [
       "docs/p2x-closeout-reference-inventory.md",
-      "Rejects stale blockers and live IdP/Okta operation: Go.",
-      ["live IdP/Okta readiness"],
+      [
+        "Rejects stale blockers and live IdP/Okta protected operation: Go.",
+        "Keeps real employee data evidence approved and live IdP/Okta blocked.",
+      ].join("\n"),
+      ["live IdP/Okta readiness", "real employee data readiness"],
     ],
   ] as const;
 
