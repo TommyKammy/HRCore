@@ -723,6 +723,11 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       ],
     ],
     [
+      "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+      "rejects real employee data blockers and is approved.",
+      ["real employee data readiness"],
+    ],
+    [
       "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
       [
         "No real employee data, but HR practical-use readiness: Go.",

@@ -191,7 +191,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const rejectsSubjectList = new RegExp(
-    `\\brejects?\\b(?:(?!\\b(?:and|but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
   );
   const sameClauseCannotClaimBeforeSubject = new RegExp(
