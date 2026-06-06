@@ -221,6 +221,12 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   }
 
   if (
+    hasSubjectBlockerBeforeLaterAffirmativeStatus(claimText, subjectPattern)
+  ) {
+    return false;
+  }
+
+  if (
     sameClauseBlockerBeforeSubject.test(claimText) ||
     sameClauseBlockedShapeBeforeSubject.test(claimText) ||
     sameClauseCannotClaimBeforeSubject.test(claimText) ||
@@ -283,6 +289,44 @@ function hasKeepsAffirmativeStatusBeforeLaterBlockedSubject(
   return false;
 }
 
+function hasSubjectBlockerBeforeLaterAffirmativeStatus(
+  segment: string,
+  subjectPattern: RegExp,
+): boolean {
+  const globalSubjectPattern = new RegExp(subjectPattern.source, "giu");
+  for (const match of segment.matchAll(globalSubjectPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const subjectEndIndex = match.index + match[0].length;
+    const nextBreakIndexes = [",", "|", ";", "."]
+      .map((breakChar) => segment.indexOf(breakChar, subjectEndIndex))
+      .filter((index) => index !== -1);
+    const nextBreakIndex =
+      nextBreakIndexes.length === 0
+        ? segment.length
+        : Math.min(...nextBreakIndexes);
+    const subjectSuffix = segment.slice(subjectEndIndex, nextBreakIndex);
+    const blockerMatch =
+      /\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked|unsupported|prohibited|forbidden|out\s+of\s+scope|requires?\s+(?:a\s+later\s+)?Accepted|required\s+before\s+Accepted|before\s+Accepted)\b/iu.exec(
+        subjectSuffix,
+      );
+    if (blockerMatch === null) {
+      continue;
+    }
+
+    const suffixAfterBlocker = subjectSuffix.slice(
+      blockerMatch.index + blockerMatch[0].length,
+    );
+    if (hasLaterAffirmativeStatus(suffixAfterBlocker)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function hasAffirmativeStatusAttachedToSubject(
   segment: string,
   subjectPattern: RegExp,
@@ -338,6 +382,26 @@ function hasAffirmativeStatusSuffix(value: string): boolean {
   return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
     value,
   );
+}
+
+function hasLaterAffirmativeStatus(value: string): boolean {
+  const laterStatusPattern =
+    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/giu;
+
+  for (const match of value.matchAll(laterStatusPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const prefix = value.slice(0, match.index);
+    if (/\bnot\s+(?:treated\s+as\s+)?$/iu.test(prefix)) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 function hasAffirmativeStatusPrefix(value: string): boolean {
