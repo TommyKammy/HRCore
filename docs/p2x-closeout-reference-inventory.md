@@ -22,12 +22,12 @@ runtime, retention/deletion runtime, or readiness claims.
 - bounded practical-use follow-up evidence: current.
 - HR practical-use readiness: Blocked.
 - production-like readiness: Blocked.
-- real employee data readiness: Blocked.
-- live IdP/Okta readiness: Blocked.
-- unrestricted raw payload readiness: Blocked.
-- broad CSV export readiness: Blocked.
-- production queue/DLQ readiness: Blocked.
-- retention/deletion runtime readiness: Blocked.
+- No real employee data.
+- No live IdP/Okta.
+- No unrestricted raw payload.
+- No broad CSV export.
+- No production queue/DLQ.
+- No retention/deletion runtime.
 - legal/privacy runtime approval: Blocked.
 - two-key Accepted claim: Blocked.
 
@@ -42,7 +42,7 @@ runtime, retention/deletion runtime, or readiness claims.
 | `docs/p2x-local-bounded-operator-runbook.md`                   | current        | The runbook gives repo-relative local review steps for synthetic or explicitly approved non-production evidence and preserves blocked stronger-readiness surfaces.                                                                                                                  |
 | `docs/p2x-synthetic-practical-use-rehearsal-checklist.md`      | current        | The checklist records bounded rehearsal fields and cleanup expectations while keeping HR practical-use and production-like readiness blocked.                                                                                                                                       |
 | `docs/p2x-cross-flow-audit-correlation-lookup-map.md`          | current        | The lookup map anchors each flow to directly linked bounded audit or correlation evidence and rejects inferred sibling or broad-search custody claims.                                                                                                                              |
-| `docs/p2x-synthetic-test-data-governance.md`                   | current        | The governance note permits only bounded synthetic or explicitly approved non-production examples and rejects placeholders, real data, regulated identifiers, raw payloads, and retention/deletion runtime expansion.                                                               |
+| `docs/p2x-synthetic-test-data-governance.md`                   | current        | The governance note permits only bounded synthetic or explicitly authorized non-production examples and rejects placeholders, real data, regulated identifiers, raw payloads, and retention/deletion runtime expansion.                                                             |
 | `src/repository-guards.test.ts` P2X guard cluster              | current        | Existing P2X guards protect the P2X-01/P2X-02 documents and child artifacts, and now include this inventory guard so the accepted P2X-02 boundary cannot disappear from closeout synchronization work.                                                                              |
 | `src/mvp-a-policy-as-code-ci.ts` monitored documentation paths | current        | Policy-as-code now loads the P2X-02 closeout and this inventory path alongside the P2X bounded follow-up artifacts.                                                                                                                                                                 |
 | `src/mvp-a-policy-as-code-documentation.ts` P2X overclaim scan | current        | The P2X bounded practical-use artifact scan now includes the P2X-02 closeout and this inventory path, so stronger-readiness overclaims in either document fail closed.                                                                                                              |
@@ -76,7 +76,7 @@ bounded follow-up evidence only.
   historical context once P2X-02 is referenced.
 - Do not perform broad refactors in this child.
 - Do not update product behavior, migrations, API/UI surfaces, provider
-  integrations, production operations, real-data approval, export behavior,
+  integrations, production operations, real-data use, export behavior,
   queue/DLQ runtime, retention/deletion runtime, legal/privacy approval,
   two-key approval, HR practical-use readiness, or production-like readiness.
 
