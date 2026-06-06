@@ -708,6 +708,11 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "retention/deletion runtime readiness",
       ],
     ],
+    [
+      "docs/p2x-closeout-reference-inventory.md",
+      "Rejects stale blockers and live IdP/Okta operation: Go.",
+      ["live IdP/Okta readiness"],
+    ],
   ] as const;
 
   for (const [path, text] of currentReviewProbeClaims) {

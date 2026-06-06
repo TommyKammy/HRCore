@@ -273,7 +273,7 @@ function hasAffirmativeStatusAttachedToSubject(
 }
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
-  return /^\s*(?:access\s+)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
+  return /^\s*(?:(?:access|approval|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
     value,
   );
 }
