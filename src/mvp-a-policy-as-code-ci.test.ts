@@ -726,6 +726,7 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
       [
         "No real employee data, but HR practical-use readiness: Go.",
+        "rejects stale blockers and live IdP/Okta operation: Go.",
         "Keeps live IdP/Okta operation approved and real employee data blocked.",
       ].join("\n"),
       ["HR practical-use readiness", "live IdP/Okta readiness"],
@@ -735,6 +736,8 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       [
         "Rejects stale blockers and live IdP/Okta protected operation: Go.",
         "Keeps real employee data evidence approved and live IdP/Okta blocked.",
+        "keeps live IdP/Okta blocked and real employee data evidence approved.",
+        "keeps blocker evidence and real employee data approved while live IdP/Okta remains blocked.",
       ].join("\n"),
       ["live IdP/Okta readiness", "real employee data readiness"],
     ],

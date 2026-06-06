@@ -207,6 +207,10 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
 
+  if (hasAffirmativeStatusAttachedToSubject(claimText, subjectPattern)) {
+    return false;
+  }
+
   if (
     hasKeepsAffirmativeStatusBeforeLaterBlockedSubject(
       claimText,
@@ -223,10 +227,6 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     subjectBeforeBlocker.test(claimText)
   ) {
     return true;
-  }
-
-  if (hasAffirmativeStatusAttachedToSubject(claimText, subjectPattern)) {
-    return false;
   }
 
   return (
@@ -327,12 +327,28 @@ function hasAffirmativeStatusAttachedToSubject(
 }
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
+  if (
+    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b)\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
   return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
     value,
   );
 }
 
 function hasAffirmativeStatusPrefix(value: string): boolean {
+  if (
+    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+
   return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
     value,
   );
