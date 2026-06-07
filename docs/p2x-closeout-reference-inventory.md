@@ -1,4 +1,4 @@
-# P2X Closeout Reference Inventory
+# P2X-03 Closeout Reference Inventory
 
 Issue: #361
 Part of: #360
