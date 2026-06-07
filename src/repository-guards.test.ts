@@ -3627,7 +3627,7 @@ test("P2X closeout reference inventory preserves the accepted bounded cleanup bo
   const normalizedInventory = inventory.replace(/\s+/gu, " ").trim();
 
   for (const requiredText of [
-    "# P2X Closeout Reference Inventory",
+    "# P2X-03 Closeout Reference Inventory",
     "Issue: #361",
     "Part of: #360",
     "Depends on: #347",
@@ -3693,7 +3693,7 @@ test("P2X closeout reference inventory preserves the accepted bounded cleanup bo
   );
   assert.match(
     readme,
-    /\[P2X Closeout Reference Inventory\]\(docs\/p2x-closeout-reference-inventory\.md\)/,
+    /\[P2X-03 Closeout Reference Inventory\]\(docs\/p2x-closeout-reference-inventory\.md\)/,
   );
 });
 
