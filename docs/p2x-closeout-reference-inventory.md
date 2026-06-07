@@ -72,6 +72,9 @@ bounded follow-up evidence only.
 - Completed policy-as-code loading and P2X overclaim scanning for the P2X-02
   closeout and this inventory.
 - Completed the focused repository guard for this inventory.
+- Completed the README and P2X-01 planning reference bounded status
+  synchronization in #362, keeping the completed P2X-02 evidence set separate
+  from stronger-readiness and later-wave options.
 - In later P2X cleanup children, treat the P2X-01 next-wave recommendation as
   historical context once P2X-02 is referenced.
 - Do not perform broad refactors in this child.

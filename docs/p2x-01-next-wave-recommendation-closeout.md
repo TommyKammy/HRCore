@@ -64,6 +64,40 @@ completed MVP-A/B/C/D suite:
 This first child should be followed by focused checklist and synthetic
 test-data governance children only if the runbook exposes a concrete gap.
 
+## Post-P2X-02 Status Synchronization
+
+P2X-02 later completed the bounded practical-use follow-up wave recommended by
+this P2X-01 closeout. After P2X-02, cite this recommendation as historical
+planning context and cite
+`docs/p2x-02-bounded-practical-use-follow-up-closeout.md` for the current
+accepted boundary: completed bounded practical-use follow-up evidence only.
+
+The completed bounded follow-up evidence set is:
+
+- `docs/p2x-02-bounded-practical-use-follow-up-closeout.md`.
+- `docs/p2x-local-bounded-operator-runbook.md`.
+- `docs/p2x-synthetic-practical-use-rehearsal-checklist.md`.
+- `docs/p2x-cross-flow-audit-correlation-lookup-map.md`.
+- `docs/p2x-synthetic-test-data-governance.md`.
+
+Current next-wave wording must keep these lanes separate:
+
+- bounded closeout synchronization / narrow cleanup.
+- production-like prerequisites.
+- governance/two-key evidence.
+- bounded practical-use extension, only if a later bounded rehearsal gap is
+  found.
+
+This status synchronization preserves the blocked boundary:
+
+- HR practical-use readiness: Blocked.
+- production-like readiness: Blocked.
+- real employee data use: Blocked.
+- live-provider operation: Blocked.
+- production queue/DLQ operation: Blocked.
+- retention/deletion runtime: Blocked.
+- two-key acceptance: Blocked.
+
 ## Alternatives
 
 Alternative 1: production-like prerequisite wave.
