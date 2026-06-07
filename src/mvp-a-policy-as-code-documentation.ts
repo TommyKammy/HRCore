@@ -63,6 +63,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
   "docs/p2x-synthetic-test-data-governance.md",
+  "docs/p2x-03-closeout-reference-inventory.md",
 ] as const;
 
 export function collectDocumentationFindings(

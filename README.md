@@ -54,6 +54,7 @@ The P2X synthetic practical-use rehearsal checklist is recorded in [P2X Syntheti
 The P2X cross-flow audit and correlation lookup map is recorded in [P2X Cross-Flow Audit and Correlation Lookup Map](docs/p2x-cross-flow-audit-correlation-lookup-map.md).
 The P2X synthetic test-data governance note is recorded in [P2X Synthetic Test-Data Governance](docs/p2x-synthetic-test-data-governance.md).
 The final P2X-02 bounded practical-use follow-up closeout is recorded in [P2X-02 Bounded Practical-Use Follow-Up Closeout](docs/p2x-02-bounded-practical-use-follow-up-closeout.md).
+The P2X-03 closeout reference inventory and stale wording scan is recorded in [P2X-03 Closeout Reference Inventory](docs/p2x-03-closeout-reference-inventory.md).
 
 ## Baseline structure
 
@@ -195,6 +196,10 @@ The final P2X-02 bounded practical-use follow-up closeout is recorded in [P2X-02
   termination, CSV import/export guard, local Ops job status, and DLQ
   decisions while keeping production audit readiness and production-like
   readiness blocked.
+- `docs/p2x-03-closeout-reference-inventory.md` records the P2X-03 source-of-truth
+  inventory for P2X-01/P2X-02 references, stale next-wave wording, and narrow
+  cleanup candidates while keeping HR practical-use readiness and
+  production-like readiness blocked.
 
 ## Local verification
 
