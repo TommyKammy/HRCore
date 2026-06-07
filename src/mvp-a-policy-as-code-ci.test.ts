@@ -109,11 +109,13 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
   );
   for (const path of [
     "docs/p2x-01-next-wave-recommendation-closeout.md",
+    "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
     "docs/p2x-hr-practical-use-gap-assessment.md",
     "docs/p2x-local-bounded-operator-runbook.md",
     "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
     "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
     "docs/p2x-synthetic-test-data-governance.md",
+    "docs/p2x-closeout-reference-inventory.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -438,6 +440,34 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       "Retention/deletion jobs are enabled. Two-key approval is approved.",
       ["retention/deletion runtime readiness", "two-key Accepted approval"],
     ],
+    [
+      "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+      [
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+        "Live IdP/Okta operation is enabled.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "live IdP/Okta readiness",
+      ],
+    ],
+    [
+      "docs/p2x-closeout-reference-inventory.md",
+      [
+        "HR practical-use readiness is approved.",
+        "Production-like readiness is approved.",
+        "Real employee data is ready.",
+        "Live IdP/Okta is enabled.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of p2xFixtureClaims) {
@@ -608,6 +638,31 @@ test("MVP-A policy-as-code P2X guard rejects table and approval metadata bypasse
   }
 });
 
+test("MVP-A policy-as-code P2X guard rejects subject blockers followed by later affirmative status", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath = "docs/p2x-02-bounded-practical-use-follow-up-closeout.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    "rejects stale blockers and live IdP/Okta remains blocked pending review and operation: Go.",
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "live IdP/Okta readiness",
+    ),
+    "expected later affirmative live IdP/Okta status to fail even after a subject blocker",
+  );
+});
+
 test("MVP-A policy-as-code P2X guard covers current unresolved review-thread probes", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
@@ -692,6 +747,37 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "retention/deletion runtime readiness",
       ],
     ],
+    [
+      "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+      "rejects real employee data blockers and is approved.",
+      ["real employee data readiness"],
+    ],
+    [
+      "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+      [
+        "No real employee data, but HR practical-use readiness: Go.",
+        "Real employee data approved: Blocked.",
+        "rejects stale blockers and live IdP/Okta operation: Go.",
+        "Live IdP/Okta remains blocked, operation: Go.",
+        "rejects stale blockers and live IdP/Okta remains blocked pending review and operation: Go.",
+        "Keeps live IdP/Okta operation approved and real employee data blocked.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+      ],
+    ],
+    [
+      "docs/p2x-closeout-reference-inventory.md",
+      [
+        "Rejects stale blockers and live IdP/Okta protected operation: Go.",
+        "Keeps real employee data evidence approved and live IdP/Okta blocked.",
+        "keeps live IdP/Okta blocked and real employee data evidence approved.",
+        "keeps blocker evidence and real employee data approved while live IdP/Okta remains blocked.",
+      ].join("\n"),
+      ["live IdP/Okta readiness", "real employee data readiness"],
+    ],
   ] as const;
 
   for (const [path, text] of currentReviewProbeClaims) {
@@ -715,6 +801,31 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       );
     }
   }
+});
+
+test("MVP-A policy-as-code P2X guard preserves later-Accepted blocker wording", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath = "docs/p2x-02-bounded-practical-use-follow-up-closeout.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    "real employee data remains blocked and requires a later Accepted decision.",
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "real employee data readiness",
+    ),
+    "expected later Accepted prerequisite wording to remain a blocker, not an approval",
+  );
 });
 
 test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {

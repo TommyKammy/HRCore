@@ -322,11 +322,13 @@ test("P2X final closeout stays inside stronger-readiness guard coverage", async 
 });
 
 const p2xBoundedPracticalUseArtifactPaths = [
+  "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
   "docs/p2x-hr-practical-use-gap-assessment.md",
   "docs/p2x-local-bounded-operator-runbook.md",
   "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
   "docs/p2x-synthetic-test-data-governance.md",
+  "docs/p2x-closeout-reference-inventory.md",
 ] as const;
 
 function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
@@ -504,7 +506,7 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
       "iu",
     ).test(line) ||
     new RegExp(
-      `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+      `\\b(?:do\\s+not\\s+(?:use|update)|must\\s+not\\s+(?:use|update)|does\\s+not\\s+(?:require|introduce|approve|accept|update)|not\\s+(?:require|introduce|approve|accept|update))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
       "iu",
     ).test(line) ||
     new RegExp(
