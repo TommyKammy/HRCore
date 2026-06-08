@@ -121,6 +121,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-synthetic-test-data-governance.md",
     "docs/p2x-closeout-reference-inventory.md",
     "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
+    "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -360,7 +361,9 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       [
         "Current P2X bounded status: HR practical-use readiness: Go.",
         "Current P2X bounded status: production-like readiness: Go.",
+        "Current P2X bounded status: production-like data processing: Go.",
         "Current P2X bounded status: real employee data is approved.",
+        "Current P2X bounded status: data-owner approval is approved.",
         "Current P2X bounded status: live IdP/Okta operation is enabled.",
         "Current P2X bounded status: production queue/DLQ ready: Go.",
         "Current P2X bounded status: retention/deletion runtime ready: Go.",
@@ -369,7 +372,9 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       [
         "HR practical-use readiness",
         "production-like readiness",
+        "production-like data processing",
         "real employee data readiness",
+        "data-owner approval",
         "live IdP/Okta readiness",
         "production queue/DLQ readiness",
         "retention/deletion runtime readiness",
@@ -513,6 +518,25 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "production queue/DLQ readiness",
         "retention/deletion runtime readiness",
         "two-key Accepted approval",
+      ],
+    ],
+    [
+      "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+      [
+        "Real employee data is ready.",
+        "Legal/privacy approval is approved.",
+        "Data-owner approval is approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+        "Production-like data processing: Go.",
+      ].join("\n"),
+      [
+        "real employee data readiness",
+        "legal/privacy acceptance",
+        "data-owner approval",
+        "HR practical-use readiness",
+        "production-like readiness",
+        "production-like data processing",
       ],
     ],
   ] as const;
@@ -720,7 +744,9 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       [
         "Current P2X bounded status: HR practical-use readiness: Go.",
         "Current P2X bounded status: production-like readiness: Go.",
+        "Current P2X bounded status: production-like data processing: Go.",
         "Current P2X bounded status: real employee data approved.",
+        "Current P2X bounded status: data-owner approval approved.",
         "Current P2X bounded status: live IdP/Okta operation enabled.",
         "Current P2X bounded status: production queue/DLQ ready: Go.",
         "Current P2X bounded status: retention/deletion runtime ready: Go.",
@@ -729,7 +755,9 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       [
         "HR practical-use readiness",
         "production-like readiness",
+        "production-like data processing",
         "real employee data readiness",
+        "data-owner approval",
         "live IdP/Okta readiness",
         "production queue/DLQ readiness",
         "retention/deletion runtime readiness",
@@ -861,6 +889,23 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "production queue/DLQ readiness",
         "retention/deletion runtime readiness",
         "two-key Accepted approval",
+      ],
+    ],
+    [
+      "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+      [
+        "No real employee data, but legal/privacy approval is ready.",
+        "Keeps HR practical-use blocked and real employee data approved.",
+        "Production-like readiness: Go.",
+        "Production-like data processing: Go.",
+        "Data-owner approval: Go.",
+      ].join("\n"),
+      [
+        "legal/privacy acceptance",
+        "real employee data readiness",
+        "production-like readiness",
+        "production-like data processing",
+        "data-owner approval",
       ],
     ],
   ] as const;

@@ -3930,6 +3930,103 @@ test("P2X-03 independent closeout accepts bounded synchronization only", async (
   );
 });
 
+test("P2X-04 real data prerequisite lane keeps approval blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile("docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md"),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Real Data Legal Privacy Prerequisite Lane",
+    "Issue: #372",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not approve a personnel data processing path",
+    "It does not approve legal/privacy runtime use",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains synthetic or explicitly non-production only",
+    "docs/mvp-abcd-bounded-evidence-inventory.md",
+    "docs/p2x-hr-practical-use-gap-assessment.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "docs/adr/0006-appi-processing-purpose-dsar-boundary.md",
+    "docs/adr/0007-sensitive-personal-information-boundary.md",
+    "docs/adr/0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md",
+    "named legal/privacy basis",
+    "named data-owner approval",
+    "processing-purpose record",
+    "data classification",
+    "masking or minimization profile",
+    "custody record",
+    "transition plan for any future non-production-to-protected-data movement",
+    "separate owner approval record for that transition plan",
+    "negative fail-closed evidence",
+    "real employee data processing: Blocked",
+    "legal/privacy runtime approval: Blocked",
+    "data-owner approval: Blocked",
+    "production-like data processing: Blocked",
+    "payroll/benefit data use: Blocked",
+    "regulated identifier use: Blocked",
+    "sensitive personal information use: Blocked",
+    "live tenant data: Blocked",
+    "raw payload access: Blocked",
+    "broad CSV/export expansion: Blocked",
+    "retention/deletion runtime: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 real data prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can treat this child as complete only for real employee data and legal/privacy prerequisite decomposition",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 real data prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "real employee data processing: Go",
+    "legal/privacy runtime approval: Go",
+    "data-owner approval: Go",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "real employee data is ready",
+    "legal/privacy approval is ready",
+  ]) {
+    assert.ok(
+      !normalizedLane.includes(forbiddenText),
+      `P2X-04 real data prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Real Data Legal Privacy Prerequisite Lane\]\(docs\/p2x-04-real-data-legal-privacy-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+    ),
+    "P2X-04 real data prerequisite lane must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X-04 real data prerequisite lane must not include workstation-local absolute paths",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
