@@ -123,6 +123,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
     "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
     "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+    "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -587,6 +588,35 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "production-like readiness",
       ],
     ],
+    [
+      "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+      [
+        "Production authorization/RLS is approved.",
+        "Production RBAC authority is ready.",
+        "Production authorization/RLS is accepted.",
+        "Production RBAC authority is allowed.",
+        "PostgreSQL RLS source of truth is approved.",
+        "Authorization/data-scope design acceptance: Go.",
+        "Actor/role/tenant binding is approved.",
+        "Trusted proxy identity boundary is ready.",
+        "Accepted trusted proxy identity boundary.",
+        "Ready actor/role/tenant binding.",
+        "Approved query-layer enforcement.",
+        "Query-layer enforcement is approved.",
+        "Service-layer enforcement is approved.",
+        "Negative enforcement tests are complete.",
+        "Mixed-boundary fail-closed evidence is approved.",
+        "Support-console authority is approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+      ].join("\n"),
+      [
+        "production authorization/RLS readiness",
+        "support-console readiness",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of p2xFixtureClaims) {
@@ -1003,6 +1033,34 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "production-like readiness",
       ],
     ],
+    [
+      "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+      [
+        "No production authorization/RLS, but Production RBAC authority is ready.",
+        "PostgreSQL RLS source of truth: Go.",
+        "PostgreSQL RLS source of truth is accepted.",
+        "Production RBAC authority is allowed.",
+        "Authorization/data-scope design acceptance is approved.",
+        "Actor/role/tenant binding is approved.",
+        "Trusted proxy identity boundary is ready.",
+        "Approved trusted proxy identity boundary.",
+        "Ready actor/role/tenant binding.",
+        "Query-layer enforcement is approved.",
+        "Service-layer enforcement is approved.",
+        "Negative enforcement tests are complete.",
+        "Mixed-boundary fail-closed evidence is approved.",
+        "Support-console authority is approved.",
+        "Keeps HR practical-use blocked and production authorization/RLS approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness: Go.",
+      ].join("\n"),
+      [
+        "production authorization/RLS readiness",
+        "support-console readiness",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of currentReviewProbeClaims) {
@@ -1050,6 +1108,77 @@ test("MVP-A policy-as-code P2X guard preserves later-Accepted blocker wording", 
         finding.subject === "real employee data readiness",
     ),
     "expected later Accepted prerequisite wording to remain a blocker, not an approval",
+  );
+});
+
+test("MVP-A policy-as-code P2X authorization aliases preserve blocked wording", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2x-04-production-authorization-rls-prerequisite-lane.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    [
+      "production RBAC authority is not approved.",
+      "PostgreSQL RLS source of truth is not ready.",
+      "authorization/data-scope design acceptance remains blocked.",
+      "actor/role/tenant binding is not allowed.",
+      "trusted proxy identity boundary is not accepted.",
+      "PostgreSQL RLS source of truth remains blocked on accepted authorization/data-scope design.",
+      "actor/role/tenant binding remains blocked on accepted authorization/data-scope design.",
+      "query-layer enforcement remains blocked.",
+      "service-layer enforcement is not enabled.",
+      "negative enforcement tests are not ready.",
+      "mixed-boundary fail-closed evidence remains blocked.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "production authorization/RLS readiness",
+    ),
+    "expected blocked authorization alias wording to stay allowed",
+  );
+});
+
+test("MVP-A policy-as-code P2X authorization accepted-design promotions fail", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/p2x-04-production-authorization-rls-prerequisite-lane.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        [
+          "Accepted authorization/data-scope design exists with trusted proxy identity boundary.",
+          "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
+          "Accepted authorization/data-scope design covers negative enforcement tests.",
+          "Required before any stronger claim: accepted authorization/data-scope design is approved with trusted proxy identity boundary.",
+          "Required before any stronger claim: accepted authorization/data-scope design is accepted with trusted proxy identity boundary.",
+          "Required before any stronger claim: accepted authorization/data-scope design has actor/role/tenant binding: allowed.",
+          "production authorization/RLS remains blocked on accepted authorization/data-scope design and is approved.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "production authorization/RLS readiness",
+    ),
+    "expected accepted authorization/data-scope design promotion wording to fail",
   );
 });
 

@@ -68,6 +68,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
   "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
   "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+  "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -215,6 +216,14 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   }
 
   const claimText = stripReviewMetadata(segment);
+  if (
+    subject === "production authorization/RLS readiness" &&
+    isP2XAuthorizationPrerequisiteEvidenceClaim(claimText) &&
+    !hasP2XAuthorizationPrerequisitePromotionStatus(claimText)
+  ) {
+    return true;
+  }
+
   const subjectSource = subjectPattern.source;
   const sameClauseBlockerBeforeSubject = new RegExp(
     `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
@@ -295,6 +304,27 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   );
 }
 
+function isP2XAuthorizationPrerequisiteEvidenceClaim(
+  claimText: string,
+): boolean {
+  return (
+    /\b(?:must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
+      claimText,
+    ) ||
+    /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
+      claimText,
+    )
+  );
+}
+
+function hasP2XAuthorizationPrerequisitePromotionStatus(
+  claimText: string,
+): boolean {
+  return /\b(?:accepted\s+authorization\/data-scope\s+design|authorization\/data-scope\s+design|trusted\s+proxy\s+identity(?:\s+boundary)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|negative\s+enforcement\s+tests?|allowed\s+actors?|actor\/role\/tenant\s+binding)\b[^.;|]{0,60}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:accepted|allowed|approved|ready|Go|enabled|available|complete)\b/iu.test(
+    claimText,
+  );
+}
+
 function hasKeepsAffirmativeStatusBeforeLaterBlockedSubject(
   segment: string,
   subjectPattern: RegExp,
@@ -369,7 +399,12 @@ function hasSubjectBlockerBeforeLaterAffirmativeStatus(
     const suffixAfterBlocker = subjectSuffix.slice(
       blockerMatch.index + blockerMatch[0].length,
     );
-    if (hasLaterAffirmativeStatus(suffixAfterBlocker)) {
+    const suffixForStatusCheck = suffixAfterBlocker.replace(
+      /^\s+on\s+(?:accepted|approved)\b/iu,
+      "",
+    );
+
+    if (hasLaterAffirmativeStatus(suffixForStatusCheck)) {
       return true;
     }
   }
@@ -540,7 +575,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "production authorization/RLS readiness",
-      /\bproduction\s+authorization\/RLS\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+authorization\/RLS\b/iu,
+      /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b(?:[^.;|]{0,60}\b(?:ready|approved|go|enabled|available|complete)\b|[^.;|]{0,20}\b(?:(?:is|are|has\s+been|can\s+be)\s+|:\s*)(?:allowed|accepted)\b)|\b(?:ready|approved|go|enabled|available)\b[^.;|]{0,60}\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b|\b(?:allowed|accepted)\b[^.;|]{0,60}\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?)\b/iu,
     ],
     [
       "production audit immutability readiness",
@@ -556,7 +591,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "support-console readiness",
-      /\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b/iu,
+      /\b(?:support-console\s+(?:custody|sessions?|authority)|production\s+support\s+process|support\s+access\s+model)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:support-console\s+(?:custody|sessions?|authority)|production\s+support\s+process|support\s+access\s+model)\b/iu,
     ],
     [
       "regulated data/credential readiness",
@@ -710,7 +745,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production authorization/RLS readiness",
-    /production\s+authorization\/RLS/iu,
+    /production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence/iu,
   ],
   [
     "production audit immutability readiness",
@@ -726,7 +761,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "support-console readiness",
-    /support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model/iu,
+    /support-console\s+(?:custody|sessions?|authority)|production\s+support\s+process|support\s+access\s+model/iu,
   ],
   [
     "regulated data/credential readiness",
