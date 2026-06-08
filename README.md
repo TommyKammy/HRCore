@@ -65,7 +65,10 @@ checklist, cross-flow audit/correlation lookup map, and synthetic test-data
 governance note. HR practical-use readiness and production-like readiness remain
 blocked; next-wave references must keep bounded closeout synchronization /
 narrow cleanup separate from production-like prerequisites, governance/two-key
-evidence, and any later bounded practical-use extension.
+evidence, and any later bounded practical-use extension. P2X-04 is completed as
+a prerequisite decomposition lane only. It keeps real-data use, data-owner
+approval, legal/privacy runtime approval, HR practical-use readiness,
+production-like data processing, and production-like readiness blocked.
 
 ## Baseline structure
 
@@ -216,9 +219,6 @@ evidence, and any later bounded practical-use extension.
   governance/two-key evidence, and bounded practical-use extension.
 - P2X-03 bounded closeout synchronization is Accepted as narrow cleanup only;
   HR practical-use readiness and production-like readiness remain blocked.
-- P2X-04 real data and legal/privacy prerequisite decomposition keeps real
-  employee data processing, legal/privacy runtime approval, HR practical-use
-  readiness, and production-like readiness blocked.
 
 ## Local verification
 

@@ -490,6 +490,10 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
       /\bproduction-like(?:\s+|-)ready\b\s*(?::\s*)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)?\b|\bproduction-like(?:\s+|-)readiness\b\s*(?::\s*|\s+(?:is\s+)?)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled)\b/iu,
     ],
     [
+      "production-like data processing",
+      /\bproduction-like\s+data\s+processing\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|processing|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|processing|complete)\b[^.;]{0,60}\bproduction-like\s+data\s+processing\b/iu,
+    ],
+    [
       "real employee data readiness",
       /\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data)\b/iu,
     ],
@@ -548,6 +552,10 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     [
       "legal/privacy acceptance",
       /\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b/iu,
+    ],
+    [
+      "data-owner approval",
+      /\bdata-owner\s+approval\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b/iu,
     ],
     [
       "two-key Accepted approval",
@@ -633,6 +641,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     "production-like readiness",
     /production-like(?:\s+|-)read(?:y|iness)|production-like\s+readiness\s+surface/iu,
   ],
+  ["production-like data processing", /production-like\s+data\s+processing/iu],
   [
     "real employee data readiness",
     /real[-\s]+employee[-\s]+data|real[-\s]+data|employee[-\s]+data/iu,
@@ -690,6 +699,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     "legal/privacy acceptance",
     /legal\/privacy(?:\s+(?:acceptance|runtime))?/iu,
   ],
+  ["data-owner approval", /data-owner\s+approval/iu],
   [
     "two-key Accepted approval",
     /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|acceptance|Accepted))/iu,
