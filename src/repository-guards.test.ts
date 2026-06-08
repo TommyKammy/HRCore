@@ -3760,22 +3760,39 @@ test("P2X README and planning references preserve bounded status synchronization
 });
 
 test("P2X guard and policy references cover synchronized artifact cleanup", async () => {
-  const [inventory, policyCi, policyCiTest, repositoryGuards] =
-    await Promise.all([
-      readRepoFile("docs/p2x-closeout-reference-inventory.md"),
-      readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
-      readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
-      readRepoFile("src/repository-guards.test.ts"),
-    ]);
-  const combinedText = [inventory, policyCi, policyCiTest, repositoryGuards]
-    .join("\n")
-    .replace(/\s+/gu, " ")
-    .trim();
+  const [inventory, policyCi, policyCiTest] = await Promise.all([
+    readRepoFile("docs/p2x-closeout-reference-inventory.md"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedInventory = inventory.replace(/\s+/gu, " ").trim();
+  const normalizedPolicyCi = policyCi.replace(/\s+/gu, " ").trim();
+  const normalizedPolicyCiTest = policyCiTest.replace(/\s+/gu, " ").trim();
 
   for (const requiredText of [
     "Completed the guard and policy-as-code reference cleanup in #363",
     "README is also a policy-as-code monitored P2X synchronization artifact",
     "Policy-as-code now loads README, the P2X-02 closeout, and this inventory path alongside the P2X bounded follow-up artifacts",
+  ]) {
+    assert.ok(
+      normalizedInventory.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X guard/policy cleanup inventory reference: ${requiredText}`,
+    );
+  }
+
+  for (const requiredText of [
+    "extractReadmeP2XBoundedStatusSection",
+    "Current P2X bounded status:",
+    "README P2X bounded status synchronization must be scanned by policy-as-code",
+    "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
+  ]) {
+    assert.ok(
+      normalizedPolicyCi.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X guard/policy cleanup policy reference: ${requiredText}`,
+    );
+  }
+
+  for (const requiredText of [
     "expected README P2X bounded status synchronization to be scanned by policy-as-code",
     "README.md",
     "docs/p2x-01-next-wave-recommendation-closeout.md",
@@ -3786,8 +3803,8 @@ test("P2X guard and policy references cover synchronized artifact cleanup", asyn
     "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
     "docs/p2x-synthetic-test-data-governance.md",
     "docs/p2x-closeout-reference-inventory.md",
-    "P2X-02 accepts HR practical-use readiness",
-    "P2X-02 accepts production-like readiness",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
     "real employee data is approved",
     "live IdP/Okta operation is enabled",
     "production queue/DLQ ready: Go",
@@ -3802,8 +3819,10 @@ test("P2X guard and policy references cover synchronized artifact cleanup", asyn
     "two-key Accepted approval",
   ]) {
     assert.ok(
-      combinedText.includes(requiredText.replace(/\s+/gu, " ").trim()),
-      `missing P2X guard/policy cleanup reference: ${requiredText}`,
+      normalizedPolicyCiTest.includes(
+        requiredText.replace(/\s+/gu, " ").trim(),
+      ),
+      `missing P2X guard/policy cleanup test reference: ${requiredText}`,
     );
   }
 
