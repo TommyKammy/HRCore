@@ -334,6 +334,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "Accepted authorization/data-scope design exists with trusted proxy identity boundary.",
         "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
         "Accepted authorization/data-scope design covers negative enforcement tests.",
+        "Required before any stronger claim: accepted authorization/data-scope design is approved with trusted proxy identity boundary.",
       ].join("\n"),
     ),
     ["production authorization/RLS readiness"],
@@ -551,7 +552,8 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
 
   if (
     subject === "production authorization/RLS readiness" &&
-    isP2XAuthorizationPrerequisiteEvidenceLine(line)
+    isP2XAuthorizationPrerequisiteEvidenceLine(line) &&
+    !hasP2XAuthorizationPrerequisitePromotionStatus(line)
   ) {
     return true;
   }
@@ -610,6 +612,12 @@ function isP2XAuthorizationPrerequisiteEvidenceLine(line: string): boolean {
     /\bproduction\s+authorization\/RLS\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
       line,
     )
+  );
+}
+
+function hasP2XAuthorizationPrerequisitePromotionStatus(line: string): boolean {
+  return /\b(?:accepted\s+authorization\/data-scope\s+design|trusted\s+proxy\s+identity(?:\s+boundary)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|negative\s+enforcement\s+tests?)\b[^.;|]{0,60}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:approved|ready|Go|enabled|available|complete)\b/iu.test(
+    line,
   );
 }
 

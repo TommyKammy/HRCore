@@ -1160,6 +1160,7 @@ test("MVP-A policy-as-code P2X authorization accepted-design promotions fail", a
           "Accepted authorization/data-scope design exists with trusted proxy identity boundary.",
           "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
           "Accepted authorization/data-scope design covers negative enforcement tests.",
+          "Required before any stronger claim: accepted authorization/data-scope design is approved with trusted proxy identity boundary.",
         ].join("\n"),
       ],
     ]),

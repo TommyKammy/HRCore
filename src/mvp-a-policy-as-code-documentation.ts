@@ -218,7 +218,8 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   const claimText = stripReviewMetadata(segment);
   if (
     subject === "production authorization/RLS readiness" &&
-    isP2XAuthorizationPrerequisiteEvidenceClaim(claimText)
+    isP2XAuthorizationPrerequisiteEvidenceClaim(claimText) &&
+    !hasP2XAuthorizationPrerequisitePromotionStatus(claimText)
   ) {
     return true;
   }
@@ -313,6 +314,14 @@ function isP2XAuthorizationPrerequisiteEvidenceClaim(
     /\bproduction\s+authorization\/RLS\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
       claimText,
     )
+  );
+}
+
+function hasP2XAuthorizationPrerequisitePromotionStatus(
+  claimText: string,
+): boolean {
+  return /\b(?:accepted\s+authorization\/data-scope\s+design|trusted\s+proxy\s+identity(?:\s+boundary)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|negative\s+enforcement\s+tests?)\b[^.;|]{0,60}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:approved|ready|Go|enabled|available|complete)\b/iu.test(
+    claimText,
   );
 }
 
