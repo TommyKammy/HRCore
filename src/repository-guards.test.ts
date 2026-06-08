@@ -4027,6 +4027,103 @@ test("P2X-04 real data prerequisite lane keeps approval blockers explicit", asyn
   );
 });
 
+test("P2X-04 live provider prerequisite lane keeps custody blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile(
+      "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+    ),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Live Provider Custody Credential Prerequisite Lane",
+    "Issue: #373",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not authorize live provider traffic",
+    "It does not approve provider credentials",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains mock-first, synthetic, and explicitly non-production only",
+    "docs/okta-poc-connection-contract.md",
+    "docs/mvp-a-onboarding-traceability-closeout.md",
+    "docs/mvp-b-transfer-traceability-closeout.md",
+    "docs/mvp-c-termination-traceability-closeout.md",
+    "docs/p2x-hr-practical-use-gap-assessment.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "named tenant binding",
+    "trusted credential source",
+    "secret rotation and revocation plan",
+    "webhook custody boundary",
+    "provider audit search evidence",
+    "provider error and retry custody record",
+    "placeholder credentials",
+    "live IdP/Okta operation: Blocked",
+    "live provider traffic: Blocked",
+    "live tenant binding: Blocked",
+    "provider credential custody: Blocked",
+    "production credential use: Blocked",
+    "webhook runtime custody: Blocked",
+    "provider audit search: Blocked",
+    "provider retry/error custody: Blocked",
+    "provider rollback behavior: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 live provider prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can treat this child as complete only for live provider custody and credential prerequisite decomposition",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 live provider prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "live IdP/Okta operation: Go",
+    "live provider traffic: Go",
+    "provider credential custody: Go",
+    "production credential use: Go",
+    "webhook runtime custody: Go",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "live provider traffic is approved",
+    "provider credentials are approved",
+  ]) {
+    assert.ok(
+      !normalizedLane.includes(forbiddenText),
+      `P2X-04 live provider prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Live Provider Custody Credential Prerequisite Lane\]\(docs\/p2x-04-live-provider-custody-credential-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+    ),
+    "P2X-04 live provider prerequisite lane must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\|https:\/\/[^/\s]+\.okta\.com|client_secret|api_token|OKTA_)/iu,
+    "P2X-04 live provider prerequisite lane must not include workstation-local or live credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
