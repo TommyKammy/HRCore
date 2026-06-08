@@ -56,6 +56,7 @@ The P2X synthetic test-data governance note is recorded in [P2X Synthetic Test-D
 The final P2X-02 bounded practical-use follow-up closeout is recorded in [P2X-02 Bounded Practical-Use Follow-Up Closeout](docs/p2x-02-bounded-practical-use-follow-up-closeout.md).
 The P2X-03 closeout stale wording and reference classification inventory is recorded in [P2X-03 Closeout Reference Inventory](docs/p2x-closeout-reference-inventory.md).
 The final P2X-03 bounded closeout synchronization verdict is recorded in [P2X-03 Bounded Closeout Synchronization Independent Closeout](docs/p2x-03-bounded-closeout-synchronization-closeout.md).
+The P2X-04 real data and legal/privacy prerequisite lane is recorded in [P2X-04 Real Data Legal Privacy Prerequisite Lane](docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md).
 
 Current P2X bounded status: P2X-02 is completed and Accepted as bounded
 practical-use follow-up evidence only. The completed P2X-02 evidence set is the
@@ -215,6 +216,9 @@ evidence, and any later bounded practical-use extension.
   governance/two-key evidence, and bounded practical-use extension.
 - P2X-03 bounded closeout synchronization is Accepted as narrow cleanup only;
   HR practical-use readiness and production-like readiness remain blocked.
+- P2X-04 real data and legal/privacy prerequisite decomposition keeps real
+  employee data processing, legal/privacy runtime approval, HR practical-use
+  readiness, and production-like readiness blocked.
 
 ## Local verification
 

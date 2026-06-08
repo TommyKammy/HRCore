@@ -121,6 +121,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-synthetic-test-data-governance.md",
     "docs/p2x-closeout-reference-inventory.md",
     "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
+    "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -515,6 +516,21 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "two-key Accepted approval",
       ],
     ],
+    [
+      "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+      [
+        "Real employee data is ready.",
+        "Legal/privacy approval is approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+      ].join("\n"),
+      [
+        "real employee data readiness",
+        "legal/privacy acceptance",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of p2xFixtureClaims) {
@@ -861,6 +877,19 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "production queue/DLQ readiness",
         "retention/deletion runtime readiness",
         "two-key Accepted approval",
+      ],
+    ],
+    [
+      "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+      [
+        "No real employee data, but legal/privacy approval is ready.",
+        "Keeps HR practical-use blocked and real employee data approved.",
+        "Production-like readiness: Go.",
+      ].join("\n"),
+      [
+        "legal/privacy acceptance",
+        "real employee data readiness",
+        "production-like readiness",
       ],
     ],
   ] as const;
