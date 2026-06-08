@@ -56,6 +56,15 @@ The P2X synthetic test-data governance note is recorded in [P2X Synthetic Test-D
 The final P2X-02 bounded practical-use follow-up closeout is recorded in [P2X-02 Bounded Practical-Use Follow-Up Closeout](docs/p2x-02-bounded-practical-use-follow-up-closeout.md).
 The P2X-03 closeout stale wording and reference classification inventory is recorded in [P2X-03 Closeout Reference Inventory](docs/p2x-closeout-reference-inventory.md).
 
+Current P2X bounded status: P2X-02 is completed and Accepted as bounded
+practical-use follow-up evidence only. The completed P2X-02 evidence set is the
+closeout, local bounded operator runbook, synthetic practical-use rehearsal
+checklist, cross-flow audit/correlation lookup map, and synthetic test-data
+governance note. HR practical-use readiness and production-like readiness remain
+blocked; next-wave references must keep bounded closeout synchronization /
+narrow cleanup separate from production-like prerequisites, governance/two-key
+evidence, and any later bounded practical-use extension.
+
 ## Baseline structure
 
 - `src/app.ts` builds the Fastify application.
@@ -180,9 +189,9 @@ The P2X-03 closeout stale wording and reference classification inventory is reco
   solo-maintainer governance boundary review for #11/#12/#14 and #240,
   preserving owner-acknowledged defer rather than Accepted two-key approval.
 - `docs/p2x-01-next-wave-recommendation-closeout.md` records the final P2X-01
-  cross-suite assessment verdict, safest bounded practical-use follow-up
-  recommendation, alternatives, residual stronger-readiness blockers, and
-  verification boundary.
+  cross-suite assessment verdict and historical safest bounded practical-use
+  follow-up recommendation. After P2X-02, cite that recommendation as completed
+  bounded follow-up evidence only, with later next-wave options kept separate.
 - `docs/p2x-local-bounded-operator-runbook.md` records the P2X local bounded
   operator review map for synthetic or explicitly approved non-production
   MVP-A/B/C/D evidence, failed-path checks, cleanup expectations, and
@@ -199,6 +208,10 @@ The P2X-03 closeout stale wording and reference classification inventory is reco
 - `docs/p2x-closeout-reference-inventory.md` records the P2X-03 reference
   inventory for P2X-01/P2X-02, stale next-wave wording scan, recommended narrow
   cleanup, and blocked HR practical-use or production-like readiness boundary.
+- P2X bounded status synchronization keeps the completed P2X-02 closeout and
+  child artifacts discoverable while preserving the separate lanes for bounded
+  closeout synchronization / narrow cleanup, production-like prerequisites,
+  governance/two-key evidence, and bounded practical-use extension.
 
 ## Local verification
 

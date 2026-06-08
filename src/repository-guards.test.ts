@@ -3697,6 +3697,68 @@ test("P2X closeout reference inventory preserves the accepted bounded cleanup bo
   );
 });
 
+test("P2X README and planning references preserve bounded status synchronization", async () => {
+  const [readme, p2x01Closeout, inventory] = await Promise.all([
+    readRepoFile("README.md"),
+    readRepoFile("docs/p2x-01-next-wave-recommendation-closeout.md"),
+    readRepoFile("docs/p2x-closeout-reference-inventory.md"),
+  ]);
+  const combinedText = [readme, p2x01Closeout, inventory]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "Current P2X bounded status: P2X-02 is completed and Accepted as bounded practical-use follow-up evidence only",
+    "The completed P2X-02 evidence set is the closeout, local bounded operator runbook, synthetic practical-use rehearsal checklist, cross-flow audit/correlation lookup map, and synthetic test-data governance note",
+    "HR practical-use readiness and production-like readiness remain blocked",
+    "next-wave references must keep bounded closeout synchronization / narrow cleanup separate from production-like prerequisites, governance/two-key evidence, and any later bounded practical-use extension",
+    "After P2X-02, cite that recommendation as completed bounded follow-up evidence only",
+    "P2X-02 later completed the bounded practical-use follow-up wave recommended by this P2X-01 closeout",
+    "Current next-wave wording must keep these lanes separate",
+    "bounded closeout synchronization / narrow cleanup",
+    "production-like prerequisites",
+    "governance/two-key evidence",
+    "bounded practical-use extension",
+    "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-synthetic-test-data-governance.md",
+    "Completed the README and P2X-01 planning reference bounded status synchronization in #362",
+    "This status synchronization preserves the blocked boundary",
+    "HR practical-use readiness: Blocked",
+    "real employee data use: Blocked",
+    "live-provider operation: Blocked",
+    "production queue/DLQ operation: Blocked",
+    "retention/deletion runtime: Blocked",
+    "production-like readiness",
+    "two-key acceptance",
+  ]) {
+    assert.ok(
+      combinedText.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X bounded status sync text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "P2X-02 accepts HR practical-use readiness",
+    "P2X-02 accepts production-like readiness",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "real employee data: Go",
+    "live IdP/Okta operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "two-key acceptance: Go",
+  ]) {
+    assert.ok(
+      !combinedText.includes(forbiddenText),
+      `P2X bounded status sync must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
