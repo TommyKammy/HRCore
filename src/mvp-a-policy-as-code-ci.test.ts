@@ -1161,6 +1161,8 @@ test("MVP-A policy-as-code P2X authorization accepted-design promotions fail", a
           "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
           "Accepted authorization/data-scope design covers negative enforcement tests.",
           "Required before any stronger claim: accepted authorization/data-scope design is approved with trusted proxy identity boundary.",
+          "Required before any stronger claim: accepted authorization/data-scope design is accepted with trusted proxy identity boundary.",
+          "Required before any stronger claim: accepted authorization/data-scope design has actor/role/tenant binding: allowed.",
           "production authorization/RLS remains blocked on accepted authorization/data-scope design and is approved.",
         ].join("\n"),
       ],
