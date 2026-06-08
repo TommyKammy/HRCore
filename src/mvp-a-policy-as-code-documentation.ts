@@ -399,11 +399,12 @@ function hasSubjectBlockerBeforeLaterAffirmativeStatus(
     const suffixAfterBlocker = subjectSuffix.slice(
       blockerMatch.index + blockerMatch[0].length,
     );
-    if (/^\s+on\s+(?:accepted|approved)\b/iu.test(suffixAfterBlocker)) {
-      continue;
-    }
+    const suffixForStatusCheck = suffixAfterBlocker.replace(
+      /^\s+on\s+(?:accepted|approved)\b/iu,
+      "",
+    );
 
-    if (hasLaterAffirmativeStatus(suffixAfterBlocker)) {
+    if (hasLaterAffirmativeStatus(suffixForStatusCheck)) {
       return true;
     }
   }

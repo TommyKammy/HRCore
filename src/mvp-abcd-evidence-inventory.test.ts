@@ -335,6 +335,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
         "Accepted authorization/data-scope design covers negative enforcement tests.",
         "Required before any stronger claim: accepted authorization/data-scope design is approved with trusted proxy identity boundary.",
+        "production authorization/RLS remains blocked on accepted authorization/data-scope design and is approved.",
       ].join("\n"),
     ),
     ["production authorization/RLS readiness"],
@@ -559,6 +560,10 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
   }
 
   const subjectSource = subjectPattern.source;
+  if (hasSubjectBlockerBeforeLaterAffirmativeStatus(line, subjectPattern)) {
+    return false;
+  }
+
   if (
     new RegExp(
       `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
@@ -604,6 +609,49 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
   );
 }
 
+function hasSubjectBlockerBeforeLaterAffirmativeStatus(
+  line: string,
+  subjectPattern: RegExp,
+): boolean {
+  const globalSubjectPattern = new RegExp(subjectPattern.source, "giu");
+  for (const match of line.matchAll(globalSubjectPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const subjectEndIndex = match.index + match[0].length;
+    const nextBreakIndexes = ["|", ";", "."]
+      .map((breakChar) => line.indexOf(breakChar, subjectEndIndex))
+      .filter((index) => index !== -1);
+    const nextBreakIndex =
+      nextBreakIndexes.length === 0
+        ? line.length
+        : Math.min(...nextBreakIndexes);
+    const subjectSuffix = line.slice(subjectEndIndex, nextBreakIndex);
+    const blockerMatch =
+      /\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked|unsupported|prohibited|forbidden|out\s+of\s+scope|requires?\s+(?:a\s+later\s+)?Accepted|required\s+before\s+Accepted|before\s+Accepted)\b/iu.exec(
+        subjectSuffix,
+      );
+    if (blockerMatch === null) {
+      continue;
+    }
+
+    const suffixAfterBlocker = subjectSuffix.slice(
+      blockerMatch.index + blockerMatch[0].length,
+    );
+    const suffixForStatusCheck = suffixAfterBlocker.replace(
+      /^\s+on\s+(?:accepted|approved)\b/iu,
+      "",
+    );
+
+    if (hasLaterAffirmativeStatus(suffixForStatusCheck)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function isP2XAuthorizationPrerequisiteEvidenceLine(line: string): boolean {
   return (
     /\b(?:must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
@@ -613,6 +661,35 @@ function isP2XAuthorizationPrerequisiteEvidenceLine(line: string): boolean {
       line,
     )
   );
+}
+
+function hasLaterAffirmativeStatus(value: string): boolean {
+  const laterStatusPattern =
+    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/giu;
+
+  for (const match of value.matchAll(laterStatusPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    const prefix = value.slice(0, match.index);
+    if (/\bnot\s+(?:treated\s+as\s+)?$/iu.test(prefix)) {
+      continue;
+    }
+
+    if (
+      match[0].toLowerCase() === "accepted" &&
+      /\b(?:requires?\s+(?:a\s+)?later|required\s+before|before)\s+$/iu.test(
+        prefix,
+      )
+    ) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 function hasP2XAuthorizationPrerequisitePromotionStatus(line: string): boolean {
