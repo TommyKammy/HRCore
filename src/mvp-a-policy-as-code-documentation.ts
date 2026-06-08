@@ -354,10 +354,10 @@ function hasP2XAuditImmutabilityPrerequisitePromotionStatus(
 
 function isP2XRawExportPrerequisiteEvidenceClaim(claimText: string): boolean {
   return (
-    /\b(?:Required\s+separate\s+evidence|must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,260}\b(?:raw-view\/export\s+permissions?|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|template\s+allowlist|watermark\s+or\s+manifest|download-log\s+evidence)\b/iu.test(
+    /\b(?:Required\s+separate\s+evidence|must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,260}\b(?:raw-view\/export\s+permissions?|export[-\s]+permissions?|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|template\s+allowlist|watermark(?:\/|\s+or\s+)manifest|download[-\s]+log\s+evidence|export\s+download)\b/iu.test(
       claimText,
     ) ||
-    /\b(?:unrestricted\s+raw\s+payload|raw\s+payload\s+viewing|raw\s+payload\s+download|broad\s+CSV(?:\/|\s+)export|CSV\/export|raw-view\/export\s+permissions?|export\s+permission\s+runtime|redaction\s+or\s+masking\s+profile|template\s+allowlists?|watermark\s+or\s+manifest|download-log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;|]{0,220}\bremains?\s+blocked\b/iu.test(
+    /\b(?:unrestricted\s+raw\s+payload|raw\s+payload\s+viewing|raw\s+payload\s+download|broad\s+CSV(?:\/|\s+)export|CSV\/export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+or\s+masking\s+profile|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;|]{0,220}\bremains?\s+blocked\b/iu.test(
       claimText,
     )
   );
@@ -366,7 +366,7 @@ function isP2XRawExportPrerequisiteEvidenceClaim(claimText: string): boolean {
 function hasP2XRawExportPrerequisitePromotionStatus(
   claimText: string,
 ): boolean {
-  return /\b(?:unrestricted\s+raw\s+payload|raw\s+payload\s+viewing|raw\s+payload\s+download|broad\s+CSV(?:\/|\s+)export|CSV\/export|raw-view\/export\s+permissions?|export\s+permission\s+runtime|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark\s+or\s+manifest|export\s+manifest|download-log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;|]{0,80}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:accepted|allowed|approved|ready|Go|enabled|available|complete)\b/iu.test(
+  return /\b(?:unrestricted\s+raw\s+payload|raw\s+payload\s+viewing|raw\s+payload\s+download|broad\s+CSV(?:\/|\s+)export|CSV\/export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;|]{0,80}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:accepted|allowed|approved|ready|Go|enabled|available|complete)\b/iu.test(
     claimText,
   );
 }
@@ -661,7 +661,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "broad export readiness",
-      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|raw-view\/export\s+permissions?|export\s+permission\s+runtime|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark\s+or\s+manifest|export\s+manifest|download-log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|go|enabled|available|complete)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|raw-view\/export\s+permissions?|export\s+permission\s+runtime|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark\s+or\s+manifest|export\s+manifest|download-log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b/iu,
+      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|go|enabled|available|complete)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b/iu,
     ],
     [
       "legal/privacy acceptance",
@@ -831,7 +831,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "broad export readiness",
-    /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|raw-view\/export\s+permissions?|export\s+permission\s+runtime|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark\s+or\s+manifest|export\s+manifest|download-log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?/iu,
+    /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?/iu,
   ],
   [
     "legal/privacy acceptance",
