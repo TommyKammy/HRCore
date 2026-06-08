@@ -107,6 +107,10 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     ),
     "expected P0-GOV-01 closeout to be scanned by policy-as-code",
   );
+  assert.ok(
+    mvpAPolicyAsCodeDocumentationPaths.includes("README.md"),
+    "expected README P2X bounded status synchronization to be scanned by policy-as-code",
+  );
   for (const path of [
     "docs/p2x-01-next-wave-recommendation-closeout.md",
     "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
@@ -350,6 +354,27 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
   const p2xFixtureClaims = [
+    [
+      "README.md",
+      [
+        "Current P2X bounded status: HR practical-use readiness: Go.",
+        "Current P2X bounded status: production-like readiness: Go.",
+        "Current P2X bounded status: real employee data is approved.",
+        "Current P2X bounded status: live IdP/Okta operation is enabled.",
+        "Current P2X bounded status: production queue/DLQ ready: Go.",
+        "Current P2X bounded status: retention/deletion runtime ready: Go.",
+        "Current P2X bounded status: two-key acceptance is approved.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "production queue/DLQ readiness",
+        "retention/deletion runtime readiness",
+        "two-key Accepted approval",
+      ],
+    ],
     [
       "docs/p2x-01-next-wave-recommendation-closeout.md",
       [
@@ -668,6 +693,27 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
   await writeMinimalPolicyInputRepository(fixtureCwd);
 
   const currentReviewProbeClaims = [
+    [
+      "README.md",
+      [
+        "Current P2X bounded status: HR practical-use readiness: Go.",
+        "Current P2X bounded status: production-like readiness: Go.",
+        "Current P2X bounded status: real employee data approved.",
+        "Current P2X bounded status: live IdP/Okta operation enabled.",
+        "Current P2X bounded status: production queue/DLQ ready: Go.",
+        "Current P2X bounded status: retention/deletion runtime ready: Go.",
+        "Current P2X bounded status: two-key acceptance approved.",
+      ].join("\n"),
+      [
+        "HR practical-use readiness",
+        "production-like readiness",
+        "real employee data readiness",
+        "live IdP/Okta readiness",
+        "production queue/DLQ readiness",
+        "retention/deletion runtime readiness",
+        "two-key Accepted approval",
+      ],
+    ],
     [
       "docs/p2x-01-next-wave-recommendation-closeout.md",
       [
