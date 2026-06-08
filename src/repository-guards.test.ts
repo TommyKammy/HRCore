@@ -4298,6 +4298,10 @@ test("P2X-04 production audit immutability prerequisite lane keeps archive block
     "production audit immutability: Go",
     "production audit readiness: Go",
     "production audit archive: Go",
+    "hash-chain/archive design acceptance: Go",
+    "audit retention posture: Go",
+    "restore evidence: Go",
+    "tamper-evidence verification: Go",
     "WORM/Object Lock custody: Go",
     "compliance archive procedure: Go",
     "broad audit search: Go",
@@ -4305,6 +4309,10 @@ test("P2X-04 production audit immutability prerequisite lane keeps archive block
     "HR practical-use readiness: Go",
     "production-like readiness: Go",
     "production audit immutability is accepted",
+    "hash-chain/archive design is accepted",
+    "audit retention posture is approved",
+    "restore evidence is complete",
+    "tamper-evidence verification is ready",
     "WORM/Object Lock custody is ready",
   ]) {
     assert.ok(
