@@ -329,7 +329,7 @@ function isP2XAuthorizationPrerequisiteEvidenceClaim(
 function isP2XAuditImmutabilityPrerequisiteEvidenceClaim(
   claimText: string,
 ): boolean {
-  return /^-\s*accepted\s+hash-chain\/archive\s+design\s+naming\b/iu.test(
+  return /^-\s*accepted\s+hash-chain\/archive\s+design\s+naming\s+event\s+identity,\s+canonical\s+ordering,\s+hash\s+input,\s+rotation\s+behavior,\s+replay\s+verification,\s+and\s+failure\s+handling\s*$/iu.test(
     claimText,
   );
 }

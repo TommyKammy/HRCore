@@ -4298,6 +4298,7 @@ test("P2X-04 production audit immutability prerequisite lane keeps archive block
     "production audit immutability: Go",
     "production audit readiness: Go",
     "production audit archive: Go",
+    "- accepted hash-chain/archive design naming event identity and production audit archive is approved",
     "- accepted hash-chain/archive design naming event identity is accepted",
     "hash-chain/archive design acceptance: Go",
     "accepted audit retention posture",

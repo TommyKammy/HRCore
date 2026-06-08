@@ -624,6 +624,7 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "Production audit immutability is accepted.",
         "Production audit readiness: Go.",
         "Production audit archive is approved.",
+        "- accepted hash-chain/archive design naming event identity and production audit archive is approved.",
         "- accepted hash-chain/archive design naming event identity is accepted.",
         "Hash-chain/archive design acceptance: Go.",
         "Accepted audit retention posture.",
