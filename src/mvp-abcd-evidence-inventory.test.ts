@@ -318,6 +318,8 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "authorization/data-scope design acceptance remains blocked.",
         "actor/role/tenant binding is not allowed.",
         "trusted proxy identity boundary is not accepted.",
+        "PostgreSQL RLS source of truth remains blocked on accepted authorization/data-scope design.",
+        "actor/role/tenant binding remains blocked on accepted authorization/data-scope design.",
         "query-layer enforcement remains blocked.",
         "service-layer enforcement is not enabled.",
         "negative enforcement tests are not ready.",
@@ -659,7 +661,7 @@ function isP2XAuthorizationPrerequisiteEvidenceLine(line: string): boolean {
     /\b(?:must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
       line,
     ) ||
-    /\bproduction\s+authorization\/RLS\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
+    /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
       line,
     )
   );
