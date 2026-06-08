@@ -128,29 +128,76 @@ function collectP2XBoundedPracticalUseArtifactFindings(
       continue;
     }
 
-    for (const rawSegment of splitClaimSegments(text)) {
-      for (const {
-        subject,
-        claimSegment,
-      } of p2xBoundedPracticalUseArtifactOverclaimClaims(rawSegment)) {
-        if (
-          isP2XBoundedPracticalUseArtifactClaimBlocked(claimSegment, subject)
-        ) {
-          continue;
-        }
+    findings.push(
+      ...collectP2XBoundedPracticalUseOverclaimFindings(path, text),
+    );
+  }
 
-        findings.push({
-          surface: "documentation",
-          path,
-          subject,
-          message:
-            "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
-        });
+  const readmeText = inputs.documentationTextByPath.get("README.md");
+  const readmeP2XStatusSection =
+    readmeText === undefined
+      ? undefined
+      : extractReadmeP2XBoundedStatusSection(readmeText);
+  if (readmeP2XStatusSection === undefined) {
+    findings.push({
+      surface: "documentation",
+      path: "README.md",
+      subject: "P2X bounded status synchronization",
+      message:
+        "README P2X bounded status synchronization must be scanned by policy-as-code",
+    });
+  } else {
+    findings.push(
+      ...collectP2XBoundedPracticalUseOverclaimFindings(
+        "README.md",
+        readmeP2XStatusSection,
+      ),
+    );
+  }
+
+  return findings;
+}
+
+function collectP2XBoundedPracticalUseOverclaimFindings(
+  path: string,
+  text: string,
+): MvpAPolicyAsCodeFinding[] {
+  const findings: MvpAPolicyAsCodeFinding[] = [];
+  for (const rawSegment of splitClaimSegments(text)) {
+    for (const {
+      subject,
+      claimSegment,
+    } of p2xBoundedPracticalUseArtifactOverclaimClaims(rawSegment)) {
+      if (isP2XBoundedPracticalUseArtifactClaimBlocked(claimSegment, subject)) {
+        continue;
       }
+
+      findings.push({
+        surface: "documentation",
+        path,
+        subject,
+        message:
+          "P2X bounded practical-use artifacts must not claim stronger readiness or prohibited production/data surfaces",
+      });
     }
   }
 
   return findings;
+}
+
+function extractReadmeP2XBoundedStatusSection(
+  text: string,
+): string | undefined {
+  const sectionStart = text.indexOf("Current P2X bounded status:");
+  if (sectionStart < 0) {
+    return undefined;
+  }
+
+  const followingHeading = text.indexOf("\n## ", sectionStart);
+  return text.slice(
+    sectionStart,
+    followingHeading < 0 ? undefined : followingHeading,
+  );
 }
 
 function isP2XBoundedPracticalUseArtifactClaimBlocked(

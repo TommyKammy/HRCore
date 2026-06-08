@@ -3759,6 +3759,68 @@ test("P2X README and planning references preserve bounded status synchronization
   }
 });
 
+test("P2X guard and policy references cover synchronized artifact cleanup", async () => {
+  const [inventory, policyCi, policyCiTest, repositoryGuards] =
+    await Promise.all([
+      readRepoFile("docs/p2x-closeout-reference-inventory.md"),
+      readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+      readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+      readRepoFile("src/repository-guards.test.ts"),
+    ]);
+  const combinedText = [inventory, policyCi, policyCiTest, repositoryGuards]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "Completed the guard and policy-as-code reference cleanup in #363",
+    "README is also a policy-as-code monitored P2X synchronization artifact",
+    "Policy-as-code now loads README, the P2X-02 closeout, and this inventory path alongside the P2X bounded follow-up artifacts",
+    "expected README P2X bounded status synchronization to be scanned by policy-as-code",
+    "README.md",
+    "docs/p2x-01-next-wave-recommendation-closeout.md",
+    "docs/p2x-02-bounded-practical-use-follow-up-closeout.md",
+    "docs/p2x-hr-practical-use-gap-assessment.md",
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-synthetic-practical-use-rehearsal-checklist.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-synthetic-test-data-governance.md",
+    "docs/p2x-closeout-reference-inventory.md",
+    "P2X-02 accepts HR practical-use readiness",
+    "P2X-02 accepts production-like readiness",
+    "real employee data is approved",
+    "live IdP/Okta operation is enabled",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "two-key acceptance is approved",
+    "HR practical-use readiness",
+    "production-like readiness",
+    "real employee data readiness",
+    "live IdP/Okta readiness",
+    "production queue/DLQ readiness",
+    "retention/deletion runtime readiness",
+    "two-key Accepted approval",
+  ]) {
+    assert.ok(
+      combinedText.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X guard/policy cleanup reference: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "runtime behavior is introduced by this cleanup",
+    "provider integration is introduced by this cleanup",
+    "export behavior is introduced by this cleanup",
+    "queue/DLQ behavior is introduced by this cleanup",
+    "retention/deletion behavior is introduced by this cleanup",
+  ]) {
+    assert.ok(
+      !inventory.includes(forbiddenText),
+      `P2X guard/policy cleanup must stay documentation-only: ${forbiddenText}`,
+    );
+  }
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
