@@ -4351,6 +4351,125 @@ test("P2X-04 production audit immutability prerequisite lane keeps archive block
   );
 });
 
+test("P2X-04 raw payload CSV export prerequisite lane keeps export blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile("docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md"),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Raw Payload CSV Export Prerequisite Lane",
+    "Issue: #376",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not approve raw payload viewing",
+    "It does not approve broad CSV export",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains bounded, synthetic, narrow-template, and explicitly non-production only",
+    "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
+    "docs/mvp-a-onboarding-pii-export-gate.md",
+    "docs/mvp-d-csv-import-contract.md",
+    "docs/mvp-d-p2d-01-readiness-review-closeout.md",
+    "docs/mvp-d-p2d-02-refactor-wave-closeout.md",
+    "docs/p2x-hr-practical-use-gap-assessment.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "docs/p2x-solo-maintainer-governance-boundary-review.md",
+    "raw-view/export permission model",
+    "redaction or masking profile",
+    "template allowlist",
+    "watermark or manifest design",
+    "download-log evidence",
+    "legal/privacy and data-owner approval record",
+    "prohibited-payload controls",
+    "negative broad-export tests",
+    "unrestricted raw payload: Blocked",
+    "raw payload viewing: Blocked",
+    "raw payload download: Blocked",
+    "raw-view/export permissions: Blocked",
+    "broad CSV export: Blocked",
+    "broad CSV/export expansion: Blocked",
+    "export download: Blocked",
+    "export permission runtime: Blocked",
+    "redaction or masking profile: Blocked",
+    "template allowlist: Blocked",
+    "watermark or manifest: Blocked",
+    "download-log evidence: Blocked",
+    "legal/privacy runtime approval: Blocked",
+    "data-owner approval: Blocked",
+    "prohibited-payload controls: Blocked",
+    "negative broad-export tests: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 raw payload CSV export prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can scope this child to raw payload and broad CSV/export prerequisite decomposition only",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 raw payload CSV export prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "unrestricted raw payload: Go",
+    "raw payload viewing: Go",
+    "raw payload download: Go",
+    "raw-view/export permissions: Go",
+    "broad CSV export: Go",
+    "broad CSV/export expansion: Go",
+    "export download: Go",
+    "export permission runtime: Go",
+    "redaction or masking profile: Go",
+    "template allowlist: Go",
+    "watermark or manifest: Go",
+    "download-log evidence: Go",
+    "legal/privacy runtime approval: Go",
+    "data-owner approval: Go",
+    "prohibited-payload controls: Go",
+    "negative broad-export tests: Go",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "raw payload viewing is approved",
+    "broad CSV export is approved",
+    "CSV/export is enabled",
+    "download-log evidence is complete",
+    "redaction or masking profile is approved",
+  ]) {
+    assert.ok(
+      !normalizedLane.includes(forbiddenText),
+      `P2X-04 raw payload CSV export prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Raw Payload CSV Export Prerequisite Lane\]\(docs\/p2x-04-raw-payload-csv-export-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
+    ),
+    "P2X-04 raw payload CSV export prerequisite lane must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+EXPORT|COPY\s+.*TO|SELECT\s+\*\s+FROM|aws\s+s3|access_key|secret_access_key|api_token)/iu,
+    "P2X-04 raw payload CSV export prerequisite lane must not include workstation-local paths, export implementation commands, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
