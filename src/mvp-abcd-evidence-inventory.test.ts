@@ -205,6 +205,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "live-provider operation is enabled.",
         "live tenant data is approved.",
         "live tenant export is enabled.",
+        "live tenant binding: Go.",
         "Raw payload access is approved.",
         "production scheduler/queue/DLQ ready: Go.",
         "production ops readiness: Go.",
@@ -220,6 +221,12 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "payroll data is approved.",
         "regulated identifiers are allowed.",
         "production credentials are enabled.",
+        "provider credentials are ready.",
+        "secret rotation readiness: Go.",
+        "webhook runtime custody: Go.",
+        "provider audit search: Go.",
+        "provider retry/error custody: Go.",
+        "provider rollback behavior: Go.",
         "retention/deletion requests are allowed.",
         "broad CSV/export is allowed.",
         "legal/privacy acceptance is approved.",
@@ -235,6 +242,7 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
       "production-like readiness",
       "real employee data readiness",
       "live IdP/Okta readiness",
+      "live tenant binding",
       "unrestricted raw payload readiness",
       "production queue/DLQ readiness",
       "production ops readiness",
@@ -244,6 +252,11 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
       "production backup/restore readiness",
       "support-console readiness",
       "regulated data/credential readiness",
+      "secret rotation readiness",
+      "webhook runtime custody",
+      "provider audit search",
+      "provider retry/error custody",
+      "provider rollback behavior",
       "retention/deletion runtime readiness",
       "broad export readiness",
       "legal/privacy acceptance",
@@ -589,6 +602,10 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
     /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
   ],
   [
+    "live tenant binding",
+    /\blive\s+tenant\s+binding\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\blive\s+tenant\s+binding\b/iu,
+  ],
+  [
     "unrestricted raw payload readiness",
     /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
   ],
@@ -622,7 +639,27 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "regulated data/credential readiness",
-    /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
+    /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
+  ],
+  [
+    "secret rotation readiness",
+    /\bsecret\s+rotation(?:\s+readiness)?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bsecret\s+rotation(?:\s+readiness)?\b/iu,
+  ],
+  [
+    "webhook runtime custody",
+    /\bwebhook\s+runtime\s+custody\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bwebhook\s+runtime\s+custody\b/iu,
+  ],
+  [
+    "provider audit search",
+    /\bprovider\s+audit\s+search\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+audit\s+search\b/iu,
+  ],
+  [
+    "provider retry/error custody",
+    /\bprovider\s+retry\/error\s+custody\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+retry\/error\s+custody\b/iu,
+  ],
+  [
+    "provider rollback behavior",
+    /\bprovider\s+rollback\s+behavior\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+rollback\s+behavior\b/iu,
   ],
   [
     "retention/deletion runtime readiness",
@@ -659,6 +696,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     "live IdP/Okta readiness",
     /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)/iu,
   ],
+  ["live tenant binding", /live\s+tenant\s+binding/iu],
   [
     "unrestricted raw payload readiness",
     /(?:unrestricted\s+)?raw[-\s]+payloads?/iu,
@@ -693,8 +731,13 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "regulated data/credential readiness",
-    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
+    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
   ],
+  ["secret rotation readiness", /secret\s+rotation(?:\s+readiness)?/iu],
+  ["webhook runtime custody", /webhook\s+runtime\s+custody/iu],
+  ["provider audit search", /provider\s+audit\s+search/iu],
+  ["provider retry/error custody", /provider\s+retry\/error\s+custody/iu],
+  ["provider rollback behavior", /provider\s+rollback\s+behavior/iu],
   [
     "retention/deletion runtime readiness",
     /retention\/deletion(?:\s+runtime)?/iu,

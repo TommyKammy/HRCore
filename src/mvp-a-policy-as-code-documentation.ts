@@ -503,6 +503,30 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
       /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
     ],
     [
+      "live tenant binding",
+      /\blive\s+tenant\s+binding\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\blive\s+tenant\s+binding\b/iu,
+    ],
+    [
+      "secret rotation readiness",
+      /\bsecret\s+rotation(?:\s+readiness)?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bsecret\s+rotation(?:\s+readiness)?\b/iu,
+    ],
+    [
+      "webhook runtime custody",
+      /\bwebhook\s+runtime\s+custody\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bwebhook\s+runtime\s+custody\b/iu,
+    ],
+    [
+      "provider audit search",
+      /\bprovider\s+audit\s+search\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+audit\s+search\b/iu,
+    ],
+    [
+      "provider retry/error custody",
+      /\bprovider\s+retry\/error\s+custody\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+retry\/error\s+custody\b/iu,
+    ],
+    [
+      "provider rollback behavior",
+      /\bprovider\s+rollback\s+behavior\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+rollback\s+behavior\b/iu,
+    ],
+    [
       "unrestricted raw payload readiness",
       /\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b(?:[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)|\s+is\s+(?:approved|allowed|enabled|ready|available))\b|\b(?:ready|approved|go|enabled|allows?|permit(?:s|ted)?|exposes?|views?)\b[^.;]{0,60}\b(?:unrestricted\s+)?raw[-\s]+payloads?(?:\s+access)?\b/iu,
     ],
@@ -651,6 +675,12 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     "live IdP/Okta readiness",
     /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)/iu,
   ],
+  ["live tenant binding", /live\s+tenant\s+binding/iu],
+  ["secret rotation readiness", /secret\s+rotation(?:\s+readiness)?/iu],
+  ["webhook runtime custody", /webhook\s+runtime\s+custody/iu],
+  ["provider audit search", /provider\s+audit\s+search/iu],
+  ["provider retry/error custody", /provider\s+retry\/error\s+custody/iu],
+  ["provider rollback behavior", /provider\s+rollback\s+behavior/iu],
   [
     "unrestricted raw payload readiness",
     /(?:unrestricted\s+)?raw[-\s]+payloads?/iu,
