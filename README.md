@@ -58,6 +58,7 @@ The P2X-03 closeout stale wording and reference classification inventory is reco
 The final P2X-03 bounded closeout synchronization verdict is recorded in [P2X-03 Bounded Closeout Synchronization Independent Closeout](docs/p2x-03-bounded-closeout-synchronization-closeout.md).
 The P2X-04 real data and legal/privacy prerequisite lane is recorded in [P2X-04 Real Data Legal Privacy Prerequisite Lane](docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md).
 The P2X-04 live provider custody and credential prerequisite lane is recorded in [P2X-04 Live Provider Custody Credential Prerequisite Lane](docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md).
+The P2X-04 production authorization and RLS prerequisite lane is recorded in [P2X-04 Production Authorization RLS Prerequisite Lane](docs/p2x-04-production-authorization-rls-prerequisite-lane.md).
 
 Current P2X bounded status: P2X-02 is completed and Accepted as bounded
 practical-use follow-up evidence only. The completed P2X-02 evidence set is the
@@ -74,6 +75,10 @@ The P2X-04 provider-custody prerequisite lane records missing evidence only. It
 keeps live IdP/Okta operation, live provider traffic, provider credential
 custody, webhook runtime custody, HR practical-use readiness, and
 production-like readiness blocked.
+The P2X-04 production authorization/RLS prerequisite lane records missing
+evidence only. It keeps production RBAC authority, PostgreSQL RLS source of
+truth, trusted proxy identity, support-console authority, HR practical-use
+readiness, and production-like readiness blocked.
 
 ## Baseline structure
 

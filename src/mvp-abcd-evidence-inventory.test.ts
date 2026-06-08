@@ -211,6 +211,15 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "production scheduler/queue/DLQ ready: Go.",
         "production ops readiness: Go.",
         "production authorization/RLS is approved.",
+        "production RBAC authority is ready.",
+        "PostgreSQL RLS source of truth is approved.",
+        "authorization/data-scope design acceptance: Go.",
+        "actor/role/tenant binding is approved.",
+        "trusted proxy identity boundary is ready.",
+        "query-layer enforcement is approved.",
+        "service-layer enforcement is approved.",
+        "negative enforcement tests are complete.",
+        "mixed-boundary fail-closed evidence is approved.",
         "production audit immutability is accepted.",
         "production audit readiness: Go.",
         "production backup is approved.",
@@ -364,6 +373,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
   "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
   "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+  "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
 ] as const;
 
 function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
@@ -638,7 +648,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production authorization/RLS readiness",
-    /\bproduction\s+authorization\/RLS\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+authorization\/RLS\b/iu,
+    /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b[^.;|]{0,60}\b(?:ready|approved|go|enabled|available|complete)\b|\b(?:ready|approved|go|enabled|available)\b[^.;|]{0,60}\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?)\b/iu,
   ],
   [
     "production audit immutability readiness",
@@ -654,7 +664,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "support-console readiness",
-    /\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model)\b/iu,
+    /\b(?:support-console\s+(?:custody|sessions?|authority)|production\s+support\s+process|support\s+access\s+model)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:support-console\s+(?:custody|sessions?|authority)|production\s+support\s+process|support\s+access\s+model)\b/iu,
   ],
   [
     "regulated data/credential readiness",
@@ -746,7 +756,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "support-console readiness",
-    /support-console\s+(?:custody|sessions?)|production\s+support\s+process|support\s+access\s+model/iu,
+    /support-console\s+(?:custody|sessions?|authority)|production\s+support\s+process|support\s+access\s+model/iu,
   ],
   [
     "regulated data/credential readiness",

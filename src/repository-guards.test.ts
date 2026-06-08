@@ -4124,6 +4124,108 @@ test("P2X-04 live provider prerequisite lane keeps custody blockers explicit", a
   );
 });
 
+test("P2X-04 production authorization RLS prerequisite lane keeps authority blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile(
+      "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+    ),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Production Authorization RLS Prerequisite Lane",
+    "Issue: #374",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not approve production RBAC",
+    "It does not accept PostgreSQL RLS as source of truth",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains bounded, synthetic, and explicitly non-production only",
+    "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
+    "docs/mvp-a-onboarding-evidence-authorization-gate.md",
+    "src/mvp-a-onboarding-evidence-authorization.ts",
+    "docs/mvp-a-go-no-go-scope.md",
+    "docs/p2x-hr-practical-use-gap-assessment.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "docs/p2x-solo-maintainer-governance-boundary-review.md",
+    "accepted authorization/data-scope design",
+    "actor/role/tenant binding evidence",
+    "trusted proxy identity boundary",
+    "PostgreSQL RLS source-of-truth decision",
+    "query-layer and service-layer enforcement evidence",
+    "negative enforcement tests",
+    "mixed-boundary fail-closed evidence",
+    "production authorization/RLS: Blocked",
+    "production RBAC authority: Blocked",
+    "PostgreSQL RLS source of truth: Blocked",
+    "authorization/data-scope design acceptance: Blocked",
+    "actor/role/tenant binding: Blocked",
+    "trusted proxy identity boundary: Blocked",
+    "query-layer enforcement: Blocked",
+    "service-layer enforcement: Blocked",
+    "negative enforcement tests: Blocked",
+    "mixed-boundary fail-closed evidence: Blocked",
+    "support-console authority: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 production authorization RLS prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can treat this child as complete only for production authorization/RLS prerequisite decomposition",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 production authorization/RLS prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "production authorization/RLS: Go",
+    "production RBAC authority: Go",
+    "PostgreSQL RLS source of truth: Go",
+    "authorization/data-scope design acceptance: Go",
+    "actor/role/tenant binding: Go",
+    "trusted proxy identity boundary: Go",
+    "support-console authority: Go",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "production authorization/RLS is approved",
+    "Production RBAC authority is ready",
+  ]) {
+    assert.ok(
+      !normalizedLane.includes(forbiddenText),
+      `P2X-04 production authorization/RLS prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Production Authorization RLS Prerequisite Lane\]\(docs\/p2x-04-production-authorization-rls-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+    ),
+    "P2X-04 production authorization/RLS prerequisite lane must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+POLICY|ALTER\s+TABLE|ENABLE\s+ROW\s+LEVEL\s+SECURITY|jwt_secret|client_secret|api_token)/iu,
+    "P2X-04 production authorization/RLS prerequisite lane must not include workstation-local paths, SQL policy implementation, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),

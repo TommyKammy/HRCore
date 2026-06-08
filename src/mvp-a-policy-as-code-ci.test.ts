@@ -123,6 +123,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
     "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
     "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+    "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -587,6 +588,30 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "production-like readiness",
       ],
     ],
+    [
+      "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+      [
+        "Production authorization/RLS is approved.",
+        "Production RBAC authority is ready.",
+        "PostgreSQL RLS source of truth is approved.",
+        "Authorization/data-scope design acceptance: Go.",
+        "Actor/role/tenant binding is approved.",
+        "Trusted proxy identity boundary is ready.",
+        "Query-layer enforcement is approved.",
+        "Service-layer enforcement is approved.",
+        "Negative enforcement tests are complete.",
+        "Mixed-boundary fail-closed evidence is approved.",
+        "Support-console authority is approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+      ].join("\n"),
+      [
+        "production authorization/RLS readiness",
+        "support-console readiness",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of p2xFixtureClaims) {
@@ -999,6 +1024,30 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "provider audit search",
         "provider retry/error custody",
         "provider rollback behavior",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
+    [
+      "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+      [
+        "No production authorization/RLS, but Production RBAC authority is ready.",
+        "PostgreSQL RLS source of truth: Go.",
+        "Authorization/data-scope design acceptance is approved.",
+        "Actor/role/tenant binding is approved.",
+        "Trusted proxy identity boundary is ready.",
+        "Query-layer enforcement is approved.",
+        "Service-layer enforcement is approved.",
+        "Negative enforcement tests are complete.",
+        "Mixed-boundary fail-closed evidence is approved.",
+        "Support-console authority is approved.",
+        "Keeps HR practical-use blocked and production authorization/RLS approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness: Go.",
+      ].join("\n"),
+      [
+        "production authorization/RLS readiness",
+        "support-console readiness",
         "HR practical-use readiness",
         "production-like readiness",
       ],
