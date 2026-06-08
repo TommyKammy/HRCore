@@ -122,6 +122,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-closeout-reference-inventory.md",
     "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
     "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+    "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -539,6 +540,22 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "production-like data processing",
       ],
     ],
+    [
+      "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+      [
+        "Live IdP/Okta operation is enabled.",
+        "Live provider traffic is approved.",
+        "Production credentials are available.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness is approved.",
+      ].join("\n"),
+      [
+        "live IdP/Okta readiness",
+        "regulated data/credential readiness",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
   ] as const;
 
   for (const [path, text] of p2xFixtureClaims) {
@@ -906,6 +923,22 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
         "production-like readiness",
         "production-like data processing",
         "data-owner approval",
+      ],
+    ],
+    [
+      "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
+      [
+        "No live IdP/Okta, but live provider traffic is enabled.",
+        "Production credentials are approved.",
+        "Keeps HR practical-use blocked and live IdP/Okta operation enabled.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness: Go.",
+      ].join("\n"),
+      [
+        "live IdP/Okta readiness",
+        "regulated data/credential readiness",
+        "HR practical-use readiness",
+        "production-like readiness",
       ],
     ],
   ] as const;

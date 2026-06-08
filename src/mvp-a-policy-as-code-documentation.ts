@@ -67,6 +67,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-closeout-reference-inventory.md",
   "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
   "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
+  "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -535,7 +536,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "regulated data/credential readiness",
-      /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
+      /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
     ],
     [
       "production infrastructure access readiness",
@@ -684,7 +685,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "regulated data/credential readiness",
-    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
+    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
   ],
   [
     "production infrastructure access readiness",
