@@ -69,6 +69,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
   "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
   "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+  "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -224,6 +225,14 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     return true;
   }
 
+  if (
+    subject === "production audit/archive readiness" &&
+    isP2XAuditImmutabilityPrerequisiteEvidenceClaim(claimText) &&
+    !hasP2XAuditImmutabilityPrerequisitePromotionStatus(claimText)
+  ) {
+    return true;
+  }
+
   const subjectSource = subjectPattern.source;
   const sameClauseBlockerBeforeSubject = new RegExp(
     `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
@@ -314,6 +323,22 @@ function isP2XAuthorizationPrerequisiteEvidenceClaim(
     /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
       claimText,
     )
+  );
+}
+
+function isP2XAuditImmutabilityPrerequisiteEvidenceClaim(
+  claimText: string,
+): boolean {
+  return /^-\s*accepted\s+hash-chain\/archive\s+design\s+naming\s+event\s+identity,\s+canonical\s+ordering,\s+hash\s+input,\s+rotation\s+behavior,\s+replay\s+verification,\s+and\s+failure\s+handling\s*$/iu.test(
+    claimText,
+  );
+}
+
+function hasP2XAuditImmutabilityPrerequisitePromotionStatus(
+  claimText: string,
+): boolean {
+  return /\b(?:hash-chain\/archive\s+design(?:\s+acceptance)?)\b[^.;|]{0,80}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:accepted|allowed|approved|ready|Go|enabled|available|complete)\b/iu.test(
+    claimText,
   );
 }
 
@@ -583,7 +608,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "production audit/archive readiness",
-      /\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock)\b/iu,
+      /\b(?:production\s+audit\s+(?:readiness|archive)|production\s+support\s+audit\s+search|hash-chain\/archive\s+design(?:\s+acceptance)?|(?:audit\s+)?retention\s+posture|restore\s+(?:evidence|procedure|operation)|tamper-evidence\s+(?:verification|verifier)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock|hash-chain\s+runtime|(?:external\s+)?archive\s+bucket|retention\s+mode)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|(?<!owner-)approved|go|enabled|available|complete)\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|production\s+support\s+audit\s+search|hash-chain\/archive\s+design(?:\s+acceptance)?|(?:audit\s+)?retention\s+posture|restore\s+(?:evidence|procedure|operation)|tamper-evidence\s+(?:verification|verifier)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock|hash-chain\s+runtime|(?:external\s+)?archive\s+bucket|retention\s+mode)\b|\b(?:production\s+audit\s+(?:readiness|archive)|production\s+support\s+audit\s+search|hash-chain\/archive\s+design(?:\s+acceptance)?|(?:audit\s+)?retention\s+posture|restore\s+(?:evidence|procedure|operation)|tamper-evidence\s+(?:verification|verifier)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock|hash-chain\s+runtime|(?:external\s+)?archive\s+bucket|retention\s+mode)\b[^.;]{0,60}\b(?:is|are|has\s+been|can\s+be)\s+accepted\b|\baccepted\b[^.;]{0,60}\b(?:production\s+audit\s+(?:readiness|archive)|production\s+support\s+audit\s+search|hash-chain\/archive\s+design(?:\s+acceptance)?|(?:audit\s+)?retention\s+posture|restore\s+(?:evidence|procedure|operation)|tamper-evidence\s+(?:verification|verifier)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock|hash-chain\s+runtime|(?:external\s+)?archive\s+bucket|retention\s+mode)\b/iu,
     ],
     [
       "production backup/restore readiness",
@@ -753,7 +778,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production audit/archive readiness",
-    /production\s+audit\s+(?:readiness|archive)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock/iu,
+    /production\s+audit\s+(?:readiness|archive)|production\s+support\s+audit\s+search|hash-chain\/archive\s+design(?:\s+acceptance)?|(?:audit\s+)?retention\s+posture|restore\s+(?:evidence|procedure|operation)|tamper-evidence\s+(?:verification|verifier)|broad\s+audit\s+search|compliance\s+archive|WORM(?:\/Object\s+Lock)?|Object\s+Lock|hash-chain\s+runtime|(?:external\s+)?archive\s+bucket|retention\s+mode/iu,
   ],
   [
     "production backup/restore readiness",

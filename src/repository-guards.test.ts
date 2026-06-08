@@ -4226,6 +4226,131 @@ test("P2X-04 production authorization RLS prerequisite lane keeps authority bloc
   );
 });
 
+test("P2X-04 production audit immutability prerequisite lane keeps archive blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile(
+      "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
+    ),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Production Audit Immutability Prerequisite Lane",
+    "Issue: #375",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not approve production audit immutability",
+    "It does not approve WORM/Object Lock custody",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains local, mutable, bounded, and explicitly non-production only",
+    "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
+    "docs/adr/0000-adr-process.md",
+    "docs/mvp-a-onboarding-traceability-closeout.md",
+    "docs/mvp-b-transfer-traceability-closeout.md",
+    "docs/mvp-c-termination-traceability-closeout.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "docs/p2x-solo-maintainer-governance-boundary-review.md",
+    "accepted hash-chain/archive design",
+    "WORM/Object Lock or equivalent custody decision",
+    "retention posture",
+    "restore evidence",
+    "tamper-evidence verification",
+    "compliance archive procedure",
+    "ADR 0000 metadata",
+    "production audit immutability: Blocked",
+    "production audit readiness: Blocked",
+    "production audit archive: Blocked",
+    "hash-chain/archive design acceptance: Blocked",
+    "WORM/Object Lock custody: Blocked",
+    "compliance archive procedure: Blocked",
+    "audit retention posture: Blocked",
+    "restore evidence: Blocked",
+    "tamper-evidence verification: Blocked",
+    "broad audit search: Blocked",
+    "production support audit search: Blocked",
+    "support-console authority: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 production audit immutability prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can treat this child as complete only for production audit immutability prerequisite decomposition",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 production audit immutability prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "production audit immutability: Go",
+    "production audit readiness: Go",
+    "production audit archive: Go",
+    "- accepted hash-chain/archive design naming event identity and production audit archive is approved",
+    "- accepted hash-chain/archive design naming event identity is accepted",
+    "hash-chain/archive design acceptance: Go",
+    "accepted audit retention posture",
+    "accepted restore evidence",
+    "accepted tamper-evidence verification",
+    "audit retention posture: Go",
+    "retention posture: Go",
+    "restore evidence: Go",
+    "restore procedure: Go",
+    "restore operation is approved",
+    "tamper-evidence verification: Go",
+    "tamper-evidence verifier is ready",
+    "hash-chain runtime: Go",
+    "WORM/Object Lock custody: Go",
+    "compliance archive procedure: Go",
+    "external archive bucket is approved",
+    "retention mode: Go",
+    "broad audit search: Go",
+    "production support audit search: Go",
+    "support-console authority: Go",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "production audit immutability is accepted",
+    "hash-chain/archive design is accepted",
+    "audit retention posture is approved",
+    "restore evidence is complete",
+    "tamper-evidence verification is ready",
+    "WORM/Object Lock custody is ready",
+  ]) {
+    assert.ok(
+      !normalizedLane.includes(forbiddenText),
+      `P2X-04 production audit immutability prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Production Audit Immutability Prerequisite Lane\]\(docs\/p2x-04-production-audit-immutability-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
+    ),
+    "P2X-04 production audit immutability prerequisite lane must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+BUCKET|aws\s+s3api|ObjectLockEnabledForBucket|access_key|secret_access_key|api_token)/iu,
+    "P2X-04 production audit immutability prerequisite lane must not include workstation-local paths, storage implementation commands, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
