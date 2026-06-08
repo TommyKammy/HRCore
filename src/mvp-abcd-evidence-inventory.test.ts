@@ -313,6 +313,24 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
   assert.deepEqual(
     p2xBoundedPracticalUseArtifactOverclaims(
       [
+        "production RBAC authority is not approved.",
+        "PostgreSQL RLS source of truth is not ready.",
+        "authorization/data-scope design acceptance remains blocked.",
+        "actor/role/tenant binding is not allowed.",
+        "trusted proxy identity boundary is not accepted.",
+        "query-layer enforcement remains blocked.",
+        "service-layer enforcement is not enabled.",
+        "negative enforcement tests are not ready.",
+        "mixed-boundary fail-closed evidence remains blocked.",
+      ].join("\n"),
+    ),
+    [],
+    "guard must allow explicitly blocked P2X authorization alias wording",
+  );
+
+  assert.deepEqual(
+    p2xBoundedPracticalUseArtifactOverclaims(
+      [
         "| Surface | Status |",
         "| --- | --- |",
         "| real employee data | complete |",
@@ -519,6 +537,13 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
     throw new Error(`blocked subject pattern exists for ${subject}`);
   }
 
+  if (
+    subject === "production authorization/RLS readiness" &&
+    isP2XAuthorizationPrerequisiteEvidenceLine(line)
+  ) {
+    return true;
+  }
+
   const subjectSource = subjectPattern.source;
   if (
     new RegExp(
@@ -562,6 +587,20 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
       `\\b(?:cannot|can't)\\s+claim\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
       "iu",
     ).test(line)
+  );
+}
+
+function isP2XAuthorizationPrerequisiteEvidenceLine(line: string): boolean {
+  return (
+    /\bAccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?)\b/iu.test(
+      line,
+    ) ||
+    /\bproduction\s+authorization\/RLS\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
+      line,
+    ) ||
+    /^\s*-?\s*accepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\ballowed\s+actors\b/iu.test(
+      line,
+    )
   );
 }
 
@@ -648,7 +687,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production authorization/RLS readiness",
-    /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b[^.;|]{0,60}\b(?:ready|approved|go|enabled|available|complete)\b|\b(?:ready|approved|go|enabled|available)\b[^.;|]{0,60}\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?)\b/iu,
+    /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b(?:[^.;|]{0,60}\b(?:ready|approved|go|enabled|available|complete)\b|[^.;|]{0,20}\b(?:(?:is|are|has\s+been|can\s+be)\s+|:\s*)(?:allowed|accepted)\b)|\b(?:ready|approved|go|enabled|available)\b[^.;|]{0,60}\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b|\b(?:allowed|accepted)\b[^.;|]{0,60}\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?)\b/iu,
   ],
   [
     "production audit immutability readiness",
@@ -740,7 +779,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production authorization/RLS readiness",
-    /production\s+authorization\/RLS/iu,
+    /production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence/iu,
   ],
   [
     "production audit immutability readiness",

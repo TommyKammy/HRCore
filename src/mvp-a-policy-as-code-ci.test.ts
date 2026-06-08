@@ -593,10 +593,15 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       [
         "Production authorization/RLS is approved.",
         "Production RBAC authority is ready.",
+        "Production authorization/RLS is accepted.",
+        "Production RBAC authority is allowed.",
         "PostgreSQL RLS source of truth is approved.",
         "Authorization/data-scope design acceptance: Go.",
         "Actor/role/tenant binding is approved.",
         "Trusted proxy identity boundary is ready.",
+        "Accepted trusted proxy identity boundary.",
+        "Ready actor/role/tenant binding.",
+        "Approved query-layer enforcement.",
         "Query-layer enforcement is approved.",
         "Service-layer enforcement is approved.",
         "Negative enforcement tests are complete.",
@@ -1033,9 +1038,13 @@ test("MVP-A policy-as-code P2X guard covers current unresolved review-thread pro
       [
         "No production authorization/RLS, but Production RBAC authority is ready.",
         "PostgreSQL RLS source of truth: Go.",
+        "PostgreSQL RLS source of truth is accepted.",
+        "Production RBAC authority is allowed.",
         "Authorization/data-scope design acceptance is approved.",
         "Actor/role/tenant binding is approved.",
         "Trusted proxy identity boundary is ready.",
+        "Approved trusted proxy identity boundary.",
+        "Ready actor/role/tenant binding.",
         "Query-layer enforcement is approved.",
         "Service-layer enforcement is approved.",
         "Negative enforcement tests are complete.",
@@ -1099,6 +1108,42 @@ test("MVP-A policy-as-code P2X guard preserves later-Accepted blocker wording", 
         finding.subject === "real employee data readiness",
     ),
     "expected later Accepted prerequisite wording to remain a blocker, not an approval",
+  );
+});
+
+test("MVP-A policy-as-code P2X authorization aliases preserve blocked wording", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2x-04-production-authorization-rls-prerequisite-lane.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    [
+      "production RBAC authority is not approved.",
+      "PostgreSQL RLS source of truth is not ready.",
+      "authorization/data-scope design acceptance remains blocked.",
+      "actor/role/tenant binding is not allowed.",
+      "trusted proxy identity boundary is not accepted.",
+      "query-layer enforcement remains blocked.",
+      "service-layer enforcement is not enabled.",
+      "negative enforcement tests are not ready.",
+      "mixed-boundary fail-closed evidence remains blocked.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "production authorization/RLS readiness",
+    ),
+    "expected blocked authorization alias wording to stay allowed",
   );
 });
 
