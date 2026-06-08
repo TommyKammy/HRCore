@@ -3840,6 +3840,96 @@ test("P2X guard and policy references cover synchronized artifact cleanup", asyn
   }
 });
 
+test("P2X-03 independent closeout accepts bounded synchronization only", async () => {
+  const [closeout, readme, policyCi, policyDocs, policyCiTest] =
+    await Promise.all([
+      readRepoFile("docs/p2x-03-bounded-closeout-synchronization-closeout.md"),
+      readRepoFile("README.md"),
+      readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+      readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+      readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+    ]);
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-03 Bounded Closeout Synchronization Independent Closeout",
+    "Issue: #364",
+    "Part of: #360",
+    "Depends on: #363",
+    "Final verdict: Accepted as bounded closeout synchronization / narrow cleanup only",
+    "P2X-02 remains accepted only as bounded practical-use follow-up evidence",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Child Output Review",
+    "#361",
+    "#362",
+    "#363",
+    "docs/p2x-closeout-reference-inventory.md",
+    "docs/p2x-01-next-wave-recommendation-closeout.md",
+    "src/mvp-a-policy-as-code-documentation.ts",
+    "src/mvp-a-policy-as-code-ci.test.ts",
+    "Guard Coverage Review",
+    "bounded closeout synchronization / narrow cleanup: Accepted",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "real employee data use: Blocked",
+    "live IdP/Okta operation: Blocked",
+    "production queue/DLQ operation: Blocked",
+    "retention/deletion runtime: Blocked",
+    "two-key acceptance: Blocked",
+    "Recommended next wave: EPIC-P2X-04 production-like prerequisite decomposition",
+    "Alternative 1: governance/two-key evidence wave",
+    "Alternative 2: bounded practical-use extension",
+    "Alternative 3: no immediate follow-up",
+    'npm test -- --test-name-pattern "P2X-03 independent closeout"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #360 can be updated for bounded closeout synchronization / narrow cleanup only",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-03 independent closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "P2X-03 accepts HR practical-use readiness",
+    "P2X-03 accepts production-like readiness",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "real employee data: Go",
+    "live IdP/Okta operation: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "two-key acceptance: Go",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2X-03 independent closeout must not promote stronger readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-03 Bounded Closeout Synchronization Independent Closeout\]\(docs\/p2x-03-bounded-closeout-synchronization-closeout\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
+    ),
+    "P2X-03 independent closeout must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    closeout,
+    /(?:\/Users\/|C:\\Users\\)/u,
+    "P2X-03 independent closeout must not include workstation-local absolute paths",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),

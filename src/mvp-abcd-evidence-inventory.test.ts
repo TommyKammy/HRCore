@@ -171,8 +171,8 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
     );
     assert.match(
       normalizedText,
-      /No two-key\s+Accepted claim/u,
-      `${path} must preserve the two-key Accepted blocker`,
+      /No two-key\s+(?:Accepted|approval) claim/u,
+      `${path} must preserve the two-key approval blocker`,
     );
     assert.match(
       normalizedText,
@@ -329,6 +329,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
   "docs/p2x-synthetic-test-data-governance.md",
   "docs/p2x-closeout-reference-inventory.md",
+  "docs/p2x-03-bounded-closeout-synchronization-closeout.md",
 ] as const;
 
 function p2xBoundedPracticalUseArtifactOverclaims(text: string): string[] {
