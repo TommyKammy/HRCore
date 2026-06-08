@@ -223,18 +223,29 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
         "regulated identifiers are allowed.",
         "production credentials are enabled.",
         "provider credentials are ready.",
+        "placeholder credentials are allowed.",
+        "missing credential source is approved.",
         "trusted credential source is approved.",
         "credential custody owner: Go.",
         "secret rotation readiness: Go.",
+        "revocation plan is approved.",
+        "secret revocation plan is ready.",
         "webhook runtime custody: Go.",
         "webhook custody boundary is approved.",
+        "webhook source is approved.",
+        "untrusted webhook source is allowed.",
         "provider audit search: Go.",
         "audit search boundary is approved.",
         "provider retry/error custody: Go.",
         "provider error and retry custody record is ready.",
+        "retry/error custody is ready.",
+        "error and retry custody is approved.",
         "provider rollback behavior: Go.",
         "rollback path is ready.",
         "tested rollback behavior is approved.",
+        "unknown tenant is allowed.",
+        "unsupported provider event is enabled.",
+        "stale provider state is enabled.",
         "retention/deletion requests are allowed.",
         "broad CSV/export is allowed.",
         "legal/privacy acceptance is approved.",
@@ -607,7 +618,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /\blive[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\blive[-\s]+tenant[-\s]+(?:data|export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blive[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))\b/iu,
+    /\b(?:live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+tenant[-\s]+(?:data|export)|unknown\s+tenant|unsupported\s+provider\s+event|stale\s+provider\s+state)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:live[-\s]+(?:IdP|Okta|provider|tenant[-\s]+(?:data|export))|unknown\s+tenant|unsupported\s+provider\s+event|stale\s+provider\s+state)\b/iu,
   ],
   [
     "live tenant binding",
@@ -647,15 +658,15 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "regulated data/credential readiness",
-    /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|trusted\s+credential\s+source|credential\s+custody\s+owner|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|trusted\s+credential\s+source|credential\s+custody\s+owner|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
+    /\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|placeholder\s+credentials?|trusted\s+credential\s+source|credential\s+custody\s+owner|missing\s+credential\s+source|regulated\s+identifiers?|sensitive\s+personal\s+information)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|allowed|approved|accepted|go|enabled|available|process(?:es|ing)|uses?)\b[^.;]{0,60}\b(?:payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|placeholder\s+credentials?|trusted\s+credential\s+source|credential\s+custody\s+owner|missing\s+credential\s+source|regulated\s+identifiers?|sensitive\s+personal\s+information)\b/iu,
   ],
   [
     "secret rotation readiness",
-    /\bsecret\s+rotation(?:\s+readiness)?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bsecret\s+rotation(?:\s+readiness)?\b/iu,
+    /\b(?:secret\s+rotation(?:\s+readiness)?|(?:secret\s+)?revocation\s+plan)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:secret\s+rotation(?:\s+readiness)?|(?:secret\s+)?revocation\s+plan)\b/iu,
   ],
   [
     "webhook runtime custody",
-    /\bwebhook\s+(?:runtime\s+custody|custody\s+boundary)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bwebhook\s+(?:runtime\s+custody|custody\s+boundary)\b/iu,
+    /\b(?:webhook\s+(?:runtime\s+custody|custody\s+boundary|source)|untrusted\s+webhook\s+source)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:webhook\s+(?:runtime\s+custody|custody\s+boundary|source)|untrusted\s+webhook\s+source)\b/iu,
   ],
   [
     "provider audit search",
@@ -663,7 +674,7 @@ const p2xProhibitedClaimPatterns: Array<[string, RegExp]> = [
   ],
   [
     "provider retry/error custody",
-    /\bprovider\s+(?:retry\/error\s+custody|error\s+and\s+retry\s+custody(?:\s+record)?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\bprovider\s+(?:retry\/error\s+custody|error\s+and\s+retry\s+custody(?:\s+record)?)\b/iu,
+    /\b(?:provider\s+)?(?:retry\/error\s+custody|error\s+and\s+retry\s+custody(?:\s+record)?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:provider\s+)?(?:retry\/error\s+custody|error\s+and\s+retry\s+custody(?:\s+record)?)\b/iu,
   ],
   [
     "provider rollback behavior",
@@ -702,7 +713,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "live IdP/Okta readiness",
-    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)/iu,
+    /live[-\s]+(?:IdP|Okta|provider)(?:\/(?:Okta|provider))?|live[-\s]+IdP\/Okta|live[-\s]+tenant[-\s]+(?:data|export)|unknown\s+tenant|unsupported\s+provider\s+event|stale\s+provider\s+state/iu,
   ],
   ["live tenant binding", /(?:live|named)\s+tenant\s+binding/iu],
   [
@@ -739,12 +750,15 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "regulated data/credential readiness",
-    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|trusted\s+credential\s+source|credential\s+custody\s+owner|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
+    /payroll(?:\/benefit)?\s+data|payroll\s+or\s+benefit\s+data|benefit\s+data|production\s+credentials?|provider\s+credentials?|placeholder\s+credentials?|trusted\s+credential\s+source|credential\s+custody\s+owner|missing\s+credential\s+source|regulated\s+identifiers?|sensitive\s+personal\s+information/iu,
   ],
-  ["secret rotation readiness", /secret\s+rotation(?:\s+readiness)?/iu],
+  [
+    "secret rotation readiness",
+    /secret\s+rotation(?:\s+readiness)?|(?:secret\s+)?revocation\s+plan/iu,
+  ],
   [
     "webhook runtime custody",
-    /webhook\s+(?:runtime\s+custody|custody\s+boundary)/iu,
+    /webhook\s+(?:runtime\s+custody|custody\s+boundary|source)|untrusted\s+webhook\s+source/iu,
   ],
   [
     "provider audit search",
@@ -752,7 +766,7 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "provider retry/error custody",
-    /provider\s+(?:retry\/error\s+custody|error\s+and\s+retry\s+custody(?:\s+record)?)/iu,
+    /(?:provider\s+)?(?:retry\/error\s+custody|error\s+and\s+retry\s+custody(?:\s+record)?)/iu,
   ],
   [
     "provider rollback behavior",
