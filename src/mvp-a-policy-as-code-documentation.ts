@@ -307,13 +307,10 @@ function isP2XAuthorizationPrerequisiteEvidenceClaim(
   claimText: string,
 ): boolean {
   return (
-    /\bAccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?)\b/iu.test(
+    /\b(?:must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
       claimText,
     ) ||
     /\bproduction\s+authorization\/RLS\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
-      claimText,
-    ) ||
-    /^\s*-?\s*accepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\ballowed\s+actors\b/iu.test(
       claimText,
     )
   );

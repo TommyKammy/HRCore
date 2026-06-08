@@ -331,6 +331,18 @@ test("P2X bounded practical-use artifacts keep stronger readiness blocked", asyn
   assert.deepEqual(
     p2xBoundedPracticalUseArtifactOverclaims(
       [
+        "Accepted authorization/data-scope design exists with trusted proxy identity boundary.",
+        "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
+        "Accepted authorization/data-scope design covers negative enforcement tests.",
+      ].join("\n"),
+    ),
+    ["production authorization/RLS readiness"],
+    "guard must fail closed for accepted authorization design promotion wording",
+  );
+
+  assert.deepEqual(
+    p2xBoundedPracticalUseArtifactOverclaims(
+      [
         "| Surface | Status |",
         "| --- | --- |",
         "| real employee data | complete |",
@@ -592,13 +604,10 @@ function p2xLineBlocksSubject(line: string, subject: string): boolean {
 
 function isP2XAuthorizationPrerequisiteEvidenceLine(line: string): boolean {
   return (
-    /\bAccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?)\b/iu.test(
+    /\b(?:must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
       line,
     ) ||
     /\bproduction\s+authorization\/RLS\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(
-      line,
-    ) ||
-    /^\s*-?\s*accepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\ballowed\s+actors\b/iu.test(
       line,
     )
   );

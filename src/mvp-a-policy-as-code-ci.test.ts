@@ -1147,6 +1147,35 @@ test("MVP-A policy-as-code P2X authorization aliases preserve blocked wording", 
   );
 });
 
+test("MVP-A policy-as-code P2X authorization accepted-design promotions fail", async () => {
+  const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
+  const path = "docs/p2x-04-production-authorization-rls-prerequisite-lane.md";
+  const findings = checkMvpAPolicyAsCode({
+    ...inputs,
+    documentationTextByPath: new Map([
+      ...inputs.documentationTextByPath,
+      [
+        path,
+        [
+          "Accepted authorization/data-scope design exists with trusted proxy identity boundary.",
+          "The accepted authorization/data-scope design includes PostgreSQL RLS source of truth.",
+          "Accepted authorization/data-scope design covers negative enforcement tests.",
+        ].join("\n"),
+      ],
+    ]),
+  });
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === path &&
+        finding.subject === "production authorization/RLS readiness",
+    ),
+    "expected accepted authorization/data-scope design promotion wording to fail",
+  );
+});
+
 test("MVP-A policy-as-code gate preserves lowercase readiness status context", async () => {
   const inputs = await loadCurrentMvpAPolicyAsCodeInputs();
   const path = "docs/fixture-lowercase-readiness-status-context.md";

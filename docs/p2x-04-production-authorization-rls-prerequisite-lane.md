@@ -44,8 +44,8 @@ blocked authorization/RLS boundary; it does not expand the boundary.
 The following evidence must be supplied by a later, explicitly scoped record
 before this lane can move beyond Blocked:
 
-- accepted authorization/data-scope design naming allowed actors, subjects,
-  tenants, environments, fields, and HR operations.
+- must be supplied: accepted authorization/data-scope design naming actors,
+  subjects, tenants, environments, fields, and HR operations.
 - actor/role/tenant binding evidence for every production role and tenant
   boundary being requested.
 - trusted proxy identity boundary that names identity source, forwarded-header
