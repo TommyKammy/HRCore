@@ -69,6 +69,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
   "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
   "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+  "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(

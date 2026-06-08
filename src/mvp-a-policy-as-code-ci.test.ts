@@ -124,6 +124,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-04-real-data-legal-privacy-prerequisite-lane.md",
     "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
     "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
+    "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -612,6 +613,28 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
       ].join("\n"),
       [
         "production authorization/RLS readiness",
+        "support-console readiness",
+        "HR practical-use readiness",
+        "production-like readiness",
+      ],
+    ],
+    [
+      "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
+      [
+        "Production audit immutability is accepted.",
+        "Production audit readiness: Go.",
+        "Production audit archive is approved.",
+        "Broad audit search is approved.",
+        "Compliance archive is enabled.",
+        "WORM/Object Lock is approved.",
+        "Object Lock is ready.",
+        "Support-console authority is approved.",
+        "HR practical-use readiness: Go.",
+        "Production-like readiness: Go.",
+      ].join("\n"),
+      [
+        "production audit immutability readiness",
+        "production audit/archive readiness",
         "support-console readiness",
         "HR practical-use readiness",
         "production-like readiness",
