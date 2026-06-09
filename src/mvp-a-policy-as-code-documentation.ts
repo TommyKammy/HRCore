@@ -70,6 +70,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-live-provider-custody-credential-prerequisite-lane.md",
   "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
   "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
+  "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -233,6 +234,15 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     return true;
   }
 
+  if (
+    (subject === "broad export readiness" ||
+      subject === "unrestricted raw payload readiness") &&
+    isP2XRawExportPrerequisiteEvidenceClaim(claimText) &&
+    !hasP2XRawExportPrerequisitePromotionStatus(claimText)
+  ) {
+    return true;
+  }
+
   const subjectSource = subjectPattern.source;
   const sameClauseBlockerBeforeSubject = new RegExp(
     `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
@@ -338,6 +348,25 @@ function hasP2XAuditImmutabilityPrerequisitePromotionStatus(
   claimText: string,
 ): boolean {
   return /\b(?:hash-chain\/archive\s+design(?:\s+acceptance)?)\b[^.;|]{0,80}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:accepted|allowed|approved|ready|Go|enabled|available|complete)\b/iu.test(
+    claimText,
+  );
+}
+
+function isP2XRawExportPrerequisiteEvidenceClaim(claimText: string): boolean {
+  return (
+    /\b(?:Required\s+separate\s+evidence|must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,260}\b(?:raw-view\/export\s+permissions?|export[-\s]+permissions?|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|template\s+allowlist|watermark(?:\/|\s+or\s+)manifest|download[-\s]+log\s+evidence|export\s+download)\b/iu.test(
+      claimText,
+    ) ||
+    /\b(?:unrestricted\s+raw\s+payload|raw\s+payload\s+viewing|raw\s+payload\s+download|broad\s+CSV(?:\/|\s+)export|CSV\/export|CSV\s+export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|export\s+templates?|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;|]{0,220}\bremains?\s+blocked\b/iu.test(
+      claimText,
+    )
+  );
+}
+
+function hasP2XRawExportPrerequisitePromotionStatus(
+  claimText: string,
+): boolean {
+  return /\b(?:unrestricted\s+raw\s+payload|raw\s+payload\s+viewing|raw\s+payload\s+download|broad\s+CSV(?:\/|\s+)export|CSV\/export|CSV\s+export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|export\s+templates?|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;|]{0,80}\b(?:is|are|has\s+been|can\s+be|:)\s*(?:accepted|allowed|approved|ready|Go|enabled|available|complete)\b/iu.test(
     claimText,
   );
 }
@@ -632,11 +661,11 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "broad export readiness",
-      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|go|enabled|available)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export)\b/iu,
+      /\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|CSV\s+export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|export\s+templates?|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|go|enabled|available|complete)\b[^.;]{0,60}\b(?:broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|CSV\s+export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|export\s+templates?|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?)\b/iu,
     ],
     [
       "legal/privacy acceptance",
-      /\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\blegal\/privacy(?:\s+(?:acceptance|runtime))?\b/iu,
+      /\b(?:legal\/privacy(?:\s+(?:acceptance|runtime))?|legal\s+approval)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:legal\/privacy(?:\s+(?:acceptance|runtime))?|legal\s+approval)\b/iu,
     ],
     [
       "data-owner approval",
@@ -800,10 +829,13 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     "retention/deletion runtime readiness",
     /retention\/deletion(?:\s+runtime)?|legal[-\s]+hold|anonymization(?:\s+jobs?)?/iu,
   ],
-  ["broad export readiness", /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export/iu],
+  [
+    "broad export readiness",
+    /broad\s+(?:CSV(?:\/|\s+))?export|CSV\/export|CSV\s+export|raw-view\/export\s+permissions?|export[-\s]+permissions?(?:\s+runtime)?|export\s+download|redaction\s+and\s+masking\s+profile|redaction\s+or\s+masking\s+profile|(?:redaction|masking)\s+profile|export\s+templates?|template\s+allowlists?|watermark(?:\/|\s+or\s+)manifest|export\s+manifest|download[-\s]+log\s+evidence|prohibited-payload\s+controls?|negative\s+broad-export\s+tests?/iu,
+  ],
   [
     "legal/privacy acceptance",
-    /legal\/privacy(?:\s+(?:acceptance|runtime))?/iu,
+    /legal\/privacy(?:\s+(?:acceptance|runtime))?|legal\s+approval/iu,
   ],
   ["data-owner approval", /data-owner\s+approval/iu],
   [
