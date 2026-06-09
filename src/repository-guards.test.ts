@@ -4614,6 +4614,146 @@ test("P2X-04 production queue DLQ Ops prerequisite lane keeps Ops blockers expli
   );
 });
 
+test("P2X-04 retention deletion future-extension prerequisite lane keeps blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile(
+      "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
+    ),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Retention Deletion Future Extension Prerequisite Lane",
+    "Issue: #378",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not approve retention/deletion runtime",
+    "It does not approve future-extension runtime",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains design-only, Proposed, bounded, and explicitly non-production only",
+    "docs/adr/0009-retiree-retention-physical-deletion-boundary.md",
+    "docs/adr/0015-my-number-external-reference-separate-schema-boundary.md",
+    "docs/adr/0016-sensitive-personal-information-privacy-classification-consent-processing-purpose-boundary.md",
+    "docs/adr/0017-employment-status-work-arrangement-extension-boundary.md",
+    "docs/adr/0018-retiree-retention-anonymization-deletion-job-retention-log-extension-boundary.md",
+    "docs/adr/0019-legal-entity-timezone-business-calendar-extension-boundary.md",
+    "docs/adr/0020-r08-prohibited-column-payload-policy-boundary.md",
+    "docs/mvp-c-p2c-01-readiness-review-closeout.md",
+    "docs/mvp-c-p2c-02-refactor-wave-closeout.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "retention/deletion ADR evidence",
+    "jurisdiction and legal-entity applicability",
+    "anonymization, hard-delete, and legal-hold behavior",
+    "deletion-job custody",
+    "retention log evidence",
+    "restore cleanup evidence",
+    "no-orphan tests",
+    "extension scope records",
+    "migration/runtime authorization",
+    "negative no-escape-hatch tests",
+    "retention/deletion runtime: Blocked",
+    "retention/deletion jobs: Blocked",
+    "retention/deletion requests: Blocked",
+    "anonymization job: Blocked",
+    "hard-delete job: Blocked",
+    "legal-hold workflow: Blocked",
+    "deletion-job custody: Blocked",
+    "retention log runtime: Blocked",
+    "restore cleanup: Blocked",
+    "no-orphan tests: Blocked",
+    "jurisdiction/legal-entity applicability: Blocked",
+    "future-extension runtime: Blocked",
+    "future-extension readiness: Blocked",
+    "extension scope records: Blocked",
+    "migration/runtime authorization: Blocked",
+    "negative no-escape-hatch tests: Blocked",
+    "legal/privacy approval: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 retention deletion future-extension prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can scope this child to retention/deletion and future-extension prerequisite decomposition only",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 retention deletion future-extension prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "retention/deletion runtime ready: Go",
+    "retention/deletion jobs are enabled",
+    "retention/deletion requests are approved",
+    "retention/deletion ADR evidence is approved",
+    "anonymization job is ready",
+    "hard-delete job is enabled",
+    "legal-hold workflow is approved",
+    "deletion-job custody is approved",
+    "retention log runtime is ready",
+    "restore cleanup is complete",
+    "no-orphan tests are complete",
+    "jurisdiction/legal-entity applicability is approved",
+    "future-extension runtime is ready",
+    "future-extension readiness: Go",
+    "future-extension schema is approved",
+    "future-extension API is enabled",
+    "extension scope records are complete",
+    "migration/runtime authorization is approved",
+    "schema/API/runtime authorization is approved",
+    "negative no-escape-hatch tests are complete",
+    "prohibited-payload runtime is enabled",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+  ]) {
+    assert.ok(
+      !normalizedLane
+        .toLocaleLowerCase()
+        .includes(forbiddenText.toLocaleLowerCase()),
+      `P2X-04 retention deletion future-extension prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Retention Deletion Future Extension Prerequisite Lane\]\(docs\/p2x-04-retention-deletion-future-extension-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
+    ),
+    "P2X-04 retention deletion future-extension prerequisite lane must be scanned by policy-as-code",
+  );
+  for (const guardText of [
+    "Retention/deletion ADR evidence is approved.",
+    "Hard-delete job is enabled.",
+    "Future-extension schema is approved.",
+    "Migration/runtime authorization is approved.",
+    "Negative no-escape-hatch tests are complete.",
+  ]) {
+    assert.ok(
+      combinedPolicyText.includes(guardText),
+      `P2X-04 retention deletion future-extension policy fixture must cover: ${guardText}`,
+    );
+  }
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+TABLE|ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+.*SET|kubectl|aws\s+s3|access_key|secret_access_key|api_token)/iu,
+    "P2X-04 retention deletion future-extension prerequisite lane must not include workstation-local paths, implementation commands, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),

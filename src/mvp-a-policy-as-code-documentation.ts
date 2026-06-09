@@ -72,6 +72,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
   "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
   "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
+  "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -658,7 +659,11 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "retention/deletion runtime readiness",
-      /\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b/iu,
+      /\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+jobs?)?|hard[-\s]+delete(?:\s+jobs?)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention\s+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction\/legal-entity\s+applicability)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+jobs?)?|hard[-\s]+delete(?:\s+jobs?)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention\s+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction\/legal-entity\s+applicability)\b/iu,
+    ],
+    [
+      "future-extension readiness",
+      /\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|extension\s+schema|extension\s+API)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|extension\s+schema|extension\s+API)\b/iu,
     ],
     [
       "broad export readiness",
@@ -828,7 +833,11 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "retention/deletion runtime readiness",
-    /retention\/deletion(?:\s+runtime)?|legal[-\s]+hold|anonymization(?:\s+jobs?)?/iu,
+    /retention\/deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+jobs?)?|hard[-\s]+delete(?:\s+jobs?)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention\s+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction\/legal-entity\s+applicability/iu,
+  ],
+  [
+    "future-extension readiness",
+    /future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|extension\s+schema|extension\s+API/iu,
   ],
   [
     "broad export readiness",
