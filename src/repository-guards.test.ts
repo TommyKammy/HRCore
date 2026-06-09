@@ -4698,6 +4698,8 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "retention deletion runtime is ready",
     "retention/deletion jobs are enabled",
     "retention/deletion requests are approved",
+    "deletion requests are approved",
+    "anonymization requests are approved",
     "retention/deletion ADR evidence is approved",
     "anonymization job is ready",
     "hard-delete job is enabled",
@@ -4723,6 +4725,7 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "privacy-classification runtime is approved",
     "consent runtime is approved",
     "employment-status runtime is ready",
+    "leave runtime is ready",
     "work-arrangement runtime is approved",
     "future-date worker authority is approved",
     "future-date apply worker is approved",
@@ -4738,6 +4741,8 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "schema/API/runtime authorization is approved",
     "negative no-escape-hatch tests are complete",
     "prohibited-payload runtime is enabled",
+    "owner decision record is approved",
+    "project-owner approval is complete",
     "HR practical-use readiness: Go",
     "production-like readiness: Go",
   ]) {
@@ -4761,6 +4766,7 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
   );
   for (const guardText of [
     "Retention/deletion ADR evidence is approved.",
+    "Deletion requests are approved.",
     "Retention-deletion runtime is ready.",
     "Hard-delete job is enabled.",
     "Physical deletion path is enabled.",
@@ -4770,6 +4776,7 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "Retention-log runtime is ready.",
     "Consent runtime is approved.",
     "Employment-status runtime is ready.",
+    "Leave runtime is ready.",
     "Future-date worker authority is approved.",
     "Future-date apply worker is approved.",
     "Timezone source is approved.",
@@ -4777,6 +4784,8 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "My Number external reference is approved.",
     "Parser/full-engine is approved.",
     "Future-extension schema is approved.",
+    "Owner decision record is approved.",
+    "Project-owner approval is complete.",
     "Migration/runtime authorization is approved.",
     "Negative no-escape-hatch tests are complete.",
   ]) {

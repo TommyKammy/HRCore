@@ -659,11 +659,11 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "retention/deletion runtime readiness",
-      /\b(?:retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+jobs?)?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+jobs?|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+jobs?)?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+jobs?|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability)\b/iu,
+      /\b(?:retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+(?:jobs?|requests?))?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+(?:jobs?|requests?)|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+(?:jobs?|requests?))?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+(?:jobs?|requests?)|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability)\b/iu,
     ],
     [
       "future-extension readiness",
-      /\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API)\b/iu,
+      /\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|leave\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|leave\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API)\b/iu,
     ],
     [
       "broad export readiness",
@@ -676,6 +676,10 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     [
       "data-owner approval",
       /\bdata-owner\s+approval\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b/iu,
+    ],
+    [
+      "owner decision approval",
+      /\b(?:owner\s+decision\s+record|project-owner\s+approval)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:owner\s+decision\s+record|project-owner\s+approval)\b/iu,
     ],
     [
       "two-key Accepted approval",
@@ -833,11 +837,11 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "retention/deletion runtime readiness",
-    /retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+jobs?)?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+jobs?|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability/iu,
+    /retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+(?:jobs?|requests?))?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+(?:jobs?|requests?)|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability/iu,
   ],
   [
     "future-extension readiness",
-    /future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API/iu,
+    /future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|leave\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API/iu,
   ],
   [
     "broad export readiness",
@@ -848,6 +852,10 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     /legal\/privacy(?:\s+(?:acceptance|runtime))?|legal\s+approval/iu,
   ],
   ["data-owner approval", /data-owner\s+approval/iu],
+  [
+    "owner decision approval",
+    /owner\s+decision\s+record|project-owner\s+approval/iu,
+  ],
   [
     "two-key Accepted approval",
     /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|acceptance|Accepted))/iu,
