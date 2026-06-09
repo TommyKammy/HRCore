@@ -4805,6 +4805,96 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
   );
 });
 
+test("P2X-04 production-like prerequisite decomposition closeout accepts decomposition only", async () => {
+  const [closeout, readme, documentationPolicy, ciPolicy] = await Promise.all([
+    readRepoFile(
+      "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
+    ),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+  ]);
+  const combinedPolicyText = `${documentationPolicy}\n${ciPolicy}`;
+  const normalizedCloseout = closeout.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2X-04 Production-Like Prerequisite Decomposition Independent Closeout",
+    "Issue: #379",
+    "Part of: #371",
+    "Depends on: #372, #373, #374, #375, #376, #377, #378",
+    "Final verdict: Accepted as production-like prerequisite decomposition only",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "#372",
+    "#373",
+    "#374",
+    "#375",
+    "#376",
+    "#377",
+    "#378",
+    "production-like prerequisite decomposition: Accepted",
+    "production employee datasets: Blocked",
+    "live IdP/Okta operation: Blocked",
+    "production authorization/RLS: Blocked",
+    "production audit immutability and audit archive: Blocked",
+    "unrestricted raw payload and broad CSV/export expansion: Blocked",
+    "production scheduler/queue/DLQ and production Ops: Blocked",
+    "retention/deletion runtime, jobs, requests, and legal-hold workflow: Blocked",
+    "future-extension runtime and readiness: Blocked",
+    "two-key approval: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "Recommended next wave: governance/two-key evidence and owner-decision package",
+    'npm test -- --test-name-pattern "P2X-04 production-like prerequisite decomposition closeout"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can be updated for production-like prerequisite decomposition only",
+  ]) {
+    assert.ok(
+      normalizedCloseout.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 production-like prerequisite decomposition closeout text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+    "real employee data processing: Go",
+    "live IdP/Okta operation: Go",
+    "production authorization/RLS: Go",
+    "production audit immutability: Go",
+    "unrestricted raw payload: Go",
+    "broad CSV export: Go",
+    "production queue/DLQ ready: Go",
+    "retention/deletion runtime ready: Go",
+    "future-extension readiness: Go",
+    "legal/privacy approval: Go",
+    "two-key approval: Go",
+    "Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedCloseout.includes(forbiddenText),
+      `P2X-04 closeout must not promote stronger readiness with: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Production-Like Prerequisite Decomposition Independent Closeout\]\(docs\/p2x-04-production-like-prerequisite-decomposition-closeout\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
+    ),
+    "P2X-04 production-like prerequisite decomposition closeout must be scanned by policy-as-code",
+  );
+  assert.doesNotMatch(
+    closeout,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+TABLE|ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+.*SET|kubectl|aws\s+s3|access_key|secret_access_key|api_token)/iu,
+    "P2X-04 production-like prerequisite decomposition closeout must not include workstation-local paths, implementation commands, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
