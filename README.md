@@ -61,6 +61,9 @@ The P2X-04 live provider custody and credential prerequisite lane is recorded in
 The P2X-04 production authorization and RLS prerequisite lane is recorded in [P2X-04 Production Authorization RLS Prerequisite Lane](docs/p2x-04-production-authorization-rls-prerequisite-lane.md).
 The P2X-04 production audit immutability prerequisite lane is recorded in [P2X-04 Production Audit Immutability Prerequisite Lane](docs/p2x-04-production-audit-immutability-prerequisite-lane.md).
 The P2X-04 raw payload and CSV export prerequisite lane is recorded in [P2X-04 Raw Payload CSV Export Prerequisite Lane](docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md).
+The P2X-04 production queue/DLQ and Ops prerequisite lane is recorded in [P2X-04 Production Queue DLQ Ops Prerequisite Lane](docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md).
+The P2X-04 retention/deletion and future-extension prerequisite lane is recorded in [P2X-04 Retention Deletion Future Extension Prerequisite Lane](docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md).
+The final P2X-04 production-like prerequisite decomposition closeout is recorded in [P2X-04 Production-Like Prerequisite Decomposition Independent Closeout](docs/p2x-04-production-like-prerequisite-decomposition-closeout.md).
 
 Current P2X bounded status: P2X-02 is completed and Accepted as bounded
 practical-use follow-up evidence only. The completed P2X-02 evidence set is the
@@ -70,9 +73,12 @@ governance note. HR practical-use readiness and production-like readiness remain
 blocked; next-wave references must keep bounded closeout synchronization /
 narrow cleanup separate from production-like prerequisites, governance/two-key
 evidence, and any later bounded practical-use extension. P2X-04 is completed as
-a prerequisite decomposition lane only. It keeps real-data use, data-owner
-approval, legal/privacy runtime approval, HR practical-use readiness,
-production-like data processing, and production-like readiness blocked.
+a prerequisite decomposition closeout only. It keeps real-data use, live
+provider custody, production authorization/RLS, production audit immutability,
+raw payload and CSV export expansion, production queue/DLQ and Ops,
+retention/deletion runtime, future-extension readiness, legal/privacy approval,
+two-key approval, HR practical-use readiness, and production-like readiness
+blocked.
 The P2X-04 provider-custody prerequisite lane records missing evidence only. It
 keeps live IdP/Okta operation, live provider traffic, provider credential
 custody, webhook runtime custody, HR practical-use readiness, and
@@ -226,6 +232,12 @@ readiness blocked.
   records, migration/runtime authorization, and negative no-escape-hatch tests
   while keeping retention/deletion runtime and future-extension readiness
   blocked.
+- [P2X-04 Production-Like Prerequisite Decomposition Independent Closeout](docs/p2x-04-production-like-prerequisite-decomposition-closeout.md)
+  records the final independent closeout for P2X-04 after #372 through #378,
+  accepts the wave as prerequisite decomposition evidence only, and keeps every
+  production-like, HR practical-use, two-key, legal/privacy, real-data,
+  live-provider, raw/export, queue/DLQ, retention/deletion, and future-extension
+  readiness surface blocked.
 - `docs/p2x-solo-maintainer-governance-boundary-review.md` records the P2X
   solo-maintainer governance boundary review for #11/#12/#14 and #240,
   preserving owner-acknowledged defer rather than Accepted two-key approval.

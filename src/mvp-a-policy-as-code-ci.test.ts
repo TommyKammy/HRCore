@@ -128,6 +128,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
     "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
     "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
+    "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
