@@ -78,6 +78,7 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
   "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
   "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
+  "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
   "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
   "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
   "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",

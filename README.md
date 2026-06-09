@@ -211,6 +211,13 @@ readiness blocked.
   CSV export, production scheduler/queue/DLQ, production ops, legal/privacy
   runtime, retention/deletion, future-extension surfaces, and required
   follow-up decision evidence.
+- [P2X-04 Production Queue DLQ Ops Prerequisite Lane](docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md)
+  records the production queue/DLQ and Ops prerequisite lane for scheduler
+  ownership, queue/DLQ ownership, replay authorization, retry guardrails,
+  monitoring, alerting, support-console custody, incident workflow, ticket
+  binding, SLO/SLA, backup/restore, release/rollback, and post-use review
+  evidence while keeping production operations and production-like readiness
+  blocked.
 - `docs/p2x-solo-maintainer-governance-boundary-review.md` records the P2X
   solo-maintainer governance boundary review for #11/#12/#14 and #240,
   preserving owner-acknowledged defer rather than Accepted two-key approval.

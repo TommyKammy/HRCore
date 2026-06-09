@@ -71,6 +71,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-production-authorization-rls-prerequisite-lane.md",
   "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
   "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
+  "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -621,11 +622,11 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "production queue/DLQ readiness",
-      /\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|queue\/DLQ|queue|DLQ)|queue\/DLQ)\b/iu,
+      /\b(?:production\s+(?:scheduler\/queue\/DLQ|scheduler|queue\/DLQ|queue|DLQ|DLQ\s+runtime|replay\s+authority)|queue\/DLQ|scheduler\s+ownership|queue\s+and\s+DLQ\s+ownership|queue\/DLQ\s+ownership|replay\s+authorization|retry\s+guardrails?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:production\s+(?:scheduler\/queue\/DLQ|scheduler|queue\/DLQ|queue|DLQ|DLQ\s+runtime|replay\s+authority)|queue\/DLQ|scheduler\s+ownership|queue\s+and\s+DLQ\s+ownership|queue\/DLQ\s+ownership|replay\s+authorization|retry\s+guardrails?)\b/iu,
     ],
     [
       "production ops readiness",
-      /\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\bproduction\s+(?:ops|operations)(?:\s+(?:readiness|authority))?\b/iu,
+      /\b(?:production\s+(?:ops|operations)(?:\s+(?:readiness|authority))?|monitoring\s+and\s+alerting|monitoring|alerting|support-console\s+custody|incident\s+workflow|ticket\s+binding|SLO\/SLA|backup\/restore\s+operation|release\/rollback\s+procedure|post-use\s+review)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b|\b(?:ready|approved|accepted|go|enabled|available|complete)\b[^.;]{0,60}\b(?:production\s+(?:ops|operations)(?:\s+(?:readiness|authority))?|monitoring\s+and\s+alerting|monitoring|alerting|support-console\s+custody|incident\s+workflow|ticket\s+binding|SLO\/SLA|backup\/restore\s+operation|release\/rollback\s+procedure|post-use\s+review)\b/iu,
     ],
     [
       "production authorization/RLS readiness",
@@ -791,11 +792,11 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "production queue/DLQ readiness",
-    /production\s+(?:queue\/DLQ|queue|DLQ)|production\s+scheduler\/queue\/DLQ|queue\/DLQ/iu,
+    /production\s+(?:scheduler\/queue\/DLQ|scheduler|queue\/DLQ|queue|DLQ|DLQ\s+runtime|replay\s+authority)|queue\/DLQ|scheduler\s+ownership|queue\s+and\s+DLQ\s+ownership|queue\/DLQ\s+ownership|replay\s+authorization|retry\s+guardrails?/iu,
   ],
   [
     "production ops readiness",
-    /production\s+(?:ops|operations)(?:\s+(?:readiness|authority))?/iu,
+    /production\s+(?:ops|operations)(?:\s+(?:readiness|authority))?|monitoring\s+and\s+alerting|monitoring|alerting|support-console\s+custody|incident\s+workflow|ticket\s+binding|SLO\/SLA|backup\/restore\s+operation|release\/rollback\s+procedure|post-use\s+review/iu,
   ],
   [
     "production authorization/RLS readiness",

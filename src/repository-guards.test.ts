@@ -4480,6 +4480,140 @@ test("P2X-04 raw payload CSV export prerequisite lane keeps export blockers expl
   );
 });
 
+test("P2X-04 production queue DLQ Ops prerequisite lane keeps Ops blockers explicit", async () => {
+  const [lane, readme, policyCi, policyDocs, policyCiTest] = await Promise.all([
+    readRepoFile("docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md"),
+    readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-documentation.ts"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.test.ts"),
+  ]);
+  const normalizedLane = lane.replace(/\s+/gu, " ").trim();
+  const combinedPolicyText = [policyCi, policyDocs, policyCiTest]
+    .join("\n")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  for (const requiredText of [
+    "# P2X-04 Production Queue DLQ Ops Prerequisite Lane",
+    "Issue: #377",
+    "Part of: #371",
+    "Final verdict: Blocked prerequisite lane",
+    "It does not approve production queue/DLQ readiness",
+    "It does not approve production Ops readiness",
+    "It does not accept HR practical-use readiness",
+    "It does not accept production-like readiness",
+    "Current repository evidence remains local, synthetic, bounded, and explicitly non-production only",
+    "docs/mvp-d-local-ops-job-status-runbook.md",
+    "docs/mvp-d-p2d-01-readiness-review-closeout.md",
+    "docs/mvp-d-p2d-02-refactor-wave-closeout.md",
+    "docs/p2x-cross-flow-audit-correlation-lookup-map.md",
+    "docs/p2x-local-bounded-operator-runbook.md",
+    "docs/p2x-production-like-blocker-matrix.md",
+    "scheduler ownership",
+    "queue and DLQ ownership",
+    "replay authorization",
+    "retry guardrails",
+    "monitoring and alerting",
+    "support-console custody",
+    "incident workflow",
+    "ticket binding",
+    "SLO/SLA",
+    "backup/restore operation",
+    "release/rollback procedure",
+    "post-use review",
+    "production scheduler: Blocked",
+    "production queue/DLQ: Blocked",
+    "production queue/DLQ readiness: Blocked",
+    "production DLQ runtime: Blocked",
+    "production replay authority: Blocked",
+    "replay authorization: Blocked",
+    "retry guardrails: Blocked",
+    "monitoring and alerting: Blocked",
+    "support-console custody: Blocked",
+    "incident workflow: Blocked",
+    "ticket binding: Blocked",
+    "SLO/SLA: Blocked",
+    "backup/restore operation: Blocked",
+    "release/rollback procedure: Blocked",
+    "post-use review: Blocked",
+    "production Ops readiness: Blocked",
+    "HR practical-use readiness: Blocked",
+    "production-like readiness: Blocked",
+    "two-key approval: Blocked",
+    'npm test -- --test-name-pattern "P2X-04 production queue DLQ Ops prerequisite lane"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "Epic #371 can scope this child to production queue/DLQ and production Ops prerequisite decomposition only",
+    "Future records must separately supply owner evidence before changing that status",
+  ]) {
+    assert.ok(
+      normalizedLane.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2X-04 production queue DLQ Ops prerequisite lane text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "production scheduler: Go",
+    "production queue/DLQ ready: Go",
+    "production queue/DLQ readiness: Go",
+    "production DLQ runtime is enabled",
+    "production replay authority is approved",
+    "scheduler ownership is approved",
+    "queue and DLQ ownership is approved",
+    "replay authorization is approved",
+    "retry guardrails are complete",
+    "monitoring and alerting is ready",
+    "support-console custody is approved",
+    "incident workflow is ready",
+    "ticket binding is approved",
+    "SLO/SLA is ready",
+    "backup/restore operation is approved",
+    "release/rollback procedure is ready",
+    "post-use review is complete",
+    "production Ops readiness: Go",
+    "production operations authority is approved",
+    "HR practical-use readiness: Go",
+    "production-like readiness: Go",
+  ]) {
+    assert.ok(
+      !normalizedLane
+        .toLocaleLowerCase()
+        .includes(forbiddenText.toLocaleLowerCase()),
+      `P2X-04 production queue DLQ Ops prerequisite lane must not promote readiness: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2X-04 Production Queue DLQ Ops Prerequisite Lane\]\(docs\/p2x-04-production-queue-dlq-ops-prerequisite-lane\.md\)/,
+  );
+  assert.ok(
+    combinedPolicyText.includes(
+      "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
+    ),
+    "P2X-04 production queue DLQ Ops prerequisite lane must be scanned by policy-as-code",
+  );
+  for (const guardText of [
+    "Scheduler ownership is approved.",
+    "Replay authorization is approved.",
+    "Monitoring and alerting is ready.",
+    "Support-console custody is approved.",
+    "SLO/SLA is ready.",
+    "Release/rollback procedure is ready.",
+  ]) {
+    assert.ok(
+      combinedPolicyText.includes(guardText),
+      `P2X-04 production queue DLQ Ops policy fixture must cover: ${guardText}`,
+    );
+  }
+  assert.doesNotMatch(
+    lane,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+QUEUE|CREATE\s+DLQ|aws\s+sqs|kubectl|pagerduty|access_key|secret_access_key|api_token)/iu,
+    "P2X-04 production queue DLQ Ops prerequisite lane must not include workstation-local paths, Ops implementation commands, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
