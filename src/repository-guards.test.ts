@@ -4743,6 +4743,8 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "prohibited-payload runtime is enabled",
     "owner decision record is approved",
     "project-owner approval is complete",
+    "data-owner approval is completed",
+    "two-key approval is completed",
     "HR practical-use readiness: Go",
     "production-like readiness: Go",
   ]) {
@@ -4786,6 +4788,8 @@ test("P2X-04 retention deletion future-extension prerequisite lane keeps blocker
     "Future-extension schema is approved.",
     "Owner decision record is approved.",
     "Project-owner approval is complete.",
+    "| Data-owner approval | Completed |",
+    "| two-key approval | Completed |",
     "Migration/runtime authorization is approved.",
     "Negative no-escape-hatch tests are complete.",
   ]) {

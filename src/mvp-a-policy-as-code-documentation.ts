@@ -267,11 +267,11 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const keepsSubjectListBlocked = new RegExp(
-    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\\b)[^|.;]){0,500}\\bblocked\\b`,
+    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\\b)[^|.;]){0,500}\\bblocked\\b`,
     "iu",
   );
   const rejectsSubjectList = new RegExp(
-    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
   );
   const sameClauseCannotClaimBeforeSubject = new RegExp(
@@ -513,21 +513,21 @@ function hasAffirmativeStatusAttachedToSubject(
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
   if (
-    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:ready|processing|complete)\b\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
+    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:ready|processing|complete|completed)\b\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
       value,
     )
   ) {
     return false;
   }
 
-  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
+  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete|completed)\s*$)/iu.test(
     value,
   );
 }
 
 function hasLaterAffirmativeStatus(value: string): boolean {
   const laterStatusPattern =
-    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/giu;
+    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\b/giu;
 
   for (const match of value.matchAll(laterStatusPattern)) {
     if (match.index === undefined) {
@@ -556,7 +556,7 @@ function hasLaterAffirmativeStatus(value: string): boolean {
 
 function hasAffirmativeStatusPrefix(value: string): boolean {
   if (
-    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\s*:?\s*$/iu.test(
       value,
     )
   ) {
@@ -675,7 +675,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "data-owner approval",
-      /\bdata-owner\s+approval\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b/iu,
+      /\bdata-owner\s+approval\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b/iu,
     ],
     [
       "owner decision approval",
@@ -683,7 +683,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "two-key Accepted approval",
-      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go)|acceptance(?:\s+(?:is\s+)?(?:accepted|approved|complete|ready|go|enabled)|\s*:\s*(?:Go|Accepted|Yes|ready|allowed|approved|enabled)))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+(?:approval|acceptance)\b/iu,
+      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|completed|ready|go)|acceptance(?:\s+(?:is\s+)?(?:accepted|approved|complete|completed|ready|go|enabled)|\s*:\s*(?:Go|Accepted|Yes|ready|allowed|approved|enabled|complete|completed)))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+(?:approval|acceptance)\b/iu,
     ],
   ];
 
