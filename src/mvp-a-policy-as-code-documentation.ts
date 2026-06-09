@@ -743,7 +743,7 @@ function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
 }
 
 function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
-  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)$/iu.test(
+  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)$/iu.test(
     cell.replace(/\s+/gu, " ").trim(),
   );
 }
