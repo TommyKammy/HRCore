@@ -218,6 +218,14 @@ readiness blocked.
   binding, SLO/SLA, backup/restore, release/rollback, and post-use review
   evidence while keeping production operations and production-like readiness
   blocked.
+- [P2X-04 Retention Deletion Future Extension Prerequisite Lane](docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md)
+  records the retention/deletion and future-extension prerequisite lane for
+  Accepted-status ADR evidence requirements, jurisdiction/legal-entity
+  applicability, anonymization/hard-delete/legal-hold behavior, deletion-job
+  custody, retention log, restore cleanup, no-orphan tests, extension scope
+  records, migration/runtime authorization, and negative no-escape-hatch tests
+  while keeping retention/deletion runtime and future-extension readiness
+  blocked.
 - `docs/p2x-solo-maintainer-governance-boundary-review.md` records the P2X
   solo-maintainer governance boundary review for #11/#12/#14 and #240,
   preserving owner-acknowledged defer rather than Accepted two-key approval.

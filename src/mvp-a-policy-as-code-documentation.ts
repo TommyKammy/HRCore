@@ -72,6 +72,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-production-audit-immutability-prerequisite-lane.md",
   "docs/p2x-04-raw-payload-csv-export-prerequisite-lane.md",
   "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
+  "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -266,11 +267,11 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const keepsSubjectListBlocked = new RegExp(
-    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\\b)[^|.;]){0,500}\\bblocked\\b`,
+    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\\b)[^|.;]){0,500}\\bblocked\\b`,
     "iu",
   );
   const rejectsSubjectList = new RegExp(
-    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
   );
   const sameClauseCannotClaimBeforeSubject = new RegExp(
@@ -512,21 +513,21 @@ function hasAffirmativeStatusAttachedToSubject(
 
 function hasAffirmativeStatusSuffix(value: string): boolean {
   if (
-    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:ready|processing|complete)\b\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
+    /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:ready|processing|complete|completed)\b\s*(?::\s*)?\b(?:Blocked|blocked|deferred|not\s+accepted|not\s+approved|not\s+enabled|not\s+allowed|not\s+ready|remain(?:s)?\s+blocked)\b/iu.test(
       value,
     )
   ) {
     return false;
   }
 
-  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete)\s*$)/iu.test(
+  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete|completed)\s*$)/iu.test(
     value,
   );
 }
 
 function hasLaterAffirmativeStatus(value: string): boolean {
   const laterStatusPattern =
-    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\b/giu;
+    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\b/giu;
 
   for (const match of value.matchAll(laterStatusPattern)) {
     if (match.index === undefined) {
@@ -555,14 +556,14 @@ function hasLaterAffirmativeStatus(value: string): boolean {
 
 function hasAffirmativeStatusPrefix(value: string): boolean {
   if (
-    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\s*:?\s*$/iu.test(
       value,
     )
   ) {
     return false;
   }
 
-  return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)\s*:?\s*$/iu.test(
+  return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\s*:?\s*$/iu.test(
     value,
   );
 }
@@ -658,7 +659,11 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "retention/deletion runtime readiness",
-      /\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available)\b|\b(?:ready|approved|accepted|go|enabled|available)\b[^.;]{0,60}\b(?:retention\/deletion(?:\s+(?:runtime|jobs?|requests?))?|legal[-\s]+hold|anonymization(?:\s+jobs?)?)\b/iu,
+      /\b(?:retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+(?:jobs?|requests?))?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+(?:jobs?|requests?)|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+(?:jobs?|requests?))?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+(?:jobs?|requests?)|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability)\b/iu,
+    ],
+    [
+      "future-extension readiness",
+      /\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|leave\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|leave\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API)\b/iu,
     ],
     [
       "broad export readiness",
@@ -670,11 +675,15 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "data-owner approval",
-      /\bdata-owner\s+approval\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete)\b/iu,
+      /\bdata-owner\s+approval\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b/iu,
+    ],
+    [
+      "owner decision approval",
+      /\b(?:owner\s+decision\s+record|project-owner\s+approval)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:owner\s+decision\s+record|project-owner\s+approval)\b/iu,
     ],
     [
       "two-key Accepted approval",
-      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|ready|go)|acceptance(?:\s+(?:is\s+)?(?:accepted|approved|complete|ready|go|enabled)|\s*:\s*(?:Go|Accepted|Yes|ready|allowed|approved|enabled)))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+(?:approval|acceptance)\b/iu,
+      /\btwo-key\b[^.;]{0,60}\b(?:Accepted|approval\s+(?:is\s+)?(?:accepted|approved|complete|completed|ready|go)|acceptance(?:\s+(?:is\s+)?(?:accepted|approved|complete|completed|ready|go|enabled)|\s*:\s*(?:Go|Accepted|Yes|ready|allowed|approved|enabled|complete|completed)))\b|\bAccepted\b[^.;]{0,60}\btwo-key\s+(?:approval|acceptance)\b/iu,
     ],
   ];
 
@@ -738,7 +747,7 @@ function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
 }
 
 function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
-  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete)$/iu.test(
+  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)$/iu.test(
     cell.replace(/\s+/gu, " ").trim(),
   );
 }
@@ -828,7 +837,11 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
   ],
   [
     "retention/deletion runtime readiness",
-    /retention\/deletion(?:\s+runtime)?|legal[-\s]+hold|anonymization(?:\s+jobs?)?/iu,
+    /retention(?:\/|[-\s]+)deletion(?:\s+(?:runtime|jobs?|requests?|ADR\s+evidence))?|anonymization(?:\s+(?:jobs?|requests?))?|hard[-\s]+delete(?:\s+jobs?)?|deletion[-\s]+(?:jobs?|requests?)|physical\s+deletion(?:\s+(?:exception|path|handling))?|retention[-\s]+exceptions?(?:\s+handling)?|legal[-\s]+hold(?:\s+workflow)?|deletion[-\s]+job\s+custody|retention[-\s]+log(?:\s+runtime)?|restore\s+cleanup|no-orphan\s+tests?|jurisdiction(?:\/|\s+and\s+)legal-entity\s+applicability/iu,
+  ],
+  [
+    "future-extension readiness",
+    /future[-\s]+extension(?:\s+(?:runtime|readiness|schema|API|surface|surfaces?))?|extension\s+scope\s+records?|migration\/runtime\s+authorization|schema\/API\/runtime\s+authorization|negative\s+no-escape-hatch\s+tests?|prohibited[-\s]+payload\s+runtime|privacy[-\s]+classification(?:\s+runtime)?|consent\s+runtime|employment[-\s]+status\s+runtime|leave\s+runtime|work[-\s]+arrangement\s+runtime|future[-\s]+date(?:\s+(?:worker\s+authority|apply\s+worker|processing))?|legal[-\s]+entity(?:\s+(?:approval|runtime|applicability))?|timezone(?:\s+(?:source|runtime))?|business[-\s]+calendar(?:\s+runtime)?|My\s+Number\s+(?:external\s+reference|separate\s+schema|vault\s+reference)|parser\/full-engine|parser\/validator\s+enforcement|extension\s+schema|extension\s+API/iu,
   ],
   [
     "broad export readiness",
@@ -839,6 +852,10 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     /legal\/privacy(?:\s+(?:acceptance|runtime))?|legal\s+approval/iu,
   ],
   ["data-owner approval", /data-owner\s+approval/iu],
+  [
+    "owner decision approval",
+    /owner\s+decision\s+record|project-owner\s+approval/iu,
+  ],
   [
     "two-key Accepted approval",
     /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|acceptance|Accepted))/iu,
