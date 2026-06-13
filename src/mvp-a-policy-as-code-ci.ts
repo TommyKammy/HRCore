@@ -81,6 +81,7 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
   "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
   "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
+  "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
   "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
   "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
   "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",

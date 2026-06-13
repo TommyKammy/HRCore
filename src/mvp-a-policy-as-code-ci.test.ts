@@ -359,7 +359,7 @@ test("MVP-A policy-as-code gate scans ADR-path table rows as gate claims", async
   }
 });
 
-test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifacts", async () => {
+test("MVP-A policy-as-code input loader scans P2X and P2Y bounded practical-use artifacts", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
   const p2xFixtureClaims = [
@@ -802,6 +802,21 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "two-key Accepted approval",
         "HR practical-use readiness",
         "production-like readiness",
+      ],
+    ],
+    [
+      "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
+      [
+        "Production-like readiness: Accepted.",
+        "Real employee data is allowed.",
+        "Broad CSV export is approved.",
+        "Go-live approval: Go.",
+      ].join("\n"),
+      [
+        "production-like readiness",
+        "real employee data readiness",
+        "broad export readiness",
+        "go-live readiness",
       ],
     ],
   ] as const;
@@ -1295,6 +1310,92 @@ test("MVP-A policy-as-code P2X guard preserves later-Accepted blocker wording", 
         finding.subject === "real employee data readiness",
     ),
     "expected later Accepted prerequisite wording to remain a blocker, not an approval",
+  );
+});
+
+test("MVP-A policy-as-code P2X guard preserves go-live approval blocker wording", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2y-00-webui-practical-use-scope-authorization-gate.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    [
+      "go-live approval is not approved.",
+      "go-live approval is not accepted.",
+      "go-live readiness remains blocked.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "go-live readiness",
+    ),
+    "expected explicit go-live approval denials to remain blockers, not approvals",
+  );
+});
+
+test("MVP-A policy-as-code P2X guard rejects stronger go-live status synonyms", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2y-00-webui-practical-use-scope-authorization-gate.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    [
+      "go-live readiness: Green.",
+      "Unblocked go-live approval.",
+      "| Go-live settings | Passed |",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "go-live readiness",
+    ),
+    "expected green/unblocked/passed go-live status words to fail the policy gate",
+  );
+});
+
+test("MVP-A policy-as-code P2X guard does not let broad disclaimers hide approvals", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2x-04-production-authorization-rls-prerequisite-lane.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    "This does not authorize product runtime, production authorization/RLS is approved.",
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "production authorization/RLS readiness",
+    ),
+    "expected comma-separated production authorization approval to fail despite the earlier disclaimer",
   );
 });
 
