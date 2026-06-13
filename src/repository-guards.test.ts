@@ -4896,9 +4896,10 @@ test("P2X-04 production-like prerequisite decomposition closeout accepts decompo
 });
 
 test("P2Y-00 WebUI practical-use scope and authorization gate stays planning-only", async () => {
-  const [scope, readme] = await Promise.all([
+  const [scope, readme, policyCi] = await Promise.all([
     readRepoFile("docs/p2y-00-webui-practical-use-scope-authorization-gate.md"),
     readRepoFile("README.md"),
+    readRepoFile("src/mvp-a-policy-as-code-ci.ts"),
   ]);
   const normalizedScope = scope.replace(/\s+/gu, " ").trim();
 
@@ -4996,6 +4997,12 @@ test("P2Y-00 WebUI practical-use scope and authorization gate stays planning-onl
   assert.match(
     readme,
     /\[P2Y-00 WebUI Practical-Use Scope and Authorization Gate\]\(docs\/p2y-00-webui-practical-use-scope-authorization-gate\.md\)/,
+  );
+  assert.ok(
+    policyCi.includes(
+      '"docs/p2y-00-webui-practical-use-scope-authorization-gate.md"',
+    ),
+    "P2Y-00 WebUI scope and authorization gate must be scanned by policy-as-code",
   );
   assert.doesNotMatch(
     scope,
