@@ -257,7 +257,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const doNotUseListBlockerBeforeSubject = new RegExp(
-    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+(?:use|treat)|does\\s+not\\s+(?:require|introduce|approve|accept|authorize)|not\\s+(?:require|introduce|approve|accept|authorize))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+(?:use|treat)|does\\s+not\\s+(?:require|introduce|approve|accept|authorize)|not\\s+(?:require|introduce|approve|accept|authorize))\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const sameClauseBlockedShapeBeforeSubject = new RegExp(
@@ -268,12 +268,26 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\b(?:Blocked(?:\\s+shape)?|Generic\\s+production\\s+acceptance)\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
+  const allowedOnlyWhenSubjectBlocked = new RegExp(
+    `\\ballowed\\s+only\\s+when\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\bblocked\\b`,
+    "iu",
+  );
+  const genericDenyListBlockerBeforeSubject = new RegExp(
+    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+(?:use|treat)|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const affirmativeStatusWords =
+    "Go(?![-\\s]+live)|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green";
+  const doesNotAuthorizeListBlockerBeforeSubject = new RegExp(
+    `\\bdoes\\s+not\\s+authorize\\b(?:(?!\\b(?:but|however|yet|${affirmativeStatusWords})\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
   const keepsSubjectListBlocked = new RegExp(
-    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\\b)[^|.;]){0,500}\\bblocked\\b`,
+    `\\bkeeps?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|${affirmativeStatusWords})\\b)[^|.;]){0,500}\\bblocked\\b`,
     "iu",
   );
   const rejectsSubjectList = new RegExp(
-    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
+    `\\brejects?\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b(?:(?!\\b(?:but|however|yet|${affirmativeStatusWords})\\b)[^|.;]){0,180}\\b(?:blocked|deferred|not\\s+accepted|not\\s+approved|not\\s+enabled|not\\s+allowed|not\\s+ready|remain(?:s)?\\s+blocked|unsupported|prohibited|forbidden|out\\s+of\\s+scope|requires?\\s+(?:a\\s+later\\s+)?Accepted|required\\s+before\\s+Accepted|before\\s+Accepted)\\b`,
     "iu",
   );
   const sameClauseCannotClaimBeforeSubject = new RegExp(
@@ -309,6 +323,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   }
 
   if (
+    allowedOnlyWhenSubjectBlocked.test(claimText) ||
     sameClauseBlockerBeforeSubject.test(claimText) ||
     sameClauseBlockedShapeBeforeSubject.test(claimText) ||
     sameClauseCannotClaimBeforeSubject.test(claimText) ||
@@ -319,6 +334,8 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
 
   return (
     noListBlockerBeforeSubject.test(claimText) ||
+    genericDenyListBlockerBeforeSubject.test(claimText) ||
+    doesNotAuthorizeListBlockerBeforeSubject.test(claimText) ||
     doNotUseListBlockerBeforeSubject.test(claimText) ||
     blockedShapeBeforeSubject.test(claimText) ||
     keepsSubjectListBlocked.test(claimText) ||
@@ -522,14 +539,14 @@ function hasAffirmativeStatusSuffix(value: string): boolean {
     return false;
   }
 
-  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available)\b|(?:processing|complete|completed)\s*$)/iu.test(
+  return /^\s*(?:(?:bounded|controlled|current|documented|protected|repository-only|scoped|synthetic)\s+){0,3}(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|unblocked|passed|green)\b|(?:processing|complete|completed)\s*$)/iu.test(
     value,
   );
 }
 
 function hasLaterAffirmativeStatus(value: string): boolean {
   const laterStatusPattern =
-    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\b/giu;
+    /\b(?:(?:access|approval|evidence|operation|readiness|runtime|status|surface)\b\s*)?(?::\s*)?(?:(?:is|are|has\s+been|can\s+be)\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green)\b/giu;
 
   for (const match of value.matchAll(laterStatusPattern)) {
     if (match.index === undefined) {
@@ -558,14 +575,14 @@ function hasLaterAffirmativeStatus(value: string): boolean {
 
 function hasAffirmativeStatusPrefix(value: string): boolean {
   if (
-    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\s*:?\s*$/iu.test(
+    /\bnot\s+(?:treated\s+as\s+)?(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green)\s*:?\s*$/iu.test(
       value,
     )
   ) {
     return false;
   }
 
-  return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)\s*:?\s*$/iu.test(
+  return /\b(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green)\s*:?\s*$/iu.test(
     value,
   );
 }
@@ -685,7 +702,7 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     ],
     [
       "go-live readiness",
-      /\b(?:go[-\s]+live(?:\s+(?:approval|readiness|claim))?|go-live)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:go[-\s]+live(?:\s+(?:approval|readiness|claim))?|go-live)\b/iu,
+      /\b(?:go[-\s]+live(?:\s+(?:approval|readiness|claim))?|go-live)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed|unblocked|passed|green)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed|unblocked|passed|green)\b[^.;]{0,60}\b(?:go[-\s]+live(?:\s+(?:approval|readiness|claim))?|go-live)\b/iu,
     ],
     [
       "two-key Accepted approval",
@@ -753,7 +770,7 @@ function p2xClaimSegmentsForSurfaceStatus(segment: string): string[] {
 }
 
 function isSimpleP2XAffirmativeStatusCell(cell: string): boolean {
-  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed)$/iu.test(
+  return /^(?:Go|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green)$/iu.test(
     cell.replace(/\s+/gu, " ").trim(),
   );
 }

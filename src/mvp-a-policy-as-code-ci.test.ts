@@ -1343,6 +1343,62 @@ test("MVP-A policy-as-code P2X guard preserves go-live approval blocker wording"
   );
 });
 
+test("MVP-A policy-as-code P2X guard rejects stronger go-live status synonyms", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2y-00-webui-practical-use-scope-authorization-gate.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    [
+      "go-live readiness: Green.",
+      "Unblocked go-live approval.",
+      "| Go-live settings | Passed |",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "go-live readiness",
+    ),
+    "expected green/unblocked/passed go-live status words to fail the policy gate",
+  );
+});
+
+test("MVP-A policy-as-code P2X guard does not let broad disclaimers hide approvals", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2x-04-production-authorization-rls-prerequisite-lane.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    "This does not authorize product runtime, production authorization/RLS is approved.",
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "production authorization/RLS readiness",
+    ),
+    "expected comma-separated production authorization approval to fail despite the earlier disclaimer",
+  );
+});
+
 test("MVP-A policy-as-code P2X authorization aliases preserve blocked wording", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
