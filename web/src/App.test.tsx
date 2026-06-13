@@ -118,4 +118,77 @@ describe("App shell", () => {
       "true",
     );
   });
+
+  it("supports bounded onboarding create, inspection, evidence, and approver decisions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+
+    expect(
+      screen.getByRole("heading", { name: "Onboarding" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Display name")).toHaveValue(
+      "Synthetic Onboarding Hire",
+    );
+    expect(screen.getByText("onboarding.hire.001@***")).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText("Start date"));
+    await userEvent.type(screen.getByLabelText("Start date"), "2026-04-30");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Start date must be on or after the requested date for this bounded workflow.",
+    );
+
+    await userEvent.clear(screen.getByLabelText("Start date"));
+    await userEvent.type(screen.getByLabelText("Start date"), "2026-06-01");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: "transaction-request-onboarding-001",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Submitted")).toBeInTheDocument();
+    expect(screen.getByText("Okta projection evidence")).toBeInTheDocument();
+    expect(screen.getByText("Writeback evidence")).toBeInTheDocument();
+    expect(screen.getByText("Audit evidence")).toBeInTheDocument();
+    expect(screen.getByText("correlation-onboarding-001")).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "A submitted onboarding request already exists for this synthetic employment code.",
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+    await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
+    expect(
+      screen.getByRole("button", { name: "Approve request" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Return request" }),
+    );
+    expect(screen.getByText(/is Returned for/)).toBeInTheDocument();
+    expect(screen.getByText(/mvp_a\.onboarding\.return/)).toBeInTheDocument();
+  });
 });

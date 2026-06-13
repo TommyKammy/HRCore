@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   type ApiContract,
@@ -30,6 +36,50 @@ interface PlannedArea {
   status: "available" | "planned";
   summary: string;
 }
+
+type OnboardingStatus =
+  | "submitted"
+  | "returned"
+  | "rejected"
+  | "cancelled"
+  | "approved";
+
+type OnboardingDecision = "approve" | "return" | "reject" | "cancel";
+
+interface OnboardingFormState {
+  displayName: string;
+  employmentCode: string;
+  startDate: string;
+  departmentReference: string;
+  managerReference: string;
+  workEmail: string;
+}
+
+interface OnboardingRequest {
+  id: string;
+  personId: string;
+  correlationId: string;
+  requestedAt: string;
+  status: OnboardingStatus;
+  form: OnboardingFormState;
+  auditActions: string[];
+}
+
+const defaultOnboardingForm: OnboardingFormState = {
+  displayName: "Synthetic Onboarding Hire",
+  employmentCode: "EMP-ONBOARDING-001",
+  startDate: "2026-06-01",
+  departmentReference: "department-people-ops",
+  managerReference: "manager-001",
+  workEmail: "onboarding.hire.001@example.invalid",
+};
+
+const onboardingRequestTemplate = {
+  id: "transaction-request-onboarding-001",
+  personId: "person-onboarding-001",
+  correlationId: "correlation-onboarding-001",
+  requestedAt: "2026-05-21T00:00:00Z",
+} as const;
 
 const plannedAreas: readonly PlannedArea[] = [
   {
@@ -108,6 +158,292 @@ function EmptyState() {
   );
 }
 
+function formatStatus(status: OnboardingStatus): string {
+  return status[0].toUpperCase() + status.slice(1);
+}
+
+function maskEmail(value: string): string {
+  const [localPart] = value.split("@");
+  return `${localPart}@***`;
+}
+
+function isStartBeforeRequestedDate(startDate: string): boolean {
+  return startDate < onboardingRequestTemplate.requestedAt.slice(0, 10);
+}
+
+function OnboardingWorkflow({
+  personaRole,
+  request,
+  setRequest,
+}: {
+  personaRole: string | undefined;
+  request: OnboardingRequest | null;
+  setRequest: (request: OnboardingRequest) => void;
+}) {
+  const [form, setForm] = useState<OnboardingFormState>(defaultOnboardingForm);
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<"error" | "ok">("ok");
+  const isOperator = personaRole === "bounded_hr_operator";
+
+  const updateField =
+    (field: keyof OnboardingFormState) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setForm((current) => ({
+        ...current,
+        [field]: event.target.value,
+      }));
+    };
+
+  const createRequest = () => {
+    if (!isOperator) {
+      setMessageKind("error");
+      setMessage(
+        "Only the bounded HR operator persona can create onboarding requests in this synthetic workflow.",
+      );
+      return;
+    }
+
+    if (!form.displayName.trim() || !form.employmentCode.trim()) {
+      setMessageKind("error");
+      setMessage(
+        "Display name and employment code are required before submitting this bounded request.",
+      );
+      return;
+    }
+
+    if (isStartBeforeRequestedDate(form.startDate)) {
+      setMessageKind("error");
+      setMessage(
+        "Start date must be on or after the requested date for this bounded workflow.",
+      );
+      return;
+    }
+
+    if (
+      request &&
+      request.form.employmentCode === form.employmentCode &&
+      request.status !== "cancelled" &&
+      request.status !== "rejected"
+    ) {
+      setMessageKind("error");
+      setMessage(
+        "A submitted onboarding request already exists for this synthetic employment code.",
+      );
+      return;
+    }
+
+    setRequest({
+      ...onboardingRequestTemplate,
+      status: "submitted",
+      form,
+      auditActions: ["mvp_a.onboarding.submit"],
+    });
+    setMessageKind("ok");
+    setMessage("Bounded onboarding request created with synthetic data only.");
+  };
+
+  return (
+    <div className="workflow-grid">
+      <section className="workflow-panel" aria-labelledby="onboarding-form">
+        <div>
+          <p className="context-label">Synthetic request input</p>
+          <h3 id="onboarding-form">Create bounded request</h3>
+        </div>
+        <div className="form-grid">
+          <label>
+            Display name
+            <input
+              value={form.displayName}
+              onChange={updateField("displayName")}
+            />
+          </label>
+          <label>
+            Employment code
+            <input
+              value={form.employmentCode}
+              onChange={updateField("employmentCode")}
+            />
+          </label>
+          <label>
+            Start date
+            <input
+              type="date"
+              value={form.startDate}
+              onChange={updateField("startDate")}
+            />
+          </label>
+          <label>
+            Department
+            <input
+              value={form.departmentReference}
+              onChange={updateField("departmentReference")}
+            />
+          </label>
+          <label>
+            Manager
+            <input
+              value={form.managerReference}
+              onChange={updateField("managerReference")}
+            />
+          </label>
+          <label>
+            Work email
+            <input value={form.workEmail} onChange={updateField("workEmail")} />
+          </label>
+        </div>
+        <div className="evidence-row">
+          <span>Masked contact preview</span>
+          <strong>{maskEmail(form.workEmail)}</strong>
+        </div>
+        <button type="button" onClick={createRequest} disabled={!isOperator}>
+          Create request
+        </button>
+        {message ? (
+          <section
+            className={
+              messageKind === "error"
+                ? "notice notice-error compact"
+                : "notice notice-ok compact"
+            }
+            role={messageKind === "error" ? "alert" : "status"}
+          >
+            <p>{message}</p>
+          </section>
+        ) : null}
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="onboarding-detail">
+        <div>
+          <p className="context-label">Request detail</p>
+          <h3 id="onboarding-detail">
+            {request?.id ?? "No onboarding request selected"}
+          </h3>
+        </div>
+        {request ? (
+          <>
+            <dl className="detail-list">
+              <div>
+                <dt>Status</dt>
+                <dd>{formatStatus(request.status)}</dd>
+              </div>
+              <div>
+                <dt>Person</dt>
+                <dd>{request.form.displayName}</dd>
+              </div>
+              <div>
+                <dt>Employment</dt>
+                <dd>{request.form.employmentCode}</dd>
+              </div>
+              <div>
+                <dt>Correlation trace</dt>
+                <dd>{request.correlationId}</dd>
+              </div>
+            </dl>
+            <div className="evidence-stack" aria-label="Evidence">
+              <EvidenceItem
+                title="Okta projection evidence"
+                body={`Synthetic profile projection prepared for ${maskEmail(
+                  request.form.workEmail,
+                )}. No live provider mutation.`}
+              />
+              <EvidenceItem
+                title="Writeback evidence"
+                body="Work email writeback remains repository-owned synthetic evidence."
+              />
+              <EvidenceItem
+                title="Audit evidence"
+                body={request.auditActions.join(", ")}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="muted">
+            Create a bounded onboarding request to inspect status, evidence, and
+            correlation trace.
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function EvidenceItem({ title, body }: { title: string; body: string }) {
+  return (
+    <article className="evidence-item">
+      <h4>{title}</h4>
+      <p>{body}</p>
+    </article>
+  );
+}
+
+function ApprovalsWorkflow({
+  request,
+  onDecision,
+}: {
+  request: OnboardingRequest | null;
+  onDecision: (decision: OnboardingDecision) => void;
+}) {
+  const decisionDisabled = request?.status !== "submitted";
+
+  return (
+    <section className="workflow-panel" aria-labelledby="approval-workflow">
+      <div>
+        <p className="context-label">Bounded approver actions</p>
+        <h3 id="approval-workflow">
+          {request?.id ?? "No submitted onboarding request"}
+        </h3>
+      </div>
+      {request ? (
+        <>
+          <p>
+            {request.form.displayName} is {formatStatus(request.status)} for{" "}
+            {request.correlationId}.
+          </p>
+          <div className="decision-bar">
+            <button
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => onDecision("approve")}
+            >
+              Approve request
+            </button>
+            <button
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => onDecision("return")}
+            >
+              Return request
+            </button>
+            <button
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => onDecision("reject")}
+            >
+              Reject request
+            </button>
+            <button
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => onDecision("cancel")}
+            >
+              Cancel request
+            </button>
+          </div>
+          <EvidenceItem
+            title="Audit evidence"
+            body={request.auditActions.join(", ")}
+          />
+        </>
+      ) : (
+        <p className="muted">
+          Submitted onboarding requests appear here for bounded approver
+          decisions.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function LoadingState() {
   return (
     <section className="skeleton-panel" aria-busy="true" aria-label="Loading">
@@ -164,6 +500,8 @@ function AppShell() {
   const [contract, setContract] = useState<ApiContract | null>(null);
   const [contractError, setContractError] = useState<string | null>(null);
   const [contractLoading, setContractLoading] = useState(true);
+  const [onboardingRequest, setOnboardingRequest] =
+    useState<OnboardingRequest | null>(null);
 
   const personaDecision = useMemo(
     () => resolveBoundedPersona(selectedPersonaId || null),
@@ -218,6 +556,32 @@ function AppShell() {
     : [];
   const activeArea =
     visibleAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
+
+  const decideOnboardingRequest = useCallback(
+    (decision: OnboardingDecision) => {
+      if (!onboardingRequest || onboardingRequest.status !== "submitted") {
+        return;
+      }
+
+      const nextStatusByDecision: Record<OnboardingDecision, OnboardingStatus> =
+        {
+          approve: "approved",
+          return: "returned",
+          reject: "rejected",
+          cancel: "cancelled",
+        };
+
+      setOnboardingRequest({
+        ...onboardingRequest,
+        status: nextStatusByDecision[decision],
+        auditActions: [
+          ...onboardingRequest.auditActions,
+          `mvp_a.onboarding.${decision}`,
+        ],
+      });
+    },
+    [onboardingRequest],
+  );
 
   useEffect(() => {
     if (
@@ -315,7 +679,20 @@ function AppShell() {
                 </h2>
                 <p>{activeArea?.summary}</p>
               </div>
-              <EmptyState />
+              {activeArea?.id === "onboarding" ? (
+                <OnboardingWorkflow
+                  personaRole={personaDecision.persona?.role}
+                  request={onboardingRequest}
+                  setRequest={setOnboardingRequest}
+                />
+              ) : activeArea?.id === "approvals" ? (
+                <ApprovalsWorkflow
+                  request={onboardingRequest}
+                  onDecision={decideOnboardingRequest}
+                />
+              ) : (
+                <EmptyState />
+              )}
             </section>
           </>
         )}
