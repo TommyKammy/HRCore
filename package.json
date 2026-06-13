@@ -7,27 +7,42 @@
   "scripts": {
     "audit": "npm audit --audit-level=moderate",
     "build": "tsc -p tsconfig.json",
+    "build:web": "vite build",
     "db:check": "drizzle-kit check --config=drizzle.config.ts",
     "dev": "tsx src/server.ts",
+    "dev:web": "vite --host 127.0.0.1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "policy:mvp-a": "tsx src/mvp-a-policy-as-code-ci.ts",
+    "preview:web": "vite preview --host 127.0.0.1",
     "test": "npm run build && node --test \"dist/**/*.test.js\"",
-    "verify:pre-pr": "npm run build && npm run policy:mvp-a && npm test && npm run format:check && npm run audit && npm run db:check"
+    "test:web": "vitest run",
+    "verify:pre-pr": "npm run build && npm run build:web && npm run policy:mvp-a && npm test && npm run test:web && npm run format:check && npm run audit && npm run db:check"
   },
   "engines": {
     "node": ">=22.5.0"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.8.5"
+    "fastify": "^5.8.5",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^25.8.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
     "drizzle-kit": "0.31.10",
+    "jsdom": "^29.1.1",
     "prettier": "^3.8.3",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "@esbuild-kit/core-utils": {

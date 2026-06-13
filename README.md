@@ -287,7 +287,9 @@ This is the repo-owned contract for supervised PR readiness before GitHub Action
 and branch protection are added in issue #64. It runs:
 
 - TypeScript build: `npm run build`
+- WebUI build: `npm run build:web`
 - Smoke tests: `npm test`
+- WebUI smoke tests: `npm run test:web`
 - Formatting check: `npm run format:check`
 - Dependency audit: `npm run audit`
 - Drizzle migration/config check: `npm run db:check`
@@ -302,16 +304,39 @@ The individual checks remain available for focused local reproduction:
 
 ```sh
 npm run build
+npm run build:web
 npm test
+npm run test:web
 npm run format:check
 npm run audit
 npm run db:check
 ```
 
-Start the local server:
+Start the local API server:
 
 ```sh
 npm run dev
 ```
 
 The smoke baseline exposes `GET /health` and `GET /openapi.json`. It does not require provider credentials, a production database, or any external service.
+
+Start the bounded WebUI shell in a second terminal:
+
+```sh
+npm run dev:web
+```
+
+The WebUI runs through Vite at `http://127.0.0.1:5173` and proxies
+`/openapi.json` and `/health` to the local Fastify API on
+`http://127.0.0.1:3000`. Build and preview the static shell with:
+
+```sh
+npm run build:web
+npm run preview:web
+```
+
+The browser shell includes a bounded/non-production persona switcher that fails
+closed until a repository-owned local persona is selected. It is not production
+auth, not live IdP/Okta/provider integration, and not production
+authorization/RLS. The shell connects to the repository-owned OpenAPI contract
+only for bounded route and contract status scaffolding.
