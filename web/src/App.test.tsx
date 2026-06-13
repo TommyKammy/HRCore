@@ -269,7 +269,13 @@ describe("App shell", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
     expect(screen.getByText("Approved")).toBeInTheDocument();
-    expect(screen.getByText("Writeback evidence")).toBeInTheDocument();
+    expect(screen.getByText("Apply status")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Approved request is waiting for bounded apply; no writeback evidence has been recorded.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Writeback evidence")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -382,8 +388,27 @@ describe("App shell", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Enter a valid work email address before creating projection or writeback evidence.",
+      "Enter a synthetic example.invalid work email before creating projection or writeback evidence.",
     );
+    expect(
+      screen.queryByRole("heading", {
+        name: "transaction-request-onboarding-001",
+      }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText("Work email"));
+    await userEvent.type(
+      screen.getByLabelText("Work email"),
+      "jane.doe@company.com",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Enter a synthetic example.invalid work email before creating projection or writeback evidence.",
+    );
+    expect(screen.queryByText("jane.doe@***")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", {
         name: "transaction-request-onboarding-001",

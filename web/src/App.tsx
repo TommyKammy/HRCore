@@ -165,7 +165,7 @@ function formatStatus(status: OnboardingStatus): string {
 }
 
 function isValidWorkEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  return /^[^\s@]+@example\.invalid$/i.test(value.trim());
 }
 
 function maskEmail(value: string): string {
@@ -186,7 +186,21 @@ function blocksDuplicateOnboardingRequest(status: OnboardingStatus): boolean {
 }
 
 function hasWritebackEvidence(request: OnboardingRequest): boolean {
-  return request.status === "approved";
+  return request.auditActions.some((action) =>
+    action.startsWith("mvp_a.onboarding.writeback"),
+  );
+}
+
+function getApplyStatus(request: OnboardingRequest): string {
+  if (hasWritebackEvidence(request)) {
+    return "Bounded apply completed with repository-owned writeback evidence.";
+  }
+
+  if (request.status === "approved") {
+    return "Approved request is waiting for bounded apply; no writeback evidence has been recorded.";
+  }
+
+  return "No apply or writeback evidence has been recorded for this request.";
 }
 
 function getMissingOnboardingFields(form: OnboardingFormState): string[] {
@@ -274,7 +288,7 @@ function OnboardingWorkflow({
     if (!isValidWorkEmail(form.workEmail)) {
       setMessageKind("error");
       setMessage(
-        "Enter a valid work email address before creating projection or writeback evidence.",
+        "Enter a synthetic example.invalid work email before creating projection or writeback evidence.",
       );
       return;
     }
@@ -402,6 +416,10 @@ function OnboardingWorkflow({
                 body={`Synthetic profile projection prepared for ${maskEmail(
                   request.form.workEmail,
                 )}. No live provider mutation.`}
+              />
+              <EvidenceItem
+                title="Apply status"
+                body={getApplyStatus(request)}
               />
               {hasWritebackEvidence(request) ? (
                 <EvidenceItem

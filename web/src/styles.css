@@ -280,7 +280,8 @@ input {
   font: inherit;
 }
 
-button {
+.workflow-panel button,
+.notice button {
   min-height: 38px;
   border: 1px solid oklch(0.38 0.095 230);
   border-radius: 7px;
@@ -291,7 +292,8 @@ button {
   font-weight: 750;
 }
 
-button:disabled {
+.workflow-panel button:disabled,
+.notice button:disabled {
   border-color: oklch(0.78 0.018 248);
   background: oklch(0.88 0.01 248);
   color: oklch(0.46 0.02 248);
