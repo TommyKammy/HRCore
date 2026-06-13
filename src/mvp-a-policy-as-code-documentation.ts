@@ -866,6 +866,10 @@ const p2xBlockedSubjectPatterns: Array<[string, RegExp]> = [
     "two-key Accepted approval",
     /two-key(?:\s+Accepted(?:\s+claim)?|\b[^|.;]{0,80}\b(?:approval|acceptance|Accepted))/iu,
   ],
+  [
+    "go-live readiness",
+    /go[-\s]+live(?:\s+(?:approval|readiness|claim|status|settings))?|go-live/iu,
+  ],
 ];
 
 function collectAffectedReadinessGateFindings(

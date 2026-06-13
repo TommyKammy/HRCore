@@ -1313,6 +1313,36 @@ test("MVP-A policy-as-code P2X guard preserves later-Accepted blocker wording", 
   );
 });
 
+test("MVP-A policy-as-code P2X guard preserves go-live approval blocker wording", async () => {
+  const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
+  await writeMinimalPolicyInputRepository(fixtureCwd);
+
+  const probePath =
+    "docs/p2y-00-webui-practical-use-scope-authorization-gate.md";
+  await writeFile(
+    join(fixtureCwd, probePath),
+    [
+      "go-live approval is not approved.",
+      "go-live approval is not accepted.",
+      "go-live readiness remains blocked.",
+    ].join("\n"),
+  );
+
+  const findings = checkMvpAPolicyAsCode(
+    await loadCurrentMvpAPolicyAsCodeInputs(fixtureCwd),
+  );
+
+  assert.ok(
+    !findings.some(
+      (finding) =>
+        finding.surface === "documentation" &&
+        finding.path === probePath &&
+        finding.subject === "go-live readiness",
+    ),
+    "expected explicit go-live approval denials to remain blockers, not approvals",
+  );
+});
+
 test("MVP-A policy-as-code P2X authorization aliases preserve blocked wording", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
