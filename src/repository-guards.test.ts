@@ -4895,6 +4895,115 @@ test("P2X-04 production-like prerequisite decomposition closeout accepts decompo
   );
 });
 
+test("P2Y-00 WebUI practical-use scope and authorization gate stays planning-only", async () => {
+  const [scope, readme] = await Promise.all([
+    readRepoFile("docs/p2y-00-webui-practical-use-scope-authorization-gate.md"),
+    readRepoFile("README.md"),
+  ]);
+  const normalizedScope = scope.replace(/\s+/gu, " ").trim();
+
+  for (const requiredText of [
+    "# P2Y-00 WebUI Practical-Use Scope and Authorization Gate",
+    "Issue: #389",
+    "Part of: #388",
+    "Depends on: #360, #371",
+    "Review scope: WebUI practical-use personas, workflows, information architecture, UX surfaces, and authorization mapping only",
+    "Scope Boundary",
+    "WebUI scope planning: Allowed",
+    "bounded/non-production UI implementation planning: Allowed",
+    "production-like readiness: Blocked",
+    "real employee data: Blocked",
+    "live IdP/Okta/provider operation: Blocked",
+    "production credentials: Blocked",
+    "production authorization/RLS: Blocked",
+    "production audit immutability: Blocked",
+    "production queue/DLQ operation: Blocked",
+    "retention/deletion runtime: Blocked",
+    "legal/privacy approval: Blocked",
+    "two-key approval: Blocked",
+    "Minimum Personas",
+    "HR operator",
+    "approver",
+    "HR Ops/support",
+    "admin",
+    "Practical-Use Workflow Map",
+    "onboarding",
+    "transfer",
+    "termination",
+    "CSV import/export",
+    "Ops/DLQ",
+    "audit",
+    "support review",
+    "Information Architecture",
+    "navigation",
+    "lists",
+    "detail views",
+    "create flows",
+    "approval views",
+    "audit surfaces",
+    "Ops surfaces",
+    "Authorization Map",
+    "route gate",
+    "action gate",
+    "field gate",
+    "tenant gate",
+    "subject gate",
+    "audit requirement",
+    "Allowed Bounded Surfaces",
+    "Blocked Surfaces",
+    "Phase 11 Wording Guard",
+    "Phase 11 wording must not claim production-like readiness",
+    "Verification Commands",
+    'npm test -- --test-name-pattern "P2Y-00 WebUI practical-use scope"',
+    "npm run verify:pre-pr",
+    "No Surface Expansion Confirmation",
+    "No product behavior",
+    "No real employee data",
+    "No live IdP/Okta",
+    "No unrestricted raw payload",
+    "No broad CSV export",
+    "No production queue/DLQ",
+    "No retention/deletion runtime",
+    "No legal/privacy approval",
+    "No two-key approval claim",
+    "No production-like readiness surface",
+  ]) {
+    assert.ok(
+      normalizedScope.includes(requiredText.replace(/\s+/gu, " ").trim()),
+      `missing P2Y-00 WebUI scope text: ${requiredText}`,
+    );
+  }
+
+  for (const forbiddenText of [
+    "production-like readiness: Go",
+    "real employee data: Go",
+    "live IdP/Okta/provider operation: Go",
+    "production credentials: Go",
+    "production authorization/RLS: Go",
+    "production audit immutability: Go",
+    "production queue/DLQ operation: Go",
+    "retention/deletion runtime: Go",
+    "legal/privacy approval: Go",
+    "two-key approval: Go",
+    "Accepted two-key approval",
+  ]) {
+    assert.ok(
+      !normalizedScope.includes(forbiddenText),
+      `P2Y-00 WebUI scope must not promote stronger readiness with: ${forbiddenText}`,
+    );
+  }
+
+  assert.match(
+    readme,
+    /\[P2Y-00 WebUI Practical-Use Scope and Authorization Gate\]\(docs\/p2y-00-webui-practical-use-scope-authorization-gate\.md\)/,
+  );
+  assert.doesNotMatch(
+    scope,
+    /(?:\/Users\/|C:\\Users\\|CREATE\s+TABLE|ALTER\s+TABLE|DELETE\s+FROM|UPDATE\s+.*SET|okta\.com|access_key|secret_access_key|api_token)/iu,
+    "P2Y-00 WebUI scope must not include workstation-local paths, implementation commands, live provider hosts, or credential material",
+  );
+});
+
 test("MVP-D P2D-02 refactor wave closeout records behavior-preserving review", async () => {
   const [closeout, readme] = await Promise.all([
     readRepoFile("docs/mvp-d-p2d-02-refactor-wave-closeout.md"),
