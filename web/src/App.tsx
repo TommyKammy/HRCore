@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   type ApiContract,
@@ -122,10 +122,12 @@ function ContractStatus({
   contract,
   error,
   loading,
+  onRetry,
 }: {
   contract: ApiContract | null;
   error: string | null;
   loading: boolean;
+  onRetry: () => void;
 }) {
   if (loading) {
     return <LoadingState />;
@@ -136,6 +138,9 @@ function ContractStatus({
       <section className="notice notice-error" role="status">
         <h2>API contract unavailable</h2>
         <p>{error}</p>
+        <button type="button" onClick={onRetry}>
+          Retry contract load
+        </button>
       </section>
     );
   }
@@ -165,8 +170,11 @@ function AppShell() {
     [selectedPersonaId],
   );
 
-  useEffect(() => {
+  const loadContract = useCallback(() => {
     let cancelled = false;
+
+    setContractLoading(true);
+    setContractError(null);
 
     fetchOpenApiContract()
       .then((nextContract) => {
@@ -194,6 +202,14 @@ function AppShell() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!personaDecision.allowed) {
+      return;
+    }
+
+    return loadContract();
+  }, [loadContract, personaDecision.allowed]);
 
   const visibleAreas = personaDecision.persona
     ? plannedAreas.filter((area) =>
@@ -255,6 +271,7 @@ function AppShell() {
                   area.id === activeArea?.id ? "nav-item active" : "nav-item"
                 }
                 key={area.id}
+                aria-pressed={area.id === activeArea?.id}
                 type="button"
                 onClick={() => setActiveRoute(area.id)}
               >
@@ -286,6 +303,7 @@ function AppShell() {
               contract={contract}
               error={contractError}
               loading={contractLoading}
+              onRetry={loadContract}
             />
             <section className="workspace" aria-labelledby="workspace-title">
               <div>

@@ -39,8 +39,11 @@ test("runtime and WebUI tooling keep the supported Node engine floor aligned", a
 
   assert.match(localSqliteSource, /import\("node:sqlite"\)/u);
   assert.match(serverSource, /openLocalSyntheticWritebackDatabase/u);
-  assert.equal(packageJson.engines?.node, ">=22.12.0");
-  assert.equal(packageLockJson.packages?.[""]?.engines?.node, ">=22.12.0");
+  assert.equal(packageJson.engines?.node, "^22.13.0 || >=24.0.0");
+  assert.equal(
+    packageLockJson.packages?.[""]?.engines?.node,
+    "^22.13.0 || >=24.0.0",
+  );
 });
 
 test("large onboarding tests use focused boundary files and shared helpers", async () => {

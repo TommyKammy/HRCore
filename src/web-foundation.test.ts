@@ -24,7 +24,7 @@ test("CHILD-P2Y-01 WebUI foundation is wired to a documented local command and g
   );
   assert.equal(packageJson.scripts?.["test:web"], "vitest run");
   assert.match(packageJson.scripts?.["verify:pre-pr"] ?? "", /test:web/);
-  assert.equal(packageJson.engines?.node, ">=22.12.0");
+  assert.equal(packageJson.engines?.node, "^22.13.0 || >=24.0.0");
   assert.ok(packageJson.dependencies?.react);
   assert.ok(packageJson.dependencies?.["react-dom"]);
   assert.ok(packageJson.devDependencies?.vite);

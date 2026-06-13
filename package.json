@@ -20,7 +20,7 @@
     "verify:pre-pr": "npm run build && npm run build:web && npm run policy:mvp-a && npm test && npm run test:web && npm run format:check && npm run audit && npm run db:check"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.13.0 || >=24.0.0"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
