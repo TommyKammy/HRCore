@@ -359,7 +359,7 @@ test("MVP-A policy-as-code gate scans ADR-path table rows as gate claims", async
   }
 });
 
-test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifacts", async () => {
+test("MVP-A policy-as-code input loader scans P2X and P2Y bounded practical-use artifacts", async () => {
   const fixtureCwd = await mkdtemp(join(tmpdir(), "hrcore-policy-"));
   await writeMinimalPolicyInputRepository(fixtureCwd);
   const p2xFixtureClaims = [
@@ -802,6 +802,21 @@ test("MVP-A policy-as-code input loader scans P2X bounded practical-use artifact
         "two-key Accepted approval",
         "HR practical-use readiness",
         "production-like readiness",
+      ],
+    ],
+    [
+      "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
+      [
+        "Production-like readiness: Accepted.",
+        "Real employee data is allowed.",
+        "Broad CSV export is approved.",
+        "Go-live approval: Go.",
+      ].join("\n"),
+      [
+        "production-like readiness",
+        "real employee data readiness",
+        "broad export readiness",
+        "go-live readiness",
       ],
     ],
   ] as const;

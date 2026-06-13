@@ -40,12 +40,12 @@ headers, role names, comments, nearby metadata, or operator-facing summaries.
 
 ## Minimum Personas
 
-| Persona        | Practical need                                                                                        | Bounded/non-production permission shape                                                                                                            | Must stay blocked                                                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HR operator    | Prepare and review onboarding, transfer, termination, and CSV import work before approval.            | May use bounded create, edit, validate, submit, list, and detail surfaces for repo-owned synthetic or explicitly approved non-production examples. | Real employee mutation custody, unrestricted search, raw payload viewing, broad export, live-provider execution, and production authorization claims. |
-| approver       | Review submitted lifecycle requests and record approve, return, reject, or cancel decisions.          | May use approval inbox and detail views that show only fields allowed by role, tenant, subject, action, and evidence scope.                        | Self-approval bypass, missing actor approval, placeholder approval, two-key approval, break-glass, and production delegation.                         |
-| HR Ops/support | Inspect bounded evidence, failed paths, local Ops status, DLQ decisions, and support-review context.  | May use trace, audit, Ops, DLQ, and support-review surfaces anchored to direct correlation or workflow evidence.                                   | Production support-console authority, broad audit search, live provider audit lookup, queue/DLQ runtime custody, and incident workflow authority.     |
-| admin          | Configure bounded UI labels, route visibility, and local reviewer setup for non-production rehearsal. | May manage non-production UI affordances and review-only configuration that does not grant production authority.                                   | Production credentials, production RBAC/RLS, tenant provisioning, legal/privacy approval, retention/deletion runtime, and go-live settings.           |
+| Persona        | Practical need                                                                                        | Bounded/non-production permission shape                                                                                                            | Must stay blocked                                                                                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| HR operator    | Prepare and review onboarding, transfer, termination, and CSV import work before approval.            | May use bounded create, edit, validate, submit, list, and detail surfaces for repo-owned synthetic or explicitly approved non-production examples. | Blocked: real employee mutation custody, unrestricted search, raw payload viewing, broad export, live-provider execution, and production authorization claims. |
+| approver       | Review submitted lifecycle requests and record approve, return, reject, or cancel decisions.          | May use approval inbox and detail views that show only fields allowed by role, tenant, subject, action, and evidence scope.                        | Blocked: self-approval bypass, missing actor approval, placeholder approval, two-key approval, break-glass, and production delegation.                         |
+| HR Ops/support | Inspect bounded evidence, failed paths, local Ops status, DLQ decisions, and support-review context.  | May use trace, audit, Ops, DLQ, and support-review surfaces anchored to direct correlation or workflow evidence.                                   | Blocked: production support-console authority, broad audit search, live provider audit lookup, queue/DLQ runtime custody, and incident workflow authority.     |
+| admin          | Configure bounded UI labels, route visibility, and local reviewer setup for non-production rehearsal. | May manage non-production UI affordances and review-only configuration that does not grant production authority.                                   | Blocked: production credentials, production RBAC/RLS, tenant provisioning, legal/privacy approval, retention/deletion runtime, and go-live settings.           |
 
 ## Practical-Use Workflow Map
 
@@ -103,7 +103,7 @@ must not present production-like readiness or go-live status.
 
 ## Blocked Surfaces
 
-- Production-like readiness, go-live readiness, production operating model, and
+- Blocked: production-like readiness, go-live readiness, production operating model, and
   production support-console authority.
 - Real employee data, production employee datasets, live tenant data, payroll or
   benefit data, regulated identifiers, sensitive personal information, and raw
@@ -115,7 +115,7 @@ must not present production-like readiness or go-live status.
 - Production audit immutability, WORM/Object Lock, compliance archive, broad
   audit search, retention/deletion runtime, anonymization, legal hold, and
   deletion jobs.
-- Broad CSV export, unrestricted raw payload access, production queue/DLQ
+- Blocked: broad CSV export, unrestricted raw payload access, production queue/DLQ
   operation, production scheduler, monitoring/alerting, SLO/SLA, incident
   workflow, legal/privacy approval, two-key approval, and go-live approval.
 

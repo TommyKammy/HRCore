@@ -74,6 +74,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
   "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
   "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
+  "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -256,7 +257,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     "iu",
   );
   const doNotUseListBlockerBeforeSubject = new RegExp(
-    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+use|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    `\\b(?:do\\s+not\\s+use|must\\s+not\\s+(?:use|treat)|does\\s+not\\s+(?:require|introduce|approve|accept|authorize)|not\\s+(?:require|introduce|approve|accept|authorize))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const sameClauseBlockedShapeBeforeSubject = new RegExp(
@@ -681,6 +682,10 @@ function p2xBoundedPracticalUseArtifactOverclaimClaims(
     [
       "owner decision approval",
       /\b(?:owner\s+decision\s+record|project-owner\s+approval)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:owner\s+decision\s+record|project-owner\s+approval)\b/iu,
+    ],
+    [
+      "go-live readiness",
+      /\b(?:go[-\s]+live(?:\s+(?:approval|readiness|claim))?|go-live)\b[^.;]{0,60}\b(?:ready|allowed|approved|accepted|go|enabled|available|complete|completed)\b|\b(?:ready|approved|accepted|go|enabled|available|complete|completed)\b[^.;]{0,60}\b(?:go[-\s]+live(?:\s+(?:approval|readiness|claim))?|go-live)\b/iu,
     ],
     [
       "two-key Accepted approval",
