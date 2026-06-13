@@ -12,14 +12,19 @@ async function readRepoFile(path: string): Promise<string> {
 test("CHILD-P2Y-01 WebUI foundation is wired to a documented local command and guarded persona boundary", async () => {
   const packageJson = JSON.parse(await readRepoFile("package.json")) as {
     scripts?: Record<string, string>;
+    engines?: Record<string, string>;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   };
 
   assert.equal(packageJson.scripts?.["dev:web"], "vite --host 127.0.0.1");
-  assert.equal(packageJson.scripts?.["build:web"], "vite build");
+  assert.equal(
+    packageJson.scripts?.["build:web"],
+    "tsc -p tsconfig.web.json --noEmit && vite build",
+  );
   assert.equal(packageJson.scripts?.["test:web"], "vitest run");
   assert.match(packageJson.scripts?.["verify:pre-pr"] ?? "", /test:web/);
+  assert.equal(packageJson.engines?.node, ">=22.12.0");
   assert.ok(packageJson.dependencies?.react);
   assert.ok(packageJson.dependencies?.["react-dom"]);
   assert.ok(packageJson.devDependencies?.vite);
