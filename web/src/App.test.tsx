@@ -157,6 +157,21 @@ describe("App shell", () => {
 
     await userEvent.clear(screen.getByLabelText("Start date"));
     await userEvent.type(screen.getByLabelText("Start date"), "2026-06-01");
+    await userEvent.clear(screen.getByLabelText("Department"));
+    await userEvent.type(
+      screen.getByLabelText("Department"),
+      "department-people-ops-initial",
+    );
+    await userEvent.clear(screen.getByLabelText("Manager"));
+    await userEvent.type(
+      screen.getByLabelText("Manager"),
+      "manager-reviewed-001",
+    );
+    await userEvent.clear(screen.getByLabelText("Work email"));
+    await userEvent.type(
+      screen.getByLabelText("Work email"),
+      "reviewed.hire@example.invalid",
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Create request" }),
     );
@@ -168,9 +183,16 @@ describe("App shell", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Submitted")).toBeInTheDocument();
     expect(screen.getByText("Okta projection evidence")).toBeInTheDocument();
-    expect(screen.getByText("Writeback evidence")).toBeInTheDocument();
+    expect(screen.queryByText("Writeback evidence")).not.toBeInTheDocument();
     expect(screen.getByText("Audit evidence")).toBeInTheDocument();
     expect(screen.getByText("correlation-onboarding-001")).toBeInTheDocument();
+    expect(screen.getByText("reviewed.hire@***")).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText("Employment code"));
+    await userEvent.type(
+      screen.getByLabelText("Employment code"),
+      "EMP-ONBOARDING-999",
+    );
 
     await userEvent.click(
       screen.getByRole("button", { name: "Create request" }),
@@ -199,6 +221,18 @@ describe("App shell", () => {
       "hr-operator",
     );
     await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    expect(screen.getByLabelText("Employment code")).toHaveValue(
+      "EMP-ONBOARDING-001",
+    );
+    expect(screen.getByLabelText("Department")).toHaveValue(
+      "department-people-ops-initial",
+    );
+    expect(screen.getByLabelText("Manager")).toHaveValue(
+      "manager-reviewed-001",
+    );
+    expect(screen.getByLabelText("Work email")).toHaveValue(
+      "reviewed.hire@example.invalid",
+    );
     await userEvent.clear(screen.getByLabelText("Department"));
     await userEvent.type(
       screen.getByLabelText("Department"),
@@ -219,9 +253,26 @@ describe("App shell", () => {
         /mvp_a\.onboarding\.submit, mvp_a\.onboarding\.return decidedBy=approver, mvp_a\.onboarding\.submit/,
       ),
     ).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+    await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
+    expect(screen.queryByText("Decision actor")).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Approve request" }),
+    );
+    expect(screen.getByText("Decision actor")).toBeInTheDocument();
+    expect(screen.getByText("decidedBy=approver")).toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getByText("Writeback evidence")).toBeInTheDocument();
   });
 
-  it("validates required onboarding assignment and contact fields before submit", async () => {
+  it("validates required and malformed onboarding assignment and contact fields before submit", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -249,6 +300,25 @@ describe("App shell", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Complete department, manager, work email before submitting this bounded onboarding request.",
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: "transaction-request-onboarding-001",
+      }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByLabelText("Department"),
+      "department-people-ops",
+    );
+    await userEvent.type(screen.getByLabelText("Manager"), "manager-001");
+    await userEvent.type(screen.getByLabelText("Work email"), "not-an-email");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Enter a valid work email address before creating projection or writeback evidence.",
     );
     expect(
       screen.queryByRole("heading", {

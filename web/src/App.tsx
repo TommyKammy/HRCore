@@ -164,8 +164,16 @@ function formatStatus(status: OnboardingStatus): string {
   return status[0].toUpperCase() + status.slice(1);
 }
 
+function isValidWorkEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 function maskEmail(value: string): string {
-  const [localPart] = value.split("@");
+  if (!isValidWorkEmail(value)) {
+    return "Invalid work email";
+  }
+
+  const [localPart] = value.trim().split("@");
   return `${localPart}@***`;
 }
 
@@ -175,6 +183,10 @@ function isStartBeforeRequestedDate(startDate: string): boolean {
 
 function blocksDuplicateOnboardingRequest(status: OnboardingStatus): boolean {
   return status === "submitted" || status === "approved";
+}
+
+function hasWritebackEvidence(request: OnboardingRequest): boolean {
+  return request.status === "approved";
 }
 
 function getMissingOnboardingFields(form: OnboardingFormState): string[] {
@@ -206,6 +218,12 @@ function OnboardingWorkflow({
   const [message, setMessage] = useState<string | null>(null);
   const [messageKind, setMessageKind] = useState<"error" | "ok">("ok");
   const isOperator = personaRole === "bounded_hr_operator";
+
+  useEffect(() => {
+    if (request?.status === "returned") {
+      setForm(request.form);
+    }
+  }, [request?.form, request?.status]);
 
   const updateField =
     (field: keyof OnboardingFormState) =>
@@ -245,11 +263,7 @@ function OnboardingWorkflow({
       return;
     }
 
-    if (
-      request &&
-      request.form.employmentCode === form.employmentCode &&
-      blocksDuplicateOnboardingRequest(request.status)
-    ) {
+    if (request && blocksDuplicateOnboardingRequest(request.status)) {
       setMessageKind("error");
       setMessage(
         "A submitted onboarding request already exists for this synthetic employment code.",
@@ -257,15 +271,25 @@ function OnboardingWorkflow({
       return;
     }
 
+    if (!isValidWorkEmail(form.workEmail)) {
+      setMessageKind("error");
+      setMessage(
+        "Enter a valid work email address before creating projection or writeback evidence.",
+      );
+      return;
+    }
+
+    const isReturnedRequest = request?.status === "returned";
+
     setRequest({
-      ...(request?.status === "returned" ? request : onboardingRequestTemplate),
+      ...(isReturnedRequest ? request : onboardingRequestTemplate),
       status: "submitted",
-      form,
+      form: { ...form },
       submittedByActorId: personaId || "hr-operator",
-      auditActions:
-        request?.status === "returned"
-          ? [...request.auditActions, "mvp_a.onboarding.submit"]
-          : ["mvp_a.onboarding.submit"],
+      decidedByActorId: undefined,
+      auditActions: isReturnedRequest
+        ? [...request.auditActions, "mvp_a.onboarding.submit"]
+        : ["mvp_a.onboarding.submit"],
     });
     setMessageKind("ok");
     setMessage(
@@ -379,10 +403,12 @@ function OnboardingWorkflow({
                   request.form.workEmail,
                 )}. No live provider mutation.`}
               />
-              <EvidenceItem
-                title="Writeback evidence"
-                body="Work email writeback remains repository-owned synthetic evidence."
-              />
+              {hasWritebackEvidence(request) ? (
+                <EvidenceItem
+                  title="Writeback evidence"
+                  body="Work email writeback remains repository-owned synthetic evidence."
+                />
+              ) : null}
               <EvidenceItem
                 title="Audit evidence"
                 body={request.auditActions.join(", ")}
