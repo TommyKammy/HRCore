@@ -4975,24 +4975,45 @@ test("P2Y-00 WebUI practical-use scope and authorization gate stays planning-onl
     );
   }
 
-  for (const forbiddenText of [
-    "production-like readiness: Go",
-    "real employee data: Go",
-    "live IdP/Okta/provider operation: Go",
-    "production credentials: Go",
-    "production authorization/RLS: Go",
-    "production audit immutability: Go",
-    "production queue/DLQ operation: Go",
-    "retention/deletion runtime: Go",
-    "legal/privacy approval: Go",
-    "two-key approval: Go",
+  const blockedWebUiSurfacePattern = String.raw`(?:production-like readiness|HR practical-use readiness|real employee data(?: flow)?|live IdP\/Okta(?:\/provider operation| path)?|live provider (?:operation|execution|audit lookup)|production credentials?|production authorization\/RLS|production audit immutability|unrestricted raw payload|raw[- ]payload (?:viewer|viewing)|broad CSV export|export expansion|production queue\/DLQ(?: operation)?|production queue|DLQ runtime|retention\/deletion (?:runtime|job)|legal\/privacy approval|two-key (?:approval|approval claim|acceptance)|go-live (?:approval|settings))`;
+  const strongerReadinessStatusPattern = String.raw`(?:Go|Accepted|Allowed|Approved|Ready|Enabled|Unblocked|Passed|Green)`;
+  const blockedWebUiOverclaimPattern = new RegExp(
+    String.raw`(?:${blockedWebUiSurfacePattern}\s*:\s*(?!Blocked\b)${strongerReadinessStatusPattern}\b|${strongerReadinessStatusPattern}\s+${blockedWebUiSurfacePattern})`,
+    "iu",
+  );
+
+  for (const unsafeScopeExample of [
+    "production-like readiness: Accepted",
+    "HR practical-use readiness: allowed",
+    "real employee data: allowed",
+    "live IdP/Okta/provider operation: approved",
+    "production credentials: approved",
+    "production authorization/RLS: allowed",
+    "production audit immutability: ready",
+    "unrestricted raw payload: approved",
+    "raw-payload viewer: ready",
+    "broad CSV export: allowed",
+    "export expansion: enabled",
+    "production queue/DLQ operation: green",
+    "DLQ runtime: passed",
+    "retention/deletion runtime: unblocked",
+    "legal/privacy approval: accepted",
+    "two-key approval: allowed",
+    "go-live approval: accepted",
     "Accepted two-key approval",
   ]) {
-    assert.ok(
-      !normalizedScope.includes(forbiddenText),
-      `P2Y-00 WebUI scope must not promote stronger readiness with: ${forbiddenText}`,
+    assert.match(
+      unsafeScopeExample,
+      blockedWebUiOverclaimPattern,
+      `P2Y-00 WebUI overclaim guard must reject: ${unsafeScopeExample}`,
     );
   }
+
+  assert.doesNotMatch(
+    normalizedScope,
+    blockedWebUiOverclaimPattern,
+    "P2Y-00 WebUI scope must not promote blocked surfaces with stronger readiness synonyms",
+  );
 
   assert.match(
     readme,
