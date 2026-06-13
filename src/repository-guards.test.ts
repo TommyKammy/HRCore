@@ -18,7 +18,7 @@ test("GitHub Actions CI runs the canonical pre-PR verification command", async (
   assert.match(workflow, /^\s+run: npm run verify:pre-pr$/m);
 });
 
-test("runtime node:sqlite usage keeps the supported Node engine floor aligned", async () => {
+test("runtime and WebUI tooling keep the supported Node engine floor aligned", async () => {
   const [
     packageJsonText,
     packageLockJsonText,
@@ -39,8 +39,11 @@ test("runtime node:sqlite usage keeps the supported Node engine floor aligned", 
 
   assert.match(localSqliteSource, /import\("node:sqlite"\)/u);
   assert.match(serverSource, /openLocalSyntheticWritebackDatabase/u);
-  assert.equal(packageJson.engines?.node, ">=22.5.0");
-  assert.equal(packageLockJson.packages?.[""]?.engines?.node, ">=22.5.0");
+  assert.equal(packageJson.engines?.node, "^22.13.0 || >=24.0.0");
+  assert.equal(
+    packageLockJson.packages?.[""]?.engines?.node,
+    "^22.13.0 || >=24.0.0",
+  );
 });
 
 test("large onboarding tests use focused boundary files and shared helpers", async () => {
