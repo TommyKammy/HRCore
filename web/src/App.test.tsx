@@ -198,7 +198,7 @@ describe("App shell", () => {
       screen.getByRole("button", { name: "Create request" }),
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "A submitted onboarding request already exists for this synthetic employment code.",
+      "An onboarding request already exists for this synthetic employment code.",
     );
 
     await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
@@ -271,6 +271,70 @@ describe("App shell", () => {
     expect(screen.getByText("Approved")).toBeInTheDocument();
     expect(screen.getByText("Writeback evidence")).toBeInTheDocument();
   });
+
+  it.each([
+    ["Reject request", "Rejected"],
+    ["Cancel request", "Cancelled"],
+  ])(
+    "blocks terminal onboarding requests from being overwritten after %s",
+    async (decisionButton, terminalStatus) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          Response.json({
+            openapi: "3.1.0",
+            info: { title: "HRCore API", version: "0.0.0" },
+            paths: { "/health": {} },
+          }),
+        ),
+      );
+
+      render(<App />);
+      await userEvent.selectOptions(
+        screen.getByLabelText("Persona"),
+        "hr-operator",
+      );
+      await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create request" }),
+      );
+
+      await userEvent.selectOptions(
+        screen.getByLabelText("Persona"),
+        "approver",
+      );
+      await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
+      await userEvent.click(
+        screen.getByRole("button", { name: decisionButton }),
+      );
+      expect(
+        screen.getByText(new RegExp(`is ${terminalStatus} for`)),
+      ).toBeInTheDocument();
+
+      await userEvent.selectOptions(
+        screen.getByLabelText("Persona"),
+        "hr-operator",
+      );
+      await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+      await userEvent.clear(screen.getByLabelText("Employment code"));
+      await userEvent.type(
+        screen.getByLabelText("Employment code"),
+        "EMP-ONBOARDING-TERMINAL",
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "Create request" }),
+      );
+
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "An onboarding request already exists for this synthetic employment code.",
+      );
+      expect(screen.getByText(terminalStatus)).toBeInTheDocument();
+      expect(screen.getByText("EMP-ONBOARDING-001")).toBeInTheDocument();
+      expect(
+        screen.queryByText("EMP-ONBOARDING-TERMINAL"),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("validates required and malformed onboarding assignment and contact fields before submit", async () => {
     vi.stubGlobal(

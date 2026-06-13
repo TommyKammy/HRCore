@@ -182,7 +182,7 @@ function isStartBeforeRequestedDate(startDate: string): boolean {
 }
 
 function blocksDuplicateOnboardingRequest(status: OnboardingStatus): boolean {
-  return status === "submitted" || status === "approved";
+  return status !== "returned";
 }
 
 function hasWritebackEvidence(request: OnboardingRequest): boolean {
@@ -266,7 +266,7 @@ function OnboardingWorkflow({
     if (request && blocksDuplicateOnboardingRequest(request.status)) {
       setMessageKind("error");
       setMessage(
-        "A submitted onboarding request already exists for this synthetic employment code.",
+        "An onboarding request already exists for this synthetic employment code.",
       );
       return;
     }
