@@ -173,6 +173,10 @@ function isStartBeforeRequestedDate(startDate: string): boolean {
   return startDate < onboardingRequestTemplate.requestedAt.slice(0, 10);
 }
 
+function blocksDuplicateOnboardingRequest(status: OnboardingStatus): boolean {
+  return status === "submitted" || status === "approved";
+}
+
 function getMissingOnboardingFields(form: OnboardingFormState): string[] {
   const requiredFields: Array<[keyof OnboardingFormState, string]> = [
     ["displayName", "display name"],
@@ -244,9 +248,7 @@ function OnboardingWorkflow({
     if (
       request &&
       request.form.employmentCode === form.employmentCode &&
-      request.status !== "returned" &&
-      request.status !== "cancelled" &&
-      request.status !== "rejected"
+      blocksDuplicateOnboardingRequest(request.status)
     ) {
       setMessageKind("error");
       setMessage(
