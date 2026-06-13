@@ -62,6 +62,8 @@ interface OnboardingRequest {
   requestedAt: string;
   status: OnboardingStatus;
   form: OnboardingFormState;
+  submittedByActorId: BoundedPersonaId;
+  decidedByActorId?: BoundedPersonaId;
   auditActions: string[];
 }
 
@@ -171,11 +173,27 @@ function isStartBeforeRequestedDate(startDate: string): boolean {
   return startDate < onboardingRequestTemplate.requestedAt.slice(0, 10);
 }
 
+function getMissingOnboardingFields(form: OnboardingFormState): string[] {
+  const requiredFields: Array<[keyof OnboardingFormState, string]> = [
+    ["displayName", "display name"],
+    ["employmentCode", "employment code"],
+    ["departmentReference", "department"],
+    ["managerReference", "manager"],
+    ["workEmail", "work email"],
+  ];
+
+  return requiredFields
+    .filter(([field]) => !form[field].trim())
+    .map(([, label]) => label);
+}
+
 function OnboardingWorkflow({
+  personaId,
   personaRole,
   request,
   setRequest,
 }: {
+  personaId: BoundedPersonaId | "";
   personaRole: string | undefined;
   request: OnboardingRequest | null;
   setRequest: (request: OnboardingRequest) => void;
@@ -203,10 +221,14 @@ function OnboardingWorkflow({
       return;
     }
 
-    if (!form.displayName.trim() || !form.employmentCode.trim()) {
+    const missingFields = getMissingOnboardingFields(form);
+
+    if (missingFields.length > 0) {
       setMessageKind("error");
       setMessage(
-        "Display name and employment code are required before submitting this bounded request.",
+        `Complete ${missingFields.join(
+          ", ",
+        )} before submitting this bounded onboarding request.`,
       );
       return;
     }
@@ -222,6 +244,7 @@ function OnboardingWorkflow({
     if (
       request &&
       request.form.employmentCode === form.employmentCode &&
+      request.status !== "returned" &&
       request.status !== "cancelled" &&
       request.status !== "rejected"
     ) {
@@ -233,13 +256,21 @@ function OnboardingWorkflow({
     }
 
     setRequest({
-      ...onboardingRequestTemplate,
+      ...(request?.status === "returned" ? request : onboardingRequestTemplate),
       status: "submitted",
       form,
-      auditActions: ["mvp_a.onboarding.submit"],
+      submittedByActorId: personaId || "hr-operator",
+      auditActions:
+        request?.status === "returned"
+          ? [...request.auditActions, "mvp_a.onboarding.submit"]
+          : ["mvp_a.onboarding.submit"],
     });
     setMessageKind("ok");
-    setMessage("Bounded onboarding request created with synthetic data only.");
+    setMessage(
+      request?.status === "returned"
+        ? "Returned onboarding request resubmitted with synthetic data only."
+        : "Bounded onboarding request created with synthetic data only.",
+    );
   };
 
   return (
@@ -377,13 +408,15 @@ function EvidenceItem({ title, body }: { title: string; body: string }) {
 }
 
 function ApprovalsWorkflow({
+  approverActorId,
   request,
   onDecision,
 }: {
+  approverActorId: BoundedPersonaId | null;
   request: OnboardingRequest | null;
   onDecision: (decision: OnboardingDecision) => void;
 }) {
-  const decisionDisabled = request?.status !== "submitted";
+  const decisionDisabled = !approverActorId || request?.status !== "submitted";
 
   return (
     <section className="workflow-panel" aria-labelledby="approval-workflow">
@@ -433,6 +466,12 @@ function ApprovalsWorkflow({
             title="Audit evidence"
             body={request.auditActions.join(", ")}
           />
+          {request.decidedByActorId ? (
+            <EvidenceItem
+              title="Decision actor"
+              body={`decidedBy=${request.decidedByActorId}`}
+            />
+          ) : null}
         </>
       ) : (
         <p className="muted">
@@ -559,7 +598,13 @@ function AppShell() {
 
   const decideOnboardingRequest = useCallback(
     (decision: OnboardingDecision) => {
-      if (!onboardingRequest || onboardingRequest.status !== "submitted") {
+      if (
+        !onboardingRequest ||
+        onboardingRequest.status !== "submitted" ||
+        personaDecision.persona?.role !== "bounded_approver" ||
+        !selectedPersonaId ||
+        onboardingRequest.submittedByActorId === selectedPersonaId
+      ) {
         return;
       }
 
@@ -574,13 +619,14 @@ function AppShell() {
       setOnboardingRequest({
         ...onboardingRequest,
         status: nextStatusByDecision[decision],
+        decidedByActorId: selectedPersonaId,
         auditActions: [
           ...onboardingRequest.auditActions,
-          `mvp_a.onboarding.${decision}`,
+          `mvp_a.onboarding.${decision} decidedBy=${selectedPersonaId}`,
         ],
       });
     },
-    [onboardingRequest],
+    [onboardingRequest, personaDecision.persona?.role, selectedPersonaId],
   );
 
   useEffect(() => {
@@ -681,12 +727,18 @@ function AppShell() {
               </div>
               {activeArea?.id === "onboarding" ? (
                 <OnboardingWorkflow
+                  personaId={selectedPersonaId}
                   personaRole={personaDecision.persona?.role}
                   request={onboardingRequest}
                   setRequest={setOnboardingRequest}
                 />
               ) : activeArea?.id === "approvals" ? (
                 <ApprovalsWorkflow
+                  approverActorId={
+                    personaDecision.persona?.role === "bounded_approver"
+                      ? selectedPersonaId || null
+                      : null
+                  }
                   request={onboardingRequest}
                   onDecision={decideOnboardingRequest}
                 />

@@ -189,6 +189,71 @@ describe("App shell", () => {
       screen.getByRole("button", { name: "Return request" }),
     );
     expect(screen.getByText(/is Returned for/)).toBeInTheDocument();
-    expect(screen.getByText(/mvp_a\.onboarding\.return/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/mvp_a\.onboarding\.return decidedBy=approver/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("decidedBy=approver")).toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+    await userEvent.clear(screen.getByLabelText("Department"));
+    await userEvent.type(
+      screen.getByLabelText("Department"),
+      "department-people-ops-reviewed",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+
+    expect(
+      screen.getByText(
+        "Returned onboarding request resubmitted with synthetic data only.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Submitted")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /mvp_a\.onboarding\.submit, mvp_a\.onboarding\.return decidedBy=approver, mvp_a\.onboarding\.submit/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("validates required onboarding assignment and contact fields before submit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
+
+    await userEvent.clear(screen.getByLabelText("Department"));
+    await userEvent.clear(screen.getByLabelText("Manager"));
+    await userEvent.clear(screen.getByLabelText("Work email"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create request" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Complete department, manager, work email before submitting this bounded onboarding request.",
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: "transaction-request-onboarding-001",
+      }),
+    ).not.toBeInTheDocument();
   });
 });
