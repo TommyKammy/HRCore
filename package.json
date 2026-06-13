@@ -34,6 +34,11 @@
       ".": "3.3.2",
       "esbuild": "0.28.1"
     },
-    "esbuild": "0.28.1"
+    "drizzle-kit": {
+      "esbuild": "0.28.1"
+    },
+    "tsx": {
+      "esbuild": "0.28.1"
+    }
   }
 }
