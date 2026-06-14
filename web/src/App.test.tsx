@@ -489,7 +489,7 @@ describe("App shell", () => {
     await userEvent.clear(screen.getByLabelText("Transfer reason"));
     await userEvent.type(
       screen.getByLabelText("Transfer reason"),
-      "team_change",
+      " team_change ",
     );
     await userEvent.click(
       screen.getByRole("button", { name: "Create transfer request" }),
@@ -521,6 +521,27 @@ describe("App shell", () => {
     expect(
       screen.getByText("Retention/deletion runtime blocked"),
     ).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText("Employment code"));
+    await userEvent.clear(screen.getByLabelText("Current assignment code"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create termination request" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Complete employment code, current assignment code before submitting this bounded termination request.",
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: "transaction-request-termination-001",
+      }),
+    ).not.toBeInTheDocument();
+    await userEvent.type(
+      screen.getByLabelText("Employment code"),
+      "EMP-TERMINATION-001",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Current assignment code"),
+      "ASN-CURRENT-TERMINATION-001",
+    );
     await userEvent.clear(screen.getByLabelText("Reason"));
     await userEvent.type(screen.getByLabelText("Reason"), "layoff");
     await userEvent.click(
@@ -535,7 +556,7 @@ describe("App shell", () => {
       }),
     ).not.toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText("Reason"));
-    await userEvent.type(screen.getByLabelText("Reason"), "resignation");
+    await userEvent.type(screen.getByLabelText("Reason"), " resignation ");
     await userEvent.click(
       screen.getByRole("button", { name: "Create termination request" }),
     );

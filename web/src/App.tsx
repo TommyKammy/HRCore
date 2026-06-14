@@ -326,6 +326,34 @@ function isAllowedTerminationReasonCode(reasonCode: string): boolean {
   );
 }
 
+function normalizeTransferForm(form: TransferFormState): TransferFormState {
+  return {
+    displayName: form.displayName.trim(),
+    effectiveDate: form.effectiveDate.trim(),
+    currentAssignmentId: form.currentAssignmentId.trim(),
+    currentAssignmentCode: form.currentAssignmentCode.trim(),
+    targetOrganizationReference: form.targetOrganizationReference.trim(),
+    targetDepartmentReference: form.targetDepartmentReference.trim(),
+    targetManagerReference: form.targetManagerReference.trim(),
+    targetPositionCode: form.targetPositionCode.trim(),
+    transferReasonCode: form.transferReasonCode.trim(),
+  };
+}
+
+function normalizeTerminationForm(
+  form: TerminationFormState,
+): TerminationFormState {
+  return {
+    displayName: form.displayName.trim(),
+    effectiveDate: form.effectiveDate.trim(),
+    employmentId: form.employmentId.trim(),
+    employmentCode: form.employmentCode.trim(),
+    currentAssignmentId: form.currentAssignmentId.trim(),
+    currentAssignmentCode: form.currentAssignmentCode.trim(),
+    reasonCode: form.reasonCode.trim(),
+  };
+}
+
 function getNextStatus(
   decision: PracticalWorkflowDecision,
 ): PracticalWorkflowStatus {
@@ -609,6 +637,7 @@ function TransferWorkflow({
       return;
     }
 
+    const submittedForm = normalizeTransferForm(form);
     const missingFields = [
       ["displayName", "display name"],
       ["effectiveDate", "effective date"],
@@ -620,7 +649,7 @@ function TransferWorkflow({
       ["transferReasonCode", "transfer reason"],
     ] as const;
     const missing = missingFields
-      .filter(([field]) => !form[field].trim())
+      .filter(([field]) => !submittedForm[field])
       .map(([, label]) => label);
 
     if (missing.length > 0) {
@@ -633,7 +662,7 @@ function TransferWorkflow({
       return;
     }
 
-    if (!isAllowedTransferReasonCode(form.transferReasonCode.trim())) {
+    if (!isAllowedTransferReasonCode(submittedForm.transferReasonCode)) {
       setMessageKind("error");
       setMessage(
         "Transfer reason must be team_change, manager_change, or organization_change for this bounded workflow.",
@@ -643,7 +672,7 @@ function TransferWorkflow({
 
     if (
       isBeforeRequestedDate(
-        form.effectiveDate,
+        submittedForm.effectiveDate,
         transferRequestTemplate.requestedAt,
       )
     ) {
@@ -667,7 +696,7 @@ function TransferWorkflow({
     setRequest({
       ...(isReturnedRequest ? request : transferRequestTemplate),
       status: "submitted",
-      form: { ...form },
+      form: submittedForm,
       submittedByActorId: personaId || "hr-operator",
       decidedByActorId: undefined,
       auditActions: isReturnedRequest
@@ -871,15 +900,18 @@ function TerminationWorkflow({
       return;
     }
 
+    const submittedForm = normalizeTerminationForm(form);
     const missingFields = [
       ["displayName", "display name"],
       ["effectiveDate", "effective date"],
       ["employmentId", "employment"],
+      ["employmentCode", "employment code"],
       ["currentAssignmentId", "current assignment"],
+      ["currentAssignmentCode", "current assignment code"],
       ["reasonCode", "termination reason"],
     ] as const;
     const missing = missingFields
-      .filter(([field]) => !form[field].trim())
+      .filter(([field]) => !submittedForm[field])
       .map(([, label]) => label);
 
     if (missing.length > 0) {
@@ -894,7 +926,7 @@ function TerminationWorkflow({
 
     if (
       isBeforeRequestedDate(
-        form.effectiveDate,
+        submittedForm.effectiveDate,
         terminationRequestTemplate.requestedAt,
       )
     ) {
@@ -905,7 +937,7 @@ function TerminationWorkflow({
       return;
     }
 
-    if (!isAllowedTerminationReasonCode(form.reasonCode.trim())) {
+    if (!isAllowedTerminationReasonCode(submittedForm.reasonCode)) {
       setMessageKind("error");
       setMessage(
         "Termination reason must be resignation, retirement, contract_end, or mutual_agreement for this bounded workflow.",
@@ -926,7 +958,7 @@ function TerminationWorkflow({
     setRequest({
       ...(isReturnedRequest ? request : terminationRequestTemplate),
       status: "submitted",
-      form: { ...form },
+      form: submittedForm,
       submittedByActorId: personaId || "hr-operator",
       decidedByActorId: undefined,
       auditActions: isReturnedRequest
