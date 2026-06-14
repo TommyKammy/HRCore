@@ -150,7 +150,9 @@ nav {
 }
 
 h1,
-h2 {
+h2,
+h3,
+h4 {
   margin: 0;
   color: oklch(0.2 0.028 248);
   letter-spacing: 0;
@@ -165,6 +167,16 @@ h1 {
 h2 {
   font-size: 1.18rem;
   line-height: 1.25;
+}
+
+h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+h4 {
+  font-size: 0.92rem;
+  line-height: 1.3;
 }
 
 .status-pill {
@@ -222,8 +234,131 @@ h2 {
   gap: 16px;
 }
 
-.empty-state {
+.empty-state,
+.workflow-panel,
+.evidence-item {
   background: oklch(0.98 0.005 245);
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 14px;
+}
+
+.workflow-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  border: 1px solid oklch(0.86 0.018 248);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 6px;
+  color: oklch(0.28 0.026 248);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+input {
+  min-height: 38px;
+  min-width: 0;
+  border: 1px solid oklch(0.78 0.028 248);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: white;
+  color: oklch(0.22 0.025 248);
+  font: inherit;
+}
+
+.workflow-panel button,
+.notice button {
+  min-height: 38px;
+  border: 1px solid oklch(0.38 0.095 230);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: oklch(0.38 0.095 230);
+  color: white;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.workflow-panel button:disabled,
+.notice button:disabled {
+  border-color: oklch(0.78 0.018 248);
+  background: oklch(0.88 0.01 248);
+  color: oklch(0.46 0.02 248);
+  cursor: not-allowed;
+}
+
+.evidence-row,
+.detail-list > div {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid oklch(0.9 0.012 248);
+}
+
+.evidence-row span,
+.detail-list dt,
+.muted {
+  color: oklch(0.38 0.026 248);
+}
+
+.detail-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.detail-list dd,
+.detail-list dt {
+  margin: 0;
+}
+
+.detail-list dd {
+  text-align: right;
+  font-weight: 750;
+}
+
+.evidence-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.evidence-item {
+  display: grid;
+  gap: 6px;
+  border: 1px solid oklch(0.88 0.014 248);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.evidence-item p {
+  margin: 0;
+  color: oklch(0.36 0.028 248);
+  line-height: 1.5;
+}
+
+.decision-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.compact {
+  padding: 12px;
 }
 
 .skeleton-panel {
@@ -291,5 +426,10 @@ h2 {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .workflow-grid,
+  .form-grid {
+    grid-template-columns: 1fr;
   }
 }
