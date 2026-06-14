@@ -45,6 +45,8 @@ type OnboardingStatus =
   | "approved";
 
 type OnboardingDecision = "approve" | "return" | "reject" | "cancel";
+type PracticalWorkflowStatus = OnboardingStatus;
+type PracticalWorkflowDecision = OnboardingDecision;
 
 interface OnboardingFormState {
   displayName: string;
@@ -67,6 +69,50 @@ interface OnboardingRequest {
   auditActions: string[];
 }
 
+interface TransferFormState {
+  displayName: string;
+  effectiveDate: string;
+  currentAssignmentId: string;
+  currentAssignmentCode: string;
+  targetDepartmentReference: string;
+  targetManagerReference: string;
+  targetPositionCode: string;
+}
+
+interface TerminationFormState {
+  displayName: string;
+  effectiveDate: string;
+  employmentId: string;
+  employmentCode: string;
+  currentAssignmentId: string;
+  currentAssignmentCode: string;
+  reasonCode: string;
+}
+
+interface TransferRequest {
+  id: string;
+  personId: string;
+  correlationId: string;
+  requestedAt: string;
+  status: PracticalWorkflowStatus;
+  form: TransferFormState;
+  submittedByActorId: BoundedPersonaId;
+  decidedByActorId?: BoundedPersonaId;
+  auditActions: string[];
+}
+
+interface TerminationRequest {
+  id: string;
+  personId: string;
+  correlationId: string;
+  requestedAt: string;
+  status: PracticalWorkflowStatus;
+  form: TerminationFormState;
+  submittedByActorId: BoundedPersonaId;
+  decidedByActorId?: BoundedPersonaId;
+  auditActions: string[];
+}
+
 const defaultOnboardingForm: OnboardingFormState = {
   displayName: "Synthetic Onboarding Hire",
   employmentCode: "EMP-ONBOARDING-001",
@@ -76,11 +122,45 @@ const defaultOnboardingForm: OnboardingFormState = {
   workEmail: "onboarding.hire.001@example.invalid",
 };
 
+const defaultTransferForm: TransferFormState = {
+  displayName: "MVP-B Transfer One",
+  effectiveDate: "2026-07-01",
+  currentAssignmentId: "assignment-current-transfer-001",
+  currentAssignmentCode: "ASN-CURRENT-TRANSFER-001",
+  targetDepartmentReference: "department-product",
+  targetManagerReference: "manager-product-001",
+  targetPositionCode: "position-staff-engineer-001",
+};
+
+const defaultTerminationForm: TerminationFormState = {
+  displayName: "MVP-C Termination One",
+  effectiveDate: "2026-08-31",
+  employmentId: "employment-termination-001",
+  employmentCode: "EMP-TERMINATION-001",
+  currentAssignmentId: "assignment-current-termination-001",
+  currentAssignmentCode: "ASN-CURRENT-TERMINATION-001",
+  reasonCode: "resignation",
+};
+
 const onboardingRequestTemplate = {
   id: "transaction-request-onboarding-001",
   personId: "person-onboarding-001",
   correlationId: "correlation-onboarding-001",
   requestedAt: "2026-05-21T00:00:00Z",
+} as const;
+
+const transferRequestTemplate = {
+  id: "transaction-request-transfer-001",
+  personId: "person-transfer-001",
+  correlationId: "correlation-transfer-001",
+  requestedAt: "2026-06-15T00:00:00Z",
+} as const;
+
+const terminationRequestTemplate = {
+  id: "transaction-request-termination-001",
+  personId: "person-termination-001",
+  correlationId: "correlation-termination-001",
+  requestedAt: "2026-08-01T00:00:00Z",
 } as const;
 
 const plannedAreas: readonly PlannedArea[] = [
@@ -160,7 +240,7 @@ function EmptyState() {
   );
 }
 
-function formatStatus(status: OnboardingStatus): string {
+function formatStatus(status: PracticalWorkflowStatus): string {
   return status[0].toUpperCase() + status.slice(1);
 }
 
@@ -215,6 +295,30 @@ function getMissingOnboardingFields(form: OnboardingFormState): string[] {
   return requiredFields
     .filter(([field]) => !form[field].trim())
     .map(([, label]) => label);
+}
+
+function isBeforeRequestedDate(effectiveDate: string, requestedAt: string) {
+  return effectiveDate < requestedAt.slice(0, 10);
+}
+
+function blocksDuplicateRequest(status: PracticalWorkflowStatus): boolean {
+  return status !== "returned";
+}
+
+function getNextStatus(
+  decision: PracticalWorkflowDecision,
+): PracticalWorkflowStatus {
+  const nextStatusByDecision: Record<
+    PracticalWorkflowDecision,
+    PracticalWorkflowStatus
+  > = {
+    approve: "approved",
+    return: "returned",
+    reject: "rejected",
+    cancel: "cancelled",
+  };
+
+  return nextStatusByDecision[decision];
 }
 
 function OnboardingWorkflow({
@@ -444,6 +548,466 @@ function OnboardingWorkflow({
   );
 }
 
+function TransferWorkflow({
+  personaId,
+  personaRole,
+  request,
+  setRequest,
+}: {
+  personaId: BoundedPersonaId | "";
+  personaRole: string | undefined;
+  request: TransferRequest | null;
+  setRequest: (request: TransferRequest) => void;
+}) {
+  const [form, setForm] = useState<TransferFormState>(defaultTransferForm);
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<"error" | "ok">("ok");
+  const isOperator = personaRole === "bounded_hr_operator";
+
+  useEffect(() => {
+    if (request?.status === "returned") {
+      setForm(request.form);
+    }
+  }, [request?.form, request?.status]);
+
+  const updateField =
+    (field: keyof TransferFormState) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setForm((current) => ({
+        ...current,
+        [field]: event.target.value,
+      }));
+    };
+
+  const createRequest = () => {
+    if (!isOperator) {
+      setMessageKind("error");
+      setMessage(
+        "Only the bounded HR operator persona can create transfer requests in this synthetic workflow.",
+      );
+      return;
+    }
+
+    const missingFields = [
+      ["displayName", "display name"],
+      ["effectiveDate", "effective date"],
+      ["currentAssignmentId", "current assignment"],
+      ["targetDepartmentReference", "target department"],
+      ["targetManagerReference", "target manager"],
+    ] as const;
+    const missing = missingFields
+      .filter(([field]) => !form[field].trim())
+      .map(([, label]) => label);
+
+    if (missing.length > 0) {
+      setMessageKind("error");
+      setMessage(
+        `Complete ${missing.join(
+          ", ",
+        )} before submitting this bounded transfer request.`,
+      );
+      return;
+    }
+
+    if (
+      isBeforeRequestedDate(
+        form.effectiveDate,
+        transferRequestTemplate.requestedAt,
+      )
+    ) {
+      setMessageKind("error");
+      setMessage(
+        "Transfer effective date must be on or after the requested date for this bounded workflow.",
+      );
+      return;
+    }
+
+    if (request && blocksDuplicateRequest(request.status)) {
+      setMessageKind("error");
+      setMessage(
+        "A transfer request already exists for this synthetic assignment.",
+      );
+      return;
+    }
+
+    const isReturnedRequest = request?.status === "returned";
+
+    setRequest({
+      ...(isReturnedRequest ? request : transferRequestTemplate),
+      status: "submitted",
+      form: { ...form },
+      submittedByActorId: personaId || "hr-operator",
+      decidedByActorId: undefined,
+      auditActions: isReturnedRequest
+        ? [...request.auditActions, "mvp_b.transfer.submit"]
+        : ["mvp_b.transfer.submit"],
+    });
+    setMessageKind("ok");
+    setMessage(
+      isReturnedRequest
+        ? "Returned transfer request resubmitted with synthetic data only."
+        : "Bounded transfer request created with synthetic data only.",
+    );
+  };
+
+  return (
+    <div className="workflow-grid">
+      <section className="workflow-panel" aria-labelledby="transfer-form">
+        <div>
+          <p className="context-label">Synthetic transfer input</p>
+          <h3 id="transfer-form">Create bounded request</h3>
+        </div>
+        <div className="form-grid">
+          <label>
+            Transfer subject
+            <input
+              value={form.displayName}
+              onChange={updateField("displayName")}
+            />
+          </label>
+          <label>
+            Transfer effective date
+            <input
+              type="date"
+              value={form.effectiveDate}
+              onChange={updateField("effectiveDate")}
+            />
+          </label>
+          <label>
+            Current assignment
+            <input
+              value={form.currentAssignmentId}
+              onChange={updateField("currentAssignmentId")}
+            />
+          </label>
+          <label>
+            Target department
+            <input
+              value={form.targetDepartmentReference}
+              onChange={updateField("targetDepartmentReference")}
+            />
+          </label>
+          <label>
+            Target manager
+            <input
+              value={form.targetManagerReference}
+              onChange={updateField("targetManagerReference")}
+            />
+          </label>
+          <label>
+            Target position
+            <input
+              value={form.targetPositionCode}
+              onChange={updateField("targetPositionCode")}
+            />
+          </label>
+        </div>
+        <EvidenceItem
+          title="Transfer impact preview"
+          body={`${form.currentAssignmentId} closes and ${form.targetDepartmentReference} opens under ${form.targetManagerReference}.`}
+        />
+        <button type="button" onClick={createRequest} disabled={!isOperator}>
+          Create transfer request
+        </button>
+        {message ? (
+          <section
+            className={
+              messageKind === "error"
+                ? "notice notice-error compact"
+                : "notice notice-ok compact"
+            }
+            role={messageKind === "error" ? "alert" : "status"}
+          >
+            <p>{message}</p>
+          </section>
+        ) : null}
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="transfer-detail">
+        <div>
+          <p className="context-label">Request detail</p>
+          <h3 id="transfer-detail">
+            {request?.id ?? "No transfer request selected"}
+          </h3>
+        </div>
+        {request ? (
+          <>
+            <dl className="detail-list">
+              <div>
+                <dt>Status</dt>
+                <dd>{formatStatus(request.status)}</dd>
+              </div>
+              <div>
+                <dt>Subject</dt>
+                <dd>{request.form.displayName}</dd>
+              </div>
+              <div>
+                <dt>Correlation trace</dt>
+                <dd>{request.correlationId}</dd>
+              </div>
+            </dl>
+            <div className="evidence-stack" aria-label="Evidence">
+              <EvidenceItem
+                title="Assignment close evidence"
+                body={`${request.form.currentAssignmentId} closes on ${request.form.effectiveDate}.`}
+              />
+              <EvidenceItem
+                title="Target assignment evidence"
+                body={`${request.form.targetDepartmentReference} opens for ${request.form.targetPositionCode}.`}
+              />
+              <EvidenceItem
+                title="Okta transfer projection"
+                body="Synthetic mock-mode group and profile projection only. No live provider mutation."
+              />
+              <EvidenceItem
+                title="Audit evidence"
+                body={request.auditActions.join(", ")}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="muted">
+            Create a bounded transfer request to inspect assignment close,
+            target assignment, projection, audit, and correlation evidence.
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TerminationWorkflow({
+  personaId,
+  personaRole,
+  request,
+  setRequest,
+}: {
+  personaId: BoundedPersonaId | "";
+  personaRole: string | undefined;
+  request: TerminationRequest | null;
+  setRequest: (request: TerminationRequest) => void;
+}) {
+  const [form, setForm] = useState<TerminationFormState>(
+    defaultTerminationForm,
+  );
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<"error" | "ok">("ok");
+  const isOperator = personaRole === "bounded_hr_operator";
+
+  useEffect(() => {
+    if (request?.status === "returned") {
+      setForm(request.form);
+    }
+  }, [request?.form, request?.status]);
+
+  const updateField =
+    (field: keyof TerminationFormState) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setForm((current) => ({
+        ...current,
+        [field]: event.target.value,
+      }));
+    };
+
+  const createRequest = () => {
+    if (!isOperator) {
+      setMessageKind("error");
+      setMessage(
+        "Only the bounded HR operator persona can create termination requests in this synthetic workflow.",
+      );
+      return;
+    }
+
+    const missingFields = [
+      ["displayName", "display name"],
+      ["effectiveDate", "effective date"],
+      ["employmentId", "employment"],
+      ["currentAssignmentId", "current assignment"],
+      ["reasonCode", "termination reason"],
+    ] as const;
+    const missing = missingFields
+      .filter(([field]) => !form[field].trim())
+      .map(([, label]) => label);
+
+    if (missing.length > 0) {
+      setMessageKind("error");
+      setMessage(
+        `Complete ${missing.join(
+          ", ",
+        )} before submitting this bounded termination request.`,
+      );
+      return;
+    }
+
+    if (
+      isBeforeRequestedDate(
+        form.effectiveDate,
+        terminationRequestTemplate.requestedAt,
+      )
+    ) {
+      setMessageKind("error");
+      setMessage(
+        "Termination effective date must be on or after the requested date for this bounded workflow.",
+      );
+      return;
+    }
+
+    if (request && blocksDuplicateRequest(request.status)) {
+      setMessageKind("error");
+      setMessage(
+        "A termination request already exists for this synthetic employment.",
+      );
+      return;
+    }
+
+    const isReturnedRequest = request?.status === "returned";
+
+    setRequest({
+      ...(isReturnedRequest ? request : terminationRequestTemplate),
+      status: "submitted",
+      form: { ...form },
+      submittedByActorId: personaId || "hr-operator",
+      decidedByActorId: undefined,
+      auditActions: isReturnedRequest
+        ? [...request.auditActions, "mvp_c.termination.submit"]
+        : ["mvp_c.termination.submit"],
+    });
+    setMessageKind("ok");
+    setMessage(
+      isReturnedRequest
+        ? "Returned termination request resubmitted with synthetic data only."
+        : "Bounded termination request created with synthetic data only.",
+    );
+  };
+
+  return (
+    <div className="workflow-grid">
+      <section className="workflow-panel" aria-labelledby="termination-form">
+        <div>
+          <p className="context-label">Synthetic termination input</p>
+          <h3 id="termination-form">Create bounded request</h3>
+        </div>
+        <div className="form-grid">
+          <label>
+            Termination subject
+            <input
+              value={form.displayName}
+              onChange={updateField("displayName")}
+            />
+          </label>
+          <label>
+            Termination effective date
+            <input
+              type="date"
+              value={form.effectiveDate}
+              onChange={updateField("effectiveDate")}
+            />
+          </label>
+          <label>
+            Employment
+            <input
+              value={form.employmentId}
+              onChange={updateField("employmentId")}
+            />
+          </label>
+          <label>
+            Current assignment
+            <input
+              value={form.currentAssignmentId}
+              onChange={updateField("currentAssignmentId")}
+            />
+          </label>
+          <label>
+            Reason
+            <input
+              value={form.reasonCode}
+              onChange={updateField("reasonCode")}
+            />
+          </label>
+        </div>
+        <EvidenceItem
+          title="Effective-date confirmation"
+          body={`${form.employmentCode} and ${form.currentAssignmentId} close on ${form.effectiveDate}.`}
+        />
+        <EvidenceItem
+          title="Retention/deletion runtime blocked"
+          body="Retention, anonymization, legal hold, and deletion jobs remain blocked future-extension surfaces."
+        />
+        <button type="button" onClick={createRequest} disabled={!isOperator}>
+          Create termination request
+        </button>
+        {message ? (
+          <section
+            className={
+              messageKind === "error"
+                ? "notice notice-error compact"
+                : "notice notice-ok compact"
+            }
+            role={messageKind === "error" ? "alert" : "status"}
+          >
+            <p>{message}</p>
+          </section>
+        ) : null}
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="termination-detail">
+        <div>
+          <p className="context-label">Request detail</p>
+          <h3 id="termination-detail">
+            {request?.id ?? "No termination request selected"}
+          </h3>
+        </div>
+        {request ? (
+          <>
+            <dl className="detail-list">
+              <div>
+                <dt>Status</dt>
+                <dd>{formatStatus(request.status)}</dd>
+              </div>
+              <div>
+                <dt>Subject</dt>
+                <dd>{request.form.displayName}</dd>
+              </div>
+              <div>
+                <dt>Correlation trace</dt>
+                <dd>{request.correlationId}</dd>
+              </div>
+            </dl>
+            <div className="evidence-stack" aria-label="Evidence">
+              <EvidenceItem
+                title="Employment close evidence"
+                body={`${request.form.employmentId} closes on ${request.form.effectiveDate}.`}
+              />
+              <EvidenceItem
+                title="Assignment close evidence"
+                body={`${request.form.currentAssignmentId} closes on ${request.form.effectiveDate}.`}
+              />
+              <EvidenceItem
+                title="Okta disable projection"
+                body="Synthetic mock-mode disable projection only. No live provider mutation."
+              />
+              <EvidenceItem
+                title="Retention/deletion runtime blocked"
+                body="No hard delete, anonymization, legal hold, or deletion job is introduced."
+              />
+              <EvidenceItem
+                title="Audit evidence"
+                body={request.auditActions.join(", ")}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="muted">
+            Create a bounded termination request to inspect employment close,
+            assignment close, disable projection, audit, and correlation
+            evidence.
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function EvidenceItem({ title, body }: { title: string; body: string }) {
   return (
     <article className="evidence-item">
@@ -456,76 +1020,201 @@ function EvidenceItem({ title, body }: { title: string; body: string }) {
 function ApprovalsWorkflow({
   approverActorId,
   request,
+  transferRequest,
+  terminationRequest,
   onDecision,
+  onTransferDecision,
+  onTerminationDecision,
 }: {
   approverActorId: BoundedPersonaId | null;
   request: OnboardingRequest | null;
+  transferRequest: TransferRequest | null;
+  terminationRequest: TerminationRequest | null;
   onDecision: (decision: OnboardingDecision) => void;
+  onTransferDecision: (decision: PracticalWorkflowDecision) => void;
+  onTerminationDecision: (decision: PracticalWorkflowDecision) => void;
 }) {
   const decisionDisabled = !approverActorId || request?.status !== "submitted";
+  const transferDecisionDisabled =
+    !approverActorId || transferRequest?.status !== "submitted";
+  const terminationDecisionDisabled =
+    !approverActorId || terminationRequest?.status !== "submitted";
 
   return (
-    <section className="workflow-panel" aria-labelledby="approval-workflow">
-      <div>
-        <p className="context-label">Bounded approver actions</p>
-        <h3 id="approval-workflow">
-          {request?.id ?? "No submitted onboarding request"}
-        </h3>
-      </div>
-      {request ? (
-        <>
-          <p>
-            {request.form.displayName} is {formatStatus(request.status)} for{" "}
-            {request.correlationId}.
-          </p>
-          <div className="decision-bar">
-            <button
-              type="button"
-              disabled={decisionDisabled}
-              onClick={() => onDecision("approve")}
-            >
-              Approve request
-            </button>
-            <button
-              type="button"
-              disabled={decisionDisabled}
-              onClick={() => onDecision("return")}
-            >
-              Return request
-            </button>
-            <button
-              type="button"
-              disabled={decisionDisabled}
-              onClick={() => onDecision("reject")}
-            >
-              Reject request
-            </button>
-            <button
-              type="button"
-              disabled={decisionDisabled}
-              onClick={() => onDecision("cancel")}
-            >
-              Cancel request
-            </button>
-          </div>
-          <EvidenceItem
-            title="Audit evidence"
-            body={request.auditActions.join(", ")}
-          />
-          {request.decidedByActorId ? (
+    <div className="workflow-grid stacked">
+      <section className="workflow-panel" aria-labelledby="approval-workflow">
+        <div>
+          <p className="context-label">Bounded approver actions</p>
+          <h3 id="approval-workflow">
+            {request?.id ?? "No submitted onboarding request"}
+          </h3>
+        </div>
+        {request ? (
+          <>
+            <p>
+              {request.form.displayName} is {formatStatus(request.status)} for{" "}
+              {request.correlationId}.
+            </p>
+            <div className="decision-bar">
+              <button
+                type="button"
+                disabled={decisionDisabled}
+                onClick={() => onDecision("approve")}
+              >
+                Approve request
+              </button>
+              <button
+                type="button"
+                disabled={decisionDisabled}
+                onClick={() => onDecision("return")}
+              >
+                Return request
+              </button>
+              <button
+                type="button"
+                disabled={decisionDisabled}
+                onClick={() => onDecision("reject")}
+              >
+                Reject request
+              </button>
+              <button
+                type="button"
+                disabled={decisionDisabled}
+                onClick={() => onDecision("cancel")}
+              >
+                Cancel request
+              </button>
+            </div>
             <EvidenceItem
-              title="Decision actor"
-              body={`decidedBy=${request.decidedByActorId}`}
+              title="Audit evidence"
+              body={request.auditActions.join(", ")}
             />
-          ) : null}
-        </>
-      ) : (
-        <p className="muted">
-          Submitted onboarding requests appear here for bounded approver
-          decisions.
-        </p>
-      )}
-    </section>
+            {request.decidedByActorId ? (
+              <EvidenceItem
+                title="Decision actor"
+                body={`decidedBy=${request.decidedByActorId}`}
+              />
+            ) : null}
+          </>
+        ) : (
+          <p className="muted">
+            Submitted onboarding requests appear here for bounded approver
+            decisions.
+          </p>
+        )}
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="transfer-approval">
+        <div>
+          <p className="context-label">Bounded approver actions</p>
+          <h3 id="transfer-approval">Transfer approvals</h3>
+        </div>
+        {transferRequest ? (
+          <>
+            <p>
+              Transfer is {formatStatus(transferRequest.status)} for{" "}
+              {transferRequest.correlationId}.
+            </p>
+            <div className="decision-bar">
+              <button
+                type="button"
+                disabled={transferDecisionDisabled}
+                onClick={() => onTransferDecision("approve")}
+              >
+                Approve transfer request
+              </button>
+              <button
+                type="button"
+                disabled={transferDecisionDisabled}
+                onClick={() => onTransferDecision("return")}
+              >
+                Return transfer request
+              </button>
+              <button
+                type="button"
+                disabled={transferDecisionDisabled}
+                onClick={() => onTransferDecision("reject")}
+              >
+                Reject transfer request
+              </button>
+              <button
+                type="button"
+                disabled={transferDecisionDisabled}
+                onClick={() => onTransferDecision("cancel")}
+              >
+                Cancel transfer request
+              </button>
+            </div>
+            <EvidenceItem
+              title="Audit evidence"
+              body={transferRequest.auditActions.join(", ")}
+            />
+          </>
+        ) : (
+          <p className="muted">
+            Submitted transfer requests appear here for bounded approver
+            decisions.
+          </p>
+        )}
+      </section>
+
+      <section
+        className="workflow-panel"
+        aria-labelledby="termination-approval"
+      >
+        <div>
+          <p className="context-label">Bounded approver actions</p>
+          <h3 id="termination-approval">Termination approvals</h3>
+        </div>
+        {terminationRequest ? (
+          <>
+            <p>
+              Termination is {formatStatus(terminationRequest.status)} for{" "}
+              {terminationRequest.correlationId}.
+            </p>
+            <div className="decision-bar">
+              <button
+                type="button"
+                disabled={terminationDecisionDisabled}
+                onClick={() => onTerminationDecision("approve")}
+              >
+                Approve termination request
+              </button>
+              <button
+                type="button"
+                disabled={terminationDecisionDisabled}
+                onClick={() => onTerminationDecision("return")}
+              >
+                Return termination request
+              </button>
+              <button
+                type="button"
+                disabled={terminationDecisionDisabled}
+                onClick={() => onTerminationDecision("reject")}
+              >
+                Reject termination request
+              </button>
+              <button
+                type="button"
+                disabled={terminationDecisionDisabled}
+                onClick={() => onTerminationDecision("cancel")}
+              >
+                Cancel termination request
+              </button>
+            </div>
+            <EvidenceItem
+              title="Audit evidence"
+              body={terminationRequest.auditActions.join(", ")}
+            />
+          </>
+        ) : (
+          <p className="muted">
+            Submitted termination requests appear here for bounded approver
+            decisions.
+          </p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -587,6 +1276,10 @@ function AppShell() {
   const [contractLoading, setContractLoading] = useState(true);
   const [onboardingRequest, setOnboardingRequest] =
     useState<OnboardingRequest | null>(null);
+  const [transferRequest, setTransferRequest] =
+    useState<TransferRequest | null>(null);
+  const [terminationRequest, setTerminationRequest] =
+    useState<TerminationRequest | null>(null);
 
   const personaDecision = useMemo(
     () => resolveBoundedPersona(selectedPersonaId || null),
@@ -654,17 +1347,9 @@ function AppShell() {
         return;
       }
 
-      const nextStatusByDecision: Record<OnboardingDecision, OnboardingStatus> =
-        {
-          approve: "approved",
-          return: "returned",
-          reject: "rejected",
-          cancel: "cancelled",
-        };
-
       setOnboardingRequest({
         ...onboardingRequest,
-        status: nextStatusByDecision[decision],
+        status: getNextStatus(decision),
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...onboardingRequest.auditActions,
@@ -673,6 +1358,56 @@ function AppShell() {
       });
     },
     [onboardingRequest, personaDecision.persona?.role, selectedPersonaId],
+  );
+
+  const decideTransferRequest = useCallback(
+    (decision: PracticalWorkflowDecision) => {
+      if (
+        !transferRequest ||
+        transferRequest.status !== "submitted" ||
+        personaDecision.persona?.role !== "bounded_approver" ||
+        !selectedPersonaId ||
+        transferRequest.submittedByActorId === selectedPersonaId
+      ) {
+        return;
+      }
+
+      setTransferRequest({
+        ...transferRequest,
+        status: getNextStatus(decision),
+        decidedByActorId: selectedPersonaId,
+        auditActions: [
+          ...transferRequest.auditActions,
+          `mvp_b.transfer.${decision} decidedBy=${selectedPersonaId}`,
+        ],
+      });
+    },
+    [personaDecision.persona?.role, selectedPersonaId, transferRequest],
+  );
+
+  const decideTerminationRequest = useCallback(
+    (decision: PracticalWorkflowDecision) => {
+      if (
+        !terminationRequest ||
+        terminationRequest.status !== "submitted" ||
+        personaDecision.persona?.role !== "bounded_approver" ||
+        !selectedPersonaId ||
+        terminationRequest.submittedByActorId === selectedPersonaId
+      ) {
+        return;
+      }
+
+      setTerminationRequest({
+        ...terminationRequest,
+        status: getNextStatus(decision),
+        decidedByActorId: selectedPersonaId,
+        auditActions: [
+          ...terminationRequest.auditActions,
+          `mvp_c.termination.${decision} decidedBy=${selectedPersonaId}`,
+        ],
+      });
+    },
+    [personaDecision.persona?.role, selectedPersonaId, terminationRequest],
   );
 
   useEffect(() => {
@@ -778,6 +1513,20 @@ function AppShell() {
                   request={onboardingRequest}
                   setRequest={setOnboardingRequest}
                 />
+              ) : activeArea?.id === "transfer" ? (
+                <TransferWorkflow
+                  personaId={selectedPersonaId}
+                  personaRole={personaDecision.persona?.role}
+                  request={transferRequest}
+                  setRequest={setTransferRequest}
+                />
+              ) : activeArea?.id === "termination" ? (
+                <TerminationWorkflow
+                  personaId={selectedPersonaId}
+                  personaRole={personaDecision.persona?.role}
+                  request={terminationRequest}
+                  setRequest={setTerminationRequest}
+                />
               ) : activeArea?.id === "approvals" ? (
                 <ApprovalsWorkflow
                   approverActorId={
@@ -786,7 +1535,11 @@ function AppShell() {
                       : null
                   }
                   request={onboardingRequest}
+                  transferRequest={transferRequest}
+                  terminationRequest={terminationRequest}
                   onDecision={decideOnboardingRequest}
+                  onTransferDecision={decideTransferRequest}
+                  onTerminationDecision={decideTerminationRequest}
                 />
               ) : (
                 <EmptyState />

@@ -415,4 +415,93 @@ describe("App shell", () => {
       }),
     ).not.toBeInTheDocument();
   });
+
+  it("supports bounded transfer and termination practical workflows with approval evidence", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Transfer/ }));
+    expect(
+      screen.getByRole("heading", { name: "Transfer" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Transfer effective date")).toHaveValue(
+      "2026-07-01",
+    );
+    expect(screen.getByText("Transfer impact preview")).toBeInTheDocument();
+    expect(
+      screen.getByText(/assignment-current-transfer-001 closes/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/department-product opens/)).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create transfer request" }),
+    );
+    expect(
+      screen.getByRole("heading", {
+        name: "transaction-request-transfer-001",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Target assignment evidence")).toBeInTheDocument();
+    expect(screen.getByText("Assignment close evidence")).toBeInTheDocument();
+    expect(screen.getByText("Okta transfer projection")).toBeInTheDocument();
+    expect(screen.getByText("correlation-transfer-001")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Termination/ }));
+    expect(
+      screen.getByRole("heading", { name: "Termination" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Termination effective date")).toHaveValue(
+      "2026-08-31",
+    );
+    expect(screen.getByText("Effective-date confirmation")).toBeInTheDocument();
+    expect(
+      screen.getByText("Retention/deletion runtime blocked"),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create termination request" }),
+    );
+    expect(
+      screen.getByRole("heading", {
+        name: "transaction-request-termination-001",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Employment close evidence")).toBeInTheDocument();
+    expect(screen.getByText("Assignment close evidence")).toBeInTheDocument();
+    expect(screen.getByText("Okta disable projection")).toBeInTheDocument();
+    expect(screen.getByText("correlation-termination-001")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+    await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
+    expect(
+      screen.getByRole("heading", { name: "Transfer approvals" }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Approve transfer request" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Return termination request" }),
+    );
+
+    expect(screen.getByText(/Transfer is Approved/)).toBeInTheDocument();
+    expect(screen.getByText(/Termination is Returned/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/mvp_b\.transfer\.approve decidedBy=approver/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/mvp_c\.termination\.return decidedBy=approver/),
+    ).toBeInTheDocument();
+  });
 });
