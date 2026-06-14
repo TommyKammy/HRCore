@@ -74,9 +74,11 @@ interface TransferFormState {
   effectiveDate: string;
   currentAssignmentId: string;
   currentAssignmentCode: string;
+  targetOrganizationReference: string;
   targetDepartmentReference: string;
   targetManagerReference: string;
   targetPositionCode: string;
+  transferReasonCode: string;
 }
 
 interface TerminationFormState {
@@ -127,9 +129,11 @@ const defaultTransferForm: TransferFormState = {
   effectiveDate: "2026-07-01",
   currentAssignmentId: "assignment-current-transfer-001",
   currentAssignmentCode: "ASN-CURRENT-TRANSFER-001",
+  targetOrganizationReference: "organization-engineering",
   targetDepartmentReference: "department-product",
   targetManagerReference: "manager-product-001",
   targetPositionCode: "position-staff-engineer-001",
+  transferReasonCode: "team_change",
 };
 
 const defaultTerminationForm: TerminationFormState = {
@@ -303,6 +307,23 @@ function isBeforeRequestedDate(effectiveDate: string, requestedAt: string) {
 
 function blocksDuplicateRequest(status: PracticalWorkflowStatus): boolean {
   return status !== "returned";
+}
+
+function isAllowedTransferReasonCode(reasonCode: string): boolean {
+  return (
+    reasonCode === "team_change" ||
+    reasonCode === "manager_change" ||
+    reasonCode === "organization_change"
+  );
+}
+
+function isAllowedTerminationReasonCode(reasonCode: string): boolean {
+  return (
+    reasonCode === "resignation" ||
+    reasonCode === "retirement" ||
+    reasonCode === "contract_end" ||
+    reasonCode === "mutual_agreement"
+  );
 }
 
 function getNextStatus(
@@ -592,8 +613,11 @@ function TransferWorkflow({
       ["displayName", "display name"],
       ["effectiveDate", "effective date"],
       ["currentAssignmentId", "current assignment"],
+      ["currentAssignmentCode", "current assignment code"],
+      ["targetOrganizationReference", "target organization"],
       ["targetDepartmentReference", "target department"],
       ["targetManagerReference", "target manager"],
+      ["transferReasonCode", "transfer reason"],
     ] as const;
     const missing = missingFields
       .filter(([field]) => !form[field].trim())
@@ -605,6 +629,14 @@ function TransferWorkflow({
         `Complete ${missing.join(
           ", ",
         )} before submitting this bounded transfer request.`,
+      );
+      return;
+    }
+
+    if (!isAllowedTransferReasonCode(form.transferReasonCode.trim())) {
+      setMessageKind("error");
+      setMessage(
+        "Transfer reason must be team_change, manager_change, or organization_change for this bounded workflow.",
       );
       return;
     }
@@ -681,6 +713,20 @@ function TransferWorkflow({
             />
           </label>
           <label>
+            Current assignment code
+            <input
+              value={form.currentAssignmentCode}
+              onChange={updateField("currentAssignmentCode")}
+            />
+          </label>
+          <label>
+            Target organization
+            <input
+              value={form.targetOrganizationReference}
+              onChange={updateField("targetOrganizationReference")}
+            />
+          </label>
+          <label>
             Target department
             <input
               value={form.targetDepartmentReference}
@@ -701,10 +747,17 @@ function TransferWorkflow({
               onChange={updateField("targetPositionCode")}
             />
           </label>
+          <label>
+            Transfer reason
+            <input
+              value={form.transferReasonCode}
+              onChange={updateField("transferReasonCode")}
+            />
+          </label>
         </div>
         <EvidenceItem
           title="Transfer impact preview"
-          body={`${form.currentAssignmentId} closes and ${form.targetDepartmentReference} opens under ${form.targetManagerReference}.`}
+          body={`${form.currentAssignmentId} (${form.currentAssignmentCode}) closes and ${form.targetOrganizationReference}/${form.targetDepartmentReference} opens under ${form.targetManagerReference}.`}
         />
         <button type="button" onClick={createRequest} disabled={!isOperator}>
           Create transfer request
@@ -749,11 +802,11 @@ function TransferWorkflow({
             <div className="evidence-stack" aria-label="Evidence">
               <EvidenceItem
                 title="Assignment close evidence"
-                body={`${request.form.currentAssignmentId} closes on ${request.form.effectiveDate}.`}
+                body={`${request.form.currentAssignmentId} (${request.form.currentAssignmentCode}) closes on ${request.form.effectiveDate}.`}
               />
               <EvidenceItem
                 title="Target assignment evidence"
-                body={`${request.form.targetDepartmentReference} opens for ${request.form.targetPositionCode}.`}
+                body={`${request.form.targetOrganizationReference}/${request.form.targetDepartmentReference} opens for ${request.form.targetPositionCode} under ${request.form.targetManagerReference}. Reason: ${request.form.transferReasonCode}.`}
               />
               <EvidenceItem
                 title="Okta transfer projection"
@@ -852,6 +905,14 @@ function TerminationWorkflow({
       return;
     }
 
+    if (!isAllowedTerminationReasonCode(form.reasonCode.trim())) {
+      setMessageKind("error");
+      setMessage(
+        "Termination reason must be resignation, retirement, contract_end, or mutual_agreement for this bounded workflow.",
+      );
+      return;
+    }
+
     if (request && blocksDuplicateRequest(request.status)) {
       setMessageKind("error");
       setMessage(
@@ -911,10 +972,24 @@ function TerminationWorkflow({
             />
           </label>
           <label>
+            Employment code
+            <input
+              value={form.employmentCode}
+              onChange={updateField("employmentCode")}
+            />
+          </label>
+          <label>
             Current assignment
             <input
               value={form.currentAssignmentId}
               onChange={updateField("currentAssignmentId")}
+            />
+          </label>
+          <label>
+            Current assignment code
+            <input
+              value={form.currentAssignmentCode}
+              onChange={updateField("currentAssignmentCode")}
             />
           </label>
           <label>
@@ -976,11 +1051,11 @@ function TerminationWorkflow({
             <div className="evidence-stack" aria-label="Evidence">
               <EvidenceItem
                 title="Employment close evidence"
-                body={`${request.form.employmentId} closes on ${request.form.effectiveDate}.`}
+                body={`${request.form.employmentId} (${request.form.employmentCode}) closes on ${request.form.effectiveDate}. Reason: ${request.form.reasonCode}.`}
               />
               <EvidenceItem
                 title="Assignment close evidence"
-                body={`${request.form.currentAssignmentId} closes on ${request.form.effectiveDate}.`}
+                body={`${request.form.currentAssignmentId} (${request.form.currentAssignmentCode}) closes on ${request.form.effectiveDate}.`}
               />
               <EvidenceItem
                 title="Okta disable projection"
@@ -1115,6 +1190,24 @@ function ApprovalsWorkflow({
               Transfer is {formatStatus(transferRequest.status)} for{" "}
               {transferRequest.correlationId}.
             </p>
+            <div
+              className="evidence-stack"
+              role="group"
+              aria-label="Transfer approval context"
+            >
+              <EvidenceItem
+                title="Assignment close evidence"
+                body={`${transferRequest.form.currentAssignmentId} (${transferRequest.form.currentAssignmentCode}) closes on ${transferRequest.form.effectiveDate}.`}
+              />
+              <EvidenceItem
+                title="Target assignment evidence"
+                body={`${transferRequest.form.targetOrganizationReference}/${transferRequest.form.targetDepartmentReference} opens for ${transferRequest.form.targetPositionCode} under ${transferRequest.form.targetManagerReference}. Reason: ${transferRequest.form.transferReasonCode}.`}
+              />
+              <EvidenceItem
+                title="Okta transfer projection"
+                body="Synthetic mock-mode group and profile projection only. No live provider mutation."
+              />
+            </div>
             <div className="decision-bar">
               <button
                 type="button"
@@ -1172,6 +1265,28 @@ function ApprovalsWorkflow({
               Termination is {formatStatus(terminationRequest.status)} for{" "}
               {terminationRequest.correlationId}.
             </p>
+            <div
+              className="evidence-stack"
+              role="group"
+              aria-label="Termination approval context"
+            >
+              <EvidenceItem
+                title="Employment close evidence"
+                body={`${terminationRequest.form.employmentId} (${terminationRequest.form.employmentCode}) closes on ${terminationRequest.form.effectiveDate}. Reason: ${terminationRequest.form.reasonCode}.`}
+              />
+              <EvidenceItem
+                title="Assignment close evidence"
+                body={`${terminationRequest.form.currentAssignmentId} (${terminationRequest.form.currentAssignmentCode}) closes on ${terminationRequest.form.effectiveDate}.`}
+              />
+              <EvidenceItem
+                title="Okta disable projection"
+                body="Synthetic mock-mode disable projection only. No live provider mutation."
+              />
+              <EvidenceItem
+                title="Retention/deletion runtime blocked"
+                body="No hard delete, anonymization, legal hold, or deletion job is introduced."
+              />
+            </div>
             <div className="decision-bar">
               <button
                 type="button"

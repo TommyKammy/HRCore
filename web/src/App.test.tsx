@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -441,11 +441,56 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Transfer effective date")).toHaveValue(
       "2026-07-01",
     );
+    expect(screen.getByLabelText("Current assignment code")).toHaveValue(
+      "ASN-CURRENT-TRANSFER-001",
+    );
+    expect(screen.getByLabelText("Target organization")).toHaveValue(
+      "organization-engineering",
+    );
+    expect(screen.getByLabelText("Transfer reason")).toHaveValue("team_change");
     expect(screen.getByText("Transfer impact preview")).toBeInTheDocument();
     expect(
-      screen.getByText(/assignment-current-transfer-001 closes/),
+      screen.getByText(
+        /assignment-current-transfer-001 \(ASN-CURRENT-TRANSFER-001\) closes/,
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText(/department-product opens/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/organization-engineering\/department-product opens/),
+    ).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText("Current assignment code"));
+    await userEvent.clear(screen.getByLabelText("Target organization"));
+    await userEvent.clear(screen.getByLabelText("Transfer reason"));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create transfer request" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Complete current assignment code, target organization, transfer reason before submitting this bounded transfer request.",
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: "transaction-request-transfer-001",
+      }),
+    ).not.toBeInTheDocument();
+    await userEvent.type(
+      screen.getByLabelText("Current assignment code"),
+      "ASN-CURRENT-TRANSFER-001",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Target organization"),
+      "organization-engineering",
+    );
+    await userEvent.type(screen.getByLabelText("Transfer reason"), "layoff");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create transfer request" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Transfer reason must be team_change, manager_change, or organization_change for this bounded workflow.",
+    );
+    await userEvent.clear(screen.getByLabelText("Transfer reason"));
+    await userEvent.type(
+      screen.getByLabelText("Transfer reason"),
+      "team_change",
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Create transfer request" }),
     );
@@ -466,10 +511,31 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Termination effective date")).toHaveValue(
       "2026-08-31",
     );
+    expect(screen.getByLabelText("Employment code")).toHaveValue(
+      "EMP-TERMINATION-001",
+    );
+    expect(screen.getByLabelText("Current assignment code")).toHaveValue(
+      "ASN-CURRENT-TERMINATION-001",
+    );
     expect(screen.getByText("Effective-date confirmation")).toBeInTheDocument();
     expect(
       screen.getByText("Retention/deletion runtime blocked"),
     ).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText("Reason"));
+    await userEvent.type(screen.getByLabelText("Reason"), "layoff");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create termination request" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Termination reason must be resignation, retirement, contract_end, or mutual_agreement for this bounded workflow.",
+    );
+    expect(
+      screen.queryByRole("heading", {
+        name: "transaction-request-termination-001",
+      }),
+    ).not.toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText("Reason"));
+    await userEvent.type(screen.getByLabelText("Reason"), "resignation");
     await userEvent.click(
       screen.getByRole("button", { name: "Create termination request" }),
     );
@@ -488,12 +554,50 @@ describe("App shell", () => {
     expect(
       screen.getByRole("heading", { name: "Transfer approvals" }),
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Approve transfer request" }),
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Return termination request" }),
-    );
+    const transferApprovalContext = screen.getByRole("group", {
+      name: "Transfer approval context",
+    });
+    expect(
+      within(transferApprovalContext).getByText(
+        /assignment-current-transfer-001 \(ASN-CURRENT-TRANSFER-001\) closes on 2026-07-01/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(transferApprovalContext).getByText(
+        /organization-engineering\/department-product opens for position-staff-engineer-001 under manager-product-001\. Reason: team_change/,
+      ),
+    ).toBeInTheDocument();
+    const approveTransferButton = screen.getByRole("button", {
+      name: "Approve transfer request",
+    });
+    expect(
+      transferApprovalContext.compareDocumentPosition(approveTransferButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    const terminationApprovalContext = screen.getByRole("group", {
+      name: "Termination approval context",
+    });
+    expect(
+      within(terminationApprovalContext).getByText(
+        /employment-termination-001 \(EMP-TERMINATION-001\) closes on 2026-08-31\. Reason: resignation/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(terminationApprovalContext).getByText(
+        /assignment-current-termination-001 \(ASN-CURRENT-TERMINATION-001\) closes on 2026-08-31/,
+      ),
+    ).toBeInTheDocument();
+    const returnTerminationButton = screen.getByRole("button", {
+      name: "Return termination request",
+    });
+    expect(
+      terminationApprovalContext.compareDocumentPosition(
+        returnTerminationButton,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await userEvent.click(approveTransferButton);
+    await userEvent.click(returnTerminationButton);
 
     expect(screen.getByText(/Transfer is Approved/)).toBeInTheDocument();
     expect(screen.getByText(/Termination is Returned/)).toBeInTheDocument();
