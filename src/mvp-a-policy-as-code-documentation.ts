@@ -76,6 +76,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
   "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
   "docs/p2y-webui-practical-uat-package.md",
+  "docs/p2y-webui-practical-readiness-review-closeout.md",
 ] as const;
 
 export function collectDocumentationFindings(
@@ -249,12 +250,18 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
   }
 
   const subjectSource = subjectPattern.source;
+  const affirmativeStatusWords =
+    "Go(?![-\\s]+live)|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green";
   const sameClauseBlockerBeforeSubject = new RegExp(
     `\\b(?:No|not|must\\s+not|does\\s+not|do\\s+not|requires?\\s+(?:a\\s+later\\s+)?Accepted|before\\s+Accepted|required\\s+before\\s+Accepted)\\b(?:(?!\\b(?:but|however|yet)\\b)[^,|.;]){0,180}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const noListBlockerBeforeSubject = new RegExp(
     `\\bNo\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
+    "iu",
+  );
+  const notListBlockerBeforeSubject = new RegExp(
+    `\\bnot\\b(?:(?!\\b(?:but|however|yet|${affirmativeStatusWords})\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
   const doNotUseListBlockerBeforeSubject = new RegExp(
@@ -277,8 +284,6 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
     `\\b(?:do\\s+not\\s+use|must\\s+not\\s+(?:use|treat)|does\\s+not\\s+(?:require|introduce|approve|accept)|not\\s+(?:require|introduce|approve|accept))\\b(?:(?!\\b(?:but|however|yet)\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
   );
-  const affirmativeStatusWords =
-    "Go(?![-\\s]+live)|Accepted|Yes|ready|allowed|approved|enabled|available|processing|complete|completed|unblocked|passed|green";
   const doesNotAuthorizeListBlockerBeforeSubject = new RegExp(
     `\\bdoes\\s+not\\s+authorize\\b(?:(?!\\b(?:but|however|yet|${affirmativeStatusWords})\\b)[^|.;]){0,500}\\b(?:${subjectSource})\\b`,
     "iu",
@@ -335,6 +340,7 @@ function isP2XBoundedPracticalUseArtifactClaimBlocked(
 
   return (
     noListBlockerBeforeSubject.test(claimText) ||
+    notListBlockerBeforeSubject.test(claimText) ||
     genericDenyListBlockerBeforeSubject.test(claimText) ||
     doesNotAuthorizeListBlockerBeforeSubject.test(claimText) ||
     doNotUseListBlockerBeforeSubject.test(claimText) ||
@@ -349,7 +355,7 @@ function isP2XAuthorizationPrerequisiteEvidenceClaim(
   claimText: string,
 ): boolean {
   return (
-    /\b(?:must\s+be\s+supplied|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
+    /\b(?:must\s+be\s+supplied|requires?|required(?:\s+(?:before|next|future|separate|evidence|stronger|claim|promotion)){0,6}|before\s+(?:any\s+)?(?:stronger\s+)?claim|before\s+promotion)\b[^.;|]{0,180}\baccepted\s+authorization\/data-scope\s+design\b[^.;|]{0,180}\b(?:trusted\s+proxy\s+identity|PostgreSQL\s+RLS|negative\s+enforcement\s+tests?|actors?)\b/iu.test(
       claimText,
     ) ||
     /\b(?:production\s+authorization\/RLS|production\s+RBAC(?:\s+authority)?|PostgreSQL\s+RLS(?:\s+source\s+of\s+truth)?|authorization\/data-scope\s+design(?:\s+acceptance)?|actor\/role\/tenant\s+binding|trusted\s+proxy\s+identity(?:\s+boundary)?|query-layer\s+enforcement|service-layer\s+enforcement|negative\s+enforcement\s+tests?|mixed-boundary\s+fail-closed\s+evidence)\b[^.;|]{0,180}\bremains\s+blocked\s+on\s+accepted\s+authorization\/data-scope\s+design\b/iu.test(

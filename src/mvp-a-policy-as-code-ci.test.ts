@@ -131,6 +131,7 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
     "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
     "docs/p2y-webui-practical-uat-package.md",
+    "docs/p2y-webui-practical-readiness-review-closeout.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -832,6 +833,21 @@ test("MVP-A policy-as-code input loader scans P2X and P2Y bounded practical-use 
       [
         "production-like readiness",
         "real employee data readiness",
+        "broad export readiness",
+        "go-live readiness",
+      ],
+    ],
+    [
+      "docs/p2y-webui-practical-readiness-review-closeout.md",
+      [
+        "Production-like readiness: Accepted.",
+        "Unrestricted raw payload is enabled.",
+        "Broad CSV export is approved.",
+        "Go-live approval: Go.",
+      ].join("\n"),
+      [
+        "production-like readiness",
+        "unrestricted raw payload readiness",
         "broad export readiness",
         "go-live readiness",
       ],
@@ -2778,6 +2794,8 @@ test("MVP-A policy-as-code gate allows bounded non-production readiness wording"
             "P0-R06 / #12 production audit immutability remains blocked for production-like readiness.",
             "P0-R08 / #14 raw payload and CSV/export remains blocked for real-data and production-like use.",
             "P0-R08 / #14 is not Accepted for raw payload or CSV/export launch.",
+            "Role and field permission matrices require accepted authorization/data-scope design and negative enforcement tests.",
+            "This verdict is not production-like readiness, live-provider operation, real employee data permission, or production authorization/RLS authority.",
             "The only Go claim is bounded/non-production MVP-A onboarding evidence.",
           ].join("\n"),
         ],

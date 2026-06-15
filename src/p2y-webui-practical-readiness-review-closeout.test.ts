@@ -24,6 +24,8 @@ test("P2Y WebUI practical-use readiness review closeout records candidate verdic
     "real employee data: Blocked",
     "live provider operation: Blocked",
     "production authorization/RLS: Blocked",
+    "unrestricted raw payload: Blocked",
+    "broad CSV export: Blocked",
     "legal/privacy approval: Blocked",
     "two-key approval: Blocked",
     "Reviewed Evidence",
@@ -67,7 +69,7 @@ test("P2Y WebUI practical-use readiness review closeout records candidate verdic
   );
 });
 
-test("P2Y WebUI practical-use readiness closeout guard rejects stronger-readiness overclaims", () => {
+test("P2Y WebUI practical-use readiness review closeout guard rejects stronger-readiness overclaims", () => {
   assert.deepEqual(
     p2yReadinessCloseoutOverclaims(
       [
@@ -77,6 +79,8 @@ test("P2Y WebUI practical-use readiness closeout guard rejects stronger-readines
         "real employee data: Blocked.",
         "live provider operation: Blocked.",
         "production authorization/RLS: Blocked.",
+        "unrestricted raw payload: Blocked.",
+        "broad CSV export: Blocked.",
         "legal/privacy approval: Blocked.",
         "two-key approval: Blocked.",
       ].join("\n"),
@@ -92,6 +96,8 @@ test("P2Y WebUI practical-use readiness closeout guard rejects stronger-readines
     ["live provider operation", "live provider operation is enabled."],
     ["production authorization/RLS", "production authorization/RLS: Ready."],
     ["production audit immutability", "production audit immutability: Go."],
+    ["unrestricted raw payload", "unrestricted raw payload is enabled."],
+    ["broad CSV export", "broad CSV export is approved."],
     ["production queue/DLQ", "production queue/DLQ is ready."],
     ["retention/deletion runtime", "retention/deletion runtime is available."],
     ["legal/privacy approval", "legal/privacy approval is complete."],
@@ -138,6 +144,14 @@ const p2yForbiddenReadinessPatterns: Array<[string, RegExp]> = [
   [
     "production audit immutability",
     /\bproduction\s+audit\s+immutability\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b/iu,
+  ],
+  [
+    "unrestricted raw payload",
+    /\bunrestricted\s+raw\s+payload\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b/iu,
+  ],
+  [
+    "broad CSV export",
+    /\bbroad\s+CSV\s+export\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b/iu,
   ],
   [
     "production queue/DLQ",
