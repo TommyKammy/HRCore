@@ -137,6 +137,7 @@ interface OpsDlqEvidence {
   correlationId: string;
   status: "open" | "replayed" | "ignored" | "closed";
   retryCount: number;
+  recordedDecisions: DlqDecision[];
   lastDecision: DlqDecision | null;
   decisionReason: string | null;
   auditActions: string[];
@@ -229,6 +230,7 @@ const initialOpsDlqEvidence: OpsDlqEvidence = {
   correlationId: "csv-correlation-synthetic-001",
   status: "open",
   retryCount: 0,
+  recordedDecisions: [],
   lastDecision: null,
   decisionReason: null,
   auditActions: [
@@ -1303,6 +1305,17 @@ function OpsDlqWorkflow({
       return;
     }
 
+    if (
+      selectedDecision === "replay" &&
+      evidence.recordedDecisions.includes("replay")
+    ) {
+      setMessageKind("error");
+      setMessage(
+        `DLQ decision rejected because ${evidence.failedRowId} already has replay evidence; duplicate replay cannot be recorded.`,
+      );
+      return;
+    }
+
     if (!submittedReason) {
       setMessageKind("error");
       setMessage(
@@ -1334,6 +1347,7 @@ function OpsDlqWorkflow({
         selectedDecision === "retry"
           ? evidence.retryCount + 1
           : evidence.retryCount,
+      recordedDecisions: [...evidence.recordedDecisions, selectedDecision],
       lastDecision: selectedDecision,
       decisionReason: submittedReason,
       auditActions: [

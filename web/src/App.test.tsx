@@ -765,6 +765,22 @@ describe("App shell", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "duplicate replay cannot be recorded",
+    );
+    const replayAuditEvidence = screen.getByText(
+      /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+    ).textContent;
+    expect(
+      replayAuditEvidence?.match(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/g,
+      ),
+    ).toHaveLength(1);
+
     await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
       "close",
     ]);
