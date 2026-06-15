@@ -107,6 +107,37 @@ test("P2Y WebUI practical UAT package covers bounded browser scenarios", async (
   );
 });
 
+test("P2Y WebUI practical UAT package guard rejects blocked-surface approval overclaims", () => {
+  assert.deepEqual(
+    p2yUatPackageOverclaims(
+      [
+        "No broad CSV export.",
+        "No production authorization/RLS.",
+        "No unrestricted raw payload.",
+        "No legal/privacy approval.",
+        "No two-key approval.",
+        "No go-live approval.",
+      ].join("\n"),
+    ),
+    [],
+    "plain blocked-surface boundary statements must remain allowed",
+  );
+
+  for (const [subject, overclaim] of [
+    ["broad CSV export", "No broad CSV export is approved."],
+    ["production authorization/RLS", "No production authorization/RLS: Go."],
+    ["unrestricted raw payload", "No unrestricted raw payload is Accepted."],
+    ["legal/privacy approval", "No legal/privacy approval: Go."],
+    ["two-key approval", "No two-key approval is approved."],
+    ["go-live approval", "No go-live approval: Go."],
+  ] as const) {
+    assert.ok(
+      p2yUatPackageOverclaims(overclaim).includes(subject),
+      `${uatPackagePath} guard must reject ${overclaim}`,
+    );
+  }
+});
+
 function p2yUatPackageOverclaims(text: string): string[] {
   const findings: string[] = [];
   for (const [subject, pattern] of p2yForbiddenPromotionPatterns) {
@@ -135,7 +166,27 @@ const p2yForbiddenPromotionPatterns: Array<[string, RegExp]> = [
     /\b(?:live\s+(?:IdP|Okta|provider)|production\s+credentials?)\b[^.;]{0,80}\b(?:ready|allowed|approved|accepted|enabled|available)\b|\b(?:ready|allowed|approved|accepted|enabled|available)\b[^.;]{0,80}\b(?:live\s+(?:IdP|Okta|provider)|production\s+credentials?)\b/iu,
   ],
   [
-    "approval substitution",
-    /\b(?:legal\/privacy|two-key|go-live)\s+approval\b[^.;]{0,80}\b(?:ready|complete|approved|accepted|substituted|replaced)\b/iu,
+    "legal/privacy approval",
+    /\blegal\/privacy\s+approval\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared|substituted|replaced)\b/iu,
+  ],
+  [
+    "two-key approval",
+    /\btwo-key\s+approval\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared|substituted|replaced)\b/iu,
+  ],
+  [
+    "go-live approval",
+    /\bgo-live\s+approval\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared|substituted|replaced)\b/iu,
+  ],
+  [
+    "broad CSV export",
+    /\bNo\s+broad\s+CSV\s+export\b\s*(?::\s*|\s+is\s+)?(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b|\bbroad\s+CSV\s+export\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b/iu,
+  ],
+  [
+    "production authorization/RLS",
+    /\bNo\s+production\s+authorization\/RLS\b\s*(?::\s*|\s+is\s+)?(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b|\bproduction\s+authorization\/RLS\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b/iu,
+  ],
+  [
+    "unrestricted raw payload",
+    /\bNo\s+unrestricted\s+raw\s+payload\b\s*(?::\s*|\s+is\s+)?(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b|\bunrestricted\s+raw\s+payload\b[^.;]{0,80}\b(?:Go|Accepted|Yes|ready|approved|enabled|allowed|available|complete|cleared)\b/iu,
   ],
 ];
