@@ -129,6 +129,8 @@ test("MVP-A policy-as-code exposes focused helper entry points", async () => {
     "docs/p2x-04-production-queue-dlq-ops-prerequisite-lane.md",
     "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
     "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
+    "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
+    "docs/p2y-webui-practical-uat-package.md",
   ] as const) {
     assert.ok(
       mvpAPolicyAsCodeDocumentationPaths.includes(path),
@@ -806,6 +808,21 @@ test("MVP-A policy-as-code input loader scans P2X and P2Y bounded practical-use 
     ],
     [
       "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
+      [
+        "Production-like readiness: Accepted.",
+        "Real employee data is allowed.",
+        "Broad CSV export is approved.",
+        "Go-live approval: Go.",
+      ].join("\n"),
+      [
+        "production-like readiness",
+        "real employee data readiness",
+        "broad export readiness",
+        "go-live readiness",
+      ],
+    ],
+    [
+      "docs/p2y-webui-practical-uat-package.md",
       [
         "Production-like readiness: Accepted.",
         "Real employee data is allowed.",

@@ -75,6 +75,7 @@ const p2xBoundedPracticalUseArtifactPaths = [
   "docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md",
   "docs/p2x-04-production-like-prerequisite-decomposition-closeout.md",
   "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
+  "docs/p2y-webui-practical-uat-package.md",
 ] as const;
 
 export function collectDocumentationFindings(

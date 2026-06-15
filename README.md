@@ -65,6 +65,7 @@ The P2X-04 production queue/DLQ and Ops prerequisite lane is recorded in [P2X-04
 The P2X-04 retention/deletion and future-extension prerequisite lane is recorded in [P2X-04 Retention Deletion Future Extension Prerequisite Lane](docs/p2x-04-retention-deletion-future-extension-prerequisite-lane.md).
 The final P2X-04 production-like prerequisite decomposition closeout is recorded in [P2X-04 Production-Like Prerequisite Decomposition Independent Closeout](docs/p2x-04-production-like-prerequisite-decomposition-closeout.md).
 The P2Y-00 WebUI practical-use planning and authorization map is recorded in [P2Y-00 WebUI Practical-Use Scope and Authorization Gate](docs/p2y-00-webui-practical-use-scope-authorization-gate.md).
+The CHILD-P2Y-05 bounded browser UAT package is recorded in [P2Y WebUI Practical UAT Package](docs/p2y-webui-practical-uat-package.md).
 
 Current P2X bounded status: P2X-02 is completed and Accepted as bounded
 practical-use follow-up evidence only. The completed P2X-02 evidence set is the
