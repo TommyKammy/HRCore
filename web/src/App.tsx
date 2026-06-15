@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -115,6 +116,34 @@ interface TerminationRequest {
   auditActions: string[];
 }
 
+type DlqDecision = "retry" | "replay" | "ignore" | "close";
+
+interface CsvWorkflowEvidence {
+  importId: string;
+  fileName: string;
+  rowId: string;
+  subjectId: string;
+  correlationId: string;
+  dryRunStatus: "review_required";
+  maskedField: string;
+  proposedValue: string;
+  exportRequestId: string;
+  deniedReason: string;
+  auditActions: string[];
+}
+
+interface OpsDlqEvidence {
+  jobId: string;
+  failedRowId: string;
+  correlationId: string;
+  status: "open" | "replayed" | "ignored" | "closed";
+  retryCount: number;
+  recordedDecisions: DlqDecision[];
+  lastDecision: DlqDecision | null;
+  decisionReason: string | null;
+  auditActions: string[];
+}
+
 const defaultOnboardingForm: OnboardingFormState = {
   displayName: "Synthetic Onboarding Hire",
   employmentCode: "EMP-ONBOARDING-001",
@@ -167,6 +196,51 @@ const terminationRequestTemplate = {
   requestedAt: "2026-08-01T00:00:00Z",
 } as const;
 
+const csvWorkflowEvidence: CsvWorkflowEvidence = {
+  importId: "csv-import-synthetic-001",
+  fileName: "mvp-d-lifecycle-support-synthetic.csv",
+  rowId: "csv-row-trace-review-001",
+  subjectId: "person-csv-synthetic-001",
+  correlationId: "csv-correlation-synthetic-001",
+  dryRunStatus: "review_required",
+  maskedField: "workEmail",
+  proposedValue: "csv.synthetic.001@***",
+  exportRequestId: "bounded-export-request-001",
+  deniedReason:
+    "Broad CSV export and raw payload viewing are blocked for this non-production WebUI workflow.",
+  auditActions: [
+    "mvp_d.csv.upload.synthetic",
+    "mvp_d.csv.dry_run.row_diff rendered",
+    "mvp_d.csv.apply.confirmation_required",
+    "mvp_d.csv.export.denied broad_export_blocked",
+  ],
+};
+
+const maxOpsDlqRetries = 3;
+const terminalOpsDlqStatuses: readonly OpsDlqEvidence["status"][] = [
+  "replayed",
+  "ignored",
+  "closed",
+];
+const lifecycleSupportEvidenceVersion = "mvp_d_lifecycle_support_v1";
+const dlqFailureDecisionActionPrefix =
+  "mvp_d.ops_job.failure_decision.csv_import";
+
+const initialOpsDlqEvidence: OpsDlqEvidence = {
+  jobId: "local-ops-job-csv-import-001",
+  failedRowId: "csv-row-trace-rejected-001",
+  correlationId: "csv-correlation-synthetic-001",
+  status: "open",
+  retryCount: 0,
+  recordedDecisions: [],
+  lastDecision: null,
+  decisionReason: null,
+  auditActions: [
+    "mvp_d.ops.job_status.synthetic_open",
+    "mvp_d.dlq.failed_row.visible_masked",
+  ],
+};
+
 const plannedAreas: readonly PlannedArea[] = [
   {
     id: "queue",
@@ -215,7 +289,7 @@ const plannedAreas: readonly PlannedArea[] = [
     id: "audit",
     label: "Audit",
     status: "planned",
-    summary: "Direct correlation lookup with no broad search.",
+    summary: "Single-correlation evidence review with no broad search.",
   },
   {
     id: "support",
@@ -244,7 +318,7 @@ function EmptyState() {
   );
 }
 
-function formatStatus(status: PracticalWorkflowStatus): string {
+function formatStatus(status: string): string {
   return status[0].toUpperCase() + status.slice(1);
 }
 
@@ -1124,6 +1198,301 @@ function EvidenceItem({ title, body }: { title: string; body: string }) {
   );
 }
 
+function CsvWorkflow({
+  actorId,
+  evidence,
+}: {
+  actorId: BoundedPersonaId;
+  evidence: CsvWorkflowEvidence;
+}) {
+  const auditActions = evidence.auditActions.map((action) =>
+    action === "mvp_d.csv.upload.synthetic"
+      ? `${action} acceptedBy=${actorId}`
+      : action,
+  );
+
+  return (
+    <div className="workflow-grid">
+      <section className="workflow-panel" aria-labelledby="csv-dry-run">
+        <div>
+          <p className="context-label">Repository-owned synthetic CSV only</p>
+          <h3 id="csv-dry-run">Upload bounded CSV</h3>
+        </div>
+        <dl className="detail-list">
+          <div>
+            <dt>Template</dt>
+            <dd>{lifecycleSupportEvidenceVersion}</dd>
+          </div>
+          <div>
+            <dt>File</dt>
+            <dd>{evidence.fileName}</dd>
+          </div>
+          <div>
+            <dt>Import</dt>
+            <dd>{evidence.importId}</dd>
+          </div>
+        </dl>
+        <EvidenceItem
+          title="Dry-run row diff"
+          body={`${evidence.rowId} updates ${evidence.maskedField} for ${evidence.subjectId} to ${evidence.proposedValue}. Raw payload and real employee values stay blocked.`}
+        />
+        <EvidenceItem
+          title="Apply confirmation"
+          body="Apply remains a bounded confirmation step for this synthetic dry-run result; destructive changes require an explicit operator confirmation and audit trail."
+        />
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="csv-export">
+        <div>
+          <p className="context-label">Bounded export request</p>
+          <h3 id="csv-export">Bounded export denial</h3>
+        </div>
+        <dl className="detail-list">
+          <div>
+            <dt>Request</dt>
+            <dd>{evidence.exportRequestId}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>Denied</dd>
+          </div>
+          <div>
+            <dt>Correlation</dt>
+            <dd>{evidence.correlationId}</dd>
+          </div>
+        </dl>
+        <EvidenceItem title="Denied reason" body={evidence.deniedReason} />
+        <EvidenceItem title="Audit evidence" body={auditActions.join(", ")} />
+      </section>
+    </div>
+  );
+}
+
+function OpsDlqWorkflow({
+  evidence,
+  operatorActorId,
+  setEvidence,
+}: {
+  evidence: OpsDlqEvidence;
+  operatorActorId: BoundedPersonaId;
+  setEvidence: (evidence: OpsDlqEvidence) => void;
+}) {
+  const [decision, setDecision] = useState<DlqDecision>("retry");
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<"error" | "ok">("ok");
+  const latestEvidenceRef = useRef(evidence);
+
+  useEffect(() => {
+    latestEvidenceRef.current = evidence;
+  }, [evidence]);
+
+  const submitDecision = (selectedDecision: DlqDecision) => {
+    const submittedReason = reason.trim();
+    const currentEvidence = latestEvidenceRef.current;
+
+    if (terminalOpsDlqStatuses.includes(currentEvidence.status)) {
+      setMessageKind("error");
+      setMessage(
+        `DLQ decision rejected because ${currentEvidence.failedRowId} is ${formatStatus(
+          currentEvidence.status,
+        )}; terminal decisions cannot be overwritten.`,
+      );
+      return;
+    }
+
+    if (
+      selectedDecision === "retry" &&
+      currentEvidence.retryCount >= maxOpsDlqRetries
+    ) {
+      setMessageKind("error");
+      setMessage(
+        `DLQ decision rejected because ${currentEvidence.failedRowId} already reached ${maxOpsDlqRetries}/${maxOpsDlqRetries} retries.`,
+      );
+      return;
+    }
+
+    if (
+      selectedDecision === "replay" &&
+      currentEvidence.recordedDecisions.includes("replay")
+    ) {
+      setMessageKind("error");
+      setMessage(
+        `DLQ decision rejected because ${currentEvidence.failedRowId} already has replay evidence; duplicate replay cannot be recorded.`,
+      );
+      return;
+    }
+
+    if (!submittedReason) {
+      setMessageKind("error");
+      setMessage(
+        "Capture a decision reason before retry, replay, ignore, or close.",
+      );
+      return;
+    }
+
+    if (!confirmed) {
+      setMessageKind("error");
+      setMessage(
+        "Confirm this destructive DLQ decision before writing audit evidence.",
+      );
+      return;
+    }
+
+    const nextStatusByDecision: Record<DlqDecision, OpsDlqEvidence["status"]> =
+      {
+        retry: "open",
+        replay: "replayed",
+        ignore: "ignored",
+        close: "closed",
+      };
+
+    const nextEvidence = {
+      ...currentEvidence,
+      status: nextStatusByDecision[selectedDecision],
+      retryCount:
+        selectedDecision === "retry"
+          ? currentEvidence.retryCount + 1
+          : currentEvidence.retryCount,
+      recordedDecisions: [
+        ...currentEvidence.recordedDecisions,
+        selectedDecision,
+      ],
+      lastDecision: selectedDecision,
+      decisionReason: submittedReason,
+      auditActions: [
+        ...currentEvidence.auditActions,
+        `${dlqFailureDecisionActionPrefix}.${selectedDecision} evidenceVersion=${lifecycleSupportEvidenceVersion} reason=${submittedReason} decidedBy=${operatorActorId}`,
+      ],
+    };
+
+    latestEvidenceRef.current = nextEvidence;
+    setEvidence(nextEvidence);
+    setMessageKind("ok");
+    setMessage("DLQ decision recorded with bounded audit evidence.");
+  };
+
+  return (
+    <div className="workflow-grid">
+      <section className="workflow-panel" aria-labelledby="ops-job-detail">
+        <div>
+          <p className="context-label">Synthetic non-production Ops only</p>
+          <h3 id="ops-job-detail">Ops job detail</h3>
+        </div>
+        <dl className="detail-list">
+          <div>
+            <dt>Job</dt>
+            <dd>{evidence.jobId}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{formatStatus(evidence.status)}</dd>
+          </div>
+          <div>
+            <dt>Retry count</dt>
+            <dd>
+              {evidence.retryCount}/{maxOpsDlqRetries}
+            </dd>
+          </div>
+          <div>
+            <dt>Correlation</dt>
+            <dd>{evidence.correlationId}</dd>
+          </div>
+        </dl>
+        <EvidenceItem
+          title="Status evidence"
+          body="Local synthetic job status is visible for inspection only. Production scheduler, queue readiness, incident, on-call, SLO, and custody surfaces remain blocked."
+        />
+        <EvidenceItem
+          title="Field-level masking"
+          body={`${evidence.failedRowId} exposes masked row evidence only; raw payload viewing is blocked.`}
+        />
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="dlq-decision">
+        <div>
+          <p className="context-label">Reasoned failed-row decision</p>
+          <h3 id="dlq-decision">DLQ decision</h3>
+        </div>
+        <div className="form-grid compact-form">
+          <label>
+            Decision action
+            <select
+              value={decision}
+              onChange={(event) =>
+                setDecision(event.target.value as DlqDecision)
+              }
+            >
+              <option value="retry">Retry</option>
+              <option value="replay">Replay</option>
+              <option value="ignore">Ignore</option>
+              <option value="close">Close</option>
+            </select>
+          </label>
+          <label>
+            Decision reason
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+            />
+            Confirm bounded non-production DLQ action
+          </label>
+        </div>
+        <div className="decision-bar">
+          <button type="button" onClick={() => submitDecision(decision)}>
+            Record selected DLQ decision
+          </button>
+        </div>
+        {message ? (
+          <section
+            className={
+              messageKind === "error"
+                ? "notice notice-error compact"
+                : "notice notice-ok compact"
+            }
+            role={messageKind === "error" ? "alert" : "status"}
+          >
+            <p>{message}</p>
+          </section>
+        ) : null}
+        <EvidenceItem
+          title="Audit evidence"
+          body={evidence.auditActions.join(", ")}
+        />
+        {evidence.decisionReason ? (
+          <EvidenceItem
+            title="Last decision reason"
+            body={`${evidence.lastDecision}: ${evidence.decisionReason}`}
+          />
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function AuditWorkflow() {
+  return (
+    <section className="workflow-panel" aria-labelledby="audit-lookup">
+      <div>
+        <p className="context-label">Single correlation boundary</p>
+        <h3 id="audit-lookup">Direct correlation lookup</h3>
+      </div>
+      <EvidenceItem
+        title="Lookup boundary"
+        body="Operators can inspect one explicit synthetic correlation at a time. Broad search, raw payload export, production authorization, and immutable production audit claims remain blocked."
+      />
+    </section>
+  );
+}
+
 function ApprovalsWorkflow({
   approverActorId,
   request,
@@ -1427,6 +1796,9 @@ function AppShell() {
     useState<TransferRequest | null>(null);
   const [terminationRequest, setTerminationRequest] =
     useState<TerminationRequest | null>(null);
+  const [opsDlqEvidence, setOpsDlqEvidence] = useState<OpsDlqEvidence>(
+    initialOpsDlqEvidence,
+  );
 
   const personaDecision = useMemo(
     () => resolveBoundedPersona(selectedPersonaId || null),
@@ -1674,6 +2046,25 @@ function AppShell() {
                   request={terminationRequest}
                   setRequest={setTerminationRequest}
                 />
+              ) : activeArea?.id === "csv" ? (
+                personaDecision.persona ? (
+                  <CsvWorkflow
+                    actorId={personaDecision.persona.id}
+                    evidence={csvWorkflowEvidence}
+                  />
+                ) : (
+                  <EmptyState />
+                )
+              ) : activeArea?.id === "ops" ? (
+                personaDecision.persona ? (
+                  <OpsDlqWorkflow
+                    evidence={opsDlqEvidence}
+                    operatorActorId={personaDecision.persona.id}
+                    setEvidence={setOpsDlqEvidence}
+                  />
+                ) : (
+                  <EmptyState />
+                )
               ) : activeArea?.id === "approvals" ? (
                 <ApprovalsWorkflow
                   approverActorId={
@@ -1688,6 +2079,8 @@ function AppShell() {
                   onTransferDecision={decideTransferRequest}
                   onTerminationDecision={decideTerminationRequest}
                 />
+              ) : activeArea?.id === "audit" ? (
+                <AuditWorkflow />
               ) : (
                 <EmptyState />
               )}

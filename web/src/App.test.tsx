@@ -629,4 +629,268 @@ describe("App shell", () => {
       screen.getByText(/mvp_c\.termination\.return decidedBy=approver/),
     ).toBeInTheDocument();
   });
+
+  it("uses the active CSV actor in audit evidence", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /CSV dry-run/ }));
+
+    expect(
+      screen.getByText(/mvp_d\.csv\.upload\.synthetic acceptedBy=hr-operator/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /mvp_d\.csv\.upload\.synthetic acceptedBy=hr-ops-support/,
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("requires reason and confirmation before recording DLQ decisions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    expect(screen.getByText("0/3")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "replay",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Capture a decision reason before retry, replay, ignore, or close.",
+    );
+    expect(
+      screen.queryByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+      ),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Synthetic row reconciled against the bounded dry-run evidence.",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Confirm this destructive DLQ decision before writing audit evidence.",
+    );
+    expect(
+      screen.queryByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+      ),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(
+      screen.getByText("DLQ decision recorded with bounded audit evidence."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Replayed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay evidenceVersion=mvp_d_lifecycle_support_v1 reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "replay: Synthetic row reconciled against the bounded dry-run evidence.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects terminal DLQ decisions and retry attempts beyond the bounded limit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    let app = render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Synthetic row reconciled against the bounded dry-run evidence.",
+    );
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "replay",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByText("Replayed")).toBeInTheDocument();
+    const replayAuditEvidence = screen.getByText(
+      /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+    ).textContent;
+    expect(
+      replayAuditEvidence?.match(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/g,
+      ),
+    ).toHaveLength(1);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "terminal decisions cannot be overwritten",
+    );
+    const duplicateReplayAuditEvidence = screen.getByText(
+      /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+    ).textContent;
+    expect(
+      duplicateReplayAuditEvidence?.match(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/g,
+      ),
+    ).toHaveLength(1);
+
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "retry",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "terminal decisions cannot be overwritten",
+    );
+    expect(screen.getByText("Replayed")).toBeInTheDocument();
+    expect(screen.getByText("0/3")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/mvp_d\.ops_job\.failure_decision\.csv_import\.retry/),
+    ).not.toBeInTheDocument();
+    app.unmount();
+
+    app = render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Synthetic row reconciled against the bounded dry-run evidence.",
+    );
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "close",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByText("Closed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.close evidenceVersion=mvp_d_lifecycle_support_v1 reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "ignore",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "terminal decisions cannot be overwritten",
+    );
+    expect(
+      screen.queryByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.ignore/,
+      ),
+    ).not.toBeInTheDocument();
+    app.unmount();
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Retry stays within bounded non-production evidence.",
+    );
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "already reached 3/3 retries",
+    );
+    const auditEvidence = screen.getByText(
+      /mvp_d\.ops_job\.failure_decision\.csv_import\.retry/,
+    ).textContent;
+    expect(
+      auditEvidence?.match(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.retry/g,
+      ),
+    ).toHaveLength(3);
+  });
 });
