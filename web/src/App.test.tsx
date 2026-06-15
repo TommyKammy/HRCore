@@ -630,6 +630,35 @@ describe("App shell", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the active CSV actor in audit evidence", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /CSV dry-run/ }));
+
+    expect(
+      screen.getByText(/mvp_d\.csv\.upload\.synthetic acceptedBy=hr-operator/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /mvp_d\.csv\.upload\.synthetic acceptedBy=hr-ops-support/,
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("requires reason and confirmation before recording DLQ decisions", async () => {
     vi.stubGlobal(
       "fetch",
@@ -649,14 +678,19 @@ describe("App shell", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
 
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "replay",
+    ]);
     await userEvent.click(
-      screen.getByRole("button", { name: "Replay failed row" }),
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Capture a decision reason before retry, replay, ignore, or close.",
     );
     expect(
-      screen.queryByText(/mvp_d\.dlq\.replay reason=/),
+      screen.queryByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+      ),
     ).not.toBeInTheDocument();
 
     await userEvent.type(
@@ -664,20 +698,22 @@ describe("App shell", () => {
       "Synthetic row reconciled against the bounded dry-run evidence.",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Replay failed row" }),
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Confirm this destructive DLQ decision before writing audit evidence.",
     );
     expect(
-      screen.queryByText(/mvp_d\.dlq\.replay reason=/),
+      screen.queryByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+      ),
     ).not.toBeInTheDocument();
 
     await userEvent.click(
       screen.getByLabelText("Confirm bounded non-production DLQ action"),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Replay failed row" }),
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
 
     expect(
@@ -686,7 +722,7 @@ describe("App shell", () => {
     expect(screen.getByText("Replayed")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /mvp_d\.dlq\.replay reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
       ),
     ).toBeInTheDocument();
     expect(
@@ -694,5 +730,90 @@ describe("App shell", () => {
         "replay: Synthetic row reconciled against the bounded dry-run evidence.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("rejects terminal DLQ decisions and retry attempts beyond the bounded limit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    const { unmount } = render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Synthetic row reconciled against the bounded dry-run evidence.",
+    );
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "replay",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "close",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "terminal decisions cannot be overwritten",
+    );
+    expect(
+      screen.queryByText(/mvp_d\.ops_job\.failure_decision\.csv_import\.close/),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Retry stays within bounded non-production evidence.",
+    );
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "already reached 3/3 retries",
+    );
+    const auditEvidence = screen.getByText(
+      /mvp_d\.ops_job\.failure_decision\.csv_import\.retry/,
+    ).textContent;
+    expect(
+      auditEvidence?.match(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.retry/g,
+      ),
+    ).toHaveLength(2);
   });
 });

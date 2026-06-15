@@ -207,12 +207,21 @@ const csvWorkflowEvidence: CsvWorkflowEvidence = {
   deniedReason:
     "Broad CSV export and raw payload viewing are blocked for this non-production WebUI workflow.",
   auditActions: [
-    "mvp_d.csv.upload.synthetic acceptedBy=hr-ops-support",
+    "mvp_d.csv.upload.synthetic",
     "mvp_d.csv.dry_run.row_diff rendered",
     "mvp_d.csv.apply.confirmation_required",
     "mvp_d.csv.export.denied broad_export_blocked",
   ],
 };
+
+const maxOpsDlqRetries = 3;
+const terminalOpsDlqStatuses: readonly OpsDlqEvidence["status"][] = [
+  "replayed",
+  "ignored",
+  "closed",
+];
+const dlqFailureDecisionActionPrefix =
+  "mvp_d.ops_job.failure_decision.csv_import";
 
 const initialOpsDlqEvidence: OpsDlqEvidence = {
   jobId: "local-ops-job-csv-import-001",
@@ -1185,7 +1194,19 @@ function EvidenceItem({ title, body }: { title: string; body: string }) {
   );
 }
 
-function CsvWorkflow({ evidence }: { evidence: CsvWorkflowEvidence }) {
+function CsvWorkflow({
+  actorId,
+  evidence,
+}: {
+  actorId: BoundedPersonaId;
+  evidence: CsvWorkflowEvidence;
+}) {
+  const auditActions = evidence.auditActions.map((action) =>
+    action === "mvp_d.csv.upload.synthetic"
+      ? `${action} acceptedBy=${actorId}`
+      : action,
+  );
+
   return (
     <div className="workflow-grid">
       <section className="workflow-panel" aria-labelledby="csv-dry-run">
@@ -1237,10 +1258,7 @@ function CsvWorkflow({ evidence }: { evidence: CsvWorkflowEvidence }) {
           </div>
         </dl>
         <EvidenceItem title="Denied reason" body={evidence.deniedReason} />
-        <EvidenceItem
-          title="Audit evidence"
-          body={evidence.auditActions.join(", ")}
-        />
+        <EvidenceItem title="Audit evidence" body={auditActions.join(", ")} />
       </section>
     </div>
   );
@@ -1248,9 +1266,11 @@ function CsvWorkflow({ evidence }: { evidence: CsvWorkflowEvidence }) {
 
 function OpsDlqWorkflow({
   evidence,
+  operatorActorId,
   setEvidence,
 }: {
   evidence: OpsDlqEvidence;
+  operatorActorId: BoundedPersonaId;
   setEvidence: (evidence: OpsDlqEvidence) => void;
 }) {
   const [decision, setDecision] = useState<DlqDecision>("retry");
@@ -1261,6 +1281,27 @@ function OpsDlqWorkflow({
 
   const submitDecision = (selectedDecision: DlqDecision) => {
     const submittedReason = reason.trim();
+
+    if (terminalOpsDlqStatuses.includes(evidence.status)) {
+      setMessageKind("error");
+      setMessage(
+        `DLQ decision rejected because ${evidence.failedRowId} is ${formatStatus(
+          evidence.status,
+        )}; terminal decisions cannot be overwritten.`,
+      );
+      return;
+    }
+
+    if (
+      selectedDecision === "retry" &&
+      evidence.retryCount >= maxOpsDlqRetries
+    ) {
+      setMessageKind("error");
+      setMessage(
+        `DLQ decision rejected because ${evidence.failedRowId} already reached ${maxOpsDlqRetries}/${maxOpsDlqRetries} retries.`,
+      );
+      return;
+    }
 
     if (!submittedReason) {
       setMessageKind("error");
@@ -1297,7 +1338,7 @@ function OpsDlqWorkflow({
       decisionReason: submittedReason,
       auditActions: [
         ...evidence.auditActions,
-        `mvp_d.dlq.${selectedDecision} reason=${submittedReason} decidedBy=hr-ops-support`,
+        `${dlqFailureDecisionActionPrefix}.${selectedDecision} reason=${submittedReason} decidedBy=${operatorActorId}`,
       ],
     });
     setMessageKind("ok");
@@ -1376,17 +1417,8 @@ function OpsDlqWorkflow({
           </label>
         </div>
         <div className="decision-bar">
-          <button type="button" onClick={() => submitDecision("retry")}>
-            Retry failed row
-          </button>
-          <button type="button" onClick={() => submitDecision("replay")}>
-            Replay failed row
-          </button>
-          <button type="button" onClick={() => submitDecision("ignore")}>
-            Ignore failed row
-          </button>
-          <button type="button" onClick={() => submitDecision("close")}>
-            Close failed row
+          <button type="button" onClick={() => submitDecision(decision)}>
+            Record selected DLQ decision
           </button>
         </div>
         {message ? (
@@ -1985,12 +2017,24 @@ function AppShell() {
                   setRequest={setTerminationRequest}
                 />
               ) : activeArea?.id === "csv" ? (
-                <CsvWorkflow evidence={csvWorkflowEvidence} />
+                personaDecision.persona ? (
+                  <CsvWorkflow
+                    actorId={personaDecision.persona.id}
+                    evidence={csvWorkflowEvidence}
+                  />
+                ) : (
+                  <EmptyState />
+                )
               ) : activeArea?.id === "ops" ? (
-                <OpsDlqWorkflow
-                  evidence={opsDlqEvidence}
-                  setEvidence={setOpsDlqEvidence}
-                />
+                personaDecision.persona ? (
+                  <OpsDlqWorkflow
+                    evidence={opsDlqEvidence}
+                    operatorActorId={personaDecision.persona.id}
+                    setEvidence={setOpsDlqEvidence}
+                  />
+                ) : (
+                  <EmptyState />
+                )
               ) : activeArea?.id === "approvals" ? (
                 <ApprovalsWorkflow
                   approverActorId={

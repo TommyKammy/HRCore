@@ -45,7 +45,7 @@ describe("route smoke", () => {
     expect(screen.getByText("DLQ decision")).toBeInTheDocument();
     expect(screen.getByLabelText("Decision reason")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Retry failed row" }),
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Audit/ }));
