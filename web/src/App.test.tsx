@@ -745,7 +745,7 @@ describe("App shell", () => {
       ),
     );
 
-    const { unmount } = render(<App />);
+    let app = render(<App />);
     await userEvent.selectOptions(
       screen.getByLabelText("Persona"),
       "hr-ops-support",
@@ -765,13 +765,8 @@ describe("App shell", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Record selected DLQ decision" }),
-    );
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "duplicate replay cannot be recorded",
-    );
+    expect(screen.getByText("Replayed")).toBeInTheDocument();
     const replayAuditEvidence = screen.getByText(
       /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
     ).textContent;
@@ -781,6 +776,36 @@ describe("App shell", () => {
       ),
     ).toHaveLength(1);
 
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "retry",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "terminal decisions cannot be overwritten",
+    );
+    expect(screen.getByText("Replayed")).toBeInTheDocument();
+    expect(screen.getByText("0/3")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/mvp_d\.ops_job\.failure_decision\.csv_import\.retry/),
+    ).not.toBeInTheDocument();
+    app.unmount();
+
+    app = render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Synthetic row reconciled against the bounded dry-run evidence.",
+    );
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
     await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
       "close",
     ]);
@@ -810,7 +835,7 @@ describe("App shell", () => {
         /mvp_d\.ops_job\.failure_decision\.csv_import\.ignore/,
       ),
     ).not.toBeInTheDocument();
-    unmount();
+    app.unmount();
 
     render(<App />);
     await userEvent.selectOptions(

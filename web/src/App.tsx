@@ -217,6 +217,7 @@ const csvWorkflowEvidence: CsvWorkflowEvidence = {
 
 const maxOpsDlqRetries = 3;
 const terminalOpsDlqStatuses: readonly OpsDlqEvidence["status"][] = [
+  "replayed",
   "ignored",
   "closed",
 ];
