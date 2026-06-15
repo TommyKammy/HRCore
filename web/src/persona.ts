@@ -41,7 +41,7 @@ export const boundedPersonas: readonly BoundedPersona[] = [
     label: "HR Ops/support",
     role: "bounded_hr_ops_support",
     tenantEnvironment: BOUNDED_TENANT_ENVIRONMENT,
-    allowedRoutes: ["queue", "ops", "audit", "support"],
+    allowedRoutes: ["queue", "csv", "ops", "audit", "support"],
   },
   {
     id: "bounded-admin",

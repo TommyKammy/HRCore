@@ -629,4 +629,70 @@ describe("App shell", () => {
       screen.getByText(/mvp_c\.termination\.return decidedBy=approver/),
     ).toBeInTheDocument();
   });
+
+  it("requires reason and confirmation before recording DLQ decisions", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Replay failed row" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Capture a decision reason before retry, replay, ignore, or close.",
+    );
+    expect(
+      screen.queryByText(/mvp_d\.dlq\.replay reason=/),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByLabelText("Decision reason"),
+      "Synthetic row reconciled against the bounded dry-run evidence.",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Replay failed row" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Confirm this destructive DLQ decision before writing audit evidence.",
+    );
+    expect(
+      screen.queryByText(/mvp_d\.dlq\.replay reason=/),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByLabelText("Confirm bounded non-production DLQ action"),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Replay failed row" }),
+    );
+
+    expect(
+      screen.getByText("DLQ decision recorded with bounded audit evidence."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Replayed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /mvp_d\.dlq\.replay reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "replay: Synthetic row reconciled against the bounded dry-run evidence.",
+      ),
+    ).toBeInTheDocument();
+  });
 });

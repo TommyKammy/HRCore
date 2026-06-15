@@ -21,12 +21,14 @@ body {
 }
 
 button,
-select {
+select,
+textarea {
   font: inherit;
 }
 
 button:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid oklch(0.74 0.14 210);
   outline-offset: 2px;
 }
@@ -269,7 +271,8 @@ h4 {
   font-weight: 700;
 }
 
-input {
+input,
+textarea {
   min-height: 38px;
   min-width: 0;
   border: 1px solid oklch(0.78 0.028 248);
@@ -278,6 +281,28 @@ input {
   background: white;
   color: oklch(0.22 0.025 248);
   font: inherit;
+}
+
+textarea {
+  min-height: 74px;
+  padding-block: 8px;
+  resize: vertical;
+}
+
+.compact-form {
+  grid-template-columns: 1fr;
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+}
+
+.checkbox-label input {
+  min-height: auto;
+  width: 18px;
+  height: 18px;
 }
 
 .workflow-panel button,
