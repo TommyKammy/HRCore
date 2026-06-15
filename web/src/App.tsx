@@ -1332,7 +1332,7 @@ function OpsDlqWorkflow({
       status: nextStatusByDecision[selectedDecision],
       retryCount:
         selectedDecision === "retry"
-          ? Math.min(evidence.retryCount + 1, 3)
+          ? evidence.retryCount + 1
           : evidence.retryCount,
       lastDecision: selectedDecision,
       decisionReason: submittedReason,
@@ -1363,7 +1363,9 @@ function OpsDlqWorkflow({
           </div>
           <div>
             <dt>Retry count</dt>
-            <dd>{evidence.retryCount}/3</dd>
+            <dd>
+              {evidence.retryCount}/{maxOpsDlqRetries}
+            </dd>
           </div>
           <div>
             <dt>Correlation</dt>
