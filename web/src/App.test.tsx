@@ -776,6 +776,22 @@ describe("App shell", () => {
       ),
     ).toHaveLength(1);
 
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "terminal decisions cannot be overwritten",
+    );
+    const duplicateReplayAuditEvidence = screen.getByText(
+      /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/,
+    ).textContent;
+    expect(
+      duplicateReplayAuditEvidence?.match(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay/g,
+      ),
+    ).toHaveLength(1);
+
     await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
       "retry",
     ]);

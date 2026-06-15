@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -1281,15 +1282,21 @@ function OpsDlqWorkflow({
   const [confirmed, setConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageKind, setMessageKind] = useState<"error" | "ok">("ok");
+  const latestEvidenceRef = useRef(evidence);
+
+  useEffect(() => {
+    latestEvidenceRef.current = evidence;
+  }, [evidence]);
 
   const submitDecision = (selectedDecision: DlqDecision) => {
     const submittedReason = reason.trim();
+    const currentEvidence = latestEvidenceRef.current;
 
-    if (terminalOpsDlqStatuses.includes(evidence.status)) {
+    if (terminalOpsDlqStatuses.includes(currentEvidence.status)) {
       setMessageKind("error");
       setMessage(
-        `DLQ decision rejected because ${evidence.failedRowId} is ${formatStatus(
-          evidence.status,
+        `DLQ decision rejected because ${currentEvidence.failedRowId} is ${formatStatus(
+          currentEvidence.status,
         )}; terminal decisions cannot be overwritten.`,
       );
       return;
@@ -1297,22 +1304,22 @@ function OpsDlqWorkflow({
 
     if (
       selectedDecision === "retry" &&
-      evidence.retryCount >= maxOpsDlqRetries
+      currentEvidence.retryCount >= maxOpsDlqRetries
     ) {
       setMessageKind("error");
       setMessage(
-        `DLQ decision rejected because ${evidence.failedRowId} already reached ${maxOpsDlqRetries}/${maxOpsDlqRetries} retries.`,
+        `DLQ decision rejected because ${currentEvidence.failedRowId} already reached ${maxOpsDlqRetries}/${maxOpsDlqRetries} retries.`,
       );
       return;
     }
 
     if (
       selectedDecision === "replay" &&
-      evidence.recordedDecisions.includes("replay")
+      currentEvidence.recordedDecisions.includes("replay")
     ) {
       setMessageKind("error");
       setMessage(
-        `DLQ decision rejected because ${evidence.failedRowId} already has replay evidence; duplicate replay cannot be recorded.`,
+        `DLQ decision rejected because ${currentEvidence.failedRowId} already has replay evidence; duplicate replay cannot be recorded.`,
       );
       return;
     }
@@ -1341,21 +1348,27 @@ function OpsDlqWorkflow({
         close: "closed",
       };
 
-    setEvidence({
-      ...evidence,
+    const nextEvidence = {
+      ...currentEvidence,
       status: nextStatusByDecision[selectedDecision],
       retryCount:
         selectedDecision === "retry"
-          ? evidence.retryCount + 1
-          : evidence.retryCount,
-      recordedDecisions: [...evidence.recordedDecisions, selectedDecision],
+          ? currentEvidence.retryCount + 1
+          : currentEvidence.retryCount,
+      recordedDecisions: [
+        ...currentEvidence.recordedDecisions,
+        selectedDecision,
+      ],
       lastDecision: selectedDecision,
       decisionReason: submittedReason,
       auditActions: [
-        ...evidence.auditActions,
+        ...currentEvidence.auditActions,
         `${dlqFailureDecisionActionPrefix}.${selectedDecision} evidenceVersion=${lifecycleSupportEvidenceVersion} reason=${submittedReason} decidedBy=${operatorActorId}`,
       ],
-    });
+    };
+
+    latestEvidenceRef.current = nextEvidence;
+    setEvidence(nextEvidence);
     setMessageKind("ok");
     setMessage("DLQ decision recorded with bounded audit evidence.");
   };
