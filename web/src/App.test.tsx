@@ -677,6 +677,7 @@ describe("App shell", () => {
       "hr-ops-support",
     );
     await userEvent.click(screen.getByRole("button", { name: /Ops\/DLQ/ }));
+    expect(screen.getByText("0/3")).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
       "replay",
@@ -722,7 +723,7 @@ describe("App shell", () => {
     expect(screen.getByText("Replayed")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.replay evidenceVersion=mvp_d_lifecycle_support_v1 reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
       ),
     ).toBeInTheDocument();
     expect(
@@ -771,11 +772,27 @@ describe("App shell", () => {
       screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
 
+    expect(screen.getByText("Closed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.close evidenceVersion=mvp_d_lifecycle_support_v1 reason=Synthetic row reconciled against the bounded dry-run evidence\. decidedBy=hr-ops-support/,
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Decision action"), [
+      "ignore",
+    ]);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
+
     expect(screen.getByRole("alert")).toHaveTextContent(
       "terminal decisions cannot be overwritten",
     );
     expect(
-      screen.queryByText(/mvp_d\.ops_job\.failure_decision\.csv_import\.close/),
+      screen.queryByText(
+        /mvp_d\.ops_job\.failure_decision\.csv_import\.ignore/,
+      ),
     ).not.toBeInTheDocument();
     unmount();
 
@@ -802,6 +819,9 @@ describe("App shell", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Record selected DLQ decision" }),
     );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Record selected DLQ decision" }),
+    );
 
     expect(screen.getByText("3/3")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
@@ -814,6 +834,6 @@ describe("App shell", () => {
       auditEvidence?.match(
         /mvp_d\.ops_job\.failure_decision\.csv_import\.retry/g,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 });

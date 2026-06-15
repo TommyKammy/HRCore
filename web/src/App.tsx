@@ -216,10 +216,10 @@ const csvWorkflowEvidence: CsvWorkflowEvidence = {
 
 const maxOpsDlqRetries = 3;
 const terminalOpsDlqStatuses: readonly OpsDlqEvidence["status"][] = [
-  "replayed",
   "ignored",
   "closed",
 ];
+const lifecycleSupportEvidenceVersion = "mvp_d_lifecycle_support_v1";
 const dlqFailureDecisionActionPrefix =
   "mvp_d.ops_job.failure_decision.csv_import";
 
@@ -228,7 +228,7 @@ const initialOpsDlqEvidence: OpsDlqEvidence = {
   failedRowId: "csv-row-trace-rejected-001",
   correlationId: "csv-correlation-synthetic-001",
   status: "open",
-  retryCount: 1,
+  retryCount: 0,
   lastDecision: null,
   decisionReason: null,
   auditActions: [
@@ -1217,7 +1217,7 @@ function CsvWorkflow({
         <dl className="detail-list">
           <div>
             <dt>Template</dt>
-            <dd>mvp_d_lifecycle_support_v1</dd>
+            <dd>{lifecycleSupportEvidenceVersion}</dd>
           </div>
           <div>
             <dt>File</dt>
@@ -1338,7 +1338,7 @@ function OpsDlqWorkflow({
       decisionReason: submittedReason,
       auditActions: [
         ...evidence.auditActions,
-        `${dlqFailureDecisionActionPrefix}.${selectedDecision} reason=${submittedReason} decidedBy=${operatorActorId}`,
+        `${dlqFailureDecisionActionPrefix}.${selectedDecision} evidenceVersion=${lifecycleSupportEvidenceVersion} reason=${submittedReason} decidedBy=${operatorActorId}`,
       ],
     });
     setMessageKind("ok");
