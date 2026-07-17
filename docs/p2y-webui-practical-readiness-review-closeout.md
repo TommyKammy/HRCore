@@ -230,6 +230,22 @@ The final command covers TypeScript build, WebUI build, policy-as-code,
 repository tests, WebUI tests, formatting, dependency audit, and Drizzle
 migration/config checks.
 
+### Dependency Audit Follow-Up
+
+The July 2026 follow-up verification found that the transitive `undici`
+development dependency locked through `jsdom` had acquired high-severity npm
+advisories after the original closeout. The lockfile now selects a
+non-vulnerable release admitted by the existing dependency constraints.
+
+```sh
+npm audit --audit-level=moderate
+npm run verify:pre-pr
+```
+
+Both commands must pass before this follow-up can close issue #395. This
+dependency-only remediation does not change product behavior or expand any
+readiness claim.
+
 ## No Surface Expansion Confirmation
 
 No product behavior, migration, API surface, live provider operation,

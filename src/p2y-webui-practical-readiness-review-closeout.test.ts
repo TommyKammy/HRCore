@@ -44,6 +44,9 @@ test("P2Y WebUI practical-use readiness review closeout records candidate verdic
     "Verification Commands",
     'npm test -- --test-name-pattern "P2Y WebUI practical-use readiness review"',
     "npm run verify:pre-pr",
+    "Dependency Audit Follow-Up",
+    "npm audit --audit-level=moderate",
+    "transitive `undici` development dependency",
     "No Surface Expansion Confirmation",
   ]) {
     assert.ok(
