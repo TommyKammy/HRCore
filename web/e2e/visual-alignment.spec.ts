@@ -39,10 +39,20 @@ async function navigate(page: Page, name: RegExp) {
 }
 
 async function assertNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - window.innerWidth,
-  );
-  expect(overflow).toBeLessThanOrEqual(1);
+  const configuredViewportWidth = page.viewportSize()?.width;
+  const report = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    layoutViewportWidth: window.innerWidth,
+    visualViewportWidth: window.visualViewport?.width ?? window.innerWidth,
+  }));
+
+  expect(configuredViewportWidth).toBeDefined();
+  for (const measuredWidth of Object.values(report)) {
+    expect(measuredWidth, JSON.stringify(report)).toBeLessThanOrEqual(
+      (configuredViewportWidth ?? 0) + 1,
+    );
+  }
 }
 
 async function capture(page: Page, testInfo: TestInfo, name: string) {
@@ -52,10 +62,42 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
 
   await page.waitForTimeout(220);
   await mkdir(evidenceDirectory, { recursive: true });
-  await page.screenshot({
+  const screenshot = await page.screenshot({
     path: path.join(evidenceDirectory, `${testInfo.project.name}-${name}.png`),
     fullPage: true,
   });
+  const viewportWidth = page.viewportSize()?.width;
+  const devicePixelRatio = await page.evaluate(() => window.devicePixelRatio);
+  const geometryReport = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+    outOfViewportElements: Array.from(
+      document.body.querySelectorAll<HTMLElement>("*"),
+    )
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          className: String(element.className),
+          left: Math.floor(bounds.left),
+          right: Math.ceil(bounds.right),
+          tagName: element.tagName.toLowerCase(),
+          width: Math.ceil(bounds.width),
+        };
+      })
+      .filter(
+        (element) =>
+          element.left < -1 ||
+          element.right > window.innerWidth + 1 ||
+          element.width > window.innerWidth + 1,
+      )
+      .slice(0, 10),
+  }));
+
+  expect(viewportWidth).toBeDefined();
+  expect(screenshot.readUInt32BE(16), JSON.stringify(geometryReport)).toBe(
+    Math.round((viewportWidth ?? 0) * devicePixelRatio),
+  );
 }
 
 test("matches the bounded practical-use visual contract", async ({

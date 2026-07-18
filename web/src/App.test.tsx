@@ -136,6 +136,9 @@ describe("App shell", () => {
     await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
 
     expect(
+      screen.queryByLabelText("Bounded record ID"),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: /入社開始/ }),
     ).not.toBeInTheDocument();
     expect(
@@ -153,6 +156,7 @@ describe("App shell", () => {
       "hr-ops-support",
     );
 
+    expect(screen.getByLabelText("Bounded record ID")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /future-date apply/ }),
     ).toBeInTheDocument();
@@ -257,12 +261,18 @@ describe("App shell", () => {
       screen.getByRole("button", { name: "Approve request" }),
     ).toBeInTheDocument();
 
+    await userEvent.type(
+      screen.getByLabelText("承認コメント"),
+      "Manager linkage needs confirmation.",
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Return request" }),
     );
     expect(screen.getByText(/is Returned for/)).toBeInTheDocument();
     expect(
-      screen.getByText(/mvp_a\.onboarding\.return decidedBy=approver/),
+      screen.getByText(
+        /mvp_a\.onboarding\.return decidedBy=approver comment="Manager linkage needs confirmation\."/,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("decidedBy=approver")).toBeInTheDocument();
 
@@ -300,7 +310,7 @@ describe("App shell", () => {
     expect(screen.getByText("Submitted")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /mvp_a\.onboarding\.submit, mvp_a\.onboarding\.return decidedBy=approver, mvp_a\.onboarding\.submit/,
+        /mvp_a\.onboarding\.submit, mvp_a\.onboarding\.return decidedBy=approver comment="Manager linkage needs confirmation\.", mvp_a\.onboarding\.submit/,
       ),
     ).toBeInTheDocument();
 
@@ -645,11 +655,17 @@ describe("App shell", () => {
       transferApprovalContext.compareDocumentPosition(approveTransferButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await userEvent.type(
+      screen.getByLabelText("承認コメント"),
+      "  Target   assignment confirmed.  ",
+    );
     await userEvent.click(approveTransferButton);
     expect(screen.getByText(/Transfer is Approved/)).toBeInTheDocument();
     expect(screen.getByText("承認済み")).toBeInTheDocument();
     expect(
-      screen.getByText(/mvp_b\.transfer\.approve decidedBy=approver/),
+      screen.getByText(
+        /mvp_b\.transfer\.approve decidedBy=approver comment="Target assignment confirmed\."/,
+      ),
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Audit/ }));
@@ -678,12 +694,18 @@ describe("App shell", () => {
         returnTerminationButton,
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await userEvent.type(
+      screen.getByLabelText("承認コメント"),
+      'Confirm "retention" handoff.',
+    );
     await userEvent.click(returnTerminationButton);
 
     expect(screen.getByText(/Termination is Returned/)).toBeInTheDocument();
     expect(screen.getByText("差戻し")).toBeInTheDocument();
     expect(
-      screen.getByText(/mvp_c\.termination\.return decidedBy=approver/),
+      screen.getByText(
+        /mvp_c\.termination\.return decidedBy=approver comment="Confirm \\"retention\\" handoff\."/,
+      ),
     ).toBeInTheDocument();
   });
 

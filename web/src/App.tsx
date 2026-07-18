@@ -559,6 +559,19 @@ function getNextStatus(
   return nextStatusByDecision[decision];
 }
 
+function formatDecisionAuditAction(
+  prefix: string,
+  decision: PracticalWorkflowDecision,
+  actorId: BoundedPersonaId,
+  comment: string,
+): string {
+  const normalizedComment = comment.trim().replace(/\s+/g, " ");
+
+  return `${prefix}.${decision} decidedBy=${actorId}${
+    normalizedComment ? ` comment=${JSON.stringify(normalizedComment)}` : ""
+  }`;
+}
+
 function OnboardingWorkflow({
   personaId,
   personaRole,
@@ -2259,9 +2272,15 @@ function ApprovalsWorkflow({
   request: OnboardingRequest | null;
   transferRequest: TransferRequest | null;
   terminationRequest: TerminationRequest | null;
-  onDecision: (decision: OnboardingDecision) => void;
-  onTransferDecision: (decision: PracticalWorkflowDecision) => void;
-  onTerminationDecision: (decision: PracticalWorkflowDecision) => void;
+  onDecision: (decision: OnboardingDecision, comment: string) => void;
+  onTransferDecision: (
+    decision: PracticalWorkflowDecision,
+    comment: string,
+  ) => void;
+  onTerminationDecision: (
+    decision: PracticalWorkflowDecision,
+    comment: string,
+  ) => void;
 }) {
   const [selectedKind, setSelectedKind] = useState<ApprovalKind>(() =>
     getPreferredApprovalKind(request, transferRequest, terminationRequest),
@@ -2311,6 +2330,13 @@ function ApprovalsWorkflow({
     approvalItems.find((item) => item.kind === selectedKind) ??
     approvalItems[0];
   const selectedStatus = getApprovalStatusPresentation(selectedItem.status);
+  const submitDecision = (
+    handler: (decision: PracticalWorkflowDecision, comment: string) => void,
+    decision: PracticalWorkflowDecision,
+  ) => {
+    handler(decision, comment);
+    setComment("");
+  };
 
   return (
     <div className="approval-layout">
@@ -2336,7 +2362,10 @@ function ApprovalsWorkflow({
               key={item.kind}
               type="button"
               aria-pressed={item.kind === selectedKind}
-              onClick={() => setSelectedKind(item.kind)}
+              onClick={() => {
+                setSelectedKind(item.kind);
+                setComment("");
+              }}
             >
               <span>
                 <strong>
@@ -2525,6 +2554,7 @@ function ApprovalsWorkflow({
           承認コメント
           <textarea
             value={comment}
+            maxLength={500}
             placeholder="判断理由を入力（任意）"
             onChange={(event) => setComment(event.target.value)}
           />
@@ -2536,7 +2566,7 @@ function ApprovalsWorkflow({
               className="button-danger"
               type="button"
               disabled={decisionDisabled}
-              onClick={() => onDecision("reject")}
+              onClick={() => submitDecision(onDecision, "reject")}
             >
               Reject request
             </button>
@@ -2544,14 +2574,14 @@ function ApprovalsWorkflow({
               className="button-secondary"
               type="button"
               disabled={decisionDisabled}
-              onClick={() => onDecision("return")}
+              onClick={() => submitDecision(onDecision, "return")}
             >
               Return request
             </button>
             <button
               type="button"
               disabled={decisionDisabled}
-              onClick={() => onDecision("approve")}
+              onClick={() => submitDecision(onDecision, "approve")}
             >
               Approve request
             </button>
@@ -2559,7 +2589,7 @@ function ApprovalsWorkflow({
               className="button-quiet"
               type="button"
               disabled={decisionDisabled}
-              onClick={() => onDecision("cancel")}
+              onClick={() => submitDecision(onDecision, "cancel")}
             >
               Cancel request
             </button>
@@ -2572,7 +2602,7 @@ function ApprovalsWorkflow({
               className="button-danger"
               type="button"
               disabled={transferDecisionDisabled}
-              onClick={() => onTransferDecision("reject")}
+              onClick={() => submitDecision(onTransferDecision, "reject")}
             >
               Reject transfer request
             </button>
@@ -2580,14 +2610,14 @@ function ApprovalsWorkflow({
               className="button-secondary"
               type="button"
               disabled={transferDecisionDisabled}
-              onClick={() => onTransferDecision("return")}
+              onClick={() => submitDecision(onTransferDecision, "return")}
             >
               Return transfer request
             </button>
             <button
               type="button"
               disabled={transferDecisionDisabled}
-              onClick={() => onTransferDecision("approve")}
+              onClick={() => submitDecision(onTransferDecision, "approve")}
             >
               Approve transfer request
             </button>
@@ -2595,7 +2625,7 @@ function ApprovalsWorkflow({
               className="button-quiet"
               type="button"
               disabled={transferDecisionDisabled}
-              onClick={() => onTransferDecision("cancel")}
+              onClick={() => submitDecision(onTransferDecision, "cancel")}
             >
               Cancel transfer request
             </button>
@@ -2608,7 +2638,7 @@ function ApprovalsWorkflow({
               className="button-danger"
               type="button"
               disabled={terminationDecisionDisabled}
-              onClick={() => onTerminationDecision("reject")}
+              onClick={() => submitDecision(onTerminationDecision, "reject")}
             >
               Reject termination request
             </button>
@@ -2616,14 +2646,14 @@ function ApprovalsWorkflow({
               className="button-secondary"
               type="button"
               disabled={terminationDecisionDisabled}
-              onClick={() => onTerminationDecision("return")}
+              onClick={() => submitDecision(onTerminationDecision, "return")}
             >
               Return termination request
             </button>
             <button
               type="button"
               disabled={terminationDecisionDisabled}
-              onClick={() => onTerminationDecision("approve")}
+              onClick={() => submitDecision(onTerminationDecision, "approve")}
             >
               Approve termination request
             </button>
@@ -2631,7 +2661,7 @@ function ApprovalsWorkflow({
               className="button-quiet"
               type="button"
               disabled={terminationDecisionDisabled}
-              onClick={() => onTerminationDecision("cancel")}
+              onClick={() => submitDecision(onTerminationDecision, "cancel")}
             >
               Cancel termination request
             </button>
@@ -2817,7 +2847,7 @@ function AppShell() {
     visibleAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
 
   const decideOnboardingRequest = useCallback(
-    (decision: OnboardingDecision) => {
+    (decision: OnboardingDecision, comment: string) => {
       if (
         !onboardingRequest ||
         onboardingRequest.status !== "submitted" ||
@@ -2834,7 +2864,12 @@ function AppShell() {
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...onboardingRequest.auditActions,
-          `mvp_a.onboarding.${decision} decidedBy=${selectedPersonaId}`,
+          formatDecisionAuditAction(
+            "mvp_a.onboarding",
+            decision,
+            selectedPersonaId,
+            comment,
+          ),
         ],
       });
     },
@@ -2842,7 +2877,7 @@ function AppShell() {
   );
 
   const decideTransferRequest = useCallback(
-    (decision: PracticalWorkflowDecision) => {
+    (decision: PracticalWorkflowDecision, comment: string) => {
       if (
         !transferRequest ||
         transferRequest.status !== "submitted" ||
@@ -2859,7 +2894,12 @@ function AppShell() {
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...transferRequest.auditActions,
-          `mvp_b.transfer.${decision} decidedBy=${selectedPersonaId}`,
+          formatDecisionAuditAction(
+            "mvp_b.transfer",
+            decision,
+            selectedPersonaId,
+            comment,
+          ),
         ],
       });
     },
@@ -2867,7 +2907,7 @@ function AppShell() {
   );
 
   const decideTerminationRequest = useCallback(
-    (decision: PracticalWorkflowDecision) => {
+    (decision: PracticalWorkflowDecision, comment: string) => {
       if (
         !terminationRequest ||
         terminationRequest.status !== "submitted" ||
@@ -2884,7 +2924,12 @@ function AppShell() {
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...terminationRequest.auditActions,
-          `mvp_c.termination.${decision} decidedBy=${selectedPersonaId}`,
+          formatDecisionAuditAction(
+            "mvp_c.termination",
+            decision,
+            selectedPersonaId,
+            comment,
+          ),
         ],
       });
     },
@@ -2912,12 +2957,15 @@ function AppShell() {
 
   const submitDirectLookup = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!canNavigateTo("employee")) {
+      setLookupMessage("このpersonaでは従業員fixtureを参照できません。");
+      return;
+    }
+
     const normalized = directLookup.trim().toUpperCase();
 
-    if (
-      normalized === "EMP-000128" &&
-      visibleAreas.some((area) => area.id === "employee")
-    ) {
+    if (normalized === "EMP-000128") {
       setActiveRoute("employee");
       setLookupMessage("EMP-000128 を bounded fixture から表示しました。");
       return;
@@ -3147,7 +3195,7 @@ function AppShell() {
               <p>{displayArea.summary}</p>
             </div>
             <div className="topbar-tools">
-              {personaDecision.allowed ? (
+              {canNavigateTo("employee") ? (
                 <form className="direct-lookup" onSubmit={submitDirectLookup}>
                   <Search size={17} aria-hidden="true" />
                   <label className="sr-only" htmlFor="direct-record-lookup">
