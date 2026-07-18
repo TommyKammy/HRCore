@@ -173,6 +173,26 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("reports an empty approval queue when no requests exist", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+    await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
+
+    expect(screen.getByLabelText("0件の承認待ち")).toBeInTheDocument();
+    expect(screen.getByText("起票者: - / 提出: -")).toBeInTheDocument();
+  });
+
   it("supports bounded onboarding create, inspection, evidence, and approver decisions", async () => {
     vi.stubGlobal(
       "fetch",
@@ -241,6 +261,8 @@ describe("App shell", () => {
     expect(screen.getByText("Audit evidence")).toBeInTheDocument();
     expect(screen.getByText("correlation-onboarding-001")).toBeInTheDocument();
     expect(screen.getByText("reviewed.hire@***")).toBeInTheDocument();
+    expect(screen.getByText("Step 4/5")).toBeInTheDocument();
+    expect(screen.getByText("承認待ち")).toBeInTheDocument();
 
     await userEvent.clear(screen.getByLabelText("Employment code"));
     await userEvent.type(
@@ -259,6 +281,10 @@ describe("App shell", () => {
     await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
     expect(
       screen.getByRole("button", { name: "Approve request" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("1件の承認待ち")).toBeInTheDocument();
+    expect(
+      screen.getByText("起票者: HR operator / 提出: 2026/05/21 09:00"),
     ).toBeInTheDocument();
 
     await userEvent.type(
@@ -293,6 +319,8 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Work email")).toHaveValue(
       "reviewed.hire@example.invalid",
     );
+    expect(screen.getByText("Step 2/5")).toBeInTheDocument();
+    expect(screen.getByText("差戻し")).toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText("Department"));
     await userEvent.type(
       screen.getByLabelText("Department"),
@@ -329,6 +357,8 @@ describe("App shell", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /Onboarding/ }));
     expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getByText("Step 5/5")).toBeInTheDocument();
+    expect(screen.getByText("承認済み")).toBeInTheDocument();
     expect(screen.getByText("Apply status")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -563,6 +593,8 @@ describe("App shell", () => {
     expect(screen.getByText("Assignment close evidence")).toBeInTheDocument();
     expect(screen.getByText("Okta transfer projection")).toBeInTheDocument();
     expect(screen.getByText("correlation-transfer-001")).toBeInTheDocument();
+    expect(screen.getByText("Step 4/5")).toBeInTheDocument();
+    expect(screen.getByText("承認待ち")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Termination/ }));
     expect(
@@ -635,6 +667,10 @@ describe("App shell", () => {
     expect(
       screen.getByRole("heading", { name: "Transfer approvals" }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("2件の承認待ち")).toBeInTheDocument();
+    expect(
+      screen.getByText("起票者: HR operator / 提出: 2026/06/15 09:00"),
+    ).toBeInTheDocument();
     const transferApprovalContext = screen.getByRole("group", {
       name: "Transfer approval context",
     });
@@ -667,11 +703,15 @@ describe("App shell", () => {
         /mvp_b\.transfer\.approve decidedBy=approver comment="Target assignment confirmed\."/,
       ),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("1件の承認待ち")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Audit/ }));
     await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
     expect(
       screen.getByRole("heading", { name: "Termination approvals" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("起票者: HR operator / 提出: 2026/08/01 09:00"),
     ).toBeInTheDocument();
     const terminationApprovalContext = screen.getByRole("group", {
       name: "Termination approval context",
@@ -707,6 +747,7 @@ describe("App shell", () => {
         /mvp_c\.termination\.return decidedBy=approver comment="Confirm \\"retention\\" handoff\."/,
       ),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("0件の承認待ち")).toBeInTheDocument();
   });
 
   it("uses the active CSV actor in audit evidence", async () => {

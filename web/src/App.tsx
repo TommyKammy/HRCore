@@ -83,6 +83,7 @@ type OnboardingDecision = "approve" | "return" | "reject" | "cancel";
 type PracticalWorkflowStatus = OnboardingStatus;
 type PracticalWorkflowDecision = OnboardingDecision;
 type ApprovalKind = "onboarding" | "transfer" | "termination";
+type ProcedureKind = ApprovalKind;
 
 interface OnboardingFormState {
   displayName: string;
@@ -395,6 +396,18 @@ function formatStatus(status: string): string {
   return status[0].toUpperCase() + status.slice(1);
 }
 
+function formatRequestedAt(requestedAt: string): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Tokyo",
+  }).format(new Date(requestedAt));
+}
+
 function getPreferredApprovalKind(
   request: OnboardingRequest | null,
   transferRequest: TransferRequest | null,
@@ -435,6 +448,36 @@ function getApprovalStatusPresentation(
     case "empty":
       return { label: "fixture", tone: "" };
   }
+}
+
+function getProcedureProgress(
+  procedure: ProcedureKind,
+  status: PracticalWorkflowStatus | null,
+): { currentStep: number; statusLabel: string } {
+  const inputStepByProcedure: Record<ProcedureKind, number> = {
+    onboarding: 2,
+    transfer: 3,
+    termination: 2,
+  };
+  const inputStep = inputStepByProcedure[procedure];
+
+  if (!status) {
+    return { currentStep: inputStep, statusLabel: "下書き保存済" };
+  }
+
+  const currentStep =
+    status === "approved"
+      ? 5
+      : status === "submitted" ||
+          status === "rejected" ||
+          status === "cancelled"
+        ? 4
+        : inputStep;
+
+  return {
+    currentStep,
+    statusLabel: getApprovalStatusPresentation(status).label,
+  };
 }
 
 function isValidWorkEmail(value: string): boolean {
@@ -2299,6 +2342,7 @@ function ApprovalsWorkflow({
     effectiveDate: string;
     priority: "高" | "中" | "低";
     status: PracticalWorkflowStatus | "empty";
+    request: OnboardingRequest | TransferRequest | TerminationRequest | null;
   }> = [
     {
       kind: "onboarding",
@@ -2307,6 +2351,7 @@ function ApprovalsWorkflow({
       effectiveDate: request?.form.startDate ?? "2026/05/01",
       priority: "低",
       status: request?.status ?? "empty",
+      request,
     },
     {
       kind: "transfer",
@@ -2315,6 +2360,7 @@ function ApprovalsWorkflow({
       effectiveDate: transferRequest?.form.effectiveDate ?? "2026/05/01",
       priority: "高",
       status: transferRequest?.status ?? "empty",
+      request: transferRequest,
     },
     {
       kind: "termination",
@@ -2323,6 +2369,7 @@ function ApprovalsWorkflow({
       effectiveDate: terminationRequest?.form.effectiveDate ?? "2026/04/26",
       priority: "中",
       status: terminationRequest?.status ?? "empty",
+      request: terminationRequest,
     },
   ];
 
@@ -2330,6 +2377,17 @@ function ApprovalsWorkflow({
     approvalItems.find((item) => item.kind === selectedKind) ??
     approvalItems[0];
   const selectedStatus = getApprovalStatusPresentation(selectedItem.status);
+  const pendingApprovalCount = approvalItems.filter(
+    (item) => item.status === "submitted",
+  ).length;
+  const selectedSubmitter = selectedItem.request
+    ? (boundedPersonas.find(
+        (persona) => persona.id === selectedItem.request?.submittedByActorId,
+      )?.label ?? selectedItem.request.submittedByActorId)
+    : "-";
+  const selectedSubmittedAt = selectedItem.request
+    ? formatRequestedAt(selectedItem.request.requestedAt)
+    : "-";
   const submitDecision = (
     handler: (decision: PracticalWorkflowDecision, comment: string) => void,
     decision: PracticalWorkflowDecision,
@@ -2349,7 +2407,12 @@ function ApprovalsWorkflow({
             <p className="context-label">Bounded approver queue</p>
             <h2 id="approval-list">承認待ち一覧</h2>
           </div>
-          <span className="queue-count">3</span>
+          <span
+            className="queue-count"
+            aria-label={`${pendingApprovalCount}件の承認待ち`}
+          >
+            {pendingApprovalCount}
+          </span>
         </div>
         <div className="approval-items">
           {approvalItems.map((item) => (
@@ -2396,7 +2459,9 @@ function ApprovalsWorkflow({
             <h2 id="approval-detail">
               {selectedItem.title} / {selectedItem.subject}
             </h2>
-            <p>起票者: HR operator / 提出: 2026/04/21 09:18</p>
+            <p>
+              起票者: {selectedSubmitter} / 提出: {selectedSubmittedAt}
+            </p>
           </div>
           <span className={`soft-badge ${selectedStatus.tone}`.trim()}>
             {selectedStatus.label}
@@ -2684,17 +2749,17 @@ function LoadingState() {
 
 function ProcedureFrame({
   procedure,
+  requestStatus,
   children,
 }: {
-  procedure: "onboarding" | "transfer" | "termination";
+  procedure: ProcedureKind;
+  requestStatus: PracticalWorkflowStatus | null;
   children: ReactNode;
 }) {
-  const currentStepByProcedure = {
-    onboarding: 2,
-    transfer: 3,
-    termination: 2,
-  } as const;
-  const currentStep = currentStepByProcedure[procedure];
+  const { currentStep, statusLabel } = getProcedureProgress(
+    procedure,
+    requestStatus,
+  );
   const steps = ["対象者", "入力", "影響確認", "承認", "適用"];
 
   return (
@@ -2721,7 +2786,7 @@ function ProcedureFrame({
         </ol>
         <div className="procedure-status">
           <span className="utility-badge">Step {currentStep}/5</span>
-          <span className="utility-badge utility-muted">下書き保存済</span>
+          <span className="utility-badge utility-muted">{statusLabel}</span>
         </div>
       </div>
       {children}
@@ -3004,7 +3069,10 @@ function AppShell() {
 
     if (activeArea?.id === "onboarding") {
       return (
-        <ProcedureFrame procedure="onboarding">
+        <ProcedureFrame
+          procedure="onboarding"
+          requestStatus={onboardingRequest?.status ?? null}
+        >
           <OnboardingWorkflow
             personaId={selectedPersonaId}
             personaRole={personaDecision.persona?.role}
@@ -3017,7 +3085,10 @@ function AppShell() {
 
     if (activeArea?.id === "transfer") {
       return (
-        <ProcedureFrame procedure="transfer">
+        <ProcedureFrame
+          procedure="transfer"
+          requestStatus={transferRequest?.status ?? null}
+        >
           <TransferWorkflow
             personaId={selectedPersonaId}
             personaRole={personaDecision.persona?.role}
@@ -3030,7 +3101,10 @@ function AppShell() {
 
     if (activeArea?.id === "termination") {
       return (
-        <ProcedureFrame procedure="termination">
+        <ProcedureFrame
+          procedure="termination"
+          requestStatus={terminationRequest?.status ?? null}
+        >
           <TerminationWorkflow
             personaId={selectedPersonaId}
             personaRole={personaDecision.persona?.role}
