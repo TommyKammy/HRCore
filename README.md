@@ -67,6 +67,8 @@ The final P2X-04 production-like prerequisite decomposition closeout is recorded
 The P2Y-00 WebUI practical-use planning and authorization map is recorded in [P2Y-00 WebUI Practical-Use Scope and Authorization Gate](docs/p2y-00-webui-practical-use-scope-authorization-gate.md).
 The CHILD-P2Y-05 bounded browser UAT package is recorded in [P2Y WebUI Practical UAT Package](docs/p2y-webui-practical-uat-package.md).
 The final CHILD-P2Y-06 WebUI practical-use candidate review is recorded in [P2Y WebUI Practical-Use Readiness Review Closeout](docs/p2y-webui-practical-readiness-review-closeout.md).
+The bounded visual redesign contract is recorded in [P2Z WebUI Visual Alignment Contract](docs/p2z-webui-visual-alignment-contract.md).
+The browser-based visual UAT scenarios and screenshot matrix are recorded in [P2Z WebUI Visual UAT Package](docs/p2z-webui-visual-uat-package.md).
 
 Current P2X bounded status: P2X-02 is completed and Accepted as bounded
 practical-use follow-up evidence only. The completed P2X-02 evidence set is the
@@ -292,6 +294,7 @@ and branch protection are added in issue #64. It runs:
 - WebUI build: `npm run build:web`
 - Smoke tests: `npm test`
 - WebUI smoke tests: `npm run test:web`
+- WebUI desktop/mobile browser smoke: `npm run test:web:e2e`
 - Formatting check: `npm run format:check`
 - Dependency audit: `npm run audit`
 - Drizzle migration/config check: `npm run db:check`
@@ -309,6 +312,7 @@ npm run build
 npm run build:web
 npm test
 npm run test:web
+npm run test:web:e2e
 npm run format:check
 npm run audit
 npm run db:check
@@ -342,3 +346,15 @@ closed until a repository-owned local persona is selected. It is not production
 auth, not live IdP/Okta/provider integration, and not production
 authorization/RLS. The shell connects to the repository-owned OpenAPI contract
 only for bounded route and contract status scaffolding.
+
+Install Playwright Chromium once before the browser smoke:
+
+```sh
+npx playwright install chromium
+```
+
+Regenerate the repository-owned desktop and mobile visual evidence with:
+
+```sh
+npm run capture:web:evidence
+```

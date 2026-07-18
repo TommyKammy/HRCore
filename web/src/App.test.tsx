@@ -47,8 +47,9 @@ describe("App shell", () => {
     });
     expect(screen.getByRole("navigation")).toHaveTextContent("Onboarding");
     expect(
-      screen.getByText("No bounded queue records yet"),
+      screen.getByRole("region", { name: "本日の業務サマリー" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("連携状況")).toBeInTheDocument();
   });
 
   it("retries a failed contract load from the guarded WebUI surface", async () => {
@@ -595,7 +596,17 @@ describe("App shell", () => {
       transferApprovalContext.compareDocumentPosition(approveTransferButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await userEvent.click(approveTransferButton);
+    expect(screen.getByText(/Transfer is Approved/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/mvp_b\.transfer\.approve decidedBy=approver/),
+    ).toBeInTheDocument();
 
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /退職 \/ MVP-C Termination One/,
+      }),
+    );
     const terminationApprovalContext = screen.getByRole("group", {
       name: "Termination approval context",
     });
@@ -617,14 +628,9 @@ describe("App shell", () => {
         returnTerminationButton,
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    await userEvent.click(approveTransferButton);
     await userEvent.click(returnTerminationButton);
 
-    expect(screen.getByText(/Transfer is Approved/)).toBeInTheDocument();
     expect(screen.getByText(/Termination is Returned/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/mvp_b\.transfer\.approve decidedBy=approver/),
-    ).toBeInTheDocument();
     expect(
       screen.getByText(/mvp_c\.termination\.return decidedBy=approver/),
     ).toBeInTheDocument();

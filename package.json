@@ -17,7 +17,9 @@
     "preview:web": "vite preview --host 127.0.0.1",
     "test": "npm run build && node --test \"dist/**/*.test.js\"",
     "test:web": "vitest run",
-    "verify:pre-pr": "npm run build && npm run build:web && npm run policy:mvp-a && npm test && npm run test:web && npm run format:check && npm run audit && npm run db:check"
+    "test:web:e2e": "playwright test",
+    "capture:web:evidence": "CAPTURE_WEB_EVIDENCE=1 playwright test --project=desktop-chromium --project=tablet-chromium --project=mobile-chromium",
+    "verify:pre-pr": "npm run build && npm run build:web && npm run policy:mvp-a && npm test && npm run test:web && npm run test:web:e2e && npm run format:check && npm run audit && npm run db:check"
   },
   "engines": {
     "node": "^22.13.0 || >=24.0.0"
@@ -25,10 +27,12 @@
   "dependencies": {
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",
+    "lucide-react": "^1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
