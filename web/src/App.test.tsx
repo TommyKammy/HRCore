@@ -120,6 +120,55 @@ describe("App shell", () => {
     );
   });
 
+  it("renders only shortcuts allowed for the active persona", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+
+    expect(
+      screen.queryByRole("button", { name: /入社開始/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /異動適用/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /future-date apply/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /異動手続き \/ 山田 太郎/ }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+
+    expect(
+      screen.getByRole("button", { name: /future-date apply/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /入社開始/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /異動適用/ }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    expect(
+      screen.queryByRole("button", { name: "異動手続きを開く" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("supports bounded onboarding create, inspection, evidence, and approver decisions", async () => {
     vi.stubGlobal(
       "fetch",
@@ -598,15 +647,16 @@ describe("App shell", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     await userEvent.click(approveTransferButton);
     expect(screen.getByText(/Transfer is Approved/)).toBeInTheDocument();
+    expect(screen.getByText("承認済み")).toBeInTheDocument();
     expect(
       screen.getByText(/mvp_b\.transfer\.approve decidedBy=approver/),
     ).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: /退職 \/ MVP-C Termination One/,
-      }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: /Audit/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Approvals/ }));
+    expect(
+      screen.getByRole("heading", { name: "Termination approvals" }),
+    ).toBeInTheDocument();
     const terminationApprovalContext = screen.getByRole("group", {
       name: "Termination approval context",
     });
@@ -631,6 +681,7 @@ describe("App shell", () => {
     await userEvent.click(returnTerminationButton);
 
     expect(screen.getByText(/Termination is Returned/)).toBeInTheDocument();
+    expect(screen.getByText("差戻し")).toBeInTheDocument();
     expect(
       screen.getByText(/mvp_c\.termination\.return decidedBy=approver/),
     ).toBeInTheDocument();

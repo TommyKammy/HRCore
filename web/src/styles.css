@@ -735,6 +735,10 @@ textarea {
   color: var(--warning) !important;
 }
 
+.state-danger {
+  color: var(--danger) !important;
+}
+
 .employee-detail {
   display: grid;
   gap: 14px;

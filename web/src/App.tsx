@@ -82,6 +82,7 @@ type OnboardingStatus =
 type OnboardingDecision = "approve" | "return" | "reject" | "cancel";
 type PracticalWorkflowStatus = OnboardingStatus;
 type PracticalWorkflowDecision = OnboardingDecision;
+type ApprovalKind = "onboarding" | "transfer" | "termination";
 
 interface OnboardingFormState {
   displayName: string;
@@ -392,6 +393,48 @@ function EmptyState() {
 
 function formatStatus(status: string): string {
   return status[0].toUpperCase() + status.slice(1);
+}
+
+function getPreferredApprovalKind(
+  request: OnboardingRequest | null,
+  transferRequest: TransferRequest | null,
+  terminationRequest: TerminationRequest | null,
+): ApprovalKind {
+  if (transferRequest?.status === "submitted") {
+    return "transfer";
+  }
+  if (terminationRequest?.status === "submitted") {
+    return "termination";
+  }
+  if (request?.status === "submitted") {
+    return "onboarding";
+  }
+  if (transferRequest) {
+    return "transfer";
+  }
+  if (terminationRequest) {
+    return "termination";
+  }
+  return "onboarding";
+}
+
+function getApprovalStatusPresentation(
+  status: PracticalWorkflowStatus | "empty",
+): { label: string; tone: string } {
+  switch (status) {
+    case "submitted":
+      return { label: "承認待ち", tone: "state-warning" };
+    case "approved":
+      return { label: "承認済み", tone: "state-success" };
+    case "returned":
+      return { label: "差戻し", tone: "state-warning" };
+    case "rejected":
+      return { label: "却下", tone: "state-danger" };
+    case "cancelled":
+      return { label: "取消済み", tone: "state-danger" };
+    case "empty":
+      return { label: "fixture", tone: "" };
+  }
 }
 
 function isValidWorkEmail(value: string): boolean {
@@ -1714,12 +1757,14 @@ function DashboardView({
   terminationRequest,
   opsDlqEvidence,
   onNavigate,
+  canNavigate,
 }: {
   onboardingRequest: OnboardingRequest | null;
   transferRequest: TransferRequest | null;
   terminationRequest: TerminationRequest | null;
   opsDlqEvidence: OpsDlqEvidence;
   onNavigate: (route: RouteId) => void;
+  canNavigate: (route: RouteId) => boolean;
 }) {
   const requests = [
     onboardingRequest,
@@ -1767,6 +1812,33 @@ function DashboardView({
       route: "ops",
     },
   ];
+  const visibleSchedule = schedule.filter((item) => canNavigate(item.route));
+  const drafts: Array<{
+    title: string;
+    detail: string;
+    time: string;
+    route: RouteId;
+  }> = [
+    {
+      title: "異動手続き / 山田 太郎",
+      detail: "営業本部からコーポレートIT",
+      time: "09:18",
+      route: "transfer",
+    },
+    {
+      title: "退職手続き / 鈴木 一郎",
+      detail: "有効日 2026/08/31",
+      time: "08:42",
+      route: "termination",
+    },
+    {
+      title: "入社手続き / 田中 美咲",
+      detail: "必須項目を確認中",
+      time: "昨日 18:11",
+      route: "onboarding",
+    },
+  ];
+  const visibleDrafts = drafts.filter((item) => canNavigate(item.route));
 
   return (
     <div className="dashboard-view">
@@ -1814,21 +1886,27 @@ function DashboardView({
             <CalendarClock size={20} aria-hidden="true" />
           </div>
           <div className="schedule-list">
-            {schedule.map((item) => (
-              <button
-                className="schedule-row"
-                key={`${item.time}-${item.title}`}
-                type="button"
-                onClick={() => onNavigate(item.route)}
-              >
-                <time>{item.time}</time>
-                <span>
-                  <strong>{item.title}</strong>
-                  <small>{item.meta}</small>
-                </span>
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
-            ))}
+            {visibleSchedule.length > 0 ? (
+              visibleSchedule.map((item) => (
+                <button
+                  className="schedule-row"
+                  key={`${item.time}-${item.title}`}
+                  type="button"
+                  onClick={() => onNavigate(item.route)}
+                >
+                  <time>{item.time}</time>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.meta}</small>
+                  </span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              ))
+            ) : (
+              <p className="muted">
+                この persona で利用できる予定導線はありません。
+              </p>
+            )}
           </div>
         </section>
 
@@ -1875,27 +1953,25 @@ function DashboardView({
             </div>
           </div>
           <div className="draft-list">
-            <button type="button" onClick={() => onNavigate("transfer")}>
-              <span>
-                <strong>異動手続き / 山田 太郎</strong>
-                <small>営業本部からコーポレートIT</small>
-              </span>
-              <time>09:18</time>
-            </button>
-            <button type="button" onClick={() => onNavigate("termination")}>
-              <span>
-                <strong>退職手続き / 鈴木 一郎</strong>
-                <small>有効日 2026/08/31</small>
-              </span>
-              <time>08:42</time>
-            </button>
-            <button type="button" onClick={() => onNavigate("onboarding")}>
-              <span>
-                <strong>入社手続き / 田中 美咲</strong>
-                <small>必須項目を確認中</small>
-              </span>
-              <time>昨日 18:11</time>
-            </button>
+            {visibleDrafts.length > 0 ? (
+              visibleDrafts.map((item) => (
+                <button
+                  key={item.route}
+                  type="button"
+                  onClick={() => onNavigate(item.route)}
+                >
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
+                  </span>
+                  <time>{item.time}</time>
+                </button>
+              ))
+            ) : (
+              <p className="muted">
+                この persona で利用できる下書き導線はありません。
+              </p>
+            )}
           </div>
         </section>
       </div>
@@ -1906,7 +1982,7 @@ function DashboardView({
 function EmployeeDetailView({
   onOpenTransfer,
 }: {
-  onOpenTransfer: () => void;
+  onOpenTransfer: (() => void) | null;
 }) {
   return (
     <div className="employee-detail">
@@ -1924,14 +2000,16 @@ function EmployeeDetailView({
             <span className="soft-badge">会社メール連携済</span>
           </div>
         </div>
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={onOpenTransfer}
-        >
-          異動手続きを開く
-          <ArrowRight size={17} aria-hidden="true" />
-        </button>
+        {onOpenTransfer ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onOpenTransfer}
+          >
+            異動手続きを開く
+            <ArrowRight size={17} aria-hidden="true" />
+          </button>
+        ) : null}
       </section>
 
       <div className="employee-grid">
@@ -2185,13 +2263,9 @@ function ApprovalsWorkflow({
   onTransferDecision: (decision: PracticalWorkflowDecision) => void;
   onTerminationDecision: (decision: PracticalWorkflowDecision) => void;
 }) {
-  type ApprovalKind = "onboarding" | "transfer" | "termination";
-  const initialKind: ApprovalKind = transferRequest
-    ? "transfer"
-    : terminationRequest
-      ? "termination"
-      : "onboarding";
-  const [selectedKind, setSelectedKind] = useState<ApprovalKind>(initialKind);
+  const [selectedKind, setSelectedKind] = useState<ApprovalKind>(() =>
+    getPreferredApprovalKind(request, transferRequest, terminationRequest),
+  );
   const [comment, setComment] = useState("");
   const decisionDisabled = !approverActorId || request?.status !== "submitted";
   const transferDecisionDisabled =
@@ -2236,6 +2310,7 @@ function ApprovalsWorkflow({
   const selectedItem =
     approvalItems.find((item) => item.kind === selectedKind) ??
     approvalItems[0];
+  const selectedStatus = getApprovalStatusPresentation(selectedItem.status);
 
   return (
     <div className="approval-layout">
@@ -2294,7 +2369,9 @@ function ApprovalsWorkflow({
             </h2>
             <p>起票者: HR operator / 提出: 2026/04/21 09:18</p>
           </div>
-          <span className="soft-badge state-warning">承認待ち</span>
+          <span className={`soft-badge ${selectedStatus.tone}`.trim()}>
+            {selectedStatus.label}
+          </span>
         </div>
 
         {selectedKind === "onboarding" ? (
@@ -2823,8 +2900,11 @@ function AppShell() {
     }
   }, [activeRoute, visibleAreas]);
 
+  const canNavigateTo = (route: RouteId) =>
+    visibleAreas.some((area) => area.id === route);
+
   const navigateTo = (route: RouteId) => {
-    if (visibleAreas.some((area) => area.id === route)) {
+    if (canNavigateTo(route)) {
       setActiveRoute(route);
       setMobileNavOpen(false);
     }
@@ -2859,13 +2939,18 @@ function AppShell() {
           terminationRequest={terminationRequest}
           opsDlqEvidence={opsDlqEvidence}
           onNavigate={navigateTo}
+          canNavigate={canNavigateTo}
         />
       );
     }
 
     if (activeArea?.id === "employee") {
       return (
-        <EmployeeDetailView onOpenTransfer={() => navigateTo("transfer")} />
+        <EmployeeDetailView
+          onOpenTransfer={
+            canNavigateTo("transfer") ? () => navigateTo("transfer") : null
+          }
+        />
       );
     }
 
