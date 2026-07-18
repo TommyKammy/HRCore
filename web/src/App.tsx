@@ -1,11 +1,41 @@
 import {
   type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import {
+  ArrowRight,
+  ArrowRightLeft,
+  BadgeCheck,
+  Bell,
+  BriefcaseBusiness,
+  CalendarClock,
+  Check,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  ClipboardList,
+  Cloud,
+  FileSpreadsheet,
+  Headphones,
+  LayoutDashboard,
+  LockKeyhole,
+  Menu,
+  Search,
+  Settings2,
+  ShieldCheck,
+  UserPlus,
+  UserRound,
+  UserRoundX,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   type ApiContract,
@@ -21,6 +51,7 @@ import {
 
 type RouteId =
   | "queue"
+  | "employee"
   | "onboarding"
   | "transfer"
   | "termination"
@@ -34,8 +65,11 @@ type RouteId =
 interface PlannedArea {
   id: RouteId;
   label: string;
+  title: string;
+  eyebrow: string;
   status: "available" | "planned";
   summary: string;
+  icon: LucideIcon;
 }
 
 type OnboardingStatus =
@@ -48,6 +82,8 @@ type OnboardingStatus =
 type OnboardingDecision = "approve" | "return" | "reject" | "cancel";
 type PracticalWorkflowStatus = OnboardingStatus;
 type PracticalWorkflowDecision = OnboardingDecision;
+type ApprovalKind = "onboarding" | "transfer" | "termination";
+type ProcedureKind = ApprovalKind;
 
 interface OnboardingFormState {
   displayName: string;
@@ -245,63 +281,101 @@ const plannedAreas: readonly PlannedArea[] = [
   {
     id: "queue",
     label: "Work queue",
+    title: "ダッシュボード",
+    eyebrow: "今日の業務",
     status: "available",
-    summary:
-      "Synthetic drafts, submitted requests, and review tasks start here.",
+    summary: "今日の手続き、連携状況、未処理タスクを確認します。",
+    icon: LayoutDashboard,
+  },
+  {
+    id: "employee",
+    label: "Employees",
+    title: "従業員詳細",
+    eyebrow: "Bounded employee record",
+    status: "available",
+    summary: "状態、履歴、外部ID、次回予定を1画面で確認します。",
+    icon: Users,
   },
   {
     id: "onboarding",
     label: "Onboarding",
+    title: "入社手続き",
+    eyebrow: "MVP-A lifecycle procedure",
     status: "available",
-    summary: "Bounded MVP-A new-hire request preparation and validation.",
+    summary: "入社情報を入力し、連携影響を確認して申請します。",
+    icon: UserPlus,
   },
   {
     id: "transfer",
     label: "Transfer",
+    title: "異動手続き",
+    eyebrow: "MVP-B lifecycle procedure",
     status: "available",
-    summary: "Bounded MVP-B assignment-change request preparation.",
+    summary: "入力しながら人事情報とIdPへの影響を確認します。",
+    icon: ArrowRightLeft,
   },
   {
     id: "termination",
     label: "Termination",
+    title: "退職手続き",
+    eyebrow: "MVP-C lifecycle procedure",
     status: "available",
-    summary: "Bounded MVP-C termination request preparation.",
+    summary: "退職、雇用終了、アカウント無効化の影響を確認します。",
+    icon: UserRoundX,
   },
   {
     id: "csv",
     label: "CSV dry-run",
+    title: "CSV dry-run",
+    eyebrow: "MVP-D bounded import",
     status: "planned",
-    summary: "Dry-run row diffs and denied export evidence remain synthetic.",
+    summary: "synthetic CSVの差分と適用前確認を行います。",
+    icon: FileSpreadsheet,
   },
   {
     id: "approvals",
     label: "Approvals",
+    title: "承認受信箱",
+    eyebrow: "Bounded approval decisions",
     status: "planned",
-    summary: "Decision inbox for approved bounded personas only.",
+    summary: "承認待ち案件を一覧と詳細で確認します。",
+    icon: BadgeCheck,
   },
   {
     id: "ops",
     label: "Ops/DLQ",
+    title: "Job monitor",
+    eyebrow: "Synthetic runtime evidence",
     status: "planned",
-    summary: "Local job status and reasoned failed-row decisions.",
+    summary: "ジョブ状態とDLQの判断対象を確認します。",
+    icon: BriefcaseBusiness,
   },
   {
     id: "audit",
     label: "Audit",
+    title: "監査証跡",
+    eyebrow: "Single correlation boundary",
     status: "planned",
-    summary: "Single-correlation evidence review with no broad search.",
+    summary: "単一correlationに限定して証跡を確認します。",
+    icon: ShieldCheck,
   },
   {
     id: "support",
     label: "Support review",
+    title: "サポートレビュー",
+    eyebrow: "Bounded support notes",
     status: "planned",
-    summary: "Reasoned support notes anchored to one bounded subject.",
+    summary: "対象者に紐づく理由付きサポート記録を確認します。",
+    icon: Headphones,
   },
   {
     id: "admin",
     label: "Admin",
+    title: "設定",
+    eyebrow: "Non-production labels only",
     status: "planned",
-    summary: "Non-production UI labels and route visibility only.",
+    summary: "非本番の表示とroute visibilityのみを確認します。",
+    icon: Settings2,
   },
 ];
 
@@ -320,6 +394,90 @@ function EmptyState() {
 
 function formatStatus(status: string): string {
   return status[0].toUpperCase() + status.slice(1);
+}
+
+function formatRequestedAt(requestedAt: string): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Tokyo",
+  }).format(new Date(requestedAt));
+}
+
+function getPreferredApprovalKind(
+  request: OnboardingRequest | null,
+  transferRequest: TransferRequest | null,
+  terminationRequest: TerminationRequest | null,
+): ApprovalKind {
+  if (transferRequest?.status === "submitted") {
+    return "transfer";
+  }
+  if (terminationRequest?.status === "submitted") {
+    return "termination";
+  }
+  if (request?.status === "submitted") {
+    return "onboarding";
+  }
+  if (transferRequest) {
+    return "transfer";
+  }
+  if (terminationRequest) {
+    return "termination";
+  }
+  return "onboarding";
+}
+
+function getApprovalStatusPresentation(
+  status: PracticalWorkflowStatus | "empty",
+): { label: string; tone: string } {
+  switch (status) {
+    case "submitted":
+      return { label: "承認待ち", tone: "state-warning" };
+    case "approved":
+      return { label: "承認済み", tone: "state-success" };
+    case "returned":
+      return { label: "差戻し", tone: "state-warning" };
+    case "rejected":
+      return { label: "却下", tone: "state-danger" };
+    case "cancelled":
+      return { label: "取消済み", tone: "state-danger" };
+    case "empty":
+      return { label: "fixture", tone: "" };
+  }
+}
+
+function getProcedureProgress(
+  procedure: ProcedureKind,
+  status: PracticalWorkflowStatus | null,
+): { currentStep: number; statusLabel: string } {
+  const inputStepByProcedure: Record<ProcedureKind, number> = {
+    onboarding: 2,
+    transfer: 3,
+    termination: 2,
+  };
+  const inputStep = inputStepByProcedure[procedure];
+
+  if (!status) {
+    return { currentStep: inputStep, statusLabel: "下書き保存済" };
+  }
+
+  const currentStep =
+    status === "approved"
+      ? 5
+      : status === "submitted" ||
+          status === "rejected" ||
+          status === "cancelled"
+        ? 4
+        : inputStep;
+
+  return {
+    currentStep,
+    statusLabel: getApprovalStatusPresentation(status).label,
+  };
 }
 
 function isValidWorkEmail(value: string): boolean {
@@ -442,6 +600,19 @@ function getNextStatus(
   };
 
   return nextStatusByDecision[decision];
+}
+
+function formatDecisionAuditAction(
+  prefix: string,
+  decision: PracticalWorkflowDecision,
+  actorId: BoundedPersonaId,
+  comment: string,
+): string {
+  const normalizedComment = comment.trim().replace(/\s+/g, " ");
+
+  return `${prefix}.${decision} decidedBy=${actorId}${
+    normalizedComment ? ` comment=${JSON.stringify(normalizedComment)}` : ""
+  }`;
 }
 
 function OnboardingWorkflow({
@@ -1374,122 +1545,760 @@ function OpsDlqWorkflow({
   };
 
   return (
-    <div className="workflow-grid">
-      <section className="workflow-panel" aria-labelledby="ops-job-detail">
-        <div>
-          <p className="context-label">Synthetic non-production Ops only</p>
-          <h3 id="ops-job-detail">Ops job detail</h3>
-        </div>
-        <dl className="detail-list">
-          <div>
-            <dt>Job</dt>
-            <dd>{evidence.jobId}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{formatStatus(evidence.status)}</dd>
-          </div>
-          <div>
-            <dt>Retry count</dt>
-            <dd>
-              {evidence.retryCount}/{maxOpsDlqRetries}
-            </dd>
-          </div>
-          <div>
-            <dt>Correlation</dt>
-            <dd>{evidence.correlationId}</dd>
-          </div>
-        </dl>
-        <EvidenceItem
-          title="Status evidence"
-          body="Local synthetic job status is visible for inspection only. Production scheduler, queue readiness, incident, on-call, SLO, and custody surfaces remain blocked."
+    <div className="job-monitor">
+      <section className="summary-grid" aria-label="Job status summary">
+        <SummaryCard
+          label="Queued"
+          value="14"
+          detail="scheduler backlog"
+          tone="amber"
+          icon={CalendarClock}
         />
-        <EvidenceItem
-          title="Field-level masking"
-          body={`${evidence.failedRowId} exposes masked row evidence only; raw payload viewing is blocked.`}
+        <SummaryCard
+          label="Running"
+          value="5"
+          detail="current workers"
+          tone="blue"
+          icon={BriefcaseBusiness}
+        />
+        <SummaryCard
+          label="Failed"
+          value="2"
+          detail="needs replay"
+          tone="red"
+          icon={CircleAlert}
+        />
+        <SummaryCard
+          label="DLQ open"
+          value={evidence.status === "open" ? "3" : "2"}
+          detail="awaiting resolution"
+          tone="green"
+          icon={ClipboardList}
         />
       </section>
 
-      <section className="workflow-panel" aria-labelledby="dlq-decision">
-        <div>
-          <p className="context-label">Reasoned failed-row decision</p>
-          <h3 id="dlq-decision">DLQ decision</h3>
-        </div>
-        <div className="form-grid compact-form">
-          <label>
-            Decision action
-            <select
-              value={decision}
-              onChange={(event) =>
-                setDecision(event.target.value as DlqDecision)
-              }
-            >
-              <option value="retry">Retry</option>
-              <option value="replay">Replay</option>
-              <option value="ignore">Ignore</option>
-              <option value="close">Close</option>
-            </select>
-          </label>
-          <label>
-            Decision reason
-            <textarea
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
-            />
-            Confirm bounded non-production DLQ action
-          </label>
-        </div>
-        <div className="decision-bar">
-          <button type="button" onClick={() => submitDecision(decision)}>
-            Record selected DLQ decision
-          </button>
-        </div>
-        {message ? (
-          <section
-            className={
-              messageKind === "error"
-                ? "notice notice-error compact"
-                : "notice notice-ok compact"
-            }
-            role={messageKind === "error" ? "alert" : "status"}
-          >
-            <p>{message}</p>
-          </section>
-        ) : null}
-        <EvidenceItem
-          title="Audit evidence"
-          body={evidence.auditActions.join(", ")}
-        />
-        {evidence.decisionReason ? (
+      <div className="job-overview">
+        <section className="surface" aria-labelledby="recent-runs">
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Repository-owned synthetic jobs</p>
+              <h2 id="recent-runs">Recent runs</h2>
+            </div>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  <th>Status</th>
+                  <th>Started</th>
+                  <th>Retry</th>
+                  <th>Correlation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Future effective apply</td>
+                  <td>
+                    <span className="table-status status-running">Running</span>
+                  </td>
+                  <td>18:00</td>
+                  <td>0</td>
+                  <td>
+                    <code>txn-9472</code>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Okta provisioning retry</td>
+                  <td>
+                    <span className="table-status status-failed">Failed</span>
+                  </td>
+                  <td>17:42</td>
+                  <td>2</td>
+                  <td>
+                    <code>prov-1204</code>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Writeback replay</td>
+                  <td>
+                    <span className="table-status status-success">
+                      Succeeded
+                    </span>
+                  </td>
+                  <td>17:20</td>
+                  <td>1</td>
+                  <td>
+                    <code>wb-7711</code>
+                  </td>
+                </tr>
+                <tr>
+                  <td>SmartHR reconcile</td>
+                  <td>
+                    <span className="table-status status-queued">Queued</span>
+                  </td>
+                  <td>20:00</td>
+                  <td>0</td>
+                  <td>
+                    <code>sync-2102</code>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="surface" aria-labelledby="failed-items">
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Needs operator review</p>
+              <h2 id="failed-items">Failed items</h2>
+            </div>
+          </div>
+          <div className="failed-list">
+            <div>
+              <strong>Assignment</strong>
+              <code>E-1021</code>
+              <span>Missing target group</span>
+            </div>
+            <div>
+              <strong>Assignment</strong>
+              <code>E-1147</code>
+              <span>Manager link invalid</span>
+            </div>
+            <div>
+              <strong>Contact</strong>
+              <code>{evidence.failedRowId}</code>
+              <span>writeback ownership conflict</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="workflow-grid">
+        <section className="workflow-panel" aria-labelledby="ops-job-detail">
+          <div>
+            <p className="context-label">Synthetic non-production Ops only</p>
+            <h3 id="ops-job-detail">Ops job detail</h3>
+          </div>
+          <dl className="detail-list">
+            <div>
+              <dt>Job</dt>
+              <dd>{evidence.jobId}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{formatStatus(evidence.status)}</dd>
+            </div>
+            <div>
+              <dt>Retry count</dt>
+              <dd>
+                {evidence.retryCount}/{maxOpsDlqRetries}
+              </dd>
+            </div>
+            <div>
+              <dt>Correlation</dt>
+              <dd>{evidence.correlationId}</dd>
+            </div>
+          </dl>
           <EvidenceItem
-            title="Last decision reason"
-            body={`${evidence.lastDecision}: ${evidence.decisionReason}`}
+            title="Status evidence"
+            body="Local synthetic job status is visible for inspection only. Production scheduler, queue readiness, incident, on-call, SLO, and custody surfaces remain blocked."
           />
+          <EvidenceItem
+            title="Field-level masking"
+            body={`${evidence.failedRowId} exposes masked row evidence only; raw payload viewing is blocked.`}
+          />
+        </section>
+
+        <section className="workflow-panel" aria-labelledby="dlq-decision">
+          <div>
+            <p className="context-label">Reasoned failed-row decision</p>
+            <h3 id="dlq-decision">DLQ decision</h3>
+          </div>
+          <div className="form-grid compact-form">
+            <label>
+              Decision action
+              <select
+                value={decision}
+                onChange={(event) =>
+                  setDecision(event.target.value as DlqDecision)
+                }
+              >
+                <option value="retry">Retry</option>
+                <option value="replay">Replay</option>
+                <option value="ignore">Ignore</option>
+                <option value="close">Close</option>
+              </select>
+            </label>
+            <label>
+              Decision reason
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(event) => setConfirmed(event.target.checked)}
+              />
+              Confirm bounded non-production DLQ action
+            </label>
+          </div>
+          <div className="decision-bar">
+            <button type="button" onClick={() => submitDecision(decision)}>
+              Record selected DLQ decision
+            </button>
+          </div>
+          {message ? (
+            <section
+              className={
+                messageKind === "error"
+                  ? "notice notice-error compact"
+                  : "notice notice-ok compact"
+              }
+              role={messageKind === "error" ? "alert" : "status"}
+            >
+              <p>{message}</p>
+            </section>
+          ) : null}
+          <EvidenceItem
+            title="Audit evidence"
+            body={evidence.auditActions.join(", ")}
+          />
+          {evidence.decisionReason ? (
+            <EvidenceItem
+              title="Last decision reason"
+              body={`${evidence.lastDecision}: ${evidence.decisionReason}`}
+            />
+          ) : null}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  detail,
+  tone,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "blue" | "green" | "amber" | "red";
+  icon: LucideIcon;
+}) {
+  return (
+    <article className={`summary-card tone-${tone}`}>
+      <span className="summary-icon" aria-hidden="true">
+        <Icon size={20} strokeWidth={2} />
+      </span>
+      <div>
+        <p>{label}</p>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </div>
+    </article>
+  );
+}
+
+function DashboardView({
+  onboardingRequest,
+  transferRequest,
+  terminationRequest,
+  opsDlqEvidence,
+  onNavigate,
+  canNavigate,
+}: {
+  onboardingRequest: OnboardingRequest | null;
+  transferRequest: TransferRequest | null;
+  terminationRequest: TerminationRequest | null;
+  opsDlqEvidence: OpsDlqEvidence;
+  onNavigate: (route: RouteId) => void;
+  canNavigate: (route: RouteId) => boolean;
+}) {
+  const requests = [
+    onboardingRequest,
+    transferRequest,
+    terminationRequest,
+  ].filter(
+    (
+      request,
+    ): request is OnboardingRequest | TransferRequest | TerminationRequest =>
+      request !== null,
+  );
+  const submittedCount = requests.filter(
+    (request) => request.status === "submitted",
+  ).length;
+  const draftCount = Math.max(3, requests.length);
+
+  const schedule: Array<{
+    time: string;
+    title: string;
+    meta: string;
+    route: RouteId;
+  }> = [
+    {
+      time: "09:00",
+      title: "入社開始",
+      meta: "3名 / 東京",
+      route: "onboarding",
+    },
+    {
+      time: "11:30",
+      title: "異動適用",
+      meta: "2件が承認待ち",
+      route: "transfer",
+    },
+    {
+      time: "18:00",
+      title: "future-date apply",
+      meta: "7件の予定変更",
+      route: "ops",
+    },
+    {
+      time: "20:00",
+      title: "SmartHR 再照合",
+      meta: "夜間ジョブ",
+      route: "ops",
+    },
+  ];
+  const visibleSchedule = schedule.filter((item) => canNavigate(item.route));
+  const drafts: Array<{
+    title: string;
+    detail: string;
+    time: string;
+    route: RouteId;
+  }> = [
+    {
+      title: "異動手続き / 山田 太郎",
+      detail: "営業本部からコーポレートIT",
+      time: "09:18",
+      route: "transfer",
+    },
+    {
+      title: "退職手続き / 鈴木 一郎",
+      detail: "有効日 2026/08/31",
+      time: "08:42",
+      route: "termination",
+    },
+    {
+      title: "入社手続き / 田中 美咲",
+      detail: "必須項目を確認中",
+      time: "昨日 18:11",
+      route: "onboarding",
+    },
+  ];
+  const visibleDrafts = drafts.filter((item) => canNavigate(item.route));
+
+  return (
+    <div className="dashboard-view">
+      <section className="summary-grid" aria-label="本日の業務サマリー">
+        <SummaryCard
+          label="本日の対応"
+          value="12"
+          detail={`承認 ${submittedCount || 3}件 / 下書き ${draftCount}件`}
+          tone="blue"
+          icon={ClipboardList}
+        />
+        <SummaryCard
+          label="連携ヘルス"
+          value="98.7%"
+          detail="writeback 保留 1件"
+          tone="green"
+          icon={Cloud}
+        />
+        <SummaryCard
+          label="要確認"
+          value={String(Math.max(4, submittedCount))}
+          detail="影響レビューあり"
+          tone="amber"
+          icon={CircleAlert}
+        />
+        <SummaryCard
+          label="DLQ"
+          value={opsDlqEvidence.status === "open" ? "2" : "1"}
+          detail="担当割当待ち"
+          tone="red"
+          icon={Bell}
+        />
+      </section>
+
+      <div className="dashboard-grid">
+        <section
+          className="surface schedule-surface"
+          aria-labelledby="schedule"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Work queue</p>
+              <h2 id="schedule">今日と7日以内</h2>
+            </div>
+            <CalendarClock size={20} aria-hidden="true" />
+          </div>
+          <div className="schedule-list">
+            {visibleSchedule.length > 0 ? (
+              visibleSchedule.map((item) => (
+                <button
+                  className="schedule-row"
+                  key={`${item.time}-${item.title}`}
+                  type="button"
+                  onClick={() => onNavigate(item.route)}
+                >
+                  <time>{item.time}</time>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.meta}</small>
+                  </span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              ))
+            ) : (
+              <p className="muted">
+                この persona で利用できる予定導線はありません。
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section
+          className="surface integration-surface"
+          aria-labelledby="integration-status"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Integration health</p>
+              <h2 id="integration-status">連携状況</h2>
+            </div>
+            <CircleCheck size={20} aria-hidden="true" />
+          </div>
+          <div className="integration-list">
+            <div>
+              <span>Okta 主系同期</span>
+              <strong className="state-success">正常</strong>
+              <time>09:42</time>
+            </div>
+            <div>
+              <span>Entra シャドー同期</span>
+              <strong className="state-warning">差分 2件</strong>
+              <time>09:40</time>
+            </div>
+            <div>
+              <span>会社メール writeback</span>
+              <strong className="state-warning">1件保留</strong>
+              <time>09:37</time>
+            </div>
+            <div>
+              <span>SmartHR 再照合</span>
+              <strong className="state-success">完了</strong>
+              <time>02:10</time>
+            </div>
+          </div>
+        </section>
+
+        <section className="surface drafts-surface" aria-labelledby="drafts">
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Recent activity</p>
+              <h2 id="drafts">最近の下書き</h2>
+            </div>
+          </div>
+          <div className="draft-list">
+            {visibleDrafts.length > 0 ? (
+              visibleDrafts.map((item) => (
+                <button
+                  key={item.route}
+                  type="button"
+                  onClick={() => onNavigate(item.route)}
+                >
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
+                  </span>
+                  <time>{item.time}</time>
+                </button>
+              ))
+            ) : (
+              <p className="muted">
+                この persona で利用できる下書き導線はありません。
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeDetailView({
+  onOpenTransfer,
+}: {
+  onOpenTransfer: (() => void) | null;
+}) {
+  return (
+    <div className="employee-detail">
+      <section className="surface employee-hero">
+        <div className="employee-avatar" aria-hidden="true">
+          山
+        </div>
+        <div className="employee-identity">
+          <p className="context-label">Repository-owned synthetic record</p>
+          <h2>山田 太郎</h2>
+          <p>社員番号 EMP-000128 / 正社員 / 2024/04/01 入社</p>
+          <div className="badge-row" aria-label="従業員状態">
+            <span className="soft-badge state-success">在籍中</span>
+            <span className="soft-badge">主系: Okta</span>
+            <span className="soft-badge">会社メール連携済</span>
+          </div>
+        </div>
+        {onOpenTransfer ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={onOpenTransfer}
+          >
+            異動手続きを開く
+            <ArrowRight size={17} aria-hidden="true" />
+          </button>
         ) : null}
       </section>
+
+      <div className="employee-grid">
+        <section className="surface" aria-labelledby="basic-information">
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Masked where required</p>
+              <h2 id="basic-information">基本情報</h2>
+            </div>
+          </div>
+          <dl className="profile-grid">
+            <div>
+              <dt>氏名</dt>
+              <dd>山田 太郎</dd>
+            </div>
+            <div>
+              <dt>氏名カナ</dt>
+              <dd>ヤマダ タロウ</dd>
+            </div>
+            <div>
+              <dt>個人番号</dt>
+              <dd>PER-000128</dd>
+            </div>
+            <div>
+              <dt>社員番号</dt>
+              <dd>EMP-000128</dd>
+            </div>
+            <div>
+              <dt>所属</dt>
+              <dd>営業本部 / 第1営業部</dd>
+            </div>
+            <div>
+              <dt>役職</dt>
+              <dd>主任</dd>
+            </div>
+            <div>
+              <dt>勤務地</dt>
+              <dd>東京本社</dd>
+            </div>
+            <div>
+              <dt>上長</dt>
+              <dd>佐藤 花子</dd>
+            </div>
+            <div>
+              <dt>会社メール</dt>
+              <dd>taro.yamada@***</dd>
+            </div>
+            <div>
+              <dt>携帯番号</dt>
+              <dd>090-****-5678</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className="surface timeline-surface"
+          aria-labelledby="timeline"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Lifecycle evidence</p>
+              <h2 id="timeline">履歴タイムライン</h2>
+            </div>
+          </div>
+          <ol className="timeline">
+            <li>
+              <time>2026/04/01</time>
+              <span>
+                <strong>会社メール連携</strong>
+                <small>Okta から work_email を反映</small>
+              </span>
+            </li>
+            <li>
+              <time>2025/10/01</time>
+              <span>
+                <strong>異動</strong>
+                <small>営業第2グループから第1グループ</small>
+              </span>
+            </li>
+            <li>
+              <time>2024/04/01</time>
+              <span>
+                <strong>入社</strong>
+                <small>営業本部へ配属、アカウント自動作成</small>
+              </span>
+            </li>
+          </ol>
+        </section>
+
+        <section
+          className="surface external-identities"
+          aria-labelledby="external-identities"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="context-label">Bounded provider evidence</p>
+              <h2 id="external-identities">外部ID / 連携状態</h2>
+            </div>
+          </div>
+          <div className="integration-list">
+            <div>
+              <span>Okta</span>
+              <code>00u3abcxyz</code>
+              <strong className="state-success">同期正常</strong>
+            </div>
+            <div>
+              <span>Entra</span>
+              <code>shadow:9c1f...</code>
+              <strong className="state-success">差分なし</strong>
+            </div>
+            <div>
+              <span>SmartHR</span>
+              <code>employee:128</code>
+              <strong className="state-warning">再照合予定</strong>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
+  );
+}
+
+function SecondaryAreaView({ area }: { area: PlannedArea }) {
+  const Icon = area.icon;
+  const isSupport = area.id === "support";
+
+  return (
+    <section
+      className="surface secondary-area"
+      aria-labelledby="secondary-area"
+    >
+      <span className="secondary-area-icon" aria-hidden="true">
+        <Icon size={22} />
+      </span>
+      <div>
+        <p className="context-label">{area.eyebrow}</p>
+        <h2 id="secondary-area">{area.title}</h2>
+        <p>{area.summary}</p>
+      </div>
+      <div className="secondary-area-list">
+        {isSupport ? (
+          <>
+            <div>
+              <span>対象</span>
+              <strong>EMP-000128 / 山田 太郎</strong>
+            </div>
+            <div>
+              <span>参照境界</span>
+              <strong>single subject only</strong>
+            </div>
+            <div>
+              <span>最新記録</span>
+              <strong>異動影響の確認依頼</strong>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <span>Environment label</span>
+              <strong>non-production</strong>
+            </div>
+            <div>
+              <span>Primary provider</span>
+              <strong>Okta mock</strong>
+            </div>
+            <div>
+              <span>Production controls</span>
+              <strong className="state-warning">blocked</strong>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
 function AuditWorkflow() {
   return (
-    <section className="workflow-panel" aria-labelledby="audit-lookup">
-      <div>
-        <p className="context-label">Single correlation boundary</p>
-        <h3 id="audit-lookup">Direct correlation lookup</h3>
-      </div>
-      <EvidenceItem
-        title="Lookup boundary"
-        body="Operators can inspect one explicit synthetic correlation at a time. Broad search, raw payload export, production authorization, and immutable production audit claims remain blocked."
-      />
-    </section>
+    <div className="workflow-grid">
+      <section className="workflow-panel" aria-labelledby="audit-lookup">
+        <div>
+          <p className="context-label">Single correlation boundary</p>
+          <h3 id="audit-lookup">Direct correlation lookup</h3>
+        </div>
+        <label className="audit-lookup">
+          Correlation ID
+          <span>
+            <Search size={17} aria-hidden="true" />
+            <input
+              defaultValue="correlation-transfer-001"
+              aria-describedby="audit-lookup-boundary"
+            />
+          </span>
+        </label>
+        <EvidenceItem
+          title="Lookup boundary"
+          body="Operators can inspect one explicit synthetic correlation at a time. Broad search, raw payload export, production authorization, and immutable production audit claims remain blocked."
+        />
+        <p id="audit-lookup-boundary" className="muted">
+          完全一致する repository-owned synthetic ID のみ参照できます。
+        </p>
+      </section>
+
+      <section className="workflow-panel" aria-labelledby="audit-evidence">
+        <div>
+          <p className="context-label">Authoritative lifecycle evidence</p>
+          <h3 id="audit-evidence">Evidence timeline</h3>
+        </div>
+        <ol className="audit-timeline">
+          <li>
+            <CircleCheck size={17} aria-hidden="true" />
+            <span>
+              <strong>Request submitted</strong>
+              <small>mvp_b.transfer.submitted / 09:18</small>
+            </span>
+          </li>
+          <li>
+            <CircleCheck size={17} aria-hidden="true" />
+            <span>
+              <strong>Impact projection recorded</strong>
+              <small>repository-owned mock provider / 09:18</small>
+            </span>
+          </li>
+          <li>
+            <CalendarClock size={17} aria-hidden="true" />
+            <span>
+              <strong>Approval pending</strong>
+              <small>bounded approver queue / due 17:00</small>
+            </span>
+          </li>
+        </ol>
+      </section>
+    </div>
   );
 }
 
@@ -1506,229 +2315,423 @@ function ApprovalsWorkflow({
   request: OnboardingRequest | null;
   transferRequest: TransferRequest | null;
   terminationRequest: TerminationRequest | null;
-  onDecision: (decision: OnboardingDecision) => void;
-  onTransferDecision: (decision: PracticalWorkflowDecision) => void;
-  onTerminationDecision: (decision: PracticalWorkflowDecision) => void;
+  onDecision: (decision: OnboardingDecision, comment: string) => void;
+  onTransferDecision: (
+    decision: PracticalWorkflowDecision,
+    comment: string,
+  ) => void;
+  onTerminationDecision: (
+    decision: PracticalWorkflowDecision,
+    comment: string,
+  ) => void;
 }) {
+  const [selectedKind, setSelectedKind] = useState<ApprovalKind>(() =>
+    getPreferredApprovalKind(request, transferRequest, terminationRequest),
+  );
+  const [comment, setComment] = useState("");
   const decisionDisabled = !approverActorId || request?.status !== "submitted";
   const transferDecisionDisabled =
     !approverActorId || transferRequest?.status !== "submitted";
   const terminationDecisionDisabled =
     !approverActorId || terminationRequest?.status !== "submitted";
 
-  return (
-    <div className="workflow-grid stacked">
-      <section className="workflow-panel" aria-labelledby="approval-workflow">
-        <div>
-          <p className="context-label">Bounded approver actions</p>
-          <h3 id="approval-workflow">
-            {request?.id ?? "No submitted onboarding request"}
-          </h3>
-        </div>
-        {request ? (
-          <>
-            <p>
-              {request.form.displayName} is {formatStatus(request.status)} for{" "}
-              {request.correlationId}.
-            </p>
-            <div className="decision-bar">
-              <button
-                type="button"
-                disabled={decisionDisabled}
-                onClick={() => onDecision("approve")}
-              >
-                Approve request
-              </button>
-              <button
-                type="button"
-                disabled={decisionDisabled}
-                onClick={() => onDecision("return")}
-              >
-                Return request
-              </button>
-              <button
-                type="button"
-                disabled={decisionDisabled}
-                onClick={() => onDecision("reject")}
-              >
-                Reject request
-              </button>
-              <button
-                type="button"
-                disabled={decisionDisabled}
-                onClick={() => onDecision("cancel")}
-              >
-                Cancel request
-              </button>
-            </div>
-            <EvidenceItem
-              title="Audit evidence"
-              body={request.auditActions.join(", ")}
-            />
-            {request.decidedByActorId ? (
-              <EvidenceItem
-                title="Decision actor"
-                body={`decidedBy=${request.decidedByActorId}`}
-              />
-            ) : null}
-          </>
-        ) : (
-          <p className="muted">
-            Submitted onboarding requests appear here for bounded approver
-            decisions.
-          </p>
-        )}
-      </section>
+  const approvalItems: Array<{
+    kind: ApprovalKind;
+    title: string;
+    subject: string;
+    effectiveDate: string;
+    priority: "高" | "中" | "低";
+    status: PracticalWorkflowStatus | "empty";
+    request: OnboardingRequest | TransferRequest | TerminationRequest | null;
+  }> = [
+    {
+      kind: "onboarding",
+      title: "入社",
+      subject: request?.form.displayName ?? "田中 美咲",
+      effectiveDate: request?.form.startDate ?? "2026/05/01",
+      priority: "低",
+      status: request?.status ?? "empty",
+      request,
+    },
+    {
+      kind: "transfer",
+      title: "異動",
+      subject: transferRequest?.form.displayName ?? "山田 太郎",
+      effectiveDate: transferRequest?.form.effectiveDate ?? "2026/05/01",
+      priority: "高",
+      status: transferRequest?.status ?? "empty",
+      request: transferRequest,
+    },
+    {
+      kind: "termination",
+      title: "退職",
+      subject: terminationRequest?.form.displayName ?? "鈴木 一郎",
+      effectiveDate: terminationRequest?.form.effectiveDate ?? "2026/04/26",
+      priority: "中",
+      status: terminationRequest?.status ?? "empty",
+      request: terminationRequest,
+    },
+  ];
 
-      <section className="workflow-panel" aria-labelledby="transfer-approval">
-        <div>
-          <p className="context-label">Bounded approver actions</p>
-          <h3 id="transfer-approval">Transfer approvals</h3>
+  const selectedItem =
+    approvalItems.find((item) => item.kind === selectedKind) ??
+    approvalItems[0];
+  const selectedStatus = getApprovalStatusPresentation(selectedItem.status);
+  const pendingApprovalCount = approvalItems.filter(
+    (item) => item.status === "submitted",
+  ).length;
+  const selectedSubmitter = selectedItem.request
+    ? (boundedPersonas.find(
+        (persona) => persona.id === selectedItem.request?.submittedByActorId,
+      )?.label ?? selectedItem.request.submittedByActorId)
+    : "-";
+  const selectedSubmittedAt = selectedItem.request
+    ? formatRequestedAt(selectedItem.request.requestedAt)
+    : "-";
+  const submitDecision = (
+    handler: (decision: PracticalWorkflowDecision, comment: string) => void,
+    decision: PracticalWorkflowDecision,
+  ) => {
+    handler(decision, comment);
+    setComment("");
+  };
+
+  return (
+    <div className="approval-layout">
+      <section
+        className="surface approval-list"
+        aria-labelledby="approval-list"
+      >
+        <div className="section-heading">
+          <div>
+            <p className="context-label">Bounded approver queue</p>
+            <h2 id="approval-list">承認待ち一覧</h2>
+          </div>
+          <span
+            className="queue-count"
+            aria-label={`${pendingApprovalCount}件の承認待ち`}
+          >
+            {pendingApprovalCount}
+          </span>
         </div>
-        {transferRequest ? (
-          <>
-            <p>
-              Transfer is {formatStatus(transferRequest.status)} for{" "}
-              {transferRequest.correlationId}.
-            </p>
-            <div
-              className="evidence-stack"
-              role="group"
-              aria-label="Transfer approval context"
+        <div className="approval-items">
+          {approvalItems.map((item) => (
+            <button
+              className={
+                item.kind === selectedKind
+                  ? "approval-item approval-item-active"
+                  : "approval-item"
+              }
+              key={item.kind}
+              type="button"
+              aria-pressed={item.kind === selectedKind}
+              onClick={() => {
+                setSelectedKind(item.kind);
+                setComment("");
+              }}
             >
-              <EvidenceItem
-                title="Assignment close evidence"
-                body={`${transferRequest.form.currentAssignmentId} (${transferRequest.form.currentAssignmentCode}) closes on ${transferRequest.form.effectiveDate}.`}
-              />
-              <EvidenceItem
-                title="Target assignment evidence"
-                body={`${transferRequest.form.targetOrganizationReference}/${transferRequest.form.targetDepartmentReference} opens for ${transferRequest.form.targetPositionCode} under ${transferRequest.form.targetManagerReference}. Reason: ${transferRequest.form.transferReasonCode}.`}
-              />
-              <EvidenceItem
-                title="Okta transfer projection"
-                body="Synthetic mock-mode group and profile projection only. No live provider mutation."
-              />
-            </div>
-            <div className="decision-bar">
-              <button
-                type="button"
-                disabled={transferDecisionDisabled}
-                onClick={() => onTransferDecision("approve")}
-              >
-                Approve transfer request
-              </button>
-              <button
-                type="button"
-                disabled={transferDecisionDisabled}
-                onClick={() => onTransferDecision("return")}
-              >
-                Return transfer request
-              </button>
-              <button
-                type="button"
-                disabled={transferDecisionDisabled}
-                onClick={() => onTransferDecision("reject")}
-              >
-                Reject transfer request
-              </button>
-              <button
-                type="button"
-                disabled={transferDecisionDisabled}
-                onClick={() => onTransferDecision("cancel")}
-              >
-                Cancel transfer request
-              </button>
-            </div>
-            <EvidenceItem
-              title="Audit evidence"
-              body={transferRequest.auditActions.join(", ")}
-            />
-          </>
-        ) : (
-          <p className="muted">
-            Submitted transfer requests appear here for bounded approver
-            decisions.
-          </p>
-        )}
+              <span>
+                <strong>
+                  {item.title} / {item.subject}
+                </strong>
+                <small>有効日 {item.effectiveDate}</small>
+              </span>
+              <span className={`priority priority-${item.priority}`}>
+                優先度 {item.priority}
+              </span>
+              <small className="approval-status">
+                {item.status === "empty"
+                  ? "fixture"
+                  : formatStatus(item.status)}
+              </small>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section
-        className="workflow-panel"
-        aria-labelledby="termination-approval"
+        className="surface approval-detail"
+        aria-labelledby="approval-detail"
       >
-        <div>
-          <p className="context-label">Bounded approver actions</p>
-          <h3 id="termination-approval">Termination approvals</h3>
-        </div>
-        {terminationRequest ? (
-          <>
+        <div className="approval-detail-header">
+          <div>
+            <p className="context-label">Selected bounded request</p>
+            <h2 id="approval-detail">
+              {selectedItem.title} / {selectedItem.subject}
+            </h2>
             <p>
-              Termination is {formatStatus(terminationRequest.status)} for{" "}
-              {terminationRequest.correlationId}.
+              起票者: {selectedSubmitter} / 提出: {selectedSubmittedAt}
             </p>
-            <div
-              className="evidence-stack"
-              role="group"
-              aria-label="Termination approval context"
-            >
-              <EvidenceItem
-                title="Employment close evidence"
-                body={`${terminationRequest.form.employmentId} (${terminationRequest.form.employmentCode}) closes on ${terminationRequest.form.effectiveDate}. Reason: ${terminationRequest.form.reasonCode}.`}
-              />
-              <EvidenceItem
-                title="Assignment close evidence"
-                body={`${terminationRequest.form.currentAssignmentId} (${terminationRequest.form.currentAssignmentCode}) closes on ${terminationRequest.form.effectiveDate}.`}
-              />
-              <EvidenceItem
-                title="Okta disable projection"
-                body="Synthetic mock-mode disable projection only. No live provider mutation."
-              />
-              <EvidenceItem
-                title="Retention/deletion runtime blocked"
-                body="No hard delete, anonymization, legal hold, or deletion job is introduced."
-              />
-            </div>
-            <div className="decision-bar">
-              <button
-                type="button"
-                disabled={terminationDecisionDisabled}
-                onClick={() => onTerminationDecision("approve")}
-              >
-                Approve termination request
-              </button>
-              <button
-                type="button"
-                disabled={terminationDecisionDisabled}
-                onClick={() => onTerminationDecision("return")}
-              >
-                Return termination request
-              </button>
-              <button
-                type="button"
-                disabled={terminationDecisionDisabled}
-                onClick={() => onTerminationDecision("reject")}
-              >
-                Reject termination request
-              </button>
-              <button
-                type="button"
-                disabled={terminationDecisionDisabled}
-                onClick={() => onTerminationDecision("cancel")}
-              >
-                Cancel termination request
-              </button>
-            </div>
-            <EvidenceItem
-              title="Audit evidence"
-              body={terminationRequest.auditActions.join(", ")}
-            />
+          </div>
+          <span className={`soft-badge ${selectedStatus.tone}`.trim()}>
+            {selectedStatus.label}
+          </span>
+        </div>
+
+        {selectedKind === "onboarding" ? (
+          <>
+            <h3>{request?.id ?? "No submitted onboarding request"}</h3>
+            {request ? (
+              <>
+                <p>
+                  {request.form.displayName} is {formatStatus(request.status)}{" "}
+                  for {request.correlationId}.
+                </p>
+                <dl className="detail-list">
+                  <div>
+                    <dt>対象者</dt>
+                    <dd>{request.form.displayName}</dd>
+                  </div>
+                  <div>
+                    <dt>有効日</dt>
+                    <dd>{request.form.startDate}</dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{formatStatus(request.status)}</dd>
+                  </div>
+                  <div>
+                    <dt>Correlation</dt>
+                    <dd>{request.correlationId}</dd>
+                  </div>
+                </dl>
+                <div className="impact-checks">
+                  <p>
+                    <Check size={16} aria-hidden="true" />
+                    Okta アカウントを synthetic projection で作成
+                  </p>
+                  <p>
+                    <Check size={16} aria-hidden="true" />
+                    会社メールは masked preview のみ
+                  </p>
+                  <p>
+                    <Check size={16} aria-hidden="true" />
+                    手動対応は不要
+                  </p>
+                </div>
+                <EvidenceItem
+                  title="Audit evidence"
+                  body={request.auditActions.join(", ")}
+                />
+                {request.decidedByActorId ? (
+                  <EvidenceItem
+                    title="Decision actor"
+                    body={`decidedBy=${request.decidedByActorId}`}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <p className="muted">
+                Submitted onboarding requests appear here for bounded approver
+                decisions.
+              </p>
+            )}
           </>
-        ) : (
-          <p className="muted">
-            Submitted termination requests appear here for bounded approver
-            decisions.
-          </p>
-        )}
+        ) : null}
+
+        {selectedKind === "transfer" ? (
+          <>
+            <h3>Transfer approvals</h3>
+            {transferRequest ? (
+              <>
+                <p>
+                  Transfer is {formatStatus(transferRequest.status)} for{" "}
+                  {transferRequest.correlationId}.
+                </p>
+                <div
+                  className="evidence-stack"
+                  role="group"
+                  aria-label="Transfer approval context"
+                >
+                  <EvidenceItem
+                    title="Assignment close evidence"
+                    body={`${transferRequest.form.currentAssignmentId} (${transferRequest.form.currentAssignmentCode}) closes on ${transferRequest.form.effectiveDate}.`}
+                  />
+                  <EvidenceItem
+                    title="Target assignment evidence"
+                    body={`${transferRequest.form.targetOrganizationReference}/${transferRequest.form.targetDepartmentReference} opens for ${transferRequest.form.targetPositionCode} under ${transferRequest.form.targetManagerReference}. Reason: ${transferRequest.form.transferReasonCode}.`}
+                  />
+                  <EvidenceItem
+                    title="Okta transfer projection"
+                    body="Synthetic mock-mode group and profile projection only. No live provider mutation."
+                  />
+                </div>
+                <EvidenceItem
+                  title="Audit evidence"
+                  body={transferRequest.auditActions.join(", ")}
+                />
+              </>
+            ) : (
+              <p className="muted">
+                Submitted transfer requests appear here for bounded approver
+                decisions.
+              </p>
+            )}
+          </>
+        ) : null}
+
+        {selectedKind === "termination" ? (
+          <>
+            <h3>Termination approvals</h3>
+            {terminationRequest ? (
+              <>
+                <p>
+                  Termination is {formatStatus(terminationRequest.status)} for{" "}
+                  {terminationRequest.correlationId}.
+                </p>
+                <div
+                  className="evidence-stack"
+                  role="group"
+                  aria-label="Termination approval context"
+                >
+                  <EvidenceItem
+                    title="Employment close evidence"
+                    body={`${terminationRequest.form.employmentId} (${terminationRequest.form.employmentCode}) closes on ${terminationRequest.form.effectiveDate}. Reason: ${terminationRequest.form.reasonCode}.`}
+                  />
+                  <EvidenceItem
+                    title="Assignment close evidence"
+                    body={`${terminationRequest.form.currentAssignmentId} (${terminationRequest.form.currentAssignmentCode}) closes on ${terminationRequest.form.effectiveDate}.`}
+                  />
+                  <EvidenceItem
+                    title="Okta disable projection"
+                    body="Synthetic mock-mode disable projection only. No live provider mutation."
+                  />
+                  <EvidenceItem
+                    title="Retention/deletion runtime blocked"
+                    body="No hard delete, anonymization, legal hold, or deletion job is introduced."
+                  />
+                </div>
+                <EvidenceItem
+                  title="Audit evidence"
+                  body={terminationRequest.auditActions.join(", ")}
+                />
+              </>
+            ) : (
+              <p className="muted">
+                Submitted termination requests appear here for bounded approver
+                decisions.
+              </p>
+            )}
+          </>
+        ) : null}
+
+        <label className="approval-comment">
+          承認コメント
+          <textarea
+            value={comment}
+            maxLength={500}
+            placeholder="判断理由を入力（任意）"
+            onChange={(event) => setComment(event.target.value)}
+          />
+        </label>
+
+        {selectedKind === "onboarding" ? (
+          <div className="decision-bar">
+            <button
+              className="button-danger"
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => submitDecision(onDecision, "reject")}
+            >
+              Reject request
+            </button>
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => submitDecision(onDecision, "return")}
+            >
+              Return request
+            </button>
+            <button
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => submitDecision(onDecision, "approve")}
+            >
+              Approve request
+            </button>
+            <button
+              className="button-quiet"
+              type="button"
+              disabled={decisionDisabled}
+              onClick={() => submitDecision(onDecision, "cancel")}
+            >
+              Cancel request
+            </button>
+          </div>
+        ) : null}
+
+        {selectedKind === "transfer" ? (
+          <div className="decision-bar">
+            <button
+              className="button-danger"
+              type="button"
+              disabled={transferDecisionDisabled}
+              onClick={() => submitDecision(onTransferDecision, "reject")}
+            >
+              Reject transfer request
+            </button>
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={transferDecisionDisabled}
+              onClick={() => submitDecision(onTransferDecision, "return")}
+            >
+              Return transfer request
+            </button>
+            <button
+              type="button"
+              disabled={transferDecisionDisabled}
+              onClick={() => submitDecision(onTransferDecision, "approve")}
+            >
+              Approve transfer request
+            </button>
+            <button
+              className="button-quiet"
+              type="button"
+              disabled={transferDecisionDisabled}
+              onClick={() => submitDecision(onTransferDecision, "cancel")}
+            >
+              Cancel transfer request
+            </button>
+          </div>
+        ) : null}
+
+        {selectedKind === "termination" ? (
+          <div className="decision-bar">
+            <button
+              className="button-danger"
+              type="button"
+              disabled={terminationDecisionDisabled}
+              onClick={() => submitDecision(onTerminationDecision, "reject")}
+            >
+              Reject termination request
+            </button>
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={terminationDecisionDisabled}
+              onClick={() => submitDecision(onTerminationDecision, "return")}
+            >
+              Return termination request
+            </button>
+            <button
+              type="button"
+              disabled={terminationDecisionDisabled}
+              onClick={() => submitDecision(onTerminationDecision, "approve")}
+            >
+              Approve termination request
+            </button>
+            <button
+              className="button-quiet"
+              type="button"
+              disabled={terminationDecisionDisabled}
+              onClick={() => submitDecision(onTerminationDecision, "cancel")}
+            >
+              Cancel termination request
+            </button>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -1741,6 +2744,53 @@ function LoadingState() {
       <span />
       <span />
     </section>
+  );
+}
+
+function ProcedureFrame({
+  procedure,
+  requestStatus,
+  children,
+}: {
+  procedure: ProcedureKind;
+  requestStatus: PracticalWorkflowStatus | null;
+  children: ReactNode;
+}) {
+  const { currentStep, statusLabel } = getProcedureProgress(
+    procedure,
+    requestStatus,
+  );
+  const steps = ["対象者", "入力", "影響確認", "承認", "適用"];
+
+  return (
+    <div className="procedure-view">
+      <div className="procedure-toolbar">
+        <ol aria-label="手続き進捗">
+          {steps.map((step, index) => {
+            const stepNumber = index + 1;
+            const state =
+              stepNumber < currentStep
+                ? "complete"
+                : stepNumber === currentStep
+                  ? "current"
+                  : "upcoming";
+            return (
+              <li className={`step-${state}`} key={step}>
+                <span aria-hidden="true">
+                  {state === "complete" ? <Check size={13} /> : stepNumber}
+                </span>
+                <strong>{step}</strong>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="procedure-status">
+          <span className="utility-badge">Step {currentStep}/5</span>
+          <span className="utility-badge utility-muted">{statusLabel}</span>
+        </div>
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -1761,9 +2811,12 @@ function ContractStatus({
 
   if (error) {
     return (
-      <section className="notice notice-error" role="status">
-        <h2>API contract unavailable</h2>
-        <p>{error}</p>
+      <section className="contract-strip contract-error" role="status">
+        <CircleAlert size={17} aria-hidden="true" />
+        <div>
+          <strong>API contract unavailable</strong>
+          <span>{error}</span>
+        </div>
         <button type="button" onClick={onRetry}>
           Retry contract load
         </button>
@@ -1772,12 +2825,13 @@ function ContractStatus({
   }
 
   return (
-    <section className="notice notice-ok" role="status">
-      <h2>API contract connected</h2>
-      <p>
+    <section className="contract-strip contract-ok" role="status">
+      <CircleCheck size={17} aria-hidden="true" />
+      <strong>API contract connected</strong>
+      <span>
         {contract?.info.title ?? "HRCore API"} {contract?.info.version ?? ""}
-        is loaded from the repository-owned OpenAPI endpoint.
-      </p>
+      </span>
+      <small>repository-owned OpenAPI</small>
     </section>
   );
 }
@@ -1787,6 +2841,9 @@ function AppShell() {
     BoundedPersonaId | ""
   >("");
   const [activeRoute, setActiveRoute] = useState<RouteId>("queue");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [directLookup, setDirectLookup] = useState("");
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const [contract, setContract] = useState<ApiContract | null>(null);
   const [contractError, setContractError] = useState<string | null>(null);
   const [contractLoading, setContractLoading] = useState(true);
@@ -1855,7 +2912,7 @@ function AppShell() {
     visibleAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
 
   const decideOnboardingRequest = useCallback(
-    (decision: OnboardingDecision) => {
+    (decision: OnboardingDecision, comment: string) => {
       if (
         !onboardingRequest ||
         onboardingRequest.status !== "submitted" ||
@@ -1872,7 +2929,12 @@ function AppShell() {
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...onboardingRequest.auditActions,
-          `mvp_a.onboarding.${decision} decidedBy=${selectedPersonaId}`,
+          formatDecisionAuditAction(
+            "mvp_a.onboarding",
+            decision,
+            selectedPersonaId,
+            comment,
+          ),
         ],
       });
     },
@@ -1880,7 +2942,7 @@ function AppShell() {
   );
 
   const decideTransferRequest = useCallback(
-    (decision: PracticalWorkflowDecision) => {
+    (decision: PracticalWorkflowDecision, comment: string) => {
       if (
         !transferRequest ||
         transferRequest.status !== "submitted" ||
@@ -1897,7 +2959,12 @@ function AppShell() {
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...transferRequest.auditActions,
-          `mvp_b.transfer.${decision} decidedBy=${selectedPersonaId}`,
+          formatDecisionAuditAction(
+            "mvp_b.transfer",
+            decision,
+            selectedPersonaId,
+            comment,
+          ),
         ],
       });
     },
@@ -1905,7 +2972,7 @@ function AppShell() {
   );
 
   const decideTerminationRequest = useCallback(
-    (decision: PracticalWorkflowDecision) => {
+    (decision: PracticalWorkflowDecision, comment: string) => {
       if (
         !terminationRequest ||
         terminationRequest.status !== "submitted" ||
@@ -1922,7 +2989,12 @@ function AppShell() {
         decidedByActorId: selectedPersonaId,
         auditActions: [
           ...terminationRequest.auditActions,
-          `mvp_c.termination.${decision} decidedBy=${selectedPersonaId}`,
+          formatDecisionAuditAction(
+            "mvp_c.termination",
+            decision,
+            selectedPersonaId,
+            comment,
+          ),
         ],
       });
     },
@@ -1938,156 +3010,320 @@ function AppShell() {
     }
   }, [activeRoute, visibleAreas]);
 
-  return (
-    <div className="app-frame">
-      <aside className="sidebar">
-        <div className="brand-block">
-          <span className="brand-mark" aria-hidden="true">
-            H
-          </span>
-          <div>
-            <p className="brand-name">HRCore</p>
-            <p className="brand-context">Bounded WebUI shell</p>
-          </div>
-        </div>
+  const canNavigateTo = (route: RouteId) =>
+    visibleAreas.some((area) => area.id === route);
 
-        <label className="field-label" htmlFor="persona-switcher">
-          Persona
-        </label>
-        <select
-          id="persona-switcher"
-          value={selectedPersonaId}
-          onChange={(event) =>
-            setSelectedPersonaId(event.target.value as BoundedPersonaId | "")
+  const navigateTo = (route: RouteId) => {
+    if (canNavigateTo(route)) {
+      setActiveRoute(route);
+      setMobileNavOpen(false);
+    }
+  };
+
+  const submitDirectLookup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!canNavigateTo("employee")) {
+      setLookupMessage("このpersonaでは従業員fixtureを参照できません。");
+      return;
+    }
+
+    const normalized = directLookup.trim().toUpperCase();
+
+    if (normalized === "EMP-000128") {
+      setActiveRoute("employee");
+      setLookupMessage("EMP-000128 を bounded fixture から表示しました。");
+      return;
+    }
+
+    setLookupMessage(
+      "許可済みfixtureを特定できません。利用可能なID: EMP-000128",
+    );
+  };
+
+  const displayArea = activeArea ?? plannedAreas[0];
+
+  const renderActiveWorkspace = () => {
+    if (activeArea?.id === "queue") {
+      return (
+        <DashboardView
+          onboardingRequest={onboardingRequest}
+          transferRequest={transferRequest}
+          terminationRequest={terminationRequest}
+          opsDlqEvidence={opsDlqEvidence}
+          onNavigate={navigateTo}
+          canNavigate={canNavigateTo}
+        />
+      );
+    }
+
+    if (activeArea?.id === "employee") {
+      return (
+        <EmployeeDetailView
+          onOpenTransfer={
+            canNavigateTo("transfer") ? () => navigateTo("transfer") : null
           }
+        />
+      );
+    }
+
+    if (activeArea?.id === "onboarding") {
+      return (
+        <ProcedureFrame
+          procedure="onboarding"
+          requestStatus={onboardingRequest?.status ?? null}
         >
-          <option value="">Select bounded persona</option>
-          {boundedPersonas.map((persona) => (
-            <option key={persona.id} value={persona.id}>
-              {persona.label}
-            </option>
-          ))}
-        </select>
+          <OnboardingWorkflow
+            personaId={selectedPersonaId}
+            personaRole={personaDecision.persona?.role}
+            request={onboardingRequest}
+            setRequest={setOnboardingRequest}
+          />
+        </ProcedureFrame>
+      );
+    }
 
-        <nav role="navigation" aria-label="Planned practical-use areas">
-          {visibleAreas.length === 0 ? (
-            <p className="nav-empty">
-              Routes stay blocked until persona passes.
-            </p>
-          ) : (
-            visibleAreas.map((area) => (
-              <button
-                className={
-                  area.id === activeArea?.id ? "nav-item active" : "nav-item"
-                }
-                key={area.id}
-                aria-pressed={area.id === activeArea?.id}
-                type="button"
-                onClick={() => setActiveRoute(area.id)}
-              >
-                <span>{area.label}</span>
-                <small>{area.status}</small>
-              </button>
-            ))
-          )}
-        </nav>
-      </aside>
+    if (activeArea?.id === "transfer") {
+      return (
+        <ProcedureFrame
+          procedure="transfer"
+          requestStatus={transferRequest?.status ?? null}
+        >
+          <TransferWorkflow
+            personaId={selectedPersonaId}
+            personaRole={personaDecision.persona?.role}
+            request={transferRequest}
+            setRequest={setTransferRequest}
+          />
+        </ProcedureFrame>
+      );
+    }
 
-      <main className="content">
-        <header className="topbar">
-          <div>
-            <p className="context-label">Non-production evidence only</p>
-            <h1>Practical-use foundation</h1>
-          </div>
-          <span className="status-pill">Production auth blocked</span>
-        </header>
+    if (activeArea?.id === "termination") {
+      return (
+        <ProcedureFrame
+          procedure="termination"
+          requestStatus={terminationRequest?.status ?? null}
+        >
+          <TerminationWorkflow
+            personaId={selectedPersonaId}
+            personaRole={personaDecision.persona?.role}
+            request={terminationRequest}
+            setRequest={setTerminationRequest}
+          />
+        </ProcedureFrame>
+      );
+    }
 
-        {!personaDecision.allowed ? (
-          <section className="notice notice-blocked" role="alert">
-            <h2>Fail-closed persona guard</h2>
-            <p>{personaDecision.reason}</p>
-          </section>
+    if (activeArea?.id === "csv" && personaDecision.persona) {
+      return (
+        <CsvWorkflow
+          actorId={personaDecision.persona.id}
+          evidence={csvWorkflowEvidence}
+        />
+      );
+    }
+
+    if (activeArea?.id === "ops" && personaDecision.persona) {
+      return (
+        <OpsDlqWorkflow
+          evidence={opsDlqEvidence}
+          operatorActorId={personaDecision.persona.id}
+          setEvidence={setOpsDlqEvidence}
+        />
+      );
+    }
+
+    if (activeArea?.id === "approvals") {
+      return (
+        <ApprovalsWorkflow
+          approverActorId={
+            personaDecision.persona?.role === "bounded_approver"
+              ? selectedPersonaId || null
+              : null
+          }
+          request={onboardingRequest}
+          transferRequest={transferRequest}
+          terminationRequest={terminationRequest}
+          onDecision={decideOnboardingRequest}
+          onTransferDecision={decideTransferRequest}
+          onTerminationDecision={decideTerminationRequest}
+        />
+      );
+    }
+
+    if (activeArea?.id === "audit") {
+      return <AuditWorkflow />;
+    }
+
+    if (activeArea?.id === "support" || activeArea?.id === "admin") {
+      return <SecondaryAreaView area={activeArea} />;
+    }
+
+    return <EmptyState />;
+  };
+
+  return (
+    <div className="app-root">
+      <div className="environment-banner" role="note">
+        <LockKeyhole size={14} aria-hidden="true" />
+        <span>非本番 / repository-owned synthetic evidence only</span>
+        <strong>Production authorization blocked</strong>
+      </div>
+
+      <button
+        className="mobile-nav-toggle icon-button"
+        type="button"
+        title={
+          mobileNavOpen ? "ナビゲーションを閉じる" : "ナビゲーションを開く"
+        }
+        aria-label={
+          mobileNavOpen ? "ナビゲーションを閉じる" : "ナビゲーションを開く"
+        }
+        aria-expanded={mobileNavOpen}
+        onClick={() => setMobileNavOpen((open) => !open)}
+      >
+        {mobileNavOpen ? (
+          <X size={20} aria-hidden="true" />
         ) : (
-          <>
-            <ContractStatus
-              contract={contract}
-              error={contractError}
-              loading={contractLoading}
-              onRetry={loadContract}
-            />
-            <section className="workspace" aria-labelledby="workspace-title">
-              <div>
-                <p className="context-label">
-                  {personaDecision.persona?.label}
-                </p>
-                <h2 id="workspace-title">
-                  {activeArea?.label ?? "Bounded workspace"}
-                </h2>
-                <p>{activeArea?.summary}</p>
-              </div>
-              {activeArea?.id === "onboarding" ? (
-                <OnboardingWorkflow
-                  personaId={selectedPersonaId}
-                  personaRole={personaDecision.persona?.role}
-                  request={onboardingRequest}
-                  setRequest={setOnboardingRequest}
-                />
-              ) : activeArea?.id === "transfer" ? (
-                <TransferWorkflow
-                  personaId={selectedPersonaId}
-                  personaRole={personaDecision.persona?.role}
-                  request={transferRequest}
-                  setRequest={setTransferRequest}
-                />
-              ) : activeArea?.id === "termination" ? (
-                <TerminationWorkflow
-                  personaId={selectedPersonaId}
-                  personaRole={personaDecision.persona?.role}
-                  request={terminationRequest}
-                  setRequest={setTerminationRequest}
-                />
-              ) : activeArea?.id === "csv" ? (
-                personaDecision.persona ? (
-                  <CsvWorkflow
-                    actorId={personaDecision.persona.id}
-                    evidence={csvWorkflowEvidence}
-                  />
-                ) : (
-                  <EmptyState />
-                )
-              ) : activeArea?.id === "ops" ? (
-                personaDecision.persona ? (
-                  <OpsDlqWorkflow
-                    evidence={opsDlqEvidence}
-                    operatorActorId={personaDecision.persona.id}
-                    setEvidence={setOpsDlqEvidence}
-                  />
-                ) : (
-                  <EmptyState />
-                )
-              ) : activeArea?.id === "approvals" ? (
-                <ApprovalsWorkflow
-                  approverActorId={
-                    personaDecision.persona?.role === "bounded_approver"
-                      ? selectedPersonaId || null
-                      : null
-                  }
-                  request={onboardingRequest}
-                  transferRequest={transferRequest}
-                  terminationRequest={terminationRequest}
-                  onDecision={decideOnboardingRequest}
-                  onTransferDecision={decideTransferRequest}
-                  onTerminationDecision={decideTerminationRequest}
-                />
-              ) : activeArea?.id === "audit" ? (
-                <AuditWorkflow />
-              ) : (
-                <EmptyState />
-              )}
-            </section>
-          </>
+          <Menu size={20} aria-hidden="true" />
         )}
-      </main>
+      </button>
+
+      <div className="app-frame">
+        <aside className={mobileNavOpen ? "sidebar sidebar-open" : "sidebar"}>
+          <div className="brand-block">
+            <span className="brand-mark" aria-hidden="true">
+              H
+            </span>
+            <div>
+              <p className="brand-name">HRCore</p>
+              <p className="brand-context">Human Resource Platform</p>
+            </div>
+          </div>
+
+          <nav role="navigation" aria-label="Planned practical-use areas">
+            {visibleAreas.length === 0 ? (
+              <p className="nav-empty">
+                Routes stay blocked until persona passes.
+              </p>
+            ) : (
+              visibleAreas.map((area) => {
+                const Icon = area.icon;
+                return (
+                  <button
+                    className={
+                      area.id === activeArea?.id
+                        ? "nav-item active"
+                        : "nav-item"
+                    }
+                    key={area.id}
+                    aria-pressed={area.id === activeArea?.id}
+                    type="button"
+                    onClick={() => navigateTo(area.id)}
+                  >
+                    <Icon size={18} aria-hidden="true" />
+                    <span>
+                      <strong>{area.title}</strong>
+                      <small>{area.label}</small>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </nav>
+
+          <div className="sidebar-footer">
+            <label className="field-label" htmlFor="persona-switcher">
+              Persona
+            </label>
+            <select
+              id="persona-switcher"
+              value={selectedPersonaId}
+              onChange={(event) => {
+                setSelectedPersonaId(
+                  event.target.value as BoundedPersonaId | "",
+                );
+                setLookupMessage(null);
+              }}
+            >
+              <option value="">Select bounded persona</option>
+              {boundedPersonas.map((persona) => (
+                <option key={persona.id} value={persona.id}>
+                  {persona.label}
+                </option>
+              ))}
+            </select>
+            <div className="provider-chip">
+              <span>主系 provider</span>
+              <strong>Okta</strong>
+            </div>
+          </div>
+        </aside>
+
+        <main className="content">
+          <header className="topbar">
+            <div className="page-heading">
+              <p className="context-label">{displayArea.eyebrow}</p>
+              <h1 aria-label={displayArea.label}>{displayArea.title}</h1>
+              <p>{displayArea.summary}</p>
+            </div>
+            <div className="topbar-tools">
+              {canNavigateTo("employee") ? (
+                <form className="direct-lookup" onSubmit={submitDirectLookup}>
+                  <Search size={17} aria-hidden="true" />
+                  <label className="sr-only" htmlFor="direct-record-lookup">
+                    Bounded record ID
+                  </label>
+                  <input
+                    id="direct-record-lookup"
+                    value={directLookup}
+                    placeholder="IDで直接参照"
+                    onChange={(event) => setDirectLookup(event.target.value)}
+                  />
+                  <button type="submit">参照</button>
+                </form>
+              ) : null}
+              <span className="utility-badge">Okta primary</span>
+              <span className="utility-badge">Tokyo</span>
+              <span className="utility-badge utility-muted">非本番</span>
+            </div>
+          </header>
+
+          {lookupMessage ? (
+            <p className="lookup-message" role="status">
+              {lookupMessage}
+            </p>
+          ) : null}
+
+          {!personaDecision.allowed ? (
+            <section className="blocked-state" role="alert">
+              <span className="blocked-icon" aria-hidden="true">
+                <LockKeyhole size={24} />
+              </span>
+              <p className="context-label">Bounded access required</p>
+              <h2>Fail-closed persona guard</h2>
+              <p>{personaDecision.reason}</p>
+              <p className="muted">
+                左下の Persona から repository-owned non-production role
+                を選択してください。
+              </p>
+            </section>
+          ) : (
+            <>
+              <ContractStatus
+                contract={contract}
+                error={contractError}
+                loading={contractLoading}
+                onRetry={loadContract}
+              />
+              <section className="workspace" aria-label={displayArea.label}>
+                {renderActiveWorkspace()}
+              </section>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

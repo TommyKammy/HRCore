@@ -4,3 +4,6 @@ dist-web/
 .local/
 *.log
 coverage/
+test-results/
+playwright-report/
+blob-report/
