@@ -3066,7 +3066,19 @@
         "x-hrcore-server-side-state-sensitive-fields": ["lastSortValue"],
         "x-hrcore-server-side-state-logging": "prohibited",
         "x-hrcore-nullable-sort-value-encoding": "lastSortValue_null_with_explicit_lastSortValueIsNull",
-        "description": "Opaque authenticated p2list_cursor_v1 random handle with at least 128 bits of entropy and a 15-minute expiry. The wire token carries only version, random stateId, and expiresAt; it contains neither PII nor raw search terms. Sort continuation values, including display names, remain in non-logged server-side state bound to the authorization context and canonical filter fingerprint. Employee state additionally carries resolvedAsOf."
+        "x-hrcore-public-error-code-by-rejected-condition": {
+          "malformed": "cursor_invalid",
+          "tampered": "cursor_invalid",
+          "unsupported_version": "cursor_version_unsupported",
+          "resource_mismatch": "cursor_invalid",
+          "cursor_filter_mismatch": "cursor_filter_mismatch",
+          "sort_mismatch": "cursor_invalid",
+          "direction_mismatch": "cursor_invalid",
+          "expired": "cursor_invalid",
+          "state_not_found": "cursor_invalid",
+          "authorization_context_mismatch": "permission_denied"
+        },
+        "description": "Opaque authenticated p2list_cursor_v1 random handle with at least 128 bits of entropy and a 15-minute expiry. The wire token carries only version, random stateId, and expiresAt; it contains neither PII nor raw search terms. Sort continuation values, including display names, remain in non-logged server-side state bound to the authorization context and canonical filter fingerprint. Employee state additionally carries resolvedAsOf. Cursor rejection reasons map to the canonical public P2ListErrorResponse codes declared by x-hrcore-public-error-code-by-rejected-condition."
       },
       "P2ListPageInfo": {
         "type": "object",

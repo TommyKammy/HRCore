@@ -88,6 +88,7 @@ interface OpenApiSchema {
     inputs: string[];
   };
   "x-hrcore-nullable-sort-value-encoding"?: string;
+  "x-hrcore-public-error-code-by-rejected-condition"?: Record<string, string>;
   "x-hrcore-range-validation"?: Record<string, unknown>;
   "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
   "x-hrcore-subject-employment-resolution"?: Record<string, unknown>;
@@ -438,7 +439,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   );
   assert.ok(p2ListCursorContract.rejectedConditions.includes("tampered"));
   assert.ok(
-    p2ListCursorContract.rejectedConditions.includes("filter_mismatch"),
+    p2ListCursorContract.rejectedConditions.includes("cursor_filter_mismatch"),
   );
   for (const rejectedState of [
     "expired",
@@ -446,6 +447,15 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     "authorization_context_mismatch",
   ] as const) {
     assert.ok(p2ListCursorContract.rejectedConditions.includes(rejectedState));
+  }
+  const publicErrorCodes = new Set<string>(p2ListErrorCodes);
+  const cursorPublicErrorCodes: Record<string, string> =
+    p2ListCursorContract.publicErrorCodeByRejectedCondition;
+  assert.deepEqual(Object.keys(cursorPublicErrorCodes), [
+    ...p2ListCursorContract.rejectedConditions,
+  ]);
+  for (const rejectedState of p2ListCursorContract.rejectedConditions) {
+    assert.ok(publicErrorCodes.has(cursorPublicErrorCodes[rejectedState]));
   }
 
   assert.equal(p2ListAuthorizationContract.serverAuthoritative, true);
@@ -965,6 +975,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(
     schemas.P2ListCursor["x-hrcore-nullable-sort-value-encoding"],
     p2ListCursorContract.nullableSortValueEncoding,
+  );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-public-error-code-by-rejected-condition"],
+    p2ListCursorContract.publicErrorCodeByRejectedCondition,
   );
   assert.deepEqual(schemas.P2ListPageInfo.oneOf, [
     {

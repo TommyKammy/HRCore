@@ -135,7 +135,7 @@ Allowed filters:
   UTC calendar date, returns it in `appliedFilters`, and includes it in the
   canonical cursor filter fingerprint and the non-PII `resolvedAsOf`
   server-side cursor state. Continuations reuse that cursor-bound value; a
-  different explicit `asOf` fails with `filter_mismatch`.
+  different explicit `asOf` fails with `cursor_filter_mismatch`.
 
 Allowed sort fields are `employeeId`, `displayName`, and `hireDate`. The
 default order is `employeeId ASC, employment.id ASC`; the non-projected
@@ -213,6 +213,11 @@ range pairs before repository access.
 - Rejected states: malformed, tampered, expired, missing server state,
   unsupported version, resource mismatch, filter mismatch, sort mismatch,
   direction mismatch, and authorization-context mismatch.
+- Public error mapping: unsupported version uses
+  `cursor_version_unsupported`; canonical filter mismatch, including explicit
+  employee `asOf` drift, uses `cursor_filter_mismatch`; authorization-context
+  mismatch uses `permission_denied`; every other cursor rejection above uses
+  `cursor_invalid`.
 - PII and raw search terms: prohibited in the wire token.
 - Local/test key: injected, non-default, and fail-closed when absent.
 - Production key custody and rotation: blocked pending owner-approved production prerequisites.
