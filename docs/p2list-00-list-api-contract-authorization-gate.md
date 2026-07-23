@@ -117,17 +117,29 @@ range pairs before repository access.
 - Default page size: 25.
 - Maximum page size: 100.
 - Offset pagination: prohibited.
-- Wire format: opaque authenticated base64url.
+- Wire format: opaque HMAC-authenticated CSPRNG handle with at least 128 bits of
+  entropy. The wire token carries only version, random state ID, and expiry.
 - Maximum wire length: 2048 characters.
 - Version: `p2list_cursor_v1`.
 - Integrity: HMAC-SHA-256.
+- Server-side state TTL: 15 minutes; expired or missing state fails closed, and
+  state is deleted after expiry.
 - Filter fingerprint: SHA-256 over canonical allowlisted JSON, including
   server-resolved defaults such as employee `asOf`.
-- Bound claims: resource, sort, direction, last sort value, explicit `lastSortValueIsNull`, last stable ID, and canonical filter fingerprint; employee cursors additionally require non-PII `resolvedAsOf`.
+- Server-side state fields: resource, sort, direction, last sort value, explicit
+  `lastSortValueIsNull`, last stable ID, canonical filter fingerprint, and
+  authorization-context fingerprint; employee state additionally requires
+  non-PII `resolvedAsOf`.
+- Authorization-context fingerprint: SHA-256 over canonical server-resolved
+  actor ID, tenant ID, permissions, and data scope. Any mismatch fails closed.
+- Sensitive sort values such as `displayName` remain only in server-side state
+  and must never be written to application, audit, access, or support logs.
 - Nullable `effectiveDate` ordering: nulls are always last for both directions; non-null rows precede the null partition, whose rows continue by stable ID in the requested direction.
 - Page metadata: `hasNextPage: true` requires an authenticated non-null `nextCursor`; `false` requires `nextCursor: null`.
-- Rejected states: malformed, tampered, unsupported version, resource mismatch, filter mismatch, sort mismatch, and direction mismatch.
-- PII and raw search terms: prohibited in the cursor.
+- Rejected states: malformed, tampered, expired, missing server state,
+  unsupported version, resource mismatch, filter mismatch, sort mismatch,
+  direction mismatch, and authorization-context mismatch.
+- PII and raw search terms: prohibited in the wire token.
 - Local/test key: injected, non-default, and fail-closed when absent.
 - Production key custody and rotation: blocked pending owner-approved production prerequisites.
 
@@ -137,10 +149,11 @@ Collection APIs use the versioned `P2ListErrorResponse` and the following
 status families:
 
 - `400`: invalid/unsupported filter or sort, limit overflow, over-wide range,
-  malformed/tampered cursor, unsupported cursor version, or cursor/filter mismatch.
+  malformed/tampered/expired cursor, missing cursor state, unsupported cursor
+  version, or cursor/filter mismatch.
 - `401`: server-side actor context is absent or invalid.
-- `403`: permission or data-scope decision denies the operation without
-  revealing whether a target record exists.
+- `403`: permission, data-scope, or cursor authorization-context decision
+  denies the operation without revealing whether a target record exists.
 - `422`: bounded export policy rejects an empty filter, over-100-row result,
   missing/unsupported reason code, or prohibited export field.
 

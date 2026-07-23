@@ -68,8 +68,19 @@ interface OpenApiSchema {
   oneOf?: OpenApiSchema[];
   dependentRequired?: Record<string, string[]>;
   additionalProperties?: boolean;
-  "x-hrcore-required-claims"?: string[];
-  "x-hrcore-resource-required-claims"?: Record<string, string[]>;
+  "x-hrcore-wire-required-claims"?: string[];
+  "x-hrcore-server-side-state-required-fields"?: string[];
+  "x-hrcore-resource-state-required-fields"?: Record<string, string[]>;
+  "x-hrcore-server-side-state-ttl-seconds"?: number;
+  "x-hrcore-minimum-handle-entropy-bits"?: number;
+  "x-hrcore-handle-generation"?: string;
+  "x-hrcore-server-side-state-sensitive-fields"?: string[];
+  "x-hrcore-server-side-state-logging"?: string;
+  "x-hrcore-server-side-state-cleanup"?: string;
+  "x-hrcore-authorization-context-fingerprint"?: {
+    algorithm: string;
+    inputs: string[];
+  };
   "x-hrcore-nullable-sort-value-encoding"?: string;
   "x-hrcore-when-omitted"?: string;
   $ref?: string;
@@ -205,7 +216,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.deepEqual(p2ListEmployeeAsOfResolutionContract, {
     omittedValue: "initial_request_accepted_at_utc_calendar_date",
     canonicalFilterField: "asOf",
-    cursorClaim: "resolvedAsOf",
+    cursorStateField: "resolvedAsOf",
     appliedFiltersIncludesResolvedValue: true,
     continuationRule:
       "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
@@ -229,8 +240,30 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     effectiveDate: "last",
   });
 
-  assert.deepEqual(p2ListCursorContract.requiredClaims, [
+  assert.equal(
+    p2ListCursorContract.wireFormat,
+    "opaque_authenticated_random_handle",
+  );
+  assert.deepEqual(p2ListCursorContract.wireRequiredClaims, [
     "version",
+    "stateId",
+    "expiresAt",
+  ]);
+  assert.equal(p2ListCursorContract.minimumHandleEntropyBits, 128);
+  assert.equal(
+    p2ListCursorContract.handleGeneration,
+    "cryptographically_secure_random",
+  );
+  assert.equal(p2ListCursorContract.serverSideStateTtlSeconds, 900);
+  assert.equal(
+    p2ListCursorContract.serverSideStateCleanup,
+    "delete_after_expiry",
+  );
+  assert.deepEqual(p2ListCursorContract.authorizationContextFingerprint, {
+    algorithm: "sha256_canonical_json",
+    inputs: ["actorId", "tenantId", "permissions", "dataScope"],
+  });
+  assert.deepEqual(p2ListCursorContract.serverSideStateRequiredFields, [
     "resource",
     "sort",
     "direction",
@@ -238,9 +271,18 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     "lastSortValueIsNull",
     "lastStableId",
     "filterFingerprint",
+    "authorizationContextFingerprint",
   ]);
-  assert.equal(p2ListCursorContract.containsPii, false);
-  assert.equal(p2ListCursorContract.containsRawQuery, false);
+  assert.deepEqual(p2ListCursorContract.serverSideStateSensitiveFields, [
+    "lastSortValue",
+  ]);
+  assert.equal(p2ListCursorContract.serverSideStateLogging, "prohibited");
+  assert.equal(p2ListCursorContract.wireContainsPii, false);
+  assert.equal(p2ListCursorContract.wireContainsRawQuery, false);
+  assert.deepEqual(p2ListCursorContract.resourceStateRequiredFields, {
+    employee: ["resolvedAsOf"],
+    lifecycleRequest: [],
+  });
   assert.equal(
     p2ListCursorContract.nullableSortValueEncoding,
     "lastSortValue_null_with_explicit_lastSortValueIsNull",
@@ -262,10 +304,6 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
       lifecycleRequest: [],
     },
   );
-  assert.deepEqual(p2ListCursorContract.resourceRequiredClaims, {
-    employee: ["resolvedAsOf"],
-    lifecycleRequest: [],
-  });
   assert.equal(
     p2ListCursorContract.maximumWireLength,
     p2ListMaximumCursorLength,
@@ -274,6 +312,13 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.ok(
     p2ListCursorContract.rejectedConditions.includes("filter_mismatch"),
   );
+  for (const rejectedState of [
+    "expired",
+    "state_not_found",
+    "authorization_context_mismatch",
+  ] as const) {
+    assert.ok(p2ListCursorContract.rejectedConditions.includes(rejectedState));
+  }
 
   assert.equal(p2ListAuthorizationContract.serverAuthoritative, true);
   assert.equal(p2ListAuthorizationContract.clientPersonaIsAuthoritative, false);
@@ -352,6 +397,8 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.ok(p2ListAuditEventTypes.includes("authorization.denied"));
   assert.ok(p2ListAuditFields.includes("filterFingerprint"));
   assert.ok(p2ListAuditDeniedFields.includes("rawSearchTerm"));
+  assert.ok(p2ListAuditDeniedFields.includes("cursorState"));
+  assert.ok(p2ListAuditDeniedFields.includes("lastSortValue"));
   assert.ok(p2ListAuditDeniedFields.includes("csvBody"));
   assert.equal(p2ListAuditContract.serverAuthoritative, true);
   assert.equal(p2ListAuditContract.clientTelemetryIsSufficient, false);
@@ -705,12 +752,44 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
   );
   assert.deepEqual(
-    schemas.P2ListCursor["x-hrcore-required-claims"],
-    p2ListCursorContract.requiredClaims,
+    schemas.P2ListCursor["x-hrcore-wire-required-claims"],
+    p2ListCursorContract.wireRequiredClaims,
   );
   assert.deepEqual(
-    schemas.P2ListCursor["x-hrcore-resource-required-claims"],
-    p2ListCursorContract.resourceRequiredClaims,
+    schemas.P2ListCursor["x-hrcore-server-side-state-required-fields"],
+    p2ListCursorContract.serverSideStateRequiredFields,
+  );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-resource-state-required-fields"],
+    p2ListCursorContract.resourceStateRequiredFields,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-server-side-state-ttl-seconds"],
+    p2ListCursorContract.serverSideStateTtlSeconds,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-minimum-handle-entropy-bits"],
+    p2ListCursorContract.minimumHandleEntropyBits,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-handle-generation"],
+    p2ListCursorContract.handleGeneration,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-server-side-state-cleanup"],
+    p2ListCursorContract.serverSideStateCleanup,
+  );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-authorization-context-fingerprint"],
+    p2ListCursorContract.authorizationContextFingerprint,
+  );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-server-side-state-sensitive-fields"],
+    p2ListCursorContract.serverSideStateSensitiveFields,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-server-side-state-logging"],
+    p2ListCursorContract.serverSideStateLogging,
   );
   assert.equal(
     schemas.P2ListCursor["x-hrcore-nullable-sort-value-encoding"],
@@ -846,6 +925,11 @@ test("P2LIST-00 documentation and policy scan preserve ADR and production bounda
     "initial request acceptance date",
     "resolvedAsOf",
     "server-resolved defaults",
+    "CSPRNG handle",
+    "Server-side state TTL: 15 minutes",
+    "deleted after expiry",
+    "authorization-context fingerprint",
+    "must never be written",
     "p2list_cursor_v1",
     "HMAC-SHA-256",
     "at most 200 characters",

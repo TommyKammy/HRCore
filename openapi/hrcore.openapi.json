@@ -829,7 +829,7 @@
           {
             "name": "cursor",
             "in": "query",
-            "description": "Opaque authenticated p2list_cursor_v1 token bound to resource, sort, direction, and canonical filters.",
+            "description": "Opaque authenticated p2list_cursor_v1 random handle for 15-minute server-side continuation state bound to authorization context and canonical filters.",
             "schema": {
               "$ref": "#/components/schemas/P2ListCursor"
             }
@@ -1106,7 +1106,7 @@
           {
             "name": "cursor",
             "in": "query",
-            "description": "Opaque authenticated p2list_cursor_v1 token bound to resource, sort, direction, and canonical filters.",
+            "description": "Opaque authenticated p2list_cursor_v1 random handle for 15-minute server-side continuation state bound to authorization context and canonical filters.",
             "schema": {
               "$ref": "#/components/schemas/P2ListCursor"
             }
@@ -2776,22 +2776,33 @@
         "minLength": 1,
         "maxLength": 2048,
         "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
-        "x-hrcore-required-claims": [
-          "version",
+        "x-hrcore-wire-required-claims": ["version", "stateId", "expiresAt"],
+        "x-hrcore-minimum-handle-entropy-bits": 128,
+        "x-hrcore-handle-generation": "cryptographically_secure_random",
+        "x-hrcore-server-side-state-ttl-seconds": 900,
+        "x-hrcore-server-side-state-cleanup": "delete_after_expiry",
+        "x-hrcore-authorization-context-fingerprint": {
+          "algorithm": "sha256_canonical_json",
+          "inputs": ["actorId", "tenantId", "permissions", "dataScope"]
+        },
+        "x-hrcore-server-side-state-required-fields": [
           "resource",
           "sort",
           "direction",
           "lastSortValue",
           "lastSortValueIsNull",
           "lastStableId",
-          "filterFingerprint"
+          "filterFingerprint",
+          "authorizationContextFingerprint"
         ],
-        "x-hrcore-resource-required-claims": {
+        "x-hrcore-resource-state-required-fields": {
           "employee": ["resolvedAsOf"],
           "lifecycleRequest": []
         },
+        "x-hrcore-server-side-state-sensitive-fields": ["lastSortValue"],
+        "x-hrcore-server-side-state-logging": "prohibited",
         "x-hrcore-nullable-sort-value-encoding": "lastSortValue_null_with_explicit_lastSortValueIsNull",
-        "description": "Opaque authenticated p2list_cursor_v1 token. The decoded claims bind resource, sort, direction, last values, explicit lastSortValueIsNull state, and canonical filter fingerprint. Employee cursors additionally carry the non-PII resolvedAsOf date needed to preserve effective-date scope. Cursors contain neither PII nor raw search terms."
+        "description": "Opaque authenticated p2list_cursor_v1 random handle with at least 128 bits of entropy and a 15-minute expiry. The wire token carries only version, random stateId, and expiresAt; it contains neither PII nor raw search terms. Sort continuation values, including display names, remain in non-logged server-side state bound to the authorization context and canonical filter fingerprint. Employee state additionally carries resolvedAsOf."
       },
       "P2ListPageInfo": {
         "type": "object",

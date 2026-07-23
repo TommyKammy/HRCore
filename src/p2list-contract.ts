@@ -59,7 +59,7 @@ export const p2ListEmployeeDefaultOrder = [
 export const p2ListEmployeeAsOfResolutionContract = {
   omittedValue: "initial_request_accepted_at_utc_calendar_date",
   canonicalFilterField: "asOf",
-  cursorClaim: "resolvedAsOf",
+  cursorStateField: "resolvedAsOf",
   appliedFiltersIncludesResolvedValue: true,
   continuationRule:
     "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
@@ -129,20 +129,23 @@ export const p2ListLifecycleSortNullPlacement = {
 
 export const p2ListCursorContract = {
   version: p2ListCursorVersion,
-  wireFormat: "opaque_authenticated_base64url",
+  wireFormat: "opaque_authenticated_random_handle",
   integrityAlgorithm: "hmac_sha256",
   filterFingerprintAlgorithm: "sha256_canonical_json",
   resolvedServerDefaultsInFilterFingerprint: {
     employee: ["asOf"],
     lifecycleRequest: [],
   },
-  resourceRequiredClaims: {
-    employee: ["resolvedAsOf"],
-    lifecycleRequest: [],
+  wireRequiredClaims: ["version", "stateId", "expiresAt"],
+  minimumHandleEntropyBits: 128,
+  handleGeneration: "cryptographically_secure_random",
+  serverSideStateTtlSeconds: 900,
+  serverSideStateCleanup: "delete_after_expiry",
+  authorizationContextFingerprint: {
+    algorithm: "sha256_canonical_json",
+    inputs: ["actorId", "tenantId", "permissions", "dataScope"],
   },
-  maximumWireLength: p2ListMaximumCursorLength,
-  requiredClaims: [
-    "version",
+  serverSideStateRequiredFields: [
     "resource",
     "sort",
     "direction",
@@ -150,7 +153,15 @@ export const p2ListCursorContract = {
     "lastSortValueIsNull",
     "lastStableId",
     "filterFingerprint",
+    "authorizationContextFingerprint",
   ],
+  resourceStateRequiredFields: {
+    employee: ["resolvedAsOf"],
+    lifecycleRequest: [],
+  },
+  maximumWireLength: p2ListMaximumCursorLength,
+  serverSideStateSensitiveFields: ["lastSortValue"],
+  serverSideStateLogging: "prohibited",
   nullableSortValueEncoding:
     "lastSortValue_null_with_explicit_lastSortValueIsNull",
   nullableSortContinuation: {
@@ -166,9 +177,12 @@ export const p2ListCursorContract = {
     "filter_mismatch",
     "sort_mismatch",
     "direction_mismatch",
+    "expired",
+    "state_not_found",
+    "authorization_context_mismatch",
   ],
-  containsPii: false,
-  containsRawQuery: false,
+  wireContainsPii: false,
+  wireContainsRawQuery: false,
   boundedKeyRule:
     "A non-default local/test authentication key is required; production key custody remains blocked.",
 } as const;
@@ -328,6 +342,8 @@ export const p2ListAuditDeniedFields = [
   "rawSearchTerm",
   "rawQuery",
   "rawCursor",
+  "cursorState",
+  "lastSortValue",
   "csv",
   "csvBody",
   "rawPayload",
