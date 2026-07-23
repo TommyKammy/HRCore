@@ -44,13 +44,24 @@ deferred because the current schema has no authoritative source for them.
 Later implementations must not synthesize those values or infer them from
 display text, notes, payload JSON, audit summaries, or frontend fixtures.
 `organizationCode` and `positionCode` are nullable when no assignment is
-effective for the requested `asOf` date.
+effective for the requested `asOf` date. An employment must have at most one
+assignment whose start/end interval contains `asOf`. If more than one
+assignment is effective, the query fails closed with `data_scope_denied`
+before authorization scope evaluation or projection; it must not choose an
+arbitrary assignment or emit duplicate employee rows.
 
 The lifecycle projection normalizes persisted `hire` to `onboarding`, both
 `change` and `transfer` to `transfer`, and `terminate` to `termination`. It may
 join directly linked workflow evidence for requester, decider, effective date,
 and allowed actions, but it must not expose type-specific raw payloads in a
-collection response.
+collection response. Because `transaction_request` currently links only to
+`person_id`, `subjectEmployeeId` may be projected, filtered, scoped, or
+exported only from an unambiguous employment resolution. Zero employments
+project `subjectEmployeeId: null` and never match a `subjectEmployeeId` filter.
+Exactly one employment projects its employment code. Multiple employments fail
+closed with `data_scope_denied` before filter, scope, projection, or export;
+implementations must not infer an employment from payload JSON, display text,
+request type, or an arbitrary join order.
 
 ## Employee Collection Contract
 
@@ -67,9 +78,9 @@ Allowed filters:
 - `asOf`: ISO date used for effective-dated employment and assignment joins.
   When omitted, the server resolves the initial request acceptance date as a
   UTC calendar date, returns it in `appliedFilters`, and includes it in the
-  canonical cursor filter fingerprint and the non-PII `resolvedAsOf` cursor
-  claim. Continuations reuse that cursor-bound value; a different explicit
-  `asOf` fails with `filter_mismatch`.
+  canonical cursor filter fingerprint and the non-PII `resolvedAsOf`
+  server-side cursor state. Continuations reuse that cursor-bound value; a
+  different explicit `asOf` fails with `filter_mismatch`.
 
 Allowed sort fields are `employeeId`, `displayName`, and `hireDate`. The
 default order is `employeeId ASC, employment.id ASC`; the non-projected
@@ -101,11 +112,19 @@ Allowed filters:
 - `correlationId`: exact lookup for support actors with `support:correlation:read`.
 
 Requested and effective range endpoints must be supplied as complete pairs.
-One-sided ranges fail closed.
+One-sided ranges fail closed. Endpoints are normalized before comparison:
+requested-at values compare as UTC instants and effective dates compare as ISO
+calendar dates. Each start must be less than or equal to its end; reversed
+ranges fail with `invalid_filter` before repository access and cannot bypass
+the inclusive 366-day maximum.
 
 Allowed sort fields are `requestedAt` and `effectiveDate`. The default order is
 `requestedAt DESC, transactionRequestId DESC`; `transactionRequestId` is the
-stable unique tie-breaker.
+stable unique tie-breaker. Every RFC 3339 `requestedAt`, `requestedFrom`, and
+`requestedTo` value is converted to its UTC instant and canonical
+`YYYY-MM-DDTHH:mm:ss.sssZ` representation before filtering or comparison.
+`requestedAt` cursor sort values use the same representation; SQLite text
+ordering of unnormalized offsets is prohibited.
 
 Date ranges may span at most 366 days. Collection DTOs carry only list-safe
 fields and detail route identifiers, not type-specific payloads.

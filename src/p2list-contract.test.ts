@@ -16,6 +16,7 @@ import {
   p2ListDeferredEmployeeFields,
   p2ListDeferredLifecycleFields,
   p2ListDeniedSurfaces,
+  p2ListEmployeeAssignmentResolutionContract,
   p2ListEmployeeAsOfResolutionContract,
   p2ListEmployeeDefaultOrder,
   p2ListEmployeeExportFields,
@@ -34,8 +35,11 @@ import {
   p2ListLifecycleFields,
   p2ListLifecycleFilters,
   p2ListLifecycleRangePairs,
+  p2ListLifecycleRangeValidationContract,
+  p2ListLifecycleRequestedAtNormalizationContract,
   p2ListLifecycleSortNullPlacement,
   p2ListLifecycleSortFields,
+  p2ListLifecycleSubjectEmploymentResolutionContract,
   p2ListMaximumDateRangeDays,
   p2ListMaximumCursorLength,
   p2ListMaximumLimit,
@@ -82,6 +86,9 @@ interface OpenApiSchema {
     inputs: string[];
   };
   "x-hrcore-nullable-sort-value-encoding"?: string;
+  "x-hrcore-range-validation"?: Record<string, unknown>;
+  "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
+  "x-hrcore-subject-employment-resolution"?: Record<string, unknown>;
   "x-hrcore-when-omitted"?: string;
   $ref?: string;
 }
@@ -130,6 +137,10 @@ interface OpenApiOperation {
   "x-hrcore-sort-null-placement"?: Record<string, string>;
   "x-hrcore-unknown-query-parameters"?: string;
   "x-hrcore-conditional-filter-permissions"?: Record<string, string>;
+  "x-hrcore-effective-assignment-resolution"?: Record<string, unknown>;
+  "x-hrcore-subject-employment-resolution"?: Record<string, unknown>;
+  "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
+  "x-hrcore-range-validation"?: Record<string, unknown>;
   "x-hrcore-required-permission"?: string;
   "x-hrcore-required-permissions"?: string[];
   "x-hrcore-export-schema-version"?: string;
@@ -221,6 +232,14 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     continuationRule:
       "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
   });
+  assert.deepEqual(p2ListEmployeeAssignmentResolutionContract, {
+    effectivePredicate: "startDate_lte_asOf_and_endDate_null_or_gte_asOf",
+    cardinality: "zero_or_one_per_employment",
+    noEffectiveAssignment: "project_null_organization_and_position",
+    multipleEffectiveAssignments:
+      "fail_closed_before_authorization_scope_and_projection",
+    failureCode: "data_scope_denied",
+  });
   assert.deepEqual(p2ListLifecycleDefaultOrder, [
     { field: "requestedAt", direction: "desc" },
     {
@@ -238,6 +257,39 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.deepEqual(p2ListLifecycleSortNullPlacement, {
     requestedAt: "not_nullable",
     effectiveDate: "last",
+  });
+  assert.deepEqual(p2ListLifecycleRequestedAtNormalizationContract, {
+    acceptedInput: "rfc3339_date_time_with_offset",
+    comparisonBasis: "utc_instant",
+    canonicalValue: "YYYY-MM-DDTHH:mm:ss.sssZ",
+    appliesTo: [
+      "requestedAt",
+      "requestedFrom",
+      "requestedTo",
+      "cursor.lastSortValue",
+    ],
+    textComparisonAllowed: false,
+  });
+  assert.deepEqual(p2ListLifecycleRangeValidationContract, {
+    pairs: p2ListLifecycleRangePairs,
+    normalizedComparison: {
+      requestedRange: "utc_instant",
+      effectiveRange: "iso_calendar_date",
+    },
+    ordering: "start_lte_end",
+    maximumInclusiveDays: p2ListMaximumDateRangeDays,
+    beforeRepositoryAccess: true,
+    reversedRangeFailureCode: "invalid_filter",
+  });
+  assert.deepEqual(p2ListLifecycleSubjectEmploymentResolutionContract, {
+    sourceLink: "transaction_request.person_id",
+    resolution: "zero_or_exactly_one_employment_for_person",
+    zeroEmployments:
+      "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
+    multipleEmployments:
+      "fail_closed_before_filter_scope_projection_and_export",
+    payloadInferenceAllowed: false,
+    failureCode: "data_scope_denied",
   });
 
   assert.equal(
@@ -484,6 +536,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     asOf: p2ListEmployeeAsOfResolutionContract.omittedValue,
   });
   assert.deepEqual(
+    employeeOperation["x-hrcore-effective-assignment-resolution"],
+    p2ListEmployeeAssignmentResolutionContract,
+  );
+  assert.deepEqual(
     employeeOperation["x-hrcore-cursor-filter-fingerprint-includes"],
     [p2ListEmployeeAsOfResolutionContract.canonicalFilterField],
   );
@@ -530,6 +586,18 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.deepEqual(
     lifecycleOperation["x-hrcore-conditional-filter-permissions"],
     { correlationId: p2ListPermissions.supportCorrelationRead },
+  );
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-requested-at-normalization"],
+    p2ListLifecycleRequestedAtNormalizationContract,
+  );
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-range-validation"],
+    p2ListLifecycleRangeValidationContract,
+  );
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-subject-employment-resolution"],
+    p2ListLifecycleSubjectEmploymentResolutionContract,
   );
 
   for (const operation of [
@@ -820,6 +888,18 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
       ]),
     ),
   );
+  assert.deepEqual(
+    schemas.P2ListLifecycleFilters["x-hrcore-range-validation"],
+    p2ListLifecycleRangeValidationContract,
+  );
+  assert.deepEqual(
+    schemas.P2ListLifecycleFilters["x-hrcore-requested-at-normalization"],
+    p2ListLifecycleRequestedAtNormalizationContract,
+  );
+  assert.deepEqual(
+    schemas.P2ListLifecycleFilters["x-hrcore-subject-employment-resolution"],
+    p2ListLifecycleSubjectEmploymentResolutionContract,
+  );
   assert.equal(
     schemas.P2ListEmployeeFilters.properties?.q.pattern,
     p2ListQueryPattern,
@@ -918,6 +998,11 @@ test("P2LIST-00 documentation and policy scan preserve ADR and production bounda
     "person.id",
     "employment.employment_code",
     "assignment.organization_code",
+    "at most one assignment",
+    "Exactly one employment",
+    "UTC instants",
+    "start must be less than or equal to its end",
+    "SQLite text ordering of unnormalized offsets is prohibited",
     "must not synthesize those values",
     "GET /employees",
     "GET /lifecycle/transaction-requests",

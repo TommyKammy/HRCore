@@ -743,6 +743,13 @@
         "x-hrcore-cursor-resolved-filter-continuation": {
           "asOf": "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf"
         },
+        "x-hrcore-effective-assignment-resolution": {
+          "effectivePredicate": "startDate_lte_asOf_and_endDate_null_or_gte_asOf",
+          "cardinality": "zero_or_one_per_employment",
+          "noEffectiveAssignment": "project_null_organization_and_position",
+          "multipleEffectiveAssignments": "fail_closed_before_authorization_scope_and_projection",
+          "failureCode": "data_scope_denied"
+        },
         "x-hrcore-query-schema": {
           "$ref": "#/components/schemas/P2ListEmployeeListQuery"
         },
@@ -925,6 +932,40 @@
         "x-hrcore-sort-null-placement": {
           "requestedAt": "not_nullable",
           "effectiveDate": "last"
+        },
+        "x-hrcore-requested-at-normalization": {
+          "acceptedInput": "rfc3339_date_time_with_offset",
+          "comparisonBasis": "utc_instant",
+          "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "appliesTo": [
+            "requestedAt",
+            "requestedFrom",
+            "requestedTo",
+            "cursor.lastSortValue"
+          ],
+          "textComparisonAllowed": false
+        },
+        "x-hrcore-range-validation": {
+          "pairs": [
+            ["requestedFrom", "requestedTo"],
+            ["effectiveFrom", "effectiveTo"]
+          ],
+          "normalizedComparison": {
+            "requestedRange": "utc_instant",
+            "effectiveRange": "iso_calendar_date"
+          },
+          "ordering": "start_lte_end",
+          "maximumInclusiveDays": 366,
+          "beforeRepositoryAccess": true,
+          "reversedRangeFailureCode": "invalid_filter"
+        },
+        "x-hrcore-subject-employment-resolution": {
+          "sourceLink": "transaction_request.person_id",
+          "resolution": "zero_or_exactly_one_employment_for_person",
+          "zeroEmployments": "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
+          "multipleEmployments": "fail_closed_before_filter_scope_projection_and_export",
+          "payloadInferenceAllowed": false,
+          "failureCode": "data_scope_denied"
         },
         "x-hrcore-conditional-filter-permissions": {
           "correlationId": "support:correlation:read"
@@ -3114,7 +3155,8 @@
           },
           "requestedAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "RFC 3339 input normalized to a UTC instant and canonical YYYY-MM-DDTHH:mm:ss.sssZ value before filtering, sorting, or cursor-state persistence. Text comparison is prohibited."
           },
           "effectiveDate": {
             "type": ["string", "null"],
@@ -3140,6 +3182,40 @@
       },
       "P2ListLifecycleFilters": {
         "type": "object",
+        "x-hrcore-requested-at-normalization": {
+          "acceptedInput": "rfc3339_date_time_with_offset",
+          "comparisonBasis": "utc_instant",
+          "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "appliesTo": [
+            "requestedAt",
+            "requestedFrom",
+            "requestedTo",
+            "cursor.lastSortValue"
+          ],
+          "textComparisonAllowed": false
+        },
+        "x-hrcore-range-validation": {
+          "pairs": [
+            ["requestedFrom", "requestedTo"],
+            ["effectiveFrom", "effectiveTo"]
+          ],
+          "normalizedComparison": {
+            "requestedRange": "utc_instant",
+            "effectiveRange": "iso_calendar_date"
+          },
+          "ordering": "start_lte_end",
+          "maximumInclusiveDays": 366,
+          "beforeRepositoryAccess": true,
+          "reversedRangeFailureCode": "invalid_filter"
+        },
+        "x-hrcore-subject-employment-resolution": {
+          "sourceLink": "transaction_request.person_id",
+          "resolution": "zero_or_exactly_one_employment_for_person",
+          "zeroEmployments": "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
+          "multipleEmployments": "fail_closed_before_filter_scope_projection_and_export",
+          "payloadInferenceAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
         "properties": {
           "requestType": {
             "type": "array",

@@ -65,6 +65,15 @@ export const p2ListEmployeeAsOfResolutionContract = {
     "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
 } as const;
 
+export const p2ListEmployeeAssignmentResolutionContract = {
+  effectivePredicate: "startDate_lte_asOf_and_endDate_null_or_gte_asOf",
+  cardinality: "zero_or_one_per_employment",
+  noEffectiveAssignment: "project_null_organization_and_position",
+  multipleEffectiveAssignments:
+    "fail_closed_before_authorization_scope_and_projection",
+  failureCode: "data_scope_denied",
+} as const;
+
 export const p2ListLifecycleFilters = [
   "requestType",
   "status",
@@ -125,6 +134,41 @@ export const p2ListLifecycleDefaultOrder = [
 export const p2ListLifecycleSortNullPlacement = {
   requestedAt: "not_nullable",
   effectiveDate: "last",
+} as const;
+
+export const p2ListLifecycleRequestedAtNormalizationContract = {
+  acceptedInput: "rfc3339_date_time_with_offset",
+  comparisonBasis: "utc_instant",
+  canonicalValue: "YYYY-MM-DDTHH:mm:ss.sssZ",
+  appliesTo: [
+    "requestedAt",
+    "requestedFrom",
+    "requestedTo",
+    "cursor.lastSortValue",
+  ],
+  textComparisonAllowed: false,
+} as const;
+
+export const p2ListLifecycleRangeValidationContract = {
+  pairs: p2ListLifecycleRangePairs,
+  normalizedComparison: {
+    requestedRange: "utc_instant",
+    effectiveRange: "iso_calendar_date",
+  },
+  ordering: "start_lte_end",
+  maximumInclusiveDays: p2ListMaximumDateRangeDays,
+  beforeRepositoryAccess: true,
+  reversedRangeFailureCode: "invalid_filter",
+} as const;
+
+export const p2ListLifecycleSubjectEmploymentResolutionContract = {
+  sourceLink: "transaction_request.person_id",
+  resolution: "zero_or_exactly_one_employment_for_person",
+  zeroEmployments:
+    "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
+  multipleEmployments: "fail_closed_before_filter_scope_projection_and_export",
+  payloadInferenceAllowed: false,
+  failureCode: "data_scope_denied",
 } as const;
 
 export const p2ListCursorContract = {
