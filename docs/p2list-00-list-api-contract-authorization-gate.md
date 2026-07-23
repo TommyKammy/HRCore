@@ -43,6 +43,11 @@ The v1 employee projection uses current repository-owned columns:
 deferred because the current schema has no authoritative source for them.
 Later implementations must not synthesize those values or infer them from
 display text, notes, payload JSON, audit summaries, or frontend fixtures.
+An employment row is eligible only when
+`employment.start_date <= asOf AND (employment.end_date IS NULL OR
+employment.end_date >= asOf)`. This predicate is applied before authorization
+scope, sorting, and cursor generation; ineligible historical or future
+employments are not projected.
 `organizationCode` and `positionCode` are nullable when no assignment is
 effective for the requested `asOf` date. An employment must have at most one
 assignment whose start/end interval contains `asOf`. If more than one
@@ -62,6 +67,56 @@ Exactly one employment projects its employment code. Multiple employments fail
 closed with `data_scope_denied` before filter, scope, projection, or export;
 implementations must not infer an employment from payload JSON, display text,
 request type, or an arbitrary join order.
+
+Lifecycle `organizationCode` has one authoritative request-time relation:
+
+- onboarding: the validated `mvp_a_onboarding_v1` payload assignment
+  `departmentReference`, which becomes the target assignment organization at
+  `effectiveDate`;
+- transfer: the validated `mvp_b_transfer_v1` payload
+  `targetAssignment.organizationReference`, representing the target
+  organization at `effectiveDate`;
+- termination: the persisted `organization_code` of the exact assignment ID
+  and code referenced by the validated termination payload, effective on the
+  day immediately before `effectiveDate`.
+
+The same resolved value is mandatory for projection, `organizationCode`
+filtering, query-layer authorization scope, and export. Missing, malformed,
+mismatched, or ambiguous organization evidence fails closed with
+`data_scope_denied` before any row is returned. Payloads are parsed through
+their versioned validators and raw payload content remains prohibited in list
+or export output.
+
+## Synthetic Provenance Gate
+
+The readiness label is not provenance. Before any list query, projection, or
+export, the server must load a trusted dataset manifest with evidence type
+`repo_owned_synthetic_fixture`, a concrete `datasetReference`,
+`tenantEnvironmentId` equal to `repo_owned_synthetic_p2list`, and source-row
+primary-key bindings for `person`, `employment`, `assignment`, and
+`transaction_request`. Every selected source primary key must belong to that
+verified manifest dataset and tenant/environment.
+
+Employee operations require bound `person`, `employment`, and `assignment`
+rows. Lifecycle request operations require bound `transaction_request`,
+`person`, `employment`, and `assignment` rows. A source not used by the
+operation is not an artificial prerequisite, but no selected row from a
+required source may escape membership verification.
+
+The manifest binds `person.id`, `employment.id`, `assignment.id`, and
+`transaction_request.id` sets explicitly. Its canonical JSON is authenticated
+with HMAC-SHA-256 using a server-injected, non-default local/test secret before
+row membership is evaluated. Missing fields, duplicate source keys, an invalid
+MAC, or an unlisted selected row fail closed.
+The manifest body, source-row primary-key sets, and integrity value must never
+be written to application, audit, access, or support logs.
+
+Client headers, request parameters, payload `tenantEnvironmentId` markers, and
+the `bounded_synthetic_only_not_production_ready` label are not sufficient
+provenance. Missing or mismatched manifest evidence fails closed with
+`data_scope_denied` before query, projection, or export. Until a runtime child
+implements this server-owned manifest and row-membership check, these
+operations remain `contract_only`.
 
 ## Employee Collection Contract
 

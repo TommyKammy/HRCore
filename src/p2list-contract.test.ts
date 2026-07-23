@@ -34,6 +34,7 @@ import {
   p2ListLifecycleExportFields,
   p2ListLifecycleFields,
   p2ListLifecycleFilters,
+  p2ListLifecycleOrganizationResolutionContract,
   p2ListLifecycleRangePairs,
   p2ListLifecycleRangeValidationContract,
   p2ListLifecycleRequestedAtNormalizationContract,
@@ -49,6 +50,7 @@ import {
   p2ListQueryPattern,
   p2ListReadiness,
   p2ListRoleActionMatrix,
+  p2ListSyntheticProvenanceContract,
   p2ListUnknownQueryParameterPolicy,
 } from "./p2list-contract.js";
 
@@ -138,6 +140,8 @@ interface OpenApiOperation {
   "x-hrcore-unknown-query-parameters"?: string;
   "x-hrcore-conditional-filter-permissions"?: Record<string, string>;
   "x-hrcore-effective-assignment-resolution"?: Record<string, unknown>;
+  "x-hrcore-synthetic-provenance"?: Record<string, unknown>;
+  "x-hrcore-lifecycle-organization-resolution"?: Record<string, unknown>;
   "x-hrcore-subject-employment-resolution"?: Record<string, unknown>;
   "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
   "x-hrcore-range-validation"?: Record<string, unknown>;
@@ -233,11 +237,61 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
       "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
   });
   assert.deepEqual(p2ListEmployeeAssignmentResolutionContract, {
+    employmentEffectivePredicate:
+      "employment.startDate_lte_asOf_and_employment.endDate_null_or_gte_asOf",
+    employmentEligibility:
+      "required_before_authorization_scope_sorting_and_cursor_generation",
     effectivePredicate: "startDate_lte_asOf_and_endDate_null_or_gte_asOf",
     cardinality: "zero_or_one_per_employment",
     noEffectiveAssignment: "project_null_organization_and_position",
     multipleEffectiveAssignments:
       "fail_closed_before_authorization_scope_and_projection",
+    failureCode: "data_scope_denied",
+  });
+  assert.deepEqual(p2ListSyntheticProvenanceContract, {
+    authority: "server_loaded_dataset_manifest",
+    acceptedEvidenceType: "repo_owned_synthetic_fixture",
+    requiredEvidenceFields: [
+      "evidenceType",
+      "datasetReference",
+      "tenantEnvironmentId",
+      "sourceRowPrimaryKeys",
+      "integrity",
+    ],
+    tenantEnvironmentId: "repo_owned_synthetic_p2list",
+    coveredSources: [
+      "person",
+      "employment",
+      "assignment",
+      "transaction_request",
+    ],
+    resourceRequiredSources: {
+      employee: ["person", "employment", "assignment"],
+      lifecycleRequest: [
+        "transaction_request",
+        "person",
+        "employment",
+        "assignment",
+      ],
+    },
+    sourceRowPrimaryKeyFields: {
+      person: "person.id",
+      employment: "employment.id",
+      assignment: "assignment.id",
+      transaction_request: "transaction_request.id",
+    },
+    integrity: {
+      algorithm: "hmac_sha256",
+      canonicalization: "canonical_json",
+      keySource: "server_injected_non_default_local_test_secret",
+    },
+    sourceRowPredicate:
+      "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+    clientSuppliedEvidenceAllowed: false,
+    payloadMarkerAloneIsSufficient: false,
+    readinessLabelAloneIsSufficient: false,
+    missingOrMismatchedEvidence:
+      "fail_closed_before_query_projection_or_export",
     failureCode: "data_scope_denied",
   });
   assert.deepEqual(p2ListLifecycleDefaultOrder, [
@@ -289,6 +343,28 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     multipleEmployments:
       "fail_closed_before_filter_scope_projection_and_export",
     payloadInferenceAllowed: false,
+    failureCode: "data_scope_denied",
+  });
+  assert.deepEqual(p2ListLifecycleOrganizationResolutionContract, {
+    onboarding: {
+      source:
+        "validated_mvp_a_onboarding_v1_payload.assignment.departmentReference",
+      relation: "target_assignment_at_effectiveDate",
+    },
+    transfer: {
+      source:
+        "validated_mvp_b_transfer_v1_payload.targetAssignment.organizationReference",
+      relation: "target_assignment_at_effectiveDate",
+    },
+    termination: {
+      source:
+        "organization_code_of_exact_payload_currentAssignment_id_and_code",
+      relation: "current_assignment_at_effectiveDate_minus_one_day",
+    },
+    appliesTo: ["projection", "filter", "query_layer_scope", "export"],
+    nullOrAmbiguous:
+      "fail_closed_before_filter_authorization_scope_projection_or_export",
+    rawPayloadExposureAllowed: false,
     failureCode: "data_scope_denied",
   });
 
@@ -451,6 +527,9 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.ok(p2ListAuditDeniedFields.includes("rawSearchTerm"));
   assert.ok(p2ListAuditDeniedFields.includes("cursorState"));
   assert.ok(p2ListAuditDeniedFields.includes("lastSortValue"));
+  assert.ok(p2ListAuditDeniedFields.includes("provenanceManifest"));
+  assert.ok(p2ListAuditDeniedFields.includes("sourceRowPrimaryKeys"));
+  assert.ok(p2ListAuditDeniedFields.includes("manifestIntegrity"));
   assert.ok(p2ListAuditDeniedFields.includes("csvBody"));
   assert.equal(p2ListAuditContract.serverAuthoritative, true);
   assert.equal(p2ListAuditContract.clientTelemetryIsSufficient, false);
@@ -540,6 +619,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     p2ListEmployeeAssignmentResolutionContract,
   );
   assert.deepEqual(
+    employeeOperation["x-hrcore-synthetic-provenance"],
+    p2ListSyntheticProvenanceContract,
+  );
+  assert.deepEqual(
     employeeOperation["x-hrcore-cursor-filter-fingerprint-includes"],
     [p2ListEmployeeAsOfResolutionContract.canonicalFilterField],
   );
@@ -599,6 +682,22 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     lifecycleOperation["x-hrcore-subject-employment-resolution"],
     p2ListLifecycleSubjectEmploymentResolutionContract,
   );
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-lifecycle-organization-resolution"],
+    p2ListLifecycleOrganizationResolutionContract,
+  );
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-synthetic-provenance"],
+    p2ListSyntheticProvenanceContract,
+  );
+  assert.deepEqual(
+    employeeExport["x-hrcore-effective-assignment-resolution"],
+    p2ListEmployeeAssignmentResolutionContract,
+  );
+  assert.deepEqual(
+    lifecycleExport["x-hrcore-lifecycle-organization-resolution"],
+    p2ListLifecycleOrganizationResolutionContract,
+  );
 
   for (const operation of [
     employeeOperation,
@@ -606,6 +705,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     employeeExport,
     lifecycleExport,
   ]) {
+    assert.deepEqual(
+      operation["x-hrcore-synthetic-provenance"],
+      p2ListSyntheticProvenanceContract,
+    );
     assert.equal(operation["x-hrcore-readiness"], p2ListReadiness);
     assert.equal(operation["x-hrcore-implementation-status"], "contract_only");
     assert.match(operation.description, /server-authorized|server-authorized/);
@@ -998,6 +1101,11 @@ test("P2LIST-00 documentation and policy scan preserve ADR and production bounda
     "person.id",
     "employment.employment_code",
     "assignment.organization_code",
+    "employment.start_date <= asOf",
+    "targetAssignment.organizationReference",
+    "repo_owned_synthetic_p2list",
+    "Every selected source primary key",
+    "readiness label is not provenance",
     "at most one assignment",
     "Exactly one employment",
     "UTC instants",
