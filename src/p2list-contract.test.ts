@@ -39,6 +39,7 @@ import {
   p2ListMaximumLimit,
   p2ListMaximumQueryLength,
   p2ListPermissions,
+  p2ListQueryPattern,
   p2ListReadiness,
   p2ListRoleActionMatrix,
 } from "./p2list-contract.js";
@@ -462,8 +463,24 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   )?.schema;
   assert.equal(employeeQuery?.maxLength, p2ListMaximumQueryLength);
   assert.equal(lifecycleQuery?.maxLength, p2ListMaximumQueryLength);
-  assert.equal(employeeQuery?.pattern, "^[^*?%]+$");
-  assert.equal(lifecycleQuery?.pattern, "^[^*?%]+$");
+  assert.equal(employeeQuery?.pattern, p2ListQueryPattern);
+  assert.equal(lifecycleQuery?.pattern, p2ListQueryPattern);
+
+  const queryPattern = new RegExp(p2ListQueryPattern, "u");
+  for (const wildcardQuery of ["A*", "A?", "A%", "A_"]) {
+    assert.equal(
+      queryPattern.test(wildcardQuery),
+      false,
+      `wildcard query must fail closed: ${wildcardQuery}`,
+    );
+  }
+  for (const prefixQuery of ["EMP-001", "山田"]) {
+    assert.equal(
+      queryPattern.test(prefixQuery),
+      true,
+      `ordinary prefix query must remain valid: ${prefixQuery}`,
+    );
+  }
 
   const employeeSort = employeeOperation.parameters?.find(
     ({ name }) => name === "sort",
@@ -519,6 +536,14 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
         [end, [start]],
       ]),
     ),
+  );
+  assert.equal(
+    schemas.P2ListEmployeeFilters.properties?.q.pattern,
+    p2ListQueryPattern,
+  );
+  assert.equal(
+    schemas.P2ListLifecycleFilters.properties?.q.pattern,
+    p2ListQueryPattern,
   );
   assert.deepEqual(
     schemas.P2ListEmployeeExportRequest.properties?.filters.allOf?.[1].anyOf,

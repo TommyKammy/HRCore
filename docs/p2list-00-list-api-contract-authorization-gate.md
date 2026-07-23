@@ -67,8 +67,9 @@ Allowed sort fields are `employeeId`, `displayName`, and `hireDate`. The
 default order is `employeeId ASC, personId ASC`; `personId` is the stable unique
 tie-breaker and is encoded only inside the opaque cursor.
 
-Unsupported fields, wildcard/regex operators, offset, arbitrary SQL/JSON
-expressions, and unbounded total count fail closed.
+Unsupported fields, SQL wildcard characters (`%` and `_`), wildcard/regex
+operators, offset, arbitrary SQL/JSON expressions, and unbounded total count
+fail closed.
 
 ## Lifecycle Collection Contract
 

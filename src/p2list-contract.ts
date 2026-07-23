@@ -7,6 +7,7 @@ export const p2ListAuditEventVersion = "p2list_audit_v1" as const;
 export const p2ListDefaultLimit = 25;
 export const p2ListMaximumLimit = 100;
 export const p2ListMaximumQueryLength = 100;
+export const p2ListQueryPattern = "^[^*?%_]+$";
 export const p2ListMaximumCursorLength = 2048;
 export const p2ListMaximumDateRangeDays = 366;
 export const p2ListExportMaximumRows = 100;

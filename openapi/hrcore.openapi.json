@@ -746,7 +746,7 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 100,
-              "pattern": "^[^*?%]+$"
+              "pattern": "^[^*?%_]+$"
             }
           },
           {
@@ -969,7 +969,7 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 100,
-              "pattern": "^[^*?%]+$"
+              "pattern": "^[^*?%_]+$"
             }
           },
           {
@@ -2870,7 +2870,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 100,
-            "pattern": "^[^*?%]+$"
+            "pattern": "^[^*?%_]+$"
           },
           "employeeId": {
             "type": "string",
@@ -3046,7 +3046,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 100,
-            "pattern": "^[^*?%]+$"
+            "pattern": "^[^*?%_]+$"
           },
           "organizationCode": {
             "type": "string",
