@@ -16,6 +16,7 @@ import {
   p2ListDeferredEmployeeFields,
   p2ListDeferredLifecycleFields,
   p2ListDeniedSurfaces,
+  p2ListEmployeeAsOfResolutionContract,
   p2ListEmployeeDefaultOrder,
   p2ListEmployeeExportFields,
   p2ListEmployeeFields,
@@ -68,7 +69,9 @@ interface OpenApiSchema {
   dependentRequired?: Record<string, string[]>;
   additionalProperties?: boolean;
   "x-hrcore-required-claims"?: string[];
+  "x-hrcore-resource-required-claims"?: Record<string, string[]>;
   "x-hrcore-nullable-sort-value-encoding"?: string;
+  "x-hrcore-when-omitted"?: string;
   $ref?: string;
 }
 
@@ -109,7 +112,10 @@ interface OpenApiOperation {
   "x-hrcore-cursor-version"?: string;
   "x-hrcore-maximum-date-range-days"?: number;
   "x-hrcore-dependent-query-parameters"?: Record<string, string[]>;
+  "x-hrcore-cursor-filter-fingerprint-includes"?: string[];
+  "x-hrcore-cursor-resolved-filter-continuation"?: Record<string, string>;
   "x-hrcore-query-schema"?: OpenApiSchema;
+  "x-hrcore-resolved-filter-defaults"?: Record<string, string>;
   "x-hrcore-sort-null-placement"?: Record<string, string>;
   "x-hrcore-unknown-query-parameters"?: string;
   "x-hrcore-conditional-filter-permissions"?: Record<string, string>;
@@ -196,6 +202,14 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     { field: "employeeId", direction: "asc" },
     { field: "employmentId", direction: "asc", tieBreaker: true },
   ]);
+  assert.deepEqual(p2ListEmployeeAsOfResolutionContract, {
+    omittedValue: "initial_request_accepted_at_utc_calendar_date",
+    canonicalFilterField: "asOf",
+    cursorClaim: "resolvedAsOf",
+    appliedFiltersIncludesResolvedValue: true,
+    continuationRule:
+      "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
+  });
   assert.deepEqual(p2ListLifecycleDefaultOrder, [
     { field: "requestedAt", direction: "desc" },
     {
@@ -241,6 +255,17 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     p2ListCursorContract.filterFingerprintAlgorithm,
     "sha256_canonical_json",
   );
+  assert.deepEqual(
+    p2ListCursorContract.resolvedServerDefaultsInFilterFingerprint,
+    {
+      employee: ["asOf"],
+      lifecycleRequest: [],
+    },
+  );
+  assert.deepEqual(p2ListCursorContract.resourceRequiredClaims, {
+    employee: ["resolvedAsOf"],
+    lifecycleRequest: [],
+  });
   assert.equal(
     p2ListCursorContract.maximumWireLength,
     p2ListMaximumCursorLength,
@@ -408,6 +433,19 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     employeeOperation["x-hrcore-cursor-version"],
     p2ListCursorVersion,
   );
+  assert.deepEqual(employeeOperation["x-hrcore-resolved-filter-defaults"], {
+    asOf: p2ListEmployeeAsOfResolutionContract.omittedValue,
+  });
+  assert.deepEqual(
+    employeeOperation["x-hrcore-cursor-filter-fingerprint-includes"],
+    [p2ListEmployeeAsOfResolutionContract.canonicalFilterField],
+  );
+  assert.deepEqual(
+    employeeOperation["x-hrcore-cursor-resolved-filter-continuation"],
+    {
+      asOf: p2ListEmployeeAsOfResolutionContract.continuationRule,
+    },
+  );
   assert.equal(
     lifecycleOperation["x-hrcore-cursor-version"],
     p2ListCursorVersion,
@@ -541,7 +579,7 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(lifecycleQuery?.pattern, p2ListQueryPattern);
 
   const queryPattern = new RegExp(p2ListQueryPattern, "u");
-  for (const wildcardQuery of [
+  for (const invalidQuery of [
     "A*",
     "A?",
     "A%",
@@ -555,11 +593,21 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     "a(b)",
     "a{2}",
     "a\\b",
+    "  ",
+    "\t\t",
+    " A",
+    "A ",
+    "A\tB",
+    "A\nB",
+    "AB\n",
+    "AB\r\n",
+    "\u00a0A",
+    "A\u00a0",
   ]) {
     assert.equal(
-      queryPattern.test(wildcardQuery),
+      queryPattern.test(invalidQuery),
       false,
-      `wildcard query must fail closed: ${wildcardQuery}`,
+      `invalid query must fail closed: ${JSON.stringify(invalidQuery)}`,
     );
   }
   for (const prefixQuery of ["EMP-001", "山田 太郎", "O'Brien", "山田・太郎"]) {
@@ -641,6 +689,13 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     schemas.P2ListEmployeeResponse.properties?.items.maxItems,
     p2ListMaximumLimit,
   );
+  assert.deepEqual(schemas.P2ListEmployeeResponse.properties?.appliedFilters, {
+    $ref: "#/components/schemas/P2ListEmployeeAppliedFilters",
+  });
+  assert.deepEqual(schemas.P2ListEmployeeAppliedFilters.allOf, [
+    { $ref: "#/components/schemas/P2ListEmployeeFilters" },
+    { required: ["asOf"] },
+  ]);
   assert.equal(
     schemas.P2ListLifecycleResponse.properties?.items.maxItems,
     p2ListMaximumLimit,
@@ -652,6 +707,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.deepEqual(
     schemas.P2ListCursor["x-hrcore-required-claims"],
     p2ListCursorContract.requiredClaims,
+  );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-resource-required-claims"],
+    p2ListCursorContract.resourceRequiredClaims,
   );
   assert.equal(
     schemas.P2ListCursor["x-hrcore-nullable-sort-value-encoding"],
@@ -685,6 +744,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(
     schemas.P2ListEmployeeFilters.properties?.q.pattern,
     p2ListQueryPattern,
+  );
+  assert.equal(
+    schemas.P2ListEmployeeFilters.properties?.asOf["x-hrcore-when-omitted"],
+    p2ListEmployeeAsOfResolutionContract.omittedValue,
   );
   assert.equal(
     schemas.P2ListLifecycleFilters.properties?.q.pattern,
@@ -779,6 +842,10 @@ test("P2LIST-00 documentation and policy scan preserve ADR and production bounda
     "must not synthesize those values",
     "GET /employees",
     "GET /lifecycle/transaction-requests",
+    "leading/trailing whitespace",
+    "initial request acceptance date",
+    "resolvedAsOf",
+    "server-resolved defaults",
     "p2list_cursor_v1",
     "HMAC-SHA-256",
     "at most 200 characters",

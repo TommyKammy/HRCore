@@ -58,11 +58,18 @@ Path: `GET /employees`
 
 Allowed filters:
 
-- `q`: employee ID or display-name prefix, trimmed length 2 through 100.
+- `q`: employee ID or display-name prefix, trimmed length 2 through 100;
+  leading/trailing whitespace, control whitespace, wildcard, and regex syntax
+  fail closed.
 - `employeeId`: exact employment code.
 - `employmentStatus`: `active`, `inactive`, or `terminated`.
 - `organizationCode`: exact code within the server-resolved actor scope.
 - `asOf`: ISO date used for effective-dated employment and assignment joins.
+  When omitted, the server resolves the initial request acceptance date as a
+  UTC calendar date, returns it in `appliedFilters`, and includes it in the
+  canonical cursor filter fingerprint and the non-PII `resolvedAsOf` cursor
+  claim. Continuations reuse that cursor-bound value; a different explicit
+  `asOf` fails with `filter_mismatch`.
 
 Allowed sort fields are `employeeId`, `displayName`, and `hireDate`. The
 default order is `employeeId ASC, employment.id ASC`; the non-projected
@@ -84,7 +91,9 @@ Allowed filters:
 - `requestType`: onboarding, transfer, or termination.
 - `status`: draft, submitted, returned, rejected, cancelled, approved, or completed.
 - `subjectEmployeeId`: exact employment code.
-- `q`: request ID, employee ID, or display-name prefix, trimmed length 2 through 100.
+- `q`: request ID, employee ID, or display-name prefix, trimmed length 2 through
+  100; leading/trailing whitespace, control whitespace, wildcard, and regex
+  syntax fail closed.
 - `organizationCode`: exact code within the server-resolved actor scope.
 - `requestedBy` and `decidedBy`: exact actor IDs when the actor has the required scope.
 - `requestedFrom` and `requestedTo`: requested-at range.
@@ -112,8 +121,9 @@ range pairs before repository access.
 - Maximum wire length: 2048 characters.
 - Version: `p2list_cursor_v1`.
 - Integrity: HMAC-SHA-256.
-- Filter fingerprint: SHA-256 over canonical allowlisted JSON.
-- Bound claims: resource, sort, direction, last sort value, explicit `lastSortValueIsNull`, last stable ID, and canonical filter fingerprint.
+- Filter fingerprint: SHA-256 over canonical allowlisted JSON, including
+  server-resolved defaults such as employee `asOf`.
+- Bound claims: resource, sort, direction, last sort value, explicit `lastSortValueIsNull`, last stable ID, and canonical filter fingerprint; employee cursors additionally require non-PII `resolvedAsOf`.
 - Nullable `effectiveDate` ordering: nulls are always last for both directions; non-null rows precede the null partition, whose rows continue by stable ID in the requested direction.
 - Page metadata: `hasNextPage: true` requires an authenticated non-null `nextCursor`; `false` requires `nextCursor: null`.
 - Rejected states: malformed, tampered, unsupported version, resource mismatch, filter mismatch, sort mismatch, and direction mismatch.

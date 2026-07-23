@@ -736,6 +736,13 @@
         "x-hrcore-implementation-status": "contract_only",
         "x-hrcore-required-permission": "employee:list:read",
         "x-hrcore-cursor-version": "p2list_cursor_v1",
+        "x-hrcore-resolved-filter-defaults": {
+          "asOf": "initial_request_accepted_at_utc_calendar_date"
+        },
+        "x-hrcore-cursor-filter-fingerprint-includes": ["asOf"],
+        "x-hrcore-cursor-resolved-filter-continuation": {
+          "asOf": "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf"
+        },
         "x-hrcore-query-schema": {
           "$ref": "#/components/schemas/P2ListEmployeeListQuery"
         },
@@ -750,7 +757,7 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 100,
-              "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
+              "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
             }
           },
           {
@@ -784,10 +791,11 @@
           {
             "name": "asOf",
             "in": "query",
-            "description": "Effective date for employment and assignment joins.",
+            "description": "Effective date for employment and assignment joins. When omitted, the server resolves the initial request acceptance date in UTC, returns it in appliedFilters, and binds it to the cursor fingerprint.",
             "schema": {
               "type": "string",
-              "format": "date"
+              "format": "date",
+              "x-hrcore-when-omitted": "initial_request_accepted_at_utc_calendar_date"
             }
           },
           {
@@ -854,7 +862,8 @@
                     "nextCursor": null
                   },
                   "appliedFilters": {
-                    "organizationCode": "organization-product"
+                    "organizationCode": "organization-product",
+                    "asOf": "2026-07-23"
                   },
                   "authorization": {
                     "dataScope": "bounded",
@@ -987,7 +996,7 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 100,
-              "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
+              "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
             }
           },
           {
@@ -2777,8 +2786,12 @@
           "lastStableId",
           "filterFingerprint"
         ],
+        "x-hrcore-resource-required-claims": {
+          "employee": ["resolvedAsOf"],
+          "lifecycleRequest": []
+        },
         "x-hrcore-nullable-sort-value-encoding": "lastSortValue_null_with_explicit_lastSortValueIsNull",
-        "description": "Opaque authenticated p2list_cursor_v1 token. The decoded claims bind resource, sort, direction, last values, explicit lastSortValueIsNull state, and canonical filter fingerprint and contain neither PII nor raw search terms."
+        "description": "Opaque authenticated p2list_cursor_v1 token. The decoded claims bind resource, sort, direction, last values, explicit lastSortValueIsNull state, and canonical filter fingerprint. Employee cursors additionally carry the non-PII resolvedAsOf date needed to preserve effective-date scope. Cursors contain neither PII nor raw search terms."
       },
       "P2ListPageInfo": {
         "type": "object",
@@ -2925,7 +2938,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 100,
-            "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
+            "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
           },
           "employeeId": {
             "type": "string",
@@ -2943,10 +2956,21 @@
           },
           "asOf": {
             "type": "string",
-            "format": "date"
+            "format": "date",
+            "x-hrcore-when-omitted": "initial_request_accepted_at_utc_calendar_date"
           }
         },
         "additionalProperties": false
+      },
+      "P2ListEmployeeAppliedFilters": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters"
+          },
+          {
+            "required": ["asOf"]
+          }
+        ]
       },
       "P2ListEmployeeListQuery": {
         "type": "object",
@@ -3009,7 +3033,7 @@
             "$ref": "#/components/schemas/P2ListPageInfo"
           },
           "appliedFilters": {
-            "$ref": "#/components/schemas/P2ListEmployeeFilters"
+            "$ref": "#/components/schemas/P2ListEmployeeAppliedFilters"
           },
           "authorization": {
             "$ref": "#/components/schemas/P2ListAuthorizationSummary"
@@ -3141,7 +3165,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 100,
-            "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
+            "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
           },
           "organizationCode": {
             "type": "string",

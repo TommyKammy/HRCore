@@ -7,7 +7,8 @@ export const p2ListAuditEventVersion = "p2list_audit_v1" as const;
 export const p2ListDefaultLimit = 25;
 export const p2ListMaximumLimit = 100;
 export const p2ListMaximumQueryLength = 100;
-export const p2ListQueryPattern = "^[^\\\\^$.*+?()[\\]{}|%_]+$";
+export const p2ListQueryPattern =
+  "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])";
 export const p2ListMaximumCursorLength = 2048;
 export const p2ListMaximumDateRangeDays = 366;
 export const p2ListExportMaximumRows = 100;
@@ -54,6 +55,15 @@ export const p2ListEmployeeDefaultOrder = [
   { field: "employeeId", direction: "asc" },
   { field: "employmentId", direction: "asc", tieBreaker: true },
 ] as const;
+
+export const p2ListEmployeeAsOfResolutionContract = {
+  omittedValue: "initial_request_accepted_at_utc_calendar_date",
+  canonicalFilterField: "asOf",
+  cursorClaim: "resolvedAsOf",
+  appliedFiltersIncludesResolvedValue: true,
+  continuationRule:
+    "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf",
+} as const;
 
 export const p2ListLifecycleFilters = [
   "requestType",
@@ -122,6 +132,14 @@ export const p2ListCursorContract = {
   wireFormat: "opaque_authenticated_base64url",
   integrityAlgorithm: "hmac_sha256",
   filterFingerprintAlgorithm: "sha256_canonical_json",
+  resolvedServerDefaultsInFilterFingerprint: {
+    employee: ["asOf"],
+    lifecycleRequest: [],
+  },
+  resourceRequiredClaims: {
+    employee: ["resolvedAsOf"],
+    lifecycleRequest: [],
+  },
   maximumWireLength: p2ListMaximumCursorLength,
   requiredClaims: [
     "version",
