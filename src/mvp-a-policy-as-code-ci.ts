@@ -84,6 +84,7 @@ export const mvpAPolicyAsCodeDocumentationPaths = [
   "docs/p2y-00-webui-practical-use-scope-authorization-gate.md",
   "docs/p2y-webui-practical-uat-package.md",
   "docs/p2y-webui-practical-readiness-review-closeout.md",
+  "docs/p2list-00-list-api-contract-authorization-gate.md",
   "docs/adr/0011-data-scope-policy-dsl-rls-boundary.md",
   "docs/adr/0012-audit-event-hash-chain-worm-object-lock-boundary.md",
   "docs/adr/0014-raw-payload-csv-export-redaction-watermark-download-log-boundary.md",
