@@ -46,10 +46,11 @@ display text, notes, payload JSON, audit summaries, or frontend fixtures.
 `organizationCode` and `positionCode` are nullable when no assignment is
 effective for the requested `asOf` date.
 
-The lifecycle projection normalizes `hire`, `change`, and `terminate` into
-`onboarding`, `transfer`, and `termination`. It may join directly linked
-workflow evidence for requester, decider, effective date, and allowed actions,
-but it must not expose type-specific raw payloads in a collection response.
+The lifecycle projection normalizes persisted `hire` to `onboarding`, both
+`change` and `transfer` to `transfer`, and `terminate` to `termination`. It may
+join directly linked workflow evidence for requester, decider, effective date,
+and allowed actions, but it must not expose type-specific raw payloads in a
+collection response.
 
 ## Employee Collection Contract
 
@@ -64,12 +65,13 @@ Allowed filters:
 - `asOf`: ISO date used for effective-dated employment and assignment joins.
 
 Allowed sort fields are `employeeId`, `displayName`, and `hireDate`. The
-default order is `employeeId ASC, personId ASC`; `personId` is the stable unique
-tie-breaker and is encoded only inside the opaque cursor.
+default order is `employeeId ASC, employment.id ASC`; the non-projected
+`employment.id` primary key is the stable unique tie-breaker for every employee
+sort and is encoded only inside the opaque cursor.
 
-Unsupported fields, SQL wildcard characters (`%` and `_`), wildcard/regex
-operators, offset, arbitrary SQL/JSON expressions, and unbounded total count
-fail closed.
+Unsupported fields, SQL wildcard characters (`%` and `_`), regex
+metacharacters, wildcard/regex operators, offset, arbitrary SQL/JSON
+expressions, and unbounded total count fail closed.
 
 ## Lifecycle Collection Contract
 

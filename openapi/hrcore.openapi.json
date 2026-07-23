@@ -736,7 +736,7 @@
         "x-hrcore-implementation-status": "contract_only",
         "x-hrcore-required-permission": "employee:list:read",
         "x-hrcore-cursor-version": "p2list_cursor_v1",
-        "x-hrcore-default-order": ["employeeId:asc", "personId:asc"],
+        "x-hrcore-default-order": ["employeeId:asc", "employmentId:asc"],
         "parameters": [
           {
             "name": "q",
@@ -746,7 +746,7 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 100,
-              "pattern": "^[^*?%_]+$"
+              "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
             }
           },
           {
@@ -908,6 +908,12 @@
         "x-hrcore-conditional-filter-permissions": {
           "correlationId": "support:correlation:read"
         },
+        "x-hrcore-dependent-query-parameters": {
+          "requestedFrom": ["requestedTo"],
+          "requestedTo": ["requestedFrom"],
+          "effectiveFrom": ["effectiveTo"],
+          "effectiveTo": ["effectiveFrom"]
+        },
         "x-hrcore-default-order": [
           "requestedAt:desc",
           "transactionRequestId:desc"
@@ -969,7 +975,7 @@
               "type": "string",
               "minLength": 2,
               "maxLength": 100,
-              "pattern": "^[^*?%_]+$"
+              "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
             }
           },
           {
@@ -1005,6 +1011,7 @@
           {
             "name": "requestedFrom",
             "in": "query",
+            "description": "Requested-at range start. Must be supplied with requestedTo.",
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -1013,7 +1020,7 @@
           {
             "name": "requestedTo",
             "in": "query",
-            "description": "Requested-at range is limited to 366 days.",
+            "description": "Requested-at range end. Must be supplied with requestedFrom; the range is limited to 366 days.",
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -1022,6 +1029,7 @@
           {
             "name": "effectiveFrom",
             "in": "query",
+            "description": "Effective-date range start. Must be supplied with effectiveTo.",
             "schema": {
               "type": "string",
               "format": "date"
@@ -1030,7 +1038,7 @@
           {
             "name": "effectiveTo",
             "in": "query",
-            "description": "Effective-date range is limited to 366 days.",
+            "description": "Effective-date range end. Must be supplied with effectiveFrom; the range is limited to 366 days.",
             "schema": {
               "type": "string",
               "format": "date"
@@ -2870,7 +2878,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 100,
-            "pattern": "^[^*?%_]+$"
+            "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
           },
           "employeeId": {
             "type": "string",
@@ -3046,7 +3054,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 100,
-            "pattern": "^[^*?%_]+$"
+            "pattern": "^[^\\\\^$.*+?()[\\]{}|%_]+$"
           },
           "organizationCode": {
             "type": "string",

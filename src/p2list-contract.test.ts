@@ -39,6 +39,7 @@ import {
   p2ListMaximumLimit,
   p2ListMaximumQueryLength,
   p2ListPermissions,
+  p2ListPersistedLifecycleTypeMap,
   p2ListQueryPattern,
   p2ListReadiness,
   p2ListRoleActionMatrix,
@@ -102,6 +103,7 @@ interface OpenApiOperation {
   "x-hrcore-default-order"?: string[];
   "x-hrcore-cursor-version"?: string;
   "x-hrcore-maximum-date-range-days"?: number;
+  "x-hrcore-dependent-query-parameters"?: Record<string, string[]>;
   "x-hrcore-conditional-filter-permissions"?: Record<string, string>;
   "x-hrcore-required-permission"?: string;
   "x-hrcore-required-permissions"?: string[];
@@ -166,7 +168,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
 
   assert.deepEqual(p2ListEmployeeDefaultOrder, [
     { field: "employeeId", direction: "asc" },
-    { field: "personId", direction: "asc", tieBreaker: true },
+    { field: "employmentId", direction: "asc", tieBreaker: true },
   ]);
   assert.deepEqual(p2ListLifecycleDefaultOrder, [
     { field: "requestedAt", direction: "desc" },
@@ -176,6 +178,12 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
       tieBreaker: true,
     },
   ]);
+  assert.deepEqual(p2ListPersistedLifecycleTypeMap, {
+    hire: "onboarding",
+    change: "transfer",
+    transfer: "transfer",
+    terminate: "termination",
+  });
 
   assert.deepEqual(p2ListCursorContract.requiredClaims, [
     "version",
@@ -342,7 +350,7 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   ]);
   assert.deepEqual(employeeOperation["x-hrcore-default-order"], [
     "employeeId:asc",
-    "personId:asc",
+    "employmentId:asc",
   ]);
   assert.deepEqual(lifecycleOperation["x-hrcore-default-order"], [
     "requestedAt:desc",
@@ -367,6 +375,15 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(
     lifecycleOperation["x-hrcore-maximum-date-range-days"],
     p2ListMaximumDateRangeDays,
+  );
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-dependent-query-parameters"],
+    Object.fromEntries(
+      p2ListLifecycleRangePairs.flatMap(([start, end]) => [
+        [start, [end]],
+        [end, [start]],
+      ]),
+    ),
   );
   assert.deepEqual(
     lifecycleOperation["x-hrcore-conditional-filter-permissions"],
@@ -467,14 +484,28 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(lifecycleQuery?.pattern, p2ListQueryPattern);
 
   const queryPattern = new RegExp(p2ListQueryPattern, "u");
-  for (const wildcardQuery of ["A*", "A?", "A%", "A_"]) {
+  for (const wildcardQuery of [
+    "A*",
+    "A?",
+    "A%",
+    "A_",
+    "^EMP",
+    "EMP$",
+    "[A-Z]",
+    "foo+",
+    "a|b",
+    "a.b",
+    "a(b)",
+    "a{2}",
+    "a\\b",
+  ]) {
     assert.equal(
       queryPattern.test(wildcardQuery),
       false,
       `wildcard query must fail closed: ${wildcardQuery}`,
     );
   }
-  for (const prefixQuery of ["EMP-001", "山田"]) {
+  for (const prefixQuery of ["EMP-001", "山田 太郎", "O'Brien", "山田・太郎"]) {
     assert.equal(
       queryPattern.test(prefixQuery),
       true,

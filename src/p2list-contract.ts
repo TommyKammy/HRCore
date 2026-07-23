@@ -7,7 +7,7 @@ export const p2ListAuditEventVersion = "p2list_audit_v1" as const;
 export const p2ListDefaultLimit = 25;
 export const p2ListMaximumLimit = 100;
 export const p2ListMaximumQueryLength = 100;
-export const p2ListQueryPattern = "^[^*?%_]+$";
+export const p2ListQueryPattern = "^[^\\\\^$.*+?()[\\]{}|%_]+$";
 export const p2ListMaximumCursorLength = 2048;
 export const p2ListMaximumDateRangeDays = 366;
 export const p2ListExportMaximumRows = 100;
@@ -51,7 +51,7 @@ export const p2ListEmployeeStatuses = [
 
 export const p2ListEmployeeDefaultOrder = [
   { field: "employeeId", direction: "asc" },
-  { field: "personId", direction: "asc", tieBreaker: true },
+  { field: "employmentId", direction: "asc", tieBreaker: true },
 ] as const;
 
 export const p2ListLifecycleFilters = [
@@ -84,6 +84,13 @@ export const p2ListLifecycleRequestTypes = [
   "transfer",
   "termination",
 ] as const;
+
+export const p2ListPersistedLifecycleTypeMap = {
+  hire: "onboarding",
+  change: "transfer",
+  transfer: "transfer",
+  terminate: "termination",
+} as const;
 
 export const p2ListLifecycleStatuses = [
   "draft",
