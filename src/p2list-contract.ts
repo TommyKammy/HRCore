@@ -12,6 +12,7 @@ export const p2ListMaximumCursorLength = 2048;
 export const p2ListMaximumDateRangeDays = 366;
 export const p2ListExportMaximumRows = 100;
 export const p2ListErrorMessageMaximumLength = 200;
+export const p2ListUnknownQueryParameterPolicy = "reject" as const;
 
 export const p2ListExportReasonCodes = [
   "uat_reconciliation",
@@ -111,6 +112,11 @@ export const p2ListLifecycleDefaultOrder = [
   },
 ] as const;
 
+export const p2ListLifecycleSortNullPlacement = {
+  requestedAt: "not_nullable",
+  effectiveDate: "last",
+} as const;
+
 export const p2ListCursorContract = {
   version: p2ListCursorVersion,
   wireFormat: "opaque_authenticated_base64url",
@@ -123,9 +129,17 @@ export const p2ListCursorContract = {
     "sort",
     "direction",
     "lastSortValue",
+    "lastSortValueIsNull",
     "lastStableId",
     "filterFingerprint",
   ],
+  nullableSortValueEncoding:
+    "lastSortValue_null_with_explicit_lastSortValueIsNull",
+  nullableSortContinuation: {
+    placement: "last_regardless_of_direction",
+    nonNullPartitionPrecedesNullPartition: true,
+    nullPartitionOrder: "lastStableId_in_requested_direction",
+  },
   rejectedConditions: [
     "malformed",
     "tampered",

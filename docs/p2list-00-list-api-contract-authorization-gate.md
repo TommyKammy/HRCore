@@ -72,6 +72,8 @@ sort and is encoded only inside the opaque cursor.
 Unsupported fields, SQL wildcard characters (`%` and `_`), regex
 metacharacters, wildcard/regex operators, offset, arbitrary SQL/JSON
 expressions, and unbounded total count fail closed.
+The operation-level query schema rejects every parameter not present in the
+allowlist; implementations must not silently ignore unknown query names.
 
 ## Lifecycle Collection Contract
 
@@ -98,6 +100,8 @@ stable unique tie-breaker.
 
 Date ranges may span at most 366 days. Collection DTOs carry only list-safe
 fields and detail route identifiers, not type-specific payloads.
+The operation-level query schema rejects unknown parameters and enforces both
+range pairs before repository access.
 
 ## Pagination and Cursor
 
@@ -109,7 +113,9 @@ fields and detail route identifiers, not type-specific payloads.
 - Version: `p2list_cursor_v1`.
 - Integrity: HMAC-SHA-256.
 - Filter fingerprint: SHA-256 over canonical allowlisted JSON.
-- Bound claims: resource, sort, direction, last sort value, last stable ID, and canonical filter fingerprint.
+- Bound claims: resource, sort, direction, last sort value, explicit `lastSortValueIsNull`, last stable ID, and canonical filter fingerprint.
+- Nullable `effectiveDate` ordering: nulls are always last for both directions; non-null rows precede the null partition, whose rows continue by stable ID in the requested direction.
+- Page metadata: `hasNextPage: true` requires an authenticated non-null `nextCursor`; `false` requires `nextCursor: null`.
 - Rejected states: malformed, tampered, unsupported version, resource mismatch, filter mismatch, sort mismatch, and direction mismatch.
 - PII and raw search terms: prohibited in the cursor.
 - Local/test key: injected, non-default, and fail-closed when absent.

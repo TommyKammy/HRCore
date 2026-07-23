@@ -33,6 +33,7 @@ import {
   p2ListLifecycleFields,
   p2ListLifecycleFilters,
   p2ListLifecycleRangePairs,
+  p2ListLifecycleSortNullPlacement,
   p2ListLifecycleSortFields,
   p2ListMaximumDateRangeDays,
   p2ListMaximumCursorLength,
@@ -43,6 +44,7 @@ import {
   p2ListQueryPattern,
   p2ListReadiness,
   p2ListRoleActionMatrix,
+  p2ListUnknownQueryParameterPolicy,
 } from "./p2list-contract.js";
 
 interface OpenApiSchema {
@@ -50,7 +52,7 @@ interface OpenApiSchema {
   properties?: Record<string, OpenApiSchema>;
   required?: string[];
   enum?: string[];
-  const?: string;
+  const?: string | boolean | number | null;
   default?: string | number;
   minimum?: number;
   maximum?: number;
@@ -64,6 +66,9 @@ interface OpenApiSchema {
   anyOf?: OpenApiSchema[];
   oneOf?: OpenApiSchema[];
   dependentRequired?: Record<string, string[]>;
+  additionalProperties?: boolean;
+  "x-hrcore-required-claims"?: string[];
+  "x-hrcore-nullable-sort-value-encoding"?: string;
   $ref?: string;
 }
 
@@ -104,6 +109,9 @@ interface OpenApiOperation {
   "x-hrcore-cursor-version"?: string;
   "x-hrcore-maximum-date-range-days"?: number;
   "x-hrcore-dependent-query-parameters"?: Record<string, string[]>;
+  "x-hrcore-query-schema"?: OpenApiSchema;
+  "x-hrcore-sort-null-placement"?: Record<string, string>;
+  "x-hrcore-unknown-query-parameters"?: string;
   "x-hrcore-conditional-filter-permissions"?: Record<string, string>;
   "x-hrcore-required-permission"?: string;
   "x-hrcore-required-permissions"?: string[];
@@ -134,13 +142,35 @@ const schemaRefName = (schema: OpenApiSchema): string | undefined =>
 const normalizedSurface = (value: string): string =>
   value.replaceAll("_", "").toLowerCase();
 
+const resolveLocalSchemaRef = (
+  schema: OpenApiSchema,
+  contract: P2ListOpenApiContract,
+): OpenApiSchema => {
+  if (!schema.$ref) {
+    return schema;
+  }
+  const segments = schema.$ref
+    .replace(/^#\//u, "")
+    .split("/")
+    .map((segment) => segment.replaceAll("~1", "/").replaceAll("~0", "~"));
+  let target: unknown = contract;
+  for (const segment of segments) {
+    target =
+      target && typeof target === "object"
+        ? (target as Record<string, unknown>)[segment]
+        : undefined;
+  }
+  assert.ok(target, `unresolved local OpenAPI schema ref: ${schema.$ref}`);
+  return target as OpenApiSchema;
+};
+
 const assertLocalSchemaRefsResolve = (
   value: unknown,
-  schemas: Record<string, OpenApiSchema>,
+  contract: P2ListOpenApiContract,
 ): void => {
   if (Array.isArray(value)) {
     for (const item of value) {
-      assertLocalSchemaRefsResolve(item, schemas);
+      assertLocalSchemaRefsResolve(item, contract);
     }
     return;
   }
@@ -149,14 +179,10 @@ const assertLocalSchemaRefsResolve = (
   }
   const record = value as Record<string, unknown>;
   if (typeof record.$ref === "string") {
-    const name = record.$ref.replace("#/components/schemas/", "");
-    assert.ok(
-      schemas[name],
-      `unresolved local OpenAPI schema ref: ${record.$ref}`,
-    );
+    resolveLocalSchemaRef(record as OpenApiSchema, contract);
   }
   for (const nested of Object.values(record)) {
-    assertLocalSchemaRefsResolve(nested, schemas);
+    assertLocalSchemaRefsResolve(nested, contract);
   }
 };
 
@@ -184,6 +210,10 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     transfer: "transfer",
     terminate: "termination",
   });
+  assert.deepEqual(p2ListLifecycleSortNullPlacement, {
+    requestedAt: "not_nullable",
+    effectiveDate: "last",
+  });
 
   assert.deepEqual(p2ListCursorContract.requiredClaims, [
     "version",
@@ -191,11 +221,21 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     "sort",
     "direction",
     "lastSortValue",
+    "lastSortValueIsNull",
     "lastStableId",
     "filterFingerprint",
   ]);
   assert.equal(p2ListCursorContract.containsPii, false);
   assert.equal(p2ListCursorContract.containsRawQuery, false);
+  assert.equal(
+    p2ListCursorContract.nullableSortValueEncoding,
+    "lastSortValue_null_with_explicit_lastSortValueIsNull",
+  );
+  assert.deepEqual(p2ListCursorContract.nullableSortContinuation, {
+    placement: "last_regardless_of_direction",
+    nonNullPartitionPrecedesNullPartition: true,
+    nullPartitionOrder: "lastStableId_in_requested_direction",
+  });
   assert.equal(p2ListCursorContract.integrityAlgorithm, "hmac_sha256");
   assert.equal(
     p2ListCursorContract.filterFingerprintAlgorithm,
@@ -385,6 +425,23 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
       ]),
     ),
   );
+  for (const [operation, querySchemaName] of [
+    [employeeOperation, "P2ListEmployeeListQuery"],
+    [lifecycleOperation, "P2ListLifecycleListQuery"],
+  ] as const) {
+    assert.equal(
+      operation["x-hrcore-unknown-query-parameters"],
+      p2ListUnknownQueryParameterPolicy,
+    );
+    assert.equal(
+      operation["x-hrcore-query-schema"]?.$ref,
+      `#/components/schemas/${querySchemaName}`,
+    );
+  }
+  assert.deepEqual(
+    lifecycleOperation["x-hrcore-sort-null-placement"],
+    p2ListLifecycleSortNullPlacement,
+  );
   assert.deepEqual(
     lifecycleOperation["x-hrcore-conditional-filter-permissions"],
     { correlationId: p2ListPermissions.supportCorrelationRead },
@@ -523,6 +580,39 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.deepEqual(lifecycleSort, p2ListLifecycleSortFields);
 
   const schemas = contract.components.schemas;
+  assert.equal(schemas.P2ListEmployeeListQuery.additionalProperties, false);
+  assert.equal(schemas.P2ListLifecycleListQuery.additionalProperties, false);
+  assert.deepEqual(
+    Object.keys(schemas.P2ListEmployeeListQuery.properties ?? {}),
+    parameterNames(employeeOperation),
+  );
+  assert.deepEqual(
+    Object.keys(schemas.P2ListLifecycleListQuery.properties ?? {}),
+    parameterNames(lifecycleOperation),
+  );
+  for (const [operation, querySchema] of [
+    [employeeOperation, schemas.P2ListEmployeeListQuery],
+    [lifecycleOperation, schemas.P2ListLifecycleListQuery],
+  ] as const) {
+    for (const parameter of operation.parameters ?? []) {
+      const queryProperty = querySchema.properties?.[parameter.name];
+      assert.ok(queryProperty, `missing query property: ${parameter.name}`);
+      assert.deepEqual(
+        resolveLocalSchemaRef(queryProperty, contract),
+        resolveLocalSchemaRef(parameter.schema, contract),
+        `query schema drift for parameter: ${parameter.name}`,
+      );
+    }
+  }
+  assert.deepEqual(
+    schemas.P2ListLifecycleListQuery.dependentRequired,
+    Object.fromEntries(
+      p2ListLifecycleRangePairs.flatMap(([start, end]) => [
+        [start, [end]],
+        [end, [start]],
+      ]),
+    ),
+  );
   assert.deepEqual(
     Object.keys(schemas.P2ListEmployeeItem.properties ?? {}),
     p2ListEmployeeFields,
@@ -559,6 +649,30 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     schemas.P2ListCursor.pattern,
     "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
   );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-required-claims"],
+    p2ListCursorContract.requiredClaims,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-nullable-sort-value-encoding"],
+    p2ListCursorContract.nullableSortValueEncoding,
+  );
+  assert.deepEqual(schemas.P2ListPageInfo.oneOf, [
+    {
+      required: ["hasNextPage", "nextCursor"],
+      properties: {
+        hasNextPage: { const: true },
+        nextCursor: { $ref: "#/components/schemas/P2ListCursor" },
+      },
+    },
+    {
+      required: ["hasNextPage", "nextCursor"],
+      properties: {
+        hasNextPage: { const: false },
+        nextCursor: { type: "null" },
+      },
+    },
+  ]);
   assert.deepEqual(
     schemas.P2ListLifecycleFilters.dependentRequired,
     Object.fromEntries(
@@ -613,7 +727,7 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     lifecycleCsvExample.split("\n", 1)[0].split(","),
     p2ListLifecycleExportFields,
   );
-  assertLocalSchemaRefsResolve(contract, schemas);
+  assertLocalSchemaRefsResolve(contract, contract);
 
   const serializedContract = JSON.stringify(contract);
   for (const deferredField of [

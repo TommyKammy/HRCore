@@ -736,6 +736,10 @@
         "x-hrcore-implementation-status": "contract_only",
         "x-hrcore-required-permission": "employee:list:read",
         "x-hrcore-cursor-version": "p2list_cursor_v1",
+        "x-hrcore-query-schema": {
+          "$ref": "#/components/schemas/P2ListEmployeeListQuery"
+        },
+        "x-hrcore-unknown-query-parameters": "reject",
         "x-hrcore-default-order": ["employeeId:asc", "employmentId:asc"],
         "parameters": [
           {
@@ -905,6 +909,14 @@
         "x-hrcore-required-permission": "lifecycle-request:list:read",
         "x-hrcore-cursor-version": "p2list_cursor_v1",
         "x-hrcore-maximum-date-range-days": 366,
+        "x-hrcore-query-schema": {
+          "$ref": "#/components/schemas/P2ListLifecycleListQuery"
+        },
+        "x-hrcore-unknown-query-parameters": "reject",
+        "x-hrcore-sort-null-placement": {
+          "requestedAt": "not_nullable",
+          "effectiveDate": "last"
+        },
         "x-hrcore-conditional-filter-permissions": {
           "correlationId": "support:correlation:read"
         },
@@ -2755,7 +2767,18 @@
         "minLength": 1,
         "maxLength": 2048,
         "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
-        "description": "Opaque authenticated p2list_cursor_v1 token. The decoded claims bind resource, sort, direction, last values, and canonical filter fingerprint and contain neither PII nor raw search terms."
+        "x-hrcore-required-claims": [
+          "version",
+          "resource",
+          "sort",
+          "direction",
+          "lastSortValue",
+          "lastSortValueIsNull",
+          "lastStableId",
+          "filterFingerprint"
+        ],
+        "x-hrcore-nullable-sort-value-encoding": "lastSortValue_null_with_explicit_lastSortValueIsNull",
+        "description": "Opaque authenticated p2list_cursor_v1 token. The decoded claims bind resource, sort, direction, last values, explicit lastSortValueIsNull state, and canonical filter fingerprint and contain neither PII nor raw search terms."
       },
       "P2ListPageInfo": {
         "type": "object",
@@ -2780,6 +2803,30 @@
             ]
           }
         },
+        "oneOf": [
+          {
+            "required": ["hasNextPage", "nextCursor"],
+            "properties": {
+              "hasNextPage": {
+                "const": true
+              },
+              "nextCursor": {
+                "$ref": "#/components/schemas/P2ListCursor"
+              }
+            }
+          },
+          {
+            "required": ["hasNextPage", "nextCursor"],
+            "properties": {
+              "hasNextPage": {
+                "const": false
+              },
+              "nextCursor": {
+                "type": "null"
+              }
+            }
+          }
+        ],
         "additionalProperties": false
       },
       "P2ListAuthorizationSummary": {
@@ -2897,6 +2944,46 @@
           "asOf": {
             "type": "string",
             "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListEmployeeListQuery": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/q"
+          },
+          "employeeId": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/employeeId"
+          },
+          "employmentStatus": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/employmentStatus"
+          },
+          "organizationCode": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/organizationCode"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/asOf"
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["employeeId", "displayName", "hireDate"],
+            "default": "employeeId"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "default": "asc"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/P2ListCursor"
           }
         },
         "additionalProperties": false
@@ -3091,6 +3178,73 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 256
+          }
+        },
+        "dependentRequired": {
+          "requestedFrom": ["requestedTo"],
+          "requestedTo": ["requestedFrom"],
+          "effectiveFrom": ["effectiveTo"],
+          "effectiveTo": ["effectiveFrom"]
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleListQuery": {
+        "type": "object",
+        "properties": {
+          "requestType": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/status"
+          },
+          "subjectEmployeeId": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/subjectEmployeeId"
+          },
+          "q": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/q"
+          },
+          "organizationCode": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/organizationCode"
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestedBy"
+          },
+          "decidedBy": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/decidedBy"
+          },
+          "requestedFrom": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestedFrom"
+          },
+          "requestedTo": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestedTo"
+          },
+          "effectiveFrom": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/effectiveFrom"
+          },
+          "effectiveTo": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/effectiveTo"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/correlationId"
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["requestedAt", "effectiveDate"],
+            "default": "requestedAt"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "default": "desc"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/P2ListCursor"
           }
         },
         "dependentRequired": {
