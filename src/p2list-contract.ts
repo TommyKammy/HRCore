@@ -91,13 +91,17 @@ export const p2ListSyntheticProvenanceContract = {
   tenantEnvironmentId: "repo_owned_synthetic_p2list",
   coveredSources: ["person", "employment", "assignment", "transaction_request"],
   resourceRequiredSources: {
-    employee: ["person", "employment", "assignment"],
-    lifecycleRequest: [
-      "transaction_request",
-      "person",
-      "employment",
-      "assignment",
-    ],
+    employee: ["person", "employment"],
+    lifecycleRequest: ["transaction_request", "person"],
+  },
+  conditionallyRequiredSources: {
+    employee: {
+      assignment: "when_any_assignment_row_is_selected",
+    },
+    lifecycleRequest: {
+      employment: "when_any_employment_row_is_selected",
+      assignment: "when_any_assignment_row_is_selected",
+    },
   },
   sourceRowPrimaryKeyFields: {
     person: "person.id",
@@ -112,6 +116,7 @@ export const p2ListSyntheticProvenanceContract = {
   },
   sourceRowPredicate:
     "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+  unusedSourceAbsenceAllowed: true,
   clientSuppliedEvidenceAllowed: false,
   payloadMarkerAloneIsSufficient: false,
   readinessLabelAloneIsSufficient: false,
@@ -125,7 +130,6 @@ export const p2ListLifecycleFilters = [
   "subjectEmployeeId",
   "q",
   "organizationCode",
-  "requestedBy",
   "decidedBy",
   "requestedFrom",
   "requestedTo",
@@ -329,7 +333,6 @@ export const p2ListLifecycleFields = [
   "subjectEmployeeId",
   "subjectDisplayName",
   "organizationCode",
-  "requestedBy",
   "decidedBy",
   "requestedAt",
   "effectiveDate",
@@ -345,6 +348,7 @@ export const p2ListDeferredEmployeeFields = [
 ] as const;
 
 export const p2ListDeferredLifecycleFields = [
+  "requestedBy",
   "currentStep",
   "updatedAt",
 ] as const;
@@ -513,16 +517,7 @@ export const p2ListFieldVisibility = {
   },
   approver: {
     employee: [] as const,
-    lifecycleRequest: [
-      "transactionRequestId",
-      "requestType",
-      "status",
-      "subjectEmployeeId",
-      "subjectDisplayName",
-      "requestedAt",
-      "effectiveDate",
-      "allowedActions",
-    ],
+    lifecycleRequest: [] as const,
   },
   hrOpsSupport: {
     employee: p2ListEmployeeFields,
@@ -573,9 +568,10 @@ export const p2ListRoleActionMatrix = {
       scope: "none",
     },
     lifecycleRequestList: {
-      uiVisible: true,
-      requiredPermission: p2ListPermissions.lifecycleRequestListRead,
-      scope: "assigned_approval_requests",
+      uiVisible: false,
+      requiredPermission: null,
+      scope: "none",
+      deferredReason: "no_authoritative_current_approver_assignment_source",
     },
     employeeExport: {
       uiVisible: false,

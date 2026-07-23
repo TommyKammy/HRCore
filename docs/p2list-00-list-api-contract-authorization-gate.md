@@ -57,9 +57,12 @@ arbitrary assignment or emit duplicate employee rows.
 
 The lifecycle projection normalizes persisted `hire` to `onboarding`, both
 `change` and `transfer` to `transfer`, and `terminate` to `termination`. It may
-join directly linked workflow evidence for requester, decider, effective date,
-and allowed actions, but it must not expose type-specific raw payloads in a
-collection response. Because `transaction_request` currently links only to
+join directly linked workflow evidence for decider, effective date, and allowed
+actions, but it must not expose type-specific raw payloads in a collection
+response. `requestedBy` is deferred because `transaction_request` has no
+immutable requester actor column or request-creation audit relation;
+implementations must not infer it from later audit events or payload content.
+Because `transaction_request` currently links only to
 `person_id`, `subjectEmployeeId` may be projected, filtered, scoped, or
 exported only from an unambiguous employment resolution. Zero employments
 project `subjectEmployeeId: null` and never match a `subjectEmployeeId` filter.
@@ -97,11 +100,16 @@ primary-key bindings for `person`, `employment`, `assignment`, and
 `transaction_request`. Every selected source primary key must belong to that
 verified manifest dataset and tenant/environment.
 
-Employee operations require bound `person`, `employment`, and `assignment`
-rows. Lifecycle request operations require bound `transaction_request`,
-`person`, `employment`, and `assignment` rows. A source not used by the
-operation is not an artificial prerequisite, but no selected row from a
-required source may escape membership verification.
+Employee operations always require bound `person` and `employment` rows;
+`assignment` evidence is required only when an effective assignment row is
+selected. Lifecycle request operations always require bound
+`transaction_request` and `person` rows. `employment` evidence is additionally
+required only when an employment row is selected for subject resolution, and
+`assignment` evidence only when an assignment row is selected for organization
+resolution. Pending onboarding requests therefore do not require employment or
+assignment rows that do not yet exist. A source not joined by a result is not
+an artificial prerequisite, but every source row actually selected must pass
+manifest membership verification.
 
 The manifest binds `person.id`, `employment.id`, `assignment.id`, and
 `transaction_request.id` sets explicitly. Its canonical JSON is authenticated
@@ -161,7 +169,7 @@ Allowed filters:
   100; leading/trailing whitespace, control whitespace, wildcard, and regex
   syntax fail closed.
 - `organizationCode`: exact code within the server-resolved actor scope.
-- `requestedBy` and `decidedBy`: exact actor IDs when the actor has the required scope.
+- `decidedBy`: exact decision actor ID when the actor has the required scope.
 - `requestedFrom` and `requestedTo`: requested-at range.
 - `effectiveFrom` and `effectiveTo`: effective-date range.
 - `correlationId`: exact lookup for support actors with `support:correlation:read`.
@@ -244,16 +252,16 @@ IDs, display names, raw filters, raw cursors, scope internals, or record counts.
 Frontend persona state controls presentation only. The server-resolved actor,
 permissions, and data scope are authoritative.
 
-| Persona        | Employee list          | Lifecycle list             | Employee export                    | Lifecycle export                   |
-| -------------- | ---------------------- | -------------------------- | ---------------------------------- | ---------------------------------- |
-| HR operator    | assigned organization  | assigned organization      | permission + assigned organization | permission + assigned organization |
-| Approver       | hidden/denied          | assigned approval requests | denied                             | denied                             |
-| HR Ops/support | assigned support scope | assigned support scope     | permission + support scope         | permission + support scope         |
-| Bounded admin  | hidden/denied          | hidden/denied              | denied                             | denied                             |
+| Persona        | Employee list          | Lifecycle list         | Employee export                    | Lifecycle export                   |
+| -------------- | ---------------------- | ---------------------- | ---------------------------------- | ---------------------------------- |
+| HR operator    | assigned organization  | assigned organization  | permission + assigned organization | permission + assigned organization |
+| Approver       | hidden/denied          | hidden/denied          | denied                             | denied                             |
+| HR Ops/support | assigned support scope | assigned support scope | permission + support scope         | permission + support scope         |
+| Bounded admin  | hidden/denied          | hidden/denied          | denied                             | denied                             |
 
-Approver lifecycle items return `null` for masked `subjectPersonId`,
-`organizationCode`, `requestedBy`, and `decidedBy`; the response reports only
-list-safe masked field names.
+Approver lifecycle listing remains deferred and fail-closed because the current
+schema has no authoritative current-approver assignment relation. It is hidden
+and denied rather than scoped from later decision audit events.
 HR operator and HR Ops/support receive only the list-safe fields defined below,
 never raw/detail payload fields.
 
@@ -287,8 +295,11 @@ Lifecycle list fields:
 
 - `transactionRequestId`, `requestType`, `status`
 - `subjectPersonId`, `subjectEmployeeId`, `subjectDisplayName`
-- `organizationCode`, `requestedBy`, `decidedBy`
+- `organizationCode`, `decidedBy`
 - `requestedAt`, `effectiveDate`, `allowedActions`
+
+`requestedBy`, current approval step/assignee, and generic `updatedAt` remain
+deferred until authoritative immutable sources are introduced.
 
 Always denied from list/export/audit surfaces:
 

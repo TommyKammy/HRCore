@@ -267,13 +267,17 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
       "transaction_request",
     ],
     resourceRequiredSources: {
-      employee: ["person", "employment", "assignment"],
-      lifecycleRequest: [
-        "transaction_request",
-        "person",
-        "employment",
-        "assignment",
-      ],
+      employee: ["person", "employment"],
+      lifecycleRequest: ["transaction_request", "person"],
+    },
+    conditionallyRequiredSources: {
+      employee: {
+        assignment: "when_any_assignment_row_is_selected",
+      },
+      lifecycleRequest: {
+        employment: "when_any_employment_row_is_selected",
+        assignment: "when_any_assignment_row_is_selected",
+      },
     },
     sourceRowPrimaryKeyFields: {
       person: "person.id",
@@ -288,6 +292,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     },
     sourceRowPredicate:
       "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+    unusedSourceAbsenceAllowed: true,
     clientSuppliedEvidenceAllowed: false,
     payloadMarkerAloneIsSufficient: false,
     readinessLabelAloneIsSufficient: false,
@@ -481,7 +486,19 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   );
   assert.equal(
     p2ListRoleActionMatrix.approver.lifecycleRequestList.scope,
-    "assigned_approval_requests",
+    "none",
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.approver.lifecycleRequestList.uiVisible,
+    false,
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.approver.lifecycleRequestList.requiredPermission,
+    null,
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.approver.lifecycleRequestList.deferredReason,
+    "no_authoritative_current_approver_assignment_source",
   );
   assert.equal(
     p2ListRoleActionMatrix.boundedAdmin.lifecycleRequestList.uiVisible,
@@ -524,6 +541,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     ],
   );
   assert.deepEqual(p2ListFieldVisibility.approver.employee, []);
+  assert.deepEqual(p2ListFieldVisibility.approver.lifecycleRequest, []);
   assert.ok(
     !p2ListFieldVisibility.approver.lifecycleRequest.includes(
       "subjectPersonId" as never,
@@ -569,8 +587,19 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.ok(p2ListDeferredEmployeeFields.includes("employmentType"));
   assert.ok(p2ListDeferredEmployeeFields.includes("updatedAt"));
   assert.ok(p2ListDeferredLifecycleFields.includes("currentStep"));
+  assert.ok(p2ListDeferredLifecycleFields.includes("requestedBy"));
   assert.ok(!p2ListEmployeeFields.includes("employmentType" as never));
   assert.ok(!p2ListLifecycleFields.includes("currentStep" as never));
+  assert.ok(!p2ListLifecycleFields.includes("requestedBy" as never));
+  assert.ok(!p2ListLifecycleFilters.includes("requestedBy" as never));
+  assert.deepEqual(p2ListSyntheticProvenanceContract.resourceRequiredSources, {
+    employee: ["person", "employment"],
+    lifecycleRequest: ["transaction_request", "person"],
+  });
+  assert.equal(
+    p2ListSyntheticProvenanceContract.unusedSourceAbsenceAllowed,
+    true,
+  );
 });
 
 test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed examples", async () => {
@@ -858,6 +887,20 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   const schemas = contract.components.schemas;
   assert.equal(schemas.P2ListEmployeeListQuery.additionalProperties, false);
   assert.equal(schemas.P2ListLifecycleListQuery.additionalProperties, false);
+  assert.equal(
+    schemas.P2ListLifecycleFilters.properties?.requestedBy,
+    undefined,
+  );
+  assert.equal(
+    schemas.P2ListLifecycleListQuery.properties?.requestedBy,
+    undefined,
+  );
+  assert.equal(schemas.P2ListLifecycleItem.properties?.requestedBy, undefined);
+  assert.ok(
+    !(lifecycleOperation.parameters ?? []).some(
+      ({ name }) => name === "requestedBy",
+    ),
+  );
   assert.deepEqual(
     Object.keys(schemas.P2ListEmployeeListQuery.properties ?? {}),
     parameterNames(employeeOperation),

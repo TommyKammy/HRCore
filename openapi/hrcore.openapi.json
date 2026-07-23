@@ -770,13 +770,17 @@
             "transaction_request"
           ],
           "resourceRequiredSources": {
-            "employee": ["person", "employment", "assignment"],
-            "lifecycleRequest": [
-              "transaction_request",
-              "person",
-              "employment",
-              "assignment"
-            ]
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected"
+            }
           },
           "sourceRowPrimaryKeyFields": {
             "person": "person.id",
@@ -790,6 +794,7 @@
             "keySource": "server_injected_non_default_local_test_secret"
           },
           "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
           "clientSuppliedEvidenceAllowed": false,
           "payloadMarkerAloneIsSufficient": false,
           "readinessLabelAloneIsSufficient": false,
@@ -1049,13 +1054,17 @@
             "transaction_request"
           ],
           "resourceRequiredSources": {
-            "employee": ["person", "employment", "assignment"],
-            "lifecycleRequest": [
-              "transaction_request",
-              "person",
-              "employment",
-              "assignment"
-            ]
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected"
+            }
           },
           "sourceRowPrimaryKeyFields": {
             "person": "person.id",
@@ -1069,6 +1078,7 @@
             "keySource": "server_injected_non_default_local_test_secret"
           },
           "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
           "clientSuppliedEvidenceAllowed": false,
           "payloadMarkerAloneIsSufficient": false,
           "readinessLabelAloneIsSufficient": false,
@@ -1152,16 +1162,6 @@
             "name": "organizationCode",
             "in": "query",
             "description": "Exact organization code within the server-resolved actor scope.",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            }
-          },
-          {
-            "name": "requestedBy",
-            "in": "query",
-            "description": "Exact requester actor ID when permitted.",
             "schema": {
               "type": "string",
               "minLength": 1,
@@ -1279,7 +1279,6 @@
                       "subjectEmployeeId": "EMP-000128",
                       "subjectDisplayName": "Synthetic Employee",
                       "organizationCode": "organization-product",
-                      "requestedBy": "operator-synthetic-001",
                       "decidedBy": null,
                       "requestedAt": "2026-07-23T09:00:00+09:00",
                       "effectiveDate": "2026-08-01",
@@ -1380,13 +1379,17 @@
             "transaction_request"
           ],
           "resourceRequiredSources": {
-            "employee": ["person", "employment", "assignment"],
-            "lifecycleRequest": [
-              "transaction_request",
-              "person",
-              "employment",
-              "assignment"
-            ]
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected"
+            }
           },
           "sourceRowPrimaryKeyFields": {
             "person": "person.id",
@@ -1400,6 +1403,7 @@
             "keySource": "server_injected_non_default_local_test_secret"
           },
           "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
           "clientSuppliedEvidenceAllowed": false,
           "payloadMarkerAloneIsSufficient": false,
           "readinessLabelAloneIsSufficient": false,
@@ -1551,13 +1555,17 @@
             "transaction_request"
           ],
           "resourceRequiredSources": {
-            "employee": ["person", "employment", "assignment"],
-            "lifecycleRequest": [
-              "transaction_request",
-              "person",
-              "employment",
-              "assignment"
-            ]
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected"
+            }
           },
           "sourceRowPrimaryKeyFields": {
             "person": "person.id",
@@ -1571,6 +1579,7 @@
             "keySource": "server_injected_non_default_local_test_secret"
           },
           "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
           "clientSuppliedEvidenceAllowed": false,
           "payloadMarkerAloneIsSufficient": false,
           "readinessLabelAloneIsSufficient": false,
@@ -3157,7 +3166,6 @@
                 "subjectPersonId",
                 "subjectEmployeeId",
                 "subjectDisplayName",
-                "requestedBy",
                 "decidedBy",
                 "requestedAt",
                 "effectiveDate",
@@ -3342,7 +3350,6 @@
           "subjectEmployeeId",
           "subjectDisplayName",
           "organizationCode",
-          "requestedBy",
           "decidedBy",
           "requestedAt",
           "effectiveDate",
@@ -3380,9 +3387,6 @@
             "minLength": 1
           },
           "organizationCode": {
-            "type": ["string", "null"]
-          },
-          "requestedBy": {
             "type": ["string", "null"]
           },
           "decidedBy": {
@@ -3494,11 +3498,6 @@
             "minLength": 1,
             "maxLength": 128
           },
-          "requestedBy": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128
-          },
           "decidedBy": {
             "type": "string",
             "minLength": 1,
@@ -3551,9 +3550,6 @@
           },
           "organizationCode": {
             "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/organizationCode"
-          },
-          "requestedBy": {
-            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestedBy"
           },
           "decidedBy": {
             "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/decidedBy"
