@@ -985,7 +985,7 @@
         "x-hrcore-unknown-query-parameters": "reject",
         "x-hrcore-sort-null-placement": {
           "requestedAt": "not_nullable",
-          "effectiveDate": "last"
+          "effectiveDate": "not_nullable"
         },
         "x-hrcore-requested-at-normalization": {
           "acceptedInput": "rfc3339_date_time_with_offset",
@@ -1021,6 +1021,46 @@
           "payloadInferenceAllowed": false,
           "failureCode": "data_scope_denied"
         },
+        "x-hrcore-lifecycle-effective-date-resolution": {
+          "sourceTable": "transaction_request",
+          "sourceColumns": {
+            "requestType": "request_type",
+            "payloadVersion": "payload_version",
+            "payload": "payload_json"
+          },
+          "sourceByPersistedRequestType": {
+            "hire": {
+              "payloadVersion": "mvp_a_onboarding_v1",
+              "payloadField": "effectiveDate"
+            },
+            "change": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "transfer": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "terminate": {
+              "payloadVersion": "mvp_c_termination_v1",
+              "payloadField": "effectiveDate"
+            }
+          },
+          "validation": "strict_persisted_type_version_mapping_and_versioned_payload_parser_and_iso_calendar_date",
+          "statusIndependent": true,
+          "lifecycleEventFallbackAllowed": false,
+          "successfulProjection": "effectiveDate_non_null",
+          "appliesTo": [
+            "projection",
+            "filter",
+            "sort",
+            "cursor",
+            "organization_resolution",
+            "export"
+          ],
+          "missingMalformedUnsupportedOrMismatched": "fail_closed_before_filter_sort_cursor_scope_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
         "x-hrcore-lifecycle-organization-resolution": {
           "onboarding": {
             "source": "validated_mvp_a_onboarding_v1_payload.assignment.departmentReference",
@@ -1032,7 +1072,7 @@
           },
           "termination": {
             "source": "organization_code_of_exact_payload_currentAssignment_id_and_code",
-            "relation": "current_assignment_at_effectiveDate_minus_one_day"
+            "relation": "exact_current_assignment_effective_on_effectiveDate_inclusive_of_end_date"
           },
           "appliesTo": ["projection", "filter", "query_layer_scope", "export"],
           "nullOrAmbiguous": "fail_closed_before_filter_authorization_scope_projection_or_export",
@@ -1559,6 +1599,46 @@
         "x-hrcore-conditional-filter-permissions": {
           "correlationId": "support:correlation:read"
         },
+        "x-hrcore-lifecycle-effective-date-resolution": {
+          "sourceTable": "transaction_request",
+          "sourceColumns": {
+            "requestType": "request_type",
+            "payloadVersion": "payload_version",
+            "payload": "payload_json"
+          },
+          "sourceByPersistedRequestType": {
+            "hire": {
+              "payloadVersion": "mvp_a_onboarding_v1",
+              "payloadField": "effectiveDate"
+            },
+            "change": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "transfer": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "terminate": {
+              "payloadVersion": "mvp_c_termination_v1",
+              "payloadField": "effectiveDate"
+            }
+          },
+          "validation": "strict_persisted_type_version_mapping_and_versioned_payload_parser_and_iso_calendar_date",
+          "statusIndependent": true,
+          "lifecycleEventFallbackAllowed": false,
+          "successfulProjection": "effectiveDate_non_null",
+          "appliesTo": [
+            "projection",
+            "filter",
+            "sort",
+            "cursor",
+            "organization_resolution",
+            "export"
+          ],
+          "missingMalformedUnsupportedOrMismatched": "fail_closed_before_filter_sort_cursor_scope_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
         "x-hrcore-lifecycle-organization-resolution": {
           "onboarding": {
             "source": "validated_mvp_a_onboarding_v1_payload.assignment.departmentReference",
@@ -1570,7 +1650,7 @@
           },
           "termination": {
             "source": "organization_code_of_exact_payload_currentAssignment_id_and_code",
-            "relation": "current_assignment_at_effectiveDate_minus_one_day"
+            "relation": "exact_current_assignment_effective_on_effectiveDate_inclusive_of_end_date"
           },
           "appliesTo": ["projection", "filter", "query_layer_scope", "export"],
           "nullOrAmbiguous": "fail_closed_before_filter_authorization_scope_projection_or_export",
@@ -3149,6 +3229,11 @@
         "x-hrcore-server-side-state-sensitive-fields": ["lastSortValue"],
         "x-hrcore-server-side-state-logging": "prohibited",
         "x-hrcore-nullable-sort-value-encoding": "lastSortValue_null_with_explicit_lastSortValueIsNull",
+        "x-hrcore-sort-value-nullability-by-resource": {
+          "employee": "not_nullable",
+          "lifecycleRequest": "not_nullable"
+        },
+        "x-hrcore-invalid-null-sort-state": "reject_lastSortValueIsNull_true_as_cursor_invalid_for_current_resources",
         "x-hrcore-public-error-code-by-rejected-condition": {
           "malformed": "cursor_invalid",
           "tampered": "cursor_invalid",
@@ -3474,8 +3559,9 @@
             "description": "RFC 3339 input normalized to a UTC instant and canonical YYYY-MM-DDTHH:mm:ss.sssZ value before filtering, sorting, or cursor-state persistence. Text comparison is prohibited."
           },
           "effectiveDate": {
-            "type": ["string", "null"],
-            "format": "date"
+            "type": "string",
+            "format": "date",
+            "minLength": 1
           },
           "allowedActions": {
             "type": "array",

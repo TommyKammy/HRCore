@@ -32,6 +32,7 @@ import {
   p2ListFieldVisibility,
   p2ListLifecycleDefaultOrder,
   p2ListLifecycleDecisionResolutionContract,
+  p2ListLifecycleEffectiveDateResolutionContract,
   p2ListLifecycleExportFields,
   p2ListLifecycleFields,
   p2ListLifecycleFilters,
@@ -89,6 +90,8 @@ interface OpenApiSchema {
     inputs: string[];
   };
   "x-hrcore-nullable-sort-value-encoding"?: string;
+  "x-hrcore-sort-value-nullability-by-resource"?: Record<string, string>;
+  "x-hrcore-invalid-null-sort-state"?: string;
   "x-hrcore-public-error-code-by-rejected-condition"?: Record<string, string>;
   "x-hrcore-range-validation"?: Record<string, unknown>;
   "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
@@ -144,6 +147,7 @@ interface OpenApiOperation {
   "x-hrcore-effective-assignment-resolution"?: Record<string, unknown>;
   "x-hrcore-synthetic-provenance"?: Record<string, unknown>;
   "x-hrcore-lifecycle-decision-resolution"?: Record<string, unknown>;
+  "x-hrcore-lifecycle-effective-date-resolution"?: Record<string, unknown>;
   "x-hrcore-lifecycle-organization-resolution"?: Record<string, unknown>;
   "x-hrcore-subject-employment-resolution"?: Record<string, unknown>;
   "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
@@ -321,7 +325,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   });
   assert.deepEqual(p2ListLifecycleSortNullPlacement, {
     requestedAt: "not_nullable",
-    effectiveDate: "last",
+    effectiveDate: "not_nullable",
   });
   assert.deepEqual(p2ListLifecycleRequestedAtNormalizationContract, {
     acceptedInput: "rfc3339_date_time_with_offset",
@@ -392,6 +396,48 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     payloadInferenceAllowed: false,
     failureCode: "data_scope_denied",
   });
+  assert.deepEqual(p2ListLifecycleEffectiveDateResolutionContract, {
+    sourceTable: "transaction_request",
+    sourceColumns: {
+      requestType: "request_type",
+      payloadVersion: "payload_version",
+      payload: "payload_json",
+    },
+    sourceByPersistedRequestType: {
+      hire: {
+        payloadVersion: "mvp_a_onboarding_v1",
+        payloadField: "effectiveDate",
+      },
+      change: {
+        payloadVersion: "mvp_b_transfer_v1",
+        payloadField: "effectiveDate",
+      },
+      transfer: {
+        payloadVersion: "mvp_b_transfer_v1",
+        payloadField: "effectiveDate",
+      },
+      terminate: {
+        payloadVersion: "mvp_c_termination_v1",
+        payloadField: "effectiveDate",
+      },
+    },
+    validation:
+      "strict_persisted_type_version_mapping_and_versioned_payload_parser_and_iso_calendar_date",
+    statusIndependent: true,
+    lifecycleEventFallbackAllowed: false,
+    successfulProjection: "effectiveDate_non_null",
+    appliesTo: [
+      "projection",
+      "filter",
+      "sort",
+      "cursor",
+      "organization_resolution",
+      "export",
+    ],
+    missingMalformedUnsupportedOrMismatched:
+      "fail_closed_before_filter_sort_cursor_scope_projection_or_export",
+    failureCode: "data_scope_denied",
+  });
   assert.deepEqual(p2ListLifecycleOrganizationResolutionContract, {
     onboarding: {
       source:
@@ -406,7 +452,8 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     termination: {
       source:
         "organization_code_of_exact_payload_currentAssignment_id_and_code",
-      relation: "current_assignment_at_effectiveDate_minus_one_day",
+      relation:
+        "exact_current_assignment_effective_on_effectiveDate_inclusive_of_end_date",
     },
     appliesTo: ["projection", "filter", "query_layer_scope", "export"],
     nullOrAmbiguous:
@@ -467,6 +514,14 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     nonNullPartitionPrecedesNullPartition: true,
     nullPartitionOrder: "lastStableId_in_requested_direction",
   });
+  assert.deepEqual(p2ListCursorContract.sortValueNullabilityByResource, {
+    employee: "not_nullable",
+    lifecycleRequest: "not_nullable",
+  });
+  assert.equal(
+    p2ListCursorContract.invalidNullSortState,
+    "reject_lastSortValueIsNull_true_as_cursor_invalid_for_current_resources",
+  );
   assert.equal(p2ListCursorContract.integrityAlgorithm, "hmac_sha256");
   assert.equal(
     p2ListCursorContract.filterFingerprintAlgorithm,
@@ -767,6 +822,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     p2ListLifecycleOrganizationResolutionContract,
   );
   assert.deepEqual(
+    lifecycleOperation["x-hrcore-lifecycle-effective-date-resolution"],
+    p2ListLifecycleEffectiveDateResolutionContract,
+  );
+  assert.deepEqual(
     lifecycleOperation["x-hrcore-lifecycle-decision-resolution"],
     p2ListLifecycleDecisionResolutionContract,
   );
@@ -781,6 +840,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.deepEqual(
     lifecycleExport["x-hrcore-lifecycle-organization-resolution"],
     p2ListLifecycleOrganizationResolutionContract,
+  );
+  assert.deepEqual(
+    lifecycleExport["x-hrcore-lifecycle-effective-date-resolution"],
+    p2ListLifecycleEffectiveDateResolutionContract,
   );
   assert.deepEqual(
     lifecycleExport["x-hrcore-lifecycle-decision-resolution"],
@@ -1003,6 +1066,11 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
       `returned lifecycle ${field} must be resolved before projection`,
     );
   }
+  assert.deepEqual(schemas.P2ListLifecycleItem.properties?.effectiveDate, {
+    type: "string",
+    format: "date",
+    minLength: 1,
+  });
   const lifecycleListExample =
     lifecycleOperation.responses["200"].content?.["application/json"].example;
   assert.ok(lifecycleListExample && typeof lifecycleListExample === "object");
@@ -1091,6 +1159,14 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(
     schemas.P2ListCursor["x-hrcore-nullable-sort-value-encoding"],
     p2ListCursorContract.nullableSortValueEncoding,
+  );
+  assert.deepEqual(
+    schemas.P2ListCursor["x-hrcore-sort-value-nullability-by-resource"],
+    p2ListCursorContract.sortValueNullabilityByResource,
+  );
+  assert.equal(
+    schemas.P2ListCursor["x-hrcore-invalid-null-sort-state"],
+    p2ListCursorContract.invalidNullSortState,
   );
   assert.deepEqual(
     schemas.P2ListCursor["x-hrcore-public-error-code-by-rejected-condition"],

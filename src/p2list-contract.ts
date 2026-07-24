@@ -190,7 +190,7 @@ export const p2ListLifecycleDefaultOrder = [
 
 export const p2ListLifecycleSortNullPlacement = {
   requestedAt: "not_nullable",
-  effectiveDate: "last",
+  effectiveDate: "not_nullable",
 } as const;
 
 export const p2ListLifecycleRequestedAtNormalizationContract = {
@@ -265,6 +265,49 @@ export const p2ListLifecycleDecisionResolutionContract = {
   failureCode: "data_scope_denied",
 } as const;
 
+export const p2ListLifecycleEffectiveDateResolutionContract = {
+  sourceTable: "transaction_request",
+  sourceColumns: {
+    requestType: "request_type",
+    payloadVersion: "payload_version",
+    payload: "payload_json",
+  },
+  sourceByPersistedRequestType: {
+    hire: {
+      payloadVersion: "mvp_a_onboarding_v1",
+      payloadField: "effectiveDate",
+    },
+    change: {
+      payloadVersion: "mvp_b_transfer_v1",
+      payloadField: "effectiveDate",
+    },
+    transfer: {
+      payloadVersion: "mvp_b_transfer_v1",
+      payloadField: "effectiveDate",
+    },
+    terminate: {
+      payloadVersion: "mvp_c_termination_v1",
+      payloadField: "effectiveDate",
+    },
+  },
+  validation:
+    "strict_persisted_type_version_mapping_and_versioned_payload_parser_and_iso_calendar_date",
+  statusIndependent: true,
+  lifecycleEventFallbackAllowed: false,
+  successfulProjection: "effectiveDate_non_null",
+  appliesTo: [
+    "projection",
+    "filter",
+    "sort",
+    "cursor",
+    "organization_resolution",
+    "export",
+  ],
+  missingMalformedUnsupportedOrMismatched:
+    "fail_closed_before_filter_sort_cursor_scope_projection_or_export",
+  failureCode: "data_scope_denied",
+} as const;
+
 export const p2ListLifecycleOrganizationResolutionContract = {
   onboarding: {
     source:
@@ -278,7 +321,8 @@ export const p2ListLifecycleOrganizationResolutionContract = {
   },
   termination: {
     source: "organization_code_of_exact_payload_currentAssignment_id_and_code",
-    relation: "current_assignment_at_effectiveDate_minus_one_day",
+    relation:
+      "exact_current_assignment_effective_on_effectiveDate_inclusive_of_end_date",
   },
   appliesTo: ["projection", "filter", "query_layer_scope", "export"],
   nullOrAmbiguous:
@@ -329,6 +373,12 @@ export const p2ListCursorContract = {
     nonNullPartitionPrecedesNullPartition: true,
     nullPartitionOrder: "lastStableId_in_requested_direction",
   },
+  sortValueNullabilityByResource: {
+    employee: "not_nullable",
+    lifecycleRequest: "not_nullable",
+  },
+  invalidNullSortState:
+    "reject_lastSortValueIsNull_true_as_cursor_invalid_for_current_resources",
   rejectedConditions: [
     "malformed",
     "tampered",

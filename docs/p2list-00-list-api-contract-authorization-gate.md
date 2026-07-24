@@ -56,11 +56,22 @@ before authorization scope evaluation or projection; it must not choose an
 arbitrary assignment or emit duplicate employee rows.
 
 The lifecycle projection normalizes persisted `hire` to `onboarding`, both
-`change` and `transfer` to `transfer`, and `terminate` to `termination`. It may
-join directly linked workflow evidence for decider, effective date, and allowed
-actions, but it must not expose type-specific raw payloads in a collection
-response. `requestedBy` is deferred because `transaction_request` has no
-immutable requester actor column or request-creation audit relation;
+`change` and `transfer` to `transfer`, and `terminate` to `termination`.
+`effectiveDate` is always the validated `effectiveDate` field in the exact
+type/version-specific `transaction_request.payload_json`: `hire` requires
+`mvp_a_onboarding_v1`, `change` and `transfer` require `mvp_b_transfer_v1`, and
+`terminate` requires `mvp_c_termination_v1`. The same source is used regardless
+of request status for projection, filtering, sorting, cursor continuation,
+organization resolution, and export; lifecycle-event fallback is prohibited.
+An unsupported request type, type/version mismatch, missing or malformed
+payload, or invalid ISO calendar date fails closed with `data_scope_denied`
+before scope evaluation or any row is returned. Consequently, a successful
+lifecycle item always has a non-null `effectiveDate`.
+
+The projection may join directly linked workflow evidence for decider and
+allowed actions, but it must not expose type-specific raw payloads in a
+collection response. `requestedBy` is deferred because `transaction_request`
+has no immutable requester actor column or request-creation audit relation;
 implementations must not infer it from later audit events or payload content.
 Because `transaction_request` currently links only to
 `person_id`, `subjectEmployeeId` may be projected, filtered, scoped, or
@@ -98,8 +109,11 @@ Lifecycle `organizationCode` has one authoritative request-time relation:
   `targetAssignment.organizationReference`, representing the target
   organization at `effectiveDate`;
 - termination: the persisted `organization_code` of the exact assignment ID
-  and code referenced by the validated termination payload, effective on the
-  day immediately before `effectiveDate`.
+  and code referenced by the validated termination payload. The assignment
+  must be effective on `effectiveDate` using the inclusive persisted interval
+  `start_date <= effectiveDate AND (end_date IS NULL OR end_date >=
+effectiveDate)`. This includes a completed termination assignment whose
+  `end_date` was set to `effectiveDate`.
 
 The same resolved value is mandatory for projection, `organizationCode`
 filtering, query-layer authorization scope, and export. Missing, malformed,
@@ -237,7 +251,10 @@ range pairs before repository access.
   actor ID, tenant ID, permissions, and data scope. Any mismatch fails closed.
 - Sensitive sort values such as `displayName` remain only in server-side state
   and must never be written to application, audit, access, or support logs.
-- Nullable `effectiveDate` ordering: nulls are always last for both directions; non-null rows precede the null partition, whose rows continue by stable ID in the requested direction.
+- Current employee and lifecycle sort fields are non-null. Cursor state retains
+  the explicit `lastSortValueIsNull` compatibility marker, but it must be
+  `false` for these resources; a null sort value fails closed as
+  `cursor_invalid`.
 - Page metadata: `hasNextPage: true` requires an authenticated non-null `nextCursor`; `false` requires `nextCursor: null`.
 - Rejected states: malformed, tampered, expired, missing server state,
   unsupported version, resource mismatch, filter mismatch, sort mismatch,
