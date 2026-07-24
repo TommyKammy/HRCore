@@ -332,6 +332,13 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     acceptedInput: "rfc3339_date_time_with_offset",
     comparisonBasis: "utc_instant",
     canonicalValue: "YYYY-MM-DDTHH:mm:ss.sssZ",
+    canonicalOutputPattern:
+      "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+    canonicalOutputFields: [
+      "response.items[].requestedAt",
+      "export.requested_at",
+    ],
+    canonicalOutputRequired: true,
     appliesTo: [
       "requestedAt",
       "requestedFrom",
@@ -340,6 +347,18 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     ],
     textComparisonAllowed: false,
   });
+  const canonicalRequestedAtPattern = new RegExp(
+    p2ListLifecycleRequestedAtNormalizationContract.canonicalOutputPattern,
+  );
+  assert.match("2026-07-23T00:00:00.000Z", canonicalRequestedAtPattern);
+  for (const noncanonicalRequestedAt of [
+    "2026-07-23T09:00:00+09:00",
+    "2026-07-23T00:00:00Z",
+    "2026-07-23T00:00:00.00Z",
+    "2026-07-23T00:00:00.0000Z",
+  ]) {
+    assert.doesNotMatch(noncanonicalRequestedAt, canonicalRequestedAtPattern);
+  }
   assert.deepEqual(p2ListLifecycleRangeValidationContract, {
     pairs: p2ListLifecycleRangePairs,
     normalizedComparison: {
@@ -861,6 +880,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     p2ListLifecycleEffectiveDateResolutionContract,
   );
   assert.deepEqual(
+    lifecycleExport["x-hrcore-requested-at-normalization"],
+    p2ListLifecycleRequestedAtNormalizationContract,
+  );
+  assert.deepEqual(
     lifecycleExport["x-hrcore-lifecycle-decision-resolution"],
     p2ListLifecycleDecisionResolutionContract,
   );
@@ -1089,6 +1112,13 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     type: "string",
     format: "date",
     minLength: 1,
+  });
+  assert.deepEqual(schemas.P2ListLifecycleItem.properties?.requestedAt, {
+    type: "string",
+    format: "date-time",
+    pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+    description:
+      "Canonical UTC output in YYYY-MM-DDTHH:mm:ss.sssZ form. RFC 3339 values are normalized to the same UTC instant before filtering, sorting, cursor-state persistence, and projection; text comparison of unnormalized offsets is prohibited.",
   });
   const lifecycleListExample =
     lifecycleOperation.responses["200"].content?.["application/json"].example;

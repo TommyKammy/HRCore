@@ -222,7 +222,10 @@ stable unique tie-breaker. Every RFC 3339 `requestedAt`, `requestedFrom`, and
 `requestedTo` value is converted to its UTC instant and canonical
 `YYYY-MM-DDTHH:mm:ss.sssZ` representation before filtering or comparison.
 `requestedAt` cursor sort values use the same representation; SQLite text
-ordering of unnormalized offsets is prohibited.
+ordering of unnormalized offsets is prohibited. Every lifecycle list
+`requestedAt` and lifecycle CSV `requested_at` output must match
+`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`; offset-preserving or
+millisecond-free output is prohibited.
 
 Date ranges may span at most 366 days. Collection DTOs carry only list-safe
 fields and detail route identifiers, not type-specific payloads.

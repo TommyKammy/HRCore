@@ -991,6 +991,12 @@
           "acceptedInput": "rfc3339_date_time_with_offset",
           "comparisonBasis": "utc_instant",
           "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "canonicalOutputPattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "canonicalOutputFields": [
+            "response.items[].requestedAt",
+            "export.requested_at"
+          ],
+          "canonicalOutputRequired": true,
           "appliesTo": [
             "requestedAt",
             "requestedFrom",
@@ -1617,6 +1623,24 @@
         ],
         "x-hrcore-conditional-filter-permissions": {
           "correlationId": "support:correlation:read"
+        },
+        "x-hrcore-requested-at-normalization": {
+          "acceptedInput": "rfc3339_date_time_with_offset",
+          "comparisonBasis": "utc_instant",
+          "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "canonicalOutputPattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "canonicalOutputFields": [
+            "response.items[].requestedAt",
+            "export.requested_at"
+          ],
+          "canonicalOutputRequired": true,
+          "appliesTo": [
+            "requestedAt",
+            "requestedFrom",
+            "requestedTo",
+            "cursor.lastSortValue"
+          ],
+          "textComparisonAllowed": false
         },
         "x-hrcore-lifecycle-effective-date-resolution": {
           "sourceTable": "transaction_request",
@@ -3573,7 +3597,8 @@
           "requestedAt": {
             "type": "string",
             "format": "date-time",
-            "description": "RFC 3339 input normalized to a UTC instant and canonical YYYY-MM-DDTHH:mm:ss.sssZ value before filtering, sorting, or cursor-state persistence. Text comparison is prohibited."
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+            "description": "Canonical UTC output in YYYY-MM-DDTHH:mm:ss.sssZ form. RFC 3339 values are normalized to the same UTC instant before filtering, sorting, cursor-state persistence, and projection; text comparison of unnormalized offsets is prohibited."
           },
           "effectiveDate": {
             "type": "string",
@@ -3589,6 +3614,12 @@
           "acceptedInput": "rfc3339_date_time_with_offset",
           "comparisonBasis": "utc_instant",
           "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "canonicalOutputPattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "canonicalOutputFields": [
+            "response.items[].requestedAt",
+            "export.requested_at"
+          ],
+          "canonicalOutputRequired": true,
           "appliesTo": [
             "requestedAt",
             "requestedFrom",

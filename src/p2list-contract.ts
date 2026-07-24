@@ -197,6 +197,13 @@ export const p2ListLifecycleRequestedAtNormalizationContract = {
   acceptedInput: "rfc3339_date_time_with_offset",
   comparisonBasis: "utc_instant",
   canonicalValue: "YYYY-MM-DDTHH:mm:ss.sssZ",
+  canonicalOutputPattern:
+    "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+  canonicalOutputFields: [
+    "response.items[].requestedAt",
+    "export.requested_at",
+  ],
+  canonicalOutputRequired: true,
   appliesTo: [
     "requestedAt",
     "requestedFrom",
