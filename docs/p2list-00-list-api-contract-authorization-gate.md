@@ -379,7 +379,12 @@ Rules:
 - Employee and lifecycle export permissions are separate and both require the
   existing bounded CSV download permission.
 - Server-owned versioned column allowlists and spreadsheet formula-injection
-  protection are mandatory.
+  protection are mandatory. Before CSV escaping, every exported data cell
+  whose unmodified first Unicode code point is `=`, `+`, `-`, or `@` is
+  prefixed with a single quote (`'`). The neutralized value is then CSV-escaped:
+  cells containing a double quote, comma, CR, or LF are enclosed in double
+  quotes and embedded double quotes are doubled. The transformation is
+  idempotent and applies equally to employee and lifecycle exports.
 - Scheduled export, email delivery, production object storage, long-lived
   tokens/artifacts, and production custody remain blocked.
 

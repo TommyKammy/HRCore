@@ -1427,6 +1427,16 @@
         ],
         "x-hrcore-export-schema-version": "p2list_export_v1",
         "x-hrcore-maximum-rows": 100,
+        "x-hrcore-csv-formula-protection": {
+          "appliesTo": "every_exported_data_cell_before_csv_serialization",
+          "detection": "first_unicode_code_point_of_unmodified_cell_matches_dangerous_prefix",
+          "dangerousLeadingCharacters": ["=", "+", "-", "@"],
+          "transformation": "prepend_single_quote",
+          "neutralizationPrefix": "'",
+          "order": ["neutralize_spreadsheet_formula", "apply_csv_escaping"],
+          "csvEscaping": "quote_cell_containing_double_quote_comma_cr_or_lf_and_double_embedded_quotes",
+          "idempotent": true
+        },
         "x-hrcore-meaningful-filter-any-of": ["employeeId", "organizationCode"],
         "x-hrcore-effective-assignment-resolution": {
           "employmentEffectivePredicate": "employment.startDate_lte_asOf_and_employment.endDate_null_or_gte_asOf",
@@ -1588,6 +1598,16 @@
         ],
         "x-hrcore-export-schema-version": "p2list_export_v1",
         "x-hrcore-maximum-rows": 100,
+        "x-hrcore-csv-formula-protection": {
+          "appliesTo": "every_exported_data_cell_before_csv_serialization",
+          "detection": "first_unicode_code_point_of_unmodified_cell_matches_dangerous_prefix",
+          "dangerousLeadingCharacters": ["=", "+", "-", "@"],
+          "transformation": "prepend_single_quote",
+          "neutralizationPrefix": "'",
+          "order": ["neutralize_spreadsheet_formula", "apply_csv_escaping"],
+          "csvEscaping": "quote_cell_containing_double_quote_comma_cr_or_lf_and_double_embedded_quotes",
+          "idempotent": true
+        },
         "x-hrcore-meaningful-filter-any-of": [
           "subjectEmployeeId",
           "organizationCode",

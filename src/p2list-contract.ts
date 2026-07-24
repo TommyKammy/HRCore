@@ -504,6 +504,18 @@ export const p2ListExportContract = {
   reasonCodes: p2ListExportReasonCodes,
   delivery: "synchronous_text_csv",
   formulaInjectionProtectionRequired: true,
+  formulaInjectionProtection: {
+    appliesTo: "every_exported_data_cell_before_csv_serialization",
+    detection:
+      "first_unicode_code_point_of_unmodified_cell_matches_dangerous_prefix",
+    dangerousLeadingCharacters: ["=", "+", "-", "@"],
+    transformation: "prepend_single_quote",
+    neutralizationPrefix: "'",
+    order: ["neutralize_spreadsheet_formula", "apply_csv_escaping"],
+    csvEscaping:
+      "quote_cell_containing_double_quote_comma_cr_or_lf_and_double_embedded_quotes",
+    idempotent: true,
+  },
   conditionalPermissionByFilter: {
     correlationId: p2ListPermissions.supportCorrelationRead,
   },

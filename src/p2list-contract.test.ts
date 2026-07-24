@@ -149,6 +149,7 @@ interface OpenApiOperation {
   "x-hrcore-lifecycle-decision-resolution"?: Record<string, unknown>;
   "x-hrcore-lifecycle-effective-date-resolution"?: Record<string, unknown>;
   "x-hrcore-lifecycle-organization-resolution"?: Record<string, unknown>;
+  "x-hrcore-csv-formula-protection"?: Record<string, unknown>;
   "x-hrcore-subject-employment-resolution"?: Record<string, unknown>;
   "x-hrcore-requested-at-normalization"?: Record<string, unknown>;
   "x-hrcore-range-validation"?: Record<string, unknown>;
@@ -610,6 +611,18 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     p2ListPermissions.supportCorrelationRead,
   );
   assert.equal(p2ListExportContract.formulaInjectionProtectionRequired, true);
+  assert.deepEqual(p2ListExportContract.formulaInjectionProtection, {
+    appliesTo: "every_exported_data_cell_before_csv_serialization",
+    detection:
+      "first_unicode_code_point_of_unmodified_cell_matches_dangerous_prefix",
+    dangerousLeadingCharacters: ["=", "+", "-", "@"],
+    transformation: "prepend_single_quote",
+    neutralizationPrefix: "'",
+    order: ["neutralize_spreadsheet_formula", "apply_csv_escaping"],
+    csvEscaping:
+      "quote_cell_containing_double_quote_comma_cr_or_lf_and_double_embedded_quotes",
+    idempotent: true,
+  });
   assert.equal(p2ListExportContract.delivery, "synchronous_text_csv");
   assert.deepEqual(
     p2ListExportContract.serverOwnedColumnAllowlists.employee,
@@ -901,6 +914,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
       p2ListExportSchemaVersion,
     );
     assert.equal(operation["x-hrcore-maximum-rows"], p2ListExportMaximumRows);
+    assert.deepEqual(
+      operation["x-hrcore-csv-formula-protection"],
+      p2ListExportContract.formulaInjectionProtection,
+    );
   }
   assert.deepEqual(employeeExport["x-hrcore-required-permissions"], [
     p2ListPermissions.employeeListRead,
