@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Writable } from "node:stream";
 import test, { type TestContext } from "node:test";
 
@@ -19,6 +22,7 @@ import {
   type P2ListActorContext,
 } from "./p2list-read-model-types.js";
 import { p2ListPermissions } from "./p2list-contract.js";
+import { buildServerApp } from "./server.js";
 import {
   registerP2ListEmployeeRoutes,
   type P2ListEmployeeApiRuntime,
@@ -172,6 +176,16 @@ test("GET /employees fails closed across actor, permission, and organization sco
       actorId: "actor-with-malformed-scope",
       dataScope: null,
     } as unknown as P2ListActorContext,
+    "person-scoped": {
+      ...authorizedActor,
+      actorId: "actor-person-scoped",
+      dataScope: { personIds: ["p2list-person-001"] },
+    },
+    "employee-scoped": {
+      ...authorizedActor,
+      actorId: "actor-employee-scoped",
+      dataScope: { employeeIds: ["EMP-001"] },
+    },
   };
   const harness = await createHarness(t, 1, actors);
   if (!harness) return;
@@ -205,14 +219,112 @@ test("GET /employees fails closed across actor, permission, and organization sco
     assert.doesNotMatch(response.body, /EMP-001|Synthetic Employee/u);
   }
 
-  const outOfScope = await harness.app.inject({
+  for (const token of ["person-scoped", "employee-scoped"]) {
+    const response: {
+      statusCode: number;
+      json(): { items: Array<{ employeeId: string }> };
+    } = await harness.app.inject({
+      method: "GET",
+      url: "/employees?organizationCode=ORG-SYNTHETIC",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(
+      response.json().items.map((item) => item.employeeId),
+      ["EMP-001"],
+    );
+  }
+
+  const narrowedOutsideScope = await harness.app.inject({
     method: "GET",
     url: "/employees?organizationCode=ORG-OUT-OF-SCOPE",
     headers: { authorization: "Bearer authorized" },
   });
-  assert.equal(outOfScope.statusCode, 403);
-  assert.equal(outOfScope.json().code, "data_scope_denied");
-  assert.doesNotMatch(outOfScope.body, /ORG-OUT-OF-SCOPE/u);
+  assert.equal(narrowedOutsideScope.statusCode, 200);
+  assert.deepEqual(narrowedOutsideScope.json().items, []);
+});
+
+test("buildServerApp wires verified provenance and server-owned person scope", async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), "hrcore-p2list-server-"));
+  const databasePath = join(tempDirectory, "hrcore.sqlite");
+  const manifestPath = join(tempDirectory, "employee-manifest.json");
+  const token = "local-p2list-operator-token-at-least-32-bytes";
+  const rows = createP2ListEmployeeFixtureRows(1);
+  let db: OnboardingTransactionRequestDatabase & { close(): void };
+  try {
+    db = await openLocalSyntheticWritebackDatabase(`file:${databasePath}`);
+  } catch (error) {
+    await rm(tempDirectory, { recursive: true, force: true });
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+    throw error;
+  }
+  seedEmployeeRows(db, rows);
+  db.close();
+  await writeFile(
+    manifestPath,
+    JSON.stringify(
+      createP2ListFixtureManifest(
+        {
+          datasetReference: "server-employee-api-fixture",
+          employees: rows,
+        },
+        manifestSecret,
+      ),
+    ),
+    "utf8",
+  );
+
+  const environment = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    P2LIST_EMPLOYEE_MANIFEST_PATH: process.env.P2LIST_EMPLOYEE_MANIFEST_PATH,
+    P2LIST_EMPLOYEE_MANIFEST_SECRET:
+      process.env.P2LIST_EMPLOYEE_MANIFEST_SECRET,
+    P2LIST_EMPLOYEE_CURSOR_SECRET: process.env.P2LIST_EMPLOYEE_CURSOR_SECRET,
+    P2LIST_EMPLOYEE_ACTORS_JSON: process.env.P2LIST_EMPLOYEE_ACTORS_JSON,
+  };
+  process.env.DATABASE_URL = `file:${databasePath}`;
+  process.env.P2LIST_EMPLOYEE_MANIFEST_PATH = manifestPath;
+  process.env.P2LIST_EMPLOYEE_MANIFEST_SECRET = manifestSecret;
+  process.env.P2LIST_EMPLOYEE_CURSOR_SECRET = cursorSecret;
+  process.env.P2LIST_EMPLOYEE_ACTORS_JSON = JSON.stringify([
+    {
+      token,
+      actor: {
+        actorId: "actor-person-scoped-operator",
+        tenantId: "tenant-repo-owned-synthetic",
+        permissions: [p2ListPermissions.employeeListRead],
+        dataScope: { personIds: [rows[0]!.personId] },
+      },
+    },
+  ]);
+
+  t.after(async () => {
+    restoreEnvironment(environment);
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const app = await buildServerApp();
+  t.after(async () => {
+    await app.close();
+  });
+  const response = await app.inject({
+    method: "GET",
+    url: "/employees?organizationCode=ORG-SYNTHETIC",
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(
+    response
+      .json()
+      .items.map((item: { employeeId: string }) => item.employeeId),
+    ["EMP-001"],
+  );
 });
 
 test("GET /employees rejects unsupported and unbounded query inputs", async (t) => {
@@ -360,5 +472,15 @@ function seedEmployeeRows(
       row.positionCode,
       row.hireDate,
     );
+  }
+}
+
+function restoreEnvironment(values: Record<string, string | undefined>): void {
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
   }
 }

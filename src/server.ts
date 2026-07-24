@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 
 import { buildApp } from "./app.js";
 import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
+import { createServerP2ListEmployeeRuntime } from "./p2list-employee-runtime.js";
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "127.0.0.1";
@@ -28,10 +29,13 @@ export async function buildServerApp() {
   const writebackDb = await openLocalSyntheticWritebackDatabase();
 
   try {
+    const p2ListEmployeeApi =
+      await createServerP2ListEmployeeRuntime(writebackDb);
     const app = await buildApp({
       logger: true,
       onboardingDb: writebackDb,
       writebackDb,
+      p2ListEmployeeApi,
     });
     app.addHook("onClose", async () => {
       writebackDb.close();

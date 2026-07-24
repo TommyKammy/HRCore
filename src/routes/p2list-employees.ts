@@ -111,7 +111,6 @@ export function registerP2ListEmployeeRoutes(
         provenance: runtime.provenance,
         acceptedAt: occurredAt,
       });
-      assertOrganizationFilterInScope(query.filters, actor);
       const response = {
         ...page,
         authorization: {
@@ -251,25 +250,6 @@ function readOptionalString(value: unknown): string | undefined {
     throw invalidFilter();
   }
   return value;
-}
-
-function assertOrganizationFilterInScope(
-  filters: P2ListEmployeeFilters,
-  actor: P2ListActorContext,
-): void {
-  if (filters.organizationCode === undefined) {
-    return;
-  }
-  const organizationCodes = actor.dataScope?.organizationCodes;
-  if (
-    !Array.isArray(organizationCodes) ||
-    !organizationCodes.includes(filters.organizationCode)
-  ) {
-    throw new P2ListReadModelError(
-      "data_scope_denied",
-      "The employee list data scope is denied.",
-    );
-  }
 }
 
 function safeActorId(
