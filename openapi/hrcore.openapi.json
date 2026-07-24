@@ -1358,8 +1358,7 @@
                       "organizationCode": "organization-product",
                       "decidedBy": null,
                       "requestedAt": "2026-07-23T00:00:00.000Z",
-                      "effectiveDate": "2026-08-01",
-                      "allowedActions": ["open_detail"]
+                      "effectiveDate": "2026-08-01"
                     }
                   ],
                   "pageInfo": {
@@ -3327,8 +3326,7 @@
                 "subjectDisplayName",
                 "decidedBy",
                 "requestedAt",
-                "effectiveDate",
-                "allowedActions"
+                "effectiveDate"
               ]
             }
           },
@@ -3511,8 +3509,7 @@
           "organizationCode",
           "decidedBy",
           "requestedAt",
-          "effectiveDate",
-          "allowedActions"
+          "effectiveDate"
         ],
         "properties": {
           "transactionRequestId": {
@@ -3562,21 +3559,6 @@
             "type": "string",
             "format": "date",
             "minLength": 1
-          },
-          "allowedActions": {
-            "type": "array",
-            "uniqueItems": true,
-            "items": {
-              "type": "string",
-              "enum": [
-                "open_detail",
-                "approve",
-                "return",
-                "reject",
-                "cancel",
-                "apply"
-              ]
-            }
           }
         },
         "additionalProperties": false

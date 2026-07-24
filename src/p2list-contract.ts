@@ -431,7 +431,6 @@ export const p2ListLifecycleFields = [
   "decidedBy",
   "requestedAt",
   "effectiveDate",
-  "allowedActions",
 ] as const;
 
 export const p2ListDeferredEmployeeFields = [
@@ -445,6 +444,7 @@ export const p2ListDeferredEmployeeFields = [
 export const p2ListDeferredLifecycleFields = [
   "requestedBy",
   "currentStep",
+  "allowedActions",
   "updatedAt",
 ] as const;
 

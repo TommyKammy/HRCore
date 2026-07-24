@@ -684,9 +684,11 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   assert.ok(p2ListDeferredEmployeeFields.includes("updatedAt"));
   assert.ok(p2ListDeferredLifecycleFields.includes("currentStep"));
   assert.ok(p2ListDeferredLifecycleFields.includes("requestedBy"));
+  assert.ok(p2ListDeferredLifecycleFields.includes("allowedActions"));
   assert.ok(!p2ListEmployeeFields.includes("employmentType" as never));
   assert.ok(!p2ListLifecycleFields.includes("currentStep" as never));
   assert.ok(!p2ListLifecycleFields.includes("requestedBy" as never));
+  assert.ok(!p2ListLifecycleFields.includes("allowedActions" as never));
   assert.ok(!p2ListLifecycleFilters.includes("requestedBy" as never));
   assert.deepEqual(p2ListSyntheticProvenanceContract.resourceRequiredSources, {
     employee: ["person", "employment"],

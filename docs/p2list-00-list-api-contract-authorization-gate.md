@@ -334,10 +334,13 @@ Lifecycle list fields:
 - `transactionRequestId`, `requestType`, `status`
 - `subjectPersonId`, `subjectEmployeeId`, `subjectDisplayName`
 - `organizationCode`, `decidedBy`
-- `requestedAt`, `effectiveDate`, `allowedActions`
+- `requestedAt`, `effectiveDate`
 
-`requestedBy`, current approval step/assignee, and generic `updatedAt` remain
-deferred until authoritative immutable sources are introduced.
+`requestedBy`, current approval step/assignee, `allowedActions`, and generic
+`updatedAt` remain deferred. `allowedActions` must not be projected until a
+server-authoritative contract binds every action to request type, current
+status, actor permissions, and data scope; list-read permission alone never
+implies decision, cancellation, apply, or detail-open authority.
 
 Always denied from list/export/audit surfaces:
 
