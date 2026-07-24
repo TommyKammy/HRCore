@@ -130,7 +130,7 @@ export function parseOnboardingTransactionRequestInput(
       "payloadVersion must be mvp_a_onboarding_v1",
     );
   }
-  const payload = parsePayload(request.payload);
+  const payload = parseOnboardingPayload(request.payload);
 
   if (payload.effectiveDate !== payload.employment.startDate) {
     throw new OnboardingTransactionRequestValidationError(
@@ -242,7 +242,9 @@ function parsePerson(input: unknown): OnboardingTransactionRequestPersonInput {
   };
 }
 
-function parsePayload(input: unknown): OnboardingTransactionRequestPayload {
+export function parseOnboardingPayload(
+  input: unknown,
+): OnboardingTransactionRequestPayload {
   const payload = requireRecord("payload", input);
   assertSupportedFields("payload", payload, onboardingPayloadFields);
 
@@ -406,7 +408,7 @@ export function parsePersistedOnboardingApplyPayload(
 
   let payload: OnboardingTransactionRequestPayload;
   try {
-    payload = parsePayload(JSON.parse(existing.payload_json));
+    payload = parseOnboardingPayload(JSON.parse(existing.payload_json));
   } catch {
     throw new Error("persisted onboarding apply payload is malformed");
   }
