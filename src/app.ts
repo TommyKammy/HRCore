@@ -7,6 +7,10 @@ import { listSyntheticProvisioningRuns } from "./provisioning-runs.js";
 import { registerMvpAOnboardingAuditRoutes } from "./routes/mvp-a-onboarding-audit.js";
 import { registerMvpAOnboardingSupportReviewRoutes } from "./routes/mvp-a-onboarding-support-review.js";
 import { registerOnboardingRoutes } from "./routes/onboarding.js";
+import {
+  registerP2ListEmployeeRoutes,
+  type P2ListEmployeeApiRuntime,
+} from "./routes/p2list-employees.js";
 import { registerTerminationRoutes } from "./routes/termination.js";
 import { registerTransferRoutes } from "./routes/transfer.js";
 import { registerWritebackRoutes } from "./routes/writeback.js";
@@ -17,6 +21,7 @@ export interface BuildAppOptions {
   onboardingDb?: OnboardingTransactionRequestDatabase;
   auditTraceDb?: MvpAOnboardingTraceabilityDatabase;
   writebackDb?: SyntheticWritebackDatabase;
+  p2ListEmployeeApi?: P2ListEmployeeApiRuntime;
 }
 
 export async function buildApp(
@@ -41,6 +46,7 @@ export async function buildApp(
 
   registerMvpAOnboardingAuditRoutes(app, options);
   registerMvpAOnboardingSupportReviewRoutes(app, options);
+  registerP2ListEmployeeRoutes(app, options);
   registerOnboardingRoutes(app, options);
   registerTerminationRoutes(app, options);
   registerTransferRoutes(app, options);
