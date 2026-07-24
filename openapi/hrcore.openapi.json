@@ -727,6 +727,1149 @@
         }
       }
     },
+    "/employees": {
+      "get": {
+        "operationId": "listBoundedEmployees",
+        "summary": "List bounded synthetic employees",
+        "description": "OpenAPI-first contract for a server-authorized, repository-owned synthetic employee collection. Actor context is resolved by the server; client persona state is not authoritative. The operation uses allowlisted filters and keyset pagination and does not expose raw payloads, sensitive personal information, broad search, unrestricted counts, real employee data, or production-ready authorization.",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-required-permission": "employee:list:read",
+        "x-hrcore-cursor-version": "p2list_cursor_v1",
+        "x-hrcore-resolved-filter-defaults": {
+          "asOf": "initial_request_accepted_at_utc_calendar_date"
+        },
+        "x-hrcore-cursor-filter-fingerprint-includes": ["asOf"],
+        "x-hrcore-cursor-resolved-filter-continuation": {
+          "asOf": "reuse_cursor_bound_value_and_reject_mismatched_explicit_asOf"
+        },
+        "x-hrcore-effective-assignment-resolution": {
+          "employmentEffectivePredicate": "employment.startDate_lte_asOf_and_employment.endDate_null_or_gte_asOf",
+          "employmentEligibility": "required_before_authorization_scope_sorting_and_cursor_generation",
+          "effectivePredicate": "startDate_lte_asOf_and_endDate_null_or_gte_asOf",
+          "cardinality": "zero_or_one_per_employment",
+          "noEffectiveAssignment": "project_null_organization_and_position",
+          "multipleEffectiveAssignments": "fail_closed_before_authorization_scope_and_projection",
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-synthetic-provenance": {
+          "authority": "server_loaded_dataset_manifest",
+          "acceptedEvidenceType": "repo_owned_synthetic_fixture",
+          "requiredEvidenceFields": [
+            "evidenceType",
+            "datasetReference",
+            "tenantEnvironmentId",
+            "sourceRowPrimaryKeys",
+            "integrity"
+          ],
+          "tenantEnvironmentId": "repo_owned_synthetic_p2list",
+          "coveredSources": [
+            "person",
+            "employment",
+            "assignment",
+            "transaction_request",
+            "audit_event"
+          ],
+          "resourceRequiredSources": {
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected",
+              "audit_event": "when_any_decision_audit_event_row_is_selected"
+            }
+          },
+          "sourceRowPrimaryKeyFields": {
+            "person": "person.id",
+            "employment": "employment.id",
+            "assignment": "assignment.id",
+            "transaction_request": "transaction_request.id",
+            "audit_event": "audit_event.id"
+          },
+          "integrity": {
+            "algorithm": "hmac_sha256",
+            "canonicalization": "canonical_json",
+            "keySource": "server_injected_non_default_local_test_secret"
+          },
+          "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
+          "clientSuppliedEvidenceAllowed": false,
+          "payloadMarkerAloneIsSufficient": false,
+          "readinessLabelAloneIsSufficient": false,
+          "missingOrMismatchedEvidence": "fail_closed_before_query_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-query-schema": {
+          "$ref": "#/components/schemas/P2ListEmployeeListQuery"
+        },
+        "x-hrcore-unknown-query-parameters": "reject",
+        "x-hrcore-default-order": ["employeeId:asc", "employmentId:asc"],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Employee ID or display-name prefix. Wildcard and regex expressions are not accepted.",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "description": "Exact employment code.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "employmentStatus",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["active", "inactive", "terminated"]
+            }
+          },
+          {
+            "name": "organizationCode",
+            "in": "query",
+            "description": "Exact organization code within the server-resolved actor scope.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "description": "Effective date for employment and assignment joins. When omitted, the server resolves the initial request acceptance date in UTC, returns it in appliedFilters, and binds it to the cursor fingerprint.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "x-hrcore-when-omitted": "initial_request_accepted_at_utc_calendar_date"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["employeeId", "displayName", "hireDate"],
+              "default": "employeeId"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "asc"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque authenticated p2list_cursor_v1 random handle for 15-minute server-side continuation state bound to authorization context and canonical filters.",
+            "schema": {
+              "$ref": "#/components/schemas/P2ListCursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized bounded employee page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListEmployeeResponse"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "personId": "person-synthetic-001",
+                      "employeeId": "EMP-000128",
+                      "displayName": "Synthetic Employee",
+                      "employmentStatus": "active",
+                      "organizationCode": "organization-product",
+                      "positionCode": "position-engineer",
+                      "hireDate": "2026-04-01",
+                      "terminationDate": null
+                    }
+                  ],
+                  "pageInfo": {
+                    "limit": 25,
+                    "hasNextPage": false,
+                    "nextCursor": null
+                  },
+                  "appliedFilters": {
+                    "organizationCode": "organization-product",
+                    "asOf": "2026-07-23"
+                  },
+                  "authorization": {
+                    "dataScope": "bounded",
+                    "maskedFields": [],
+                    "readiness": "bounded_synthetic_only_not_production_ready"
+                  },
+                  "correlationId": "p2list-employee-correlation-001"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A filter, sort, date, limit, or cursor failed closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative server-side actor context is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission or data-scope authorization denied the collection without revealing record existence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lifecycle/transaction-requests": {
+      "get": {
+        "operationId": "listBoundedLifecycleTransactionRequests",
+        "summary": "List bounded synthetic lifecycle transaction requests",
+        "description": "OpenAPI-first contract for a server-authorized collection that normalizes onboarding, transfer, and termination requests. Type-specific payloads remain on existing detail surfaces. The operation does not expose raw payloads, free-form notes, broad history export, real employee data, or production-ready authorization.",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-required-permission": "lifecycle-request:list:read",
+        "x-hrcore-cursor-version": "p2list_cursor_v1",
+        "x-hrcore-maximum-date-range-days": 366,
+        "x-hrcore-query-schema": {
+          "$ref": "#/components/schemas/P2ListLifecycleListQuery"
+        },
+        "x-hrcore-unknown-query-parameters": "reject",
+        "x-hrcore-sort-null-placement": {
+          "requestedAt": "not_nullable",
+          "effectiveDate": "not_nullable"
+        },
+        "x-hrcore-requested-at-normalization": {
+          "acceptedInput": "rfc3339_date_time_with_offset",
+          "comparisonBasis": "utc_instant",
+          "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "canonicalOutputPattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "canonicalOutputFields": [
+            "response.items[].requestedAt",
+            "export.requested_at"
+          ],
+          "canonicalOutputRequired": true,
+          "appliesTo": [
+            "requestedAt",
+            "requestedFrom",
+            "requestedTo",
+            "cursor.lastSortValue"
+          ],
+          "textComparisonAllowed": false
+        },
+        "x-hrcore-range-validation": {
+          "pairs": [
+            ["requestedFrom", "requestedTo"],
+            ["effectiveFrom", "effectiveTo"]
+          ],
+          "normalizedComparison": {
+            "requestedRange": "utc_instant",
+            "effectiveRange": "iso_calendar_date"
+          },
+          "ordering": "start_lte_end",
+          "maximumInclusiveDays": 366,
+          "beforeRepositoryAccess": true,
+          "reversedRangeFailureCode": "invalid_filter"
+        },
+        "x-hrcore-subject-employment-resolution": {
+          "sourceLink": "transaction_request.person_id",
+          "resolution": "zero_or_exactly_one_employment_for_person",
+          "zeroEmployments": "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
+          "multipleEmployments": "fail_closed_before_filter_scope_projection_and_export",
+          "payloadInferenceAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-lifecycle-effective-date-resolution": {
+          "sourceTable": "transaction_request",
+          "sourceColumns": {
+            "requestType": "request_type",
+            "payloadVersion": "payload_version",
+            "payload": "payload_json"
+          },
+          "sourceByPersistedRequestType": {
+            "hire": {
+              "payloadVersion": "mvp_a_onboarding_v1",
+              "payloadField": "effectiveDate"
+            },
+            "change": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "transfer": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "terminate": {
+              "payloadVersion": "mvp_c_termination_v1",
+              "payloadField": "effectiveDate"
+            }
+          },
+          "validation": "strict_persisted_type_version_mapping_and_versioned_payload_parser_and_iso_calendar_date",
+          "statusIndependent": true,
+          "lifecycleEventFallbackAllowed": false,
+          "successfulProjection": "effectiveDate_non_null",
+          "appliesTo": [
+            "projection",
+            "filter",
+            "sort",
+            "cursor",
+            "organization_resolution",
+            "export"
+          ],
+          "missingMalformedUnsupportedOrMismatched": "fail_closed_before_filter_sort_cursor_scope_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-lifecycle-organization-resolution": {
+          "onboarding": {
+            "source": "validated_mvp_a_onboarding_v1_payload.assignment.departmentReference",
+            "relation": "target_assignment_at_effectiveDate"
+          },
+          "transfer": {
+            "source": "validated_mvp_b_transfer_v1_payload.targetAssignment.organizationReference",
+            "relation": "target_assignment_at_effectiveDate"
+          },
+          "termination": {
+            "source": "organization_code_of_exact_payload_currentAssignment_id_and_code",
+            "relation": "exact_current_assignment_effective_on_effectiveDate_inclusive_of_end_date"
+          },
+          "appliesTo": ["projection", "filter", "query_layer_scope", "export"],
+          "nullOrAmbiguous": "fail_closed_before_filter_authorization_scope_projection_or_export",
+          "rawPayloadExposureAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-lifecycle-decision-resolution": {
+          "sourceTable": "audit_event",
+          "subjectPredicate": "audit_event.subject_table_eq_transaction_request_and_subject_id_eq_transaction_request.id",
+          "actionPrefixByPersistedRequestType": {
+            "hire": "mvp_a.onboarding",
+            "change": "mvp_b.transfer",
+            "transfer": "mvp_b.transfer",
+            "terminate": "mvp_c.termination"
+          },
+          "decisionActionByCurrentStatus": {
+            "draft": null,
+            "submitted": null,
+            "returned": "return",
+            "rejected": "reject",
+            "cancelled": "cancel",
+            "approved": "approve",
+            "completed": "approve"
+          },
+          "candidateAction": "exact_request_type_prefix_plus_decision_action_for_current_status",
+          "requiredPocMarker": "synthetic_poc",
+          "requiredActorId": "non_empty",
+          "occurredAtComparison": "rfc3339_utc_instant",
+          "selectedEvent": "unique_candidate_with_maximum_occurredAt_utc_instant",
+          "sameMaximumInstant": "fail_closed",
+          "noDecisionStatus": "project_null_decidedBy_and_ignore_historical_decisions_for_draft_or_submitted",
+          "missingExpectedEvent": "fail_closed_for_returned_rejected_cancelled_approved_or_completed",
+          "appliesTo": ["projection", "filter", "export"],
+          "filterAuthorization": "same_as_authorized_lifecycle_collection_no_additional_permission",
+          "payloadInferenceAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-synthetic-provenance": {
+          "authority": "server_loaded_dataset_manifest",
+          "acceptedEvidenceType": "repo_owned_synthetic_fixture",
+          "requiredEvidenceFields": [
+            "evidenceType",
+            "datasetReference",
+            "tenantEnvironmentId",
+            "sourceRowPrimaryKeys",
+            "integrity"
+          ],
+          "tenantEnvironmentId": "repo_owned_synthetic_p2list",
+          "coveredSources": [
+            "person",
+            "employment",
+            "assignment",
+            "transaction_request",
+            "audit_event"
+          ],
+          "resourceRequiredSources": {
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected",
+              "audit_event": "when_any_decision_audit_event_row_is_selected"
+            }
+          },
+          "sourceRowPrimaryKeyFields": {
+            "person": "person.id",
+            "employment": "employment.id",
+            "assignment": "assignment.id",
+            "transaction_request": "transaction_request.id",
+            "audit_event": "audit_event.id"
+          },
+          "integrity": {
+            "algorithm": "hmac_sha256",
+            "canonicalization": "canonical_json",
+            "keySource": "server_injected_non_default_local_test_secret"
+          },
+          "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
+          "clientSuppliedEvidenceAllowed": false,
+          "payloadMarkerAloneIsSufficient": false,
+          "readinessLabelAloneIsSufficient": false,
+          "missingOrMismatchedEvidence": "fail_closed_before_query_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-conditional-filter-permissions": {
+          "correlationId": "support:correlation:read"
+        },
+        "x-hrcore-dependent-query-parameters": {
+          "requestedFrom": ["requestedTo"],
+          "requestedTo": ["requestedFrom"],
+          "effectiveFrom": ["effectiveTo"],
+          "effectiveTo": ["effectiveFrom"]
+        },
+        "x-hrcore-default-order": [
+          "requestedAt:desc",
+          "transactionRequestId:desc"
+        ],
+        "parameters": [
+          {
+            "name": "requestType",
+            "in": "query",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "uniqueItems": true,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "enum": ["onboarding", "transfer", "termination"]
+              }
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "uniqueItems": true,
+              "maxItems": 7,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "submitted",
+                  "returned",
+                  "rejected",
+                  "cancelled",
+                  "approved",
+                  "completed"
+                ]
+              }
+            }
+          },
+          {
+            "name": "subjectEmployeeId",
+            "in": "query",
+            "description": "Exact employment code for the subject.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Request ID, employee ID, or display-name prefix. Wildcard and regex expressions are not accepted.",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
+            }
+          },
+          {
+            "name": "organizationCode",
+            "in": "query",
+            "description": "Exact organization code within the server-resolved actor scope.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "decidedBy",
+            "in": "query",
+            "description": "Exact resolved current-status decision actor ID within rows already authorized by lifecycle list permission and data scope.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "requestedFrom",
+            "in": "query",
+            "description": "Requested-at range start. Must be supplied with requestedTo.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "requestedTo",
+            "in": "query",
+            "description": "Requested-at range end. Must be supplied with requestedFrom; the range is limited to 366 days.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "effectiveFrom",
+            "in": "query",
+            "description": "Effective-date range start. Must be supplied with effectiveTo.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "effectiveTo",
+            "in": "query",
+            "description": "Effective-date range end. Must be supplied with effectiveFrom; the range is limited to 366 days.",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "correlationId",
+            "in": "query",
+            "description": "Exact support lookup requiring support:correlation:read.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["requestedAt", "effectiveDate"],
+              "default": "requestedAt"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque authenticated p2list_cursor_v1 random handle for 15-minute server-side continuation state bound to authorization context and canonical filters.",
+            "schema": {
+              "$ref": "#/components/schemas/P2ListCursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized bounded lifecycle request page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListLifecycleResponse"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "transactionRequestId": "transaction-request-synthetic-001",
+                      "requestType": "transfer",
+                      "status": "submitted",
+                      "subjectPersonId": "person-synthetic-001",
+                      "subjectEmployeeId": "EMP-000128",
+                      "subjectDisplayName": "Synthetic Employee",
+                      "organizationCode": "organization-product",
+                      "decidedBy": null,
+                      "requestedAt": "2026-07-23T00:00:00.000Z",
+                      "effectiveDate": "2026-08-01"
+                    }
+                  ],
+                  "pageInfo": {
+                    "limit": 25,
+                    "hasNextPage": false,
+                    "nextCursor": null
+                  },
+                  "appliedFilters": {
+                    "requestType": ["transfer"],
+                    "status": ["submitted"]
+                  },
+                  "authorization": {
+                    "dataScope": "bounded",
+                    "maskedFields": [],
+                    "readiness": "bounded_synthetic_only_not_production_ready"
+                  },
+                  "correlationId": "p2list-lifecycle-correlation-001"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A filter, sort, date range, limit, or cursor failed closed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative server-side actor context is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission or data-scope authorization denied the collection without revealing request existence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exports/employee-list": {
+      "post": {
+        "operationId": "exportBoundedEmployeeList",
+        "summary": "Export a bounded filtered synthetic employee list",
+        "description": "Contract-only synchronous CSV export for a server-authorized, meaningfully filtered result of at most 100 synthetic rows. The server owns columns and rows, rejects rather than truncates, and does not provide broad, scheduled, long-lived, real-data, or production export.",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-required-permissions": [
+          "employee:list:read",
+          "employee:list:export",
+          "mvp_d.synthetic_csv_download"
+        ],
+        "x-hrcore-export-schema-version": "p2list_export_v1",
+        "x-hrcore-maximum-rows": 100,
+        "x-hrcore-csv-formula-protection": {
+          "appliesTo": "every_exported_data_cell_before_csv_serialization",
+          "detection": "first_unicode_code_point_of_unmodified_cell_matches_dangerous_prefix",
+          "dangerousLeadingCharacters": ["=", "+", "-", "@"],
+          "transformation": "prepend_single_quote",
+          "neutralizationPrefix": "'",
+          "order": ["neutralize_spreadsheet_formula", "apply_csv_escaping"],
+          "csvEscaping": "quote_cell_containing_double_quote_comma_cr_or_lf_and_double_embedded_quotes",
+          "idempotent": true
+        },
+        "x-hrcore-meaningful-filter-any-of": ["employeeId", "organizationCode"],
+        "x-hrcore-effective-assignment-resolution": {
+          "employmentEffectivePredicate": "employment.startDate_lte_asOf_and_employment.endDate_null_or_gte_asOf",
+          "employmentEligibility": "required_before_authorization_scope_sorting_and_cursor_generation",
+          "effectivePredicate": "startDate_lte_asOf_and_endDate_null_or_gte_asOf",
+          "cardinality": "zero_or_one_per_employment",
+          "noEffectiveAssignment": "project_null_organization_and_position",
+          "multipleEffectiveAssignments": "fail_closed_before_authorization_scope_and_projection",
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-synthetic-provenance": {
+          "authority": "server_loaded_dataset_manifest",
+          "acceptedEvidenceType": "repo_owned_synthetic_fixture",
+          "requiredEvidenceFields": [
+            "evidenceType",
+            "datasetReference",
+            "tenantEnvironmentId",
+            "sourceRowPrimaryKeys",
+            "integrity"
+          ],
+          "tenantEnvironmentId": "repo_owned_synthetic_p2list",
+          "coveredSources": [
+            "person",
+            "employment",
+            "assignment",
+            "transaction_request",
+            "audit_event"
+          ],
+          "resourceRequiredSources": {
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected",
+              "audit_event": "when_any_decision_audit_event_row_is_selected"
+            }
+          },
+          "sourceRowPrimaryKeyFields": {
+            "person": "person.id",
+            "employment": "employment.id",
+            "assignment": "assignment.id",
+            "transaction_request": "transaction_request.id",
+            "audit_event": "audit_event.id"
+          },
+          "integrity": {
+            "algorithm": "hmac_sha256",
+            "canonicalization": "canonical_json",
+            "keySource": "server_injected_non_default_local_test_secret"
+          },
+          "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
+          "clientSuppliedEvidenceAllowed": false,
+          "payloadMarkerAloneIsSufficient": false,
+          "readinessLabelAloneIsSufficient": false,
+          "missingOrMismatchedEvidence": "fail_closed_before_query_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P2ListEmployeeExportRequest"
+              },
+              "example": {
+                "filters": {
+                  "organizationCode": "organization-product",
+                  "employmentStatus": "active"
+                },
+                "reasonCode": "uat_reconciliation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized bounded CSV generated synchronously.",
+            "headers": {
+              "X-HRCore-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-HRCore-Export-Schema-Version": {
+                "schema": {
+                  "type": "string",
+                  "const": "p2list_export_v1"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "employee_id,display_name,employment_status,organization_code,position_code,hire_date,termination_date\nEMP-000128,Synthetic Employee,active,organization-product,position-engineer,2026-04-01,\n"
+              }
+            }
+          },
+          "400": {
+            "description": "The export request or reason was malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative server-side actor context is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Export permission, download permission, or data scope denied the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A meaningful filter was absent, the result exceeded 100 rows, or a prohibited export surface was requested.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exports/lifecycle-request-list": {
+      "post": {
+        "operationId": "exportBoundedLifecycleRequestList",
+        "summary": "Export a bounded filtered synthetic lifecycle request list",
+        "description": "Contract-only synchronous CSV export for a server-authorized, meaningfully filtered lifecycle result of at most 100 synthetic rows. The server owns columns and rows, rejects rather than truncates, and does not provide raw payload, broad history, scheduled, real-data, or production export.",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-required-permissions": [
+          "lifecycle-request:list:read",
+          "lifecycle-request:list:export",
+          "mvp_d.synthetic_csv_download"
+        ],
+        "x-hrcore-export-schema-version": "p2list_export_v1",
+        "x-hrcore-maximum-rows": 100,
+        "x-hrcore-csv-formula-protection": {
+          "appliesTo": "every_exported_data_cell_before_csv_serialization",
+          "detection": "first_unicode_code_point_of_unmodified_cell_matches_dangerous_prefix",
+          "dangerousLeadingCharacters": ["=", "+", "-", "@"],
+          "transformation": "prepend_single_quote",
+          "neutralizationPrefix": "'",
+          "order": ["neutralize_spreadsheet_formula", "apply_csv_escaping"],
+          "csvEscaping": "quote_cell_containing_double_quote_comma_cr_or_lf_and_double_embedded_quotes",
+          "idempotent": true
+        },
+        "x-hrcore-meaningful-filter-any-of": [
+          "subjectEmployeeId",
+          "organizationCode",
+          "correlationId",
+          "requestedRange",
+          "effectiveRange"
+        ],
+        "x-hrcore-conditional-filter-permissions": {
+          "correlationId": "support:correlation:read"
+        },
+        "x-hrcore-requested-at-normalization": {
+          "acceptedInput": "rfc3339_date_time_with_offset",
+          "comparisonBasis": "utc_instant",
+          "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "canonicalOutputPattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "canonicalOutputFields": [
+            "response.items[].requestedAt",
+            "export.requested_at"
+          ],
+          "canonicalOutputRequired": true,
+          "appliesTo": [
+            "requestedAt",
+            "requestedFrom",
+            "requestedTo",
+            "cursor.lastSortValue"
+          ],
+          "textComparisonAllowed": false
+        },
+        "x-hrcore-lifecycle-effective-date-resolution": {
+          "sourceTable": "transaction_request",
+          "sourceColumns": {
+            "requestType": "request_type",
+            "payloadVersion": "payload_version",
+            "payload": "payload_json"
+          },
+          "sourceByPersistedRequestType": {
+            "hire": {
+              "payloadVersion": "mvp_a_onboarding_v1",
+              "payloadField": "effectiveDate"
+            },
+            "change": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "transfer": {
+              "payloadVersion": "mvp_b_transfer_v1",
+              "payloadField": "effectiveDate"
+            },
+            "terminate": {
+              "payloadVersion": "mvp_c_termination_v1",
+              "payloadField": "effectiveDate"
+            }
+          },
+          "validation": "strict_persisted_type_version_mapping_and_versioned_payload_parser_and_iso_calendar_date",
+          "statusIndependent": true,
+          "lifecycleEventFallbackAllowed": false,
+          "successfulProjection": "effectiveDate_non_null",
+          "appliesTo": [
+            "projection",
+            "filter",
+            "sort",
+            "cursor",
+            "organization_resolution",
+            "export"
+          ],
+          "missingMalformedUnsupportedOrMismatched": "fail_closed_before_filter_sort_cursor_scope_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-lifecycle-organization-resolution": {
+          "onboarding": {
+            "source": "validated_mvp_a_onboarding_v1_payload.assignment.departmentReference",
+            "relation": "target_assignment_at_effectiveDate"
+          },
+          "transfer": {
+            "source": "validated_mvp_b_transfer_v1_payload.targetAssignment.organizationReference",
+            "relation": "target_assignment_at_effectiveDate"
+          },
+          "termination": {
+            "source": "organization_code_of_exact_payload_currentAssignment_id_and_code",
+            "relation": "exact_current_assignment_effective_on_effectiveDate_inclusive_of_end_date"
+          },
+          "appliesTo": ["projection", "filter", "query_layer_scope", "export"],
+          "nullOrAmbiguous": "fail_closed_before_filter_authorization_scope_projection_or_export",
+          "rawPayloadExposureAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-lifecycle-decision-resolution": {
+          "sourceTable": "audit_event",
+          "subjectPredicate": "audit_event.subject_table_eq_transaction_request_and_subject_id_eq_transaction_request.id",
+          "actionPrefixByPersistedRequestType": {
+            "hire": "mvp_a.onboarding",
+            "change": "mvp_b.transfer",
+            "transfer": "mvp_b.transfer",
+            "terminate": "mvp_c.termination"
+          },
+          "decisionActionByCurrentStatus": {
+            "draft": null,
+            "submitted": null,
+            "returned": "return",
+            "rejected": "reject",
+            "cancelled": "cancel",
+            "approved": "approve",
+            "completed": "approve"
+          },
+          "candidateAction": "exact_request_type_prefix_plus_decision_action_for_current_status",
+          "requiredPocMarker": "synthetic_poc",
+          "requiredActorId": "non_empty",
+          "occurredAtComparison": "rfc3339_utc_instant",
+          "selectedEvent": "unique_candidate_with_maximum_occurredAt_utc_instant",
+          "sameMaximumInstant": "fail_closed",
+          "noDecisionStatus": "project_null_decidedBy_and_ignore_historical_decisions_for_draft_or_submitted",
+          "missingExpectedEvent": "fail_closed_for_returned_rejected_cancelled_approved_or_completed",
+          "appliesTo": ["projection", "filter", "export"],
+          "filterAuthorization": "same_as_authorized_lifecycle_collection_no_additional_permission",
+          "payloadInferenceAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
+        "x-hrcore-synthetic-provenance": {
+          "authority": "server_loaded_dataset_manifest",
+          "acceptedEvidenceType": "repo_owned_synthetic_fixture",
+          "requiredEvidenceFields": [
+            "evidenceType",
+            "datasetReference",
+            "tenantEnvironmentId",
+            "sourceRowPrimaryKeys",
+            "integrity"
+          ],
+          "tenantEnvironmentId": "repo_owned_synthetic_p2list",
+          "coveredSources": [
+            "person",
+            "employment",
+            "assignment",
+            "transaction_request",
+            "audit_event"
+          ],
+          "resourceRequiredSources": {
+            "employee": ["person", "employment"],
+            "lifecycleRequest": ["transaction_request", "person"]
+          },
+          "conditionallyRequiredSources": {
+            "employee": {
+              "assignment": "when_any_assignment_row_is_selected"
+            },
+            "lifecycleRequest": {
+              "employment": "when_any_employment_row_is_selected",
+              "assignment": "when_any_assignment_row_is_selected",
+              "audit_event": "when_any_decision_audit_event_row_is_selected"
+            }
+          },
+          "sourceRowPrimaryKeyFields": {
+            "person": "person.id",
+            "employment": "employment.id",
+            "assignment": "assignment.id",
+            "transaction_request": "transaction_request.id",
+            "audit_event": "audit_event.id"
+          },
+          "integrity": {
+            "algorithm": "hmac_sha256",
+            "canonicalization": "canonical_json",
+            "keySource": "server_injected_non_default_local_test_secret"
+          },
+          "sourceRowPredicate": "every_selected_primary_key_is_bound_to_the_verified_manifest_dataset_and_tenant_environment",
+          "unusedSourceAbsenceAllowed": true,
+          "clientSuppliedEvidenceAllowed": false,
+          "payloadMarkerAloneIsSufficient": false,
+          "readinessLabelAloneIsSufficient": false,
+          "missingOrMismatchedEvidence": "fail_closed_before_query_projection_or_export",
+          "failureCode": "data_scope_denied"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P2ListLifecycleExportRequest"
+              },
+              "example": {
+                "filters": {
+                  "requestType": ["transfer"],
+                  "status": ["submitted"],
+                  "requestedFrom": "2026-07-01T00:00:00+09:00",
+                  "requestedTo": "2026-07-31T23:59:59+09:00"
+                },
+                "reasonCode": "operational_reconciliation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized bounded CSV generated synchronously.",
+            "headers": {
+              "X-HRCore-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-HRCore-Export-Schema-Version": {
+                "schema": {
+                  "type": "string",
+                  "const": "p2list_export_v1"
+                }
+              }
+            },
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "transaction_request_id,request_type,status,subject_employee_id,subject_display_name,organization_code,requested_at,effective_date\ntransaction-request-synthetic-001,transfer,submitted,EMP-000128,Synthetic Employee,organization-product,2026-07-23T00:00:00.000Z,2026-08-01\n"
+              }
+            }
+          },
+          "400": {
+            "description": "The export request or reason was malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative server-side actor context is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Export permission, download permission, or data scope denied the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A meaningful filter was absent, the result exceeded 100 rows, or a prohibited export surface was requested.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/writeback-events/work-email": {
       "post": {
         "operationId": "ingestSyntheticWorkEmailWriteback",
@@ -2097,6 +3240,713 @@
           }
         },
         "additionalProperties": false
+      },
+      "P2ListCursor": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048,
+        "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+        "x-hrcore-wire-required-claims": ["version", "stateId", "expiresAt"],
+        "x-hrcore-minimum-handle-entropy-bits": 128,
+        "x-hrcore-handle-generation": "cryptographically_secure_random",
+        "x-hrcore-server-side-state-ttl-seconds": 900,
+        "x-hrcore-server-side-state-cleanup": "delete_after_expiry",
+        "x-hrcore-authorization-context-fingerprint": {
+          "algorithm": "sha256_canonical_json",
+          "inputs": ["actorId", "tenantId", "permissions", "dataScope"]
+        },
+        "x-hrcore-server-side-state-required-fields": [
+          "resource",
+          "sort",
+          "direction",
+          "lastSortValue",
+          "lastSortValueIsNull",
+          "lastStableId",
+          "filterFingerprint",
+          "authorizationContextFingerprint"
+        ],
+        "x-hrcore-resource-state-required-fields": {
+          "employee": ["resolvedAsOf"],
+          "lifecycleRequest": []
+        },
+        "x-hrcore-server-side-state-sensitive-fields": ["lastSortValue"],
+        "x-hrcore-server-side-state-logging": "prohibited",
+        "x-hrcore-nullable-sort-value-encoding": "lastSortValue_null_with_explicit_lastSortValueIsNull",
+        "x-hrcore-sort-value-nullability-by-resource": {
+          "employee": "not_nullable",
+          "lifecycleRequest": "not_nullable"
+        },
+        "x-hrcore-invalid-null-sort-state": "reject_lastSortValueIsNull_true_as_cursor_invalid_for_current_resources",
+        "x-hrcore-public-error-code-by-rejected-condition": {
+          "malformed": "cursor_invalid",
+          "tampered": "cursor_invalid",
+          "unsupported_version": "cursor_version_unsupported",
+          "resource_mismatch": "cursor_invalid",
+          "cursor_filter_mismatch": "cursor_filter_mismatch",
+          "sort_mismatch": "cursor_invalid",
+          "direction_mismatch": "cursor_invalid",
+          "expired": "cursor_invalid",
+          "state_not_found": "cursor_invalid",
+          "authorization_context_mismatch": "permission_denied"
+        },
+        "description": "Opaque authenticated p2list_cursor_v1 random handle with at least 128 bits of entropy and a 15-minute expiry. The wire token carries only version, random stateId, and expiresAt; it contains neither PII nor raw search terms. Sort continuation values, including display names, remain in non-logged server-side state bound to the authorization context and canonical filter fingerprint. Employee state additionally carries resolvedAsOf. Cursor rejection reasons map to the canonical public P2ListErrorResponse codes declared by x-hrcore-public-error-code-by-rejected-condition."
+      },
+      "P2ListPageInfo": {
+        "type": "object",
+        "required": ["limit", "hasNextPage", "nextCursor"],
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "hasNextPage": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/P2ListCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["hasNextPage", "nextCursor"],
+            "properties": {
+              "hasNextPage": {
+                "const": true
+              },
+              "nextCursor": {
+                "$ref": "#/components/schemas/P2ListCursor"
+              }
+            }
+          },
+          {
+            "required": ["hasNextPage", "nextCursor"],
+            "properties": {
+              "hasNextPage": {
+                "const": false
+              },
+              "nextCursor": {
+                "type": "null"
+              }
+            }
+          }
+        ],
+        "additionalProperties": false
+      },
+      "P2ListAuthorizationSummary": {
+        "type": "object",
+        "required": ["dataScope", "maskedFields", "readiness"],
+        "properties": {
+          "dataScope": {
+            "type": "string",
+            "const": "bounded"
+          },
+          "maskedFields": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "personId",
+                "employeeId",
+                "displayName",
+                "employmentStatus",
+                "organizationCode",
+                "positionCode",
+                "hireDate",
+                "terminationDate",
+                "transactionRequestId",
+                "requestType",
+                "status",
+                "subjectPersonId",
+                "subjectEmployeeId",
+                "subjectDisplayName",
+                "decidedBy",
+                "requestedAt",
+                "effectiveDate"
+              ]
+            }
+          },
+          "readiness": {
+            "type": "string",
+            "const": "bounded_synthetic_only_not_production_ready"
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListEmployeeItem": {
+        "type": "object",
+        "required": [
+          "personId",
+          "employeeId",
+          "displayName",
+          "employmentStatus",
+          "organizationCode",
+          "positionCode",
+          "hireDate",
+          "terminationDate"
+        ],
+        "properties": {
+          "personId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "employeeId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "employmentStatus": {
+            "type": "string",
+            "enum": ["active", "inactive", "terminated"]
+          },
+          "organizationCode": {
+            "type": ["string", "null"]
+          },
+          "positionCode": {
+            "type": ["string", "null"]
+          },
+          "hireDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "terminationDate": {
+            "type": ["string", "null"],
+            "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListEmployeeFilters": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
+          },
+          "employeeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "employmentStatus": {
+            "type": "string",
+            "enum": ["active", "inactive", "terminated"]
+          },
+          "organizationCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date",
+            "x-hrcore-when-omitted": "initial_request_accepted_at_utc_calendar_date"
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListEmployeeAppliedFilters": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters"
+          },
+          {
+            "required": ["asOf"]
+          }
+        ]
+      },
+      "P2ListEmployeeListQuery": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/q"
+          },
+          "employeeId": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/employeeId"
+          },
+          "employmentStatus": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/employmentStatus"
+          },
+          "organizationCode": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/organizationCode"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/P2ListEmployeeFilters/properties/asOf"
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["employeeId", "displayName", "hireDate"],
+            "default": "employeeId"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "default": "asc"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/P2ListCursor"
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListEmployeeResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "pageInfo",
+          "appliedFilters",
+          "authorization",
+          "correlationId"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/P2ListEmployeeItem"
+            }
+          },
+          "pageInfo": {
+            "$ref": "#/components/schemas/P2ListPageInfo"
+          },
+          "appliedFilters": {
+            "$ref": "#/components/schemas/P2ListEmployeeAppliedFilters"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/P2ListAuthorizationSummary"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleItem": {
+        "type": "object",
+        "required": [
+          "transactionRequestId",
+          "requestType",
+          "status",
+          "subjectPersonId",
+          "subjectEmployeeId",
+          "subjectDisplayName",
+          "organizationCode",
+          "decidedBy",
+          "requestedAt",
+          "effectiveDate"
+        ],
+        "properties": {
+          "transactionRequestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestType": {
+            "type": "string",
+            "enum": ["onboarding", "transfer", "termination"]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submitted",
+              "returned",
+              "rejected",
+              "cancelled",
+              "approved",
+              "completed"
+            ]
+          },
+          "subjectPersonId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subjectEmployeeId": {
+            "type": ["string", "null"]
+          },
+          "subjectDisplayName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "organizationCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decidedBy": {
+            "type": ["string", "null"]
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+            "description": "Canonical UTC output in YYYY-MM-DDTHH:mm:ss.sssZ form. RFC 3339 values are normalized to the same UTC instant before filtering, sorting, cursor-state persistence, and projection; text comparison of unnormalized offsets is prohibited."
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleFilters": {
+        "type": "object",
+        "x-hrcore-requested-at-normalization": {
+          "acceptedInput": "rfc3339_date_time_with_offset",
+          "comparisonBasis": "utc_instant",
+          "canonicalValue": "YYYY-MM-DDTHH:mm:ss.sssZ",
+          "canonicalOutputPattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+          "canonicalOutputFields": [
+            "response.items[].requestedAt",
+            "export.requested_at"
+          ],
+          "canonicalOutputRequired": true,
+          "appliesTo": [
+            "requestedAt",
+            "requestedFrom",
+            "requestedTo",
+            "cursor.lastSortValue"
+          ],
+          "textComparisonAllowed": false
+        },
+        "x-hrcore-range-validation": {
+          "pairs": [
+            ["requestedFrom", "requestedTo"],
+            ["effectiveFrom", "effectiveTo"]
+          ],
+          "normalizedComparison": {
+            "requestedRange": "utc_instant",
+            "effectiveRange": "iso_calendar_date"
+          },
+          "ordering": "start_lte_end",
+          "maximumInclusiveDays": 366,
+          "beforeRepositoryAccess": true,
+          "reversedRangeFailureCode": "invalid_filter"
+        },
+        "x-hrcore-subject-employment-resolution": {
+          "sourceLink": "transaction_request.person_id",
+          "resolution": "zero_or_exactly_one_employment_for_person",
+          "zeroEmployments": "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
+          "multipleEmployments": "fail_closed_before_filter_scope_projection_and_export",
+          "payloadInferenceAllowed": false,
+          "failureCode": "data_scope_denied"
+        },
+        "properties": {
+          "requestType": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "enum": ["onboarding", "transfer", "termination"]
+            }
+          },
+          "status": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 7,
+            "items": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "submitted",
+                "returned",
+                "rejected",
+                "cancelled",
+                "approved",
+                "completed"
+              ]
+            }
+          },
+          "subjectEmployeeId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "q": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "pattern": "^[^\\s\\\\^$.*+?()[\\]{}|%_](?:[^\\s\\\\^$.*+?()[\\]{}|%_]| )*[^\\s\\\\^$.*+?()[\\]{}|%_](?![\\s\\S])"
+          },
+          "organizationCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "decidedBy": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "requestedFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestedTo": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "effectiveTo": {
+            "type": "string",
+            "format": "date"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "dependentRequired": {
+          "requestedFrom": ["requestedTo"],
+          "requestedTo": ["requestedFrom"],
+          "effectiveFrom": ["effectiveTo"],
+          "effectiveTo": ["effectiveFrom"]
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleListQuery": {
+        "type": "object",
+        "properties": {
+          "requestType": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/status"
+          },
+          "subjectEmployeeId": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/subjectEmployeeId"
+          },
+          "q": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/q"
+          },
+          "organizationCode": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/organizationCode"
+          },
+          "decidedBy": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/decidedBy"
+          },
+          "requestedFrom": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestedFrom"
+          },
+          "requestedTo": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/requestedTo"
+          },
+          "effectiveFrom": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/effectiveFrom"
+          },
+          "effectiveTo": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/effectiveTo"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters/properties/correlationId"
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["requestedAt", "effectiveDate"],
+            "default": "requestedAt"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "default": "desc"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/P2ListCursor"
+          }
+        },
+        "dependentRequired": {
+          "requestedFrom": ["requestedTo"],
+          "requestedTo": ["requestedFrom"],
+          "effectiveFrom": ["effectiveTo"],
+          "effectiveTo": ["effectiveFrom"]
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "pageInfo",
+          "appliedFilters",
+          "authorization",
+          "correlationId"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/P2ListLifecycleItem"
+            }
+          },
+          "pageInfo": {
+            "$ref": "#/components/schemas/P2ListPageInfo"
+          },
+          "appliedFilters": {
+            "$ref": "#/components/schemas/P2ListLifecycleFilters"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/P2ListAuthorizationSummary"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListEmployeeExportRequest": {
+        "type": "object",
+        "required": ["filters", "reasonCode"],
+        "properties": {
+          "filters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/P2ListEmployeeFilters"
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": ["employeeId"]
+                  },
+                  {
+                    "required": ["organizationCode"]
+                  }
+                ]
+              }
+            ]
+          },
+          "reasonCode": {
+            "type": "string",
+            "enum": [
+              "uat_reconciliation",
+              "operational_reconciliation",
+              "authorized_case_support",
+              "data_quality_investigation"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleExportRequest": {
+        "type": "object",
+        "required": ["filters", "reasonCode"],
+        "properties": {
+          "filters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/P2ListLifecycleFilters"
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": ["subjectEmployeeId"]
+                  },
+                  {
+                    "required": ["organizationCode"]
+                  },
+                  {
+                    "required": ["correlationId"]
+                  },
+                  {
+                    "required": ["requestedFrom", "requestedTo"]
+                  },
+                  {
+                    "required": ["effectiveFrom", "effectiveTo"]
+                  }
+                ]
+              }
+            ]
+          },
+          "reasonCode": {
+            "type": "string",
+            "enum": [
+              "uat_reconciliation",
+              "operational_reconciliation",
+              "authorized_case_support",
+              "data_quality_investigation"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListErrorResponse": {
+        "type": "object",
+        "required": ["code", "message", "correlationId", "readiness"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid_filter",
+              "unsupported_filter",
+              "invalid_sort",
+              "unsupported_sort",
+              "limit_out_of_range",
+              "date_range_too_wide",
+              "cursor_invalid",
+              "cursor_version_unsupported",
+              "cursor_filter_mismatch",
+              "actor_context_required",
+              "permission_denied",
+              "data_scope_denied",
+              "export_filter_required",
+              "export_row_limit_exceeded",
+              "export_reason_code_required",
+              "export_reason_code_unsupported",
+              "export_field_denied"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "readiness": {
+            "type": "string",
+            "const": "bounded_synthetic_only_not_production_ready"
+          }
+        },
+        "additionalProperties": false,
+        "example": {
+          "code": "permission_denied",
+          "message": "The bounded operation was denied.",
+          "correlationId": "p2list-denied-correlation-001",
+          "readiness": "bounded_synthetic_only_not_production_ready"
+        }
       },
       "SyntheticWorkEmailConflictEvidence": {
         "type": "object",

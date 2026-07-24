@@ -67,6 +67,7 @@ The final P2X-04 production-like prerequisite decomposition closeout is recorded
 The P2Y-00 WebUI practical-use planning and authorization map is recorded in [P2Y-00 WebUI Practical-Use Scope and Authorization Gate](docs/p2y-00-webui-practical-use-scope-authorization-gate.md).
 The CHILD-P2Y-05 bounded browser UAT package is recorded in [P2Y WebUI Practical UAT Package](docs/p2y-webui-practical-uat-package.md).
 The final CHILD-P2Y-06 WebUI practical-use candidate review is recorded in [P2Y WebUI Practical-Use Readiness Review Closeout](docs/p2y-webui-practical-readiness-review-closeout.md).
+The bounded employee/lifecycle list API, authorization, cursor, export, and audit contract is recorded in [P2LIST-00 List API Contract and Authorization Gate](docs/p2list-00-list-api-contract-authorization-gate.md).
 The bounded visual redesign contract is recorded in [P2Z WebUI Visual Alignment Contract](docs/p2z-webui-visual-alignment-contract.md).
 The browser-based visual UAT scenarios and screenshot matrix are recorded in [P2Z WebUI Visual UAT Package](docs/p2z-webui-visual-uat-package.md).
 
