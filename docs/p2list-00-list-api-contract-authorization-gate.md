@@ -71,6 +71,24 @@ closed with `data_scope_denied` before filter, scope, projection, or export;
 implementations must not infer an employment from payload JSON, display text,
 request type, or an arbitrary join order.
 
+`decidedBy` resolves only from `audit_event` rows whose `subject_table` is
+`transaction_request`, whose `subject_id` is the request ID, and whose action
+exactly matches the persisted request type and current status. Action prefixes
+are `mvp_a.onboarding` for `hire`, `mvp_b.transfer` for both `change` and
+`transfer`, and `mvp_c.termination` for `terminate`. Current `returned`,
+`rejected`, `cancelled`, and `approved` statuses require the corresponding
+`return`, `reject`, `cancel`, or `approve` action; `completed` retains the
+latest `approve` decision.
+
+Candidate `occurred_at` values are parsed as RFC 3339 and compared as UTC
+instants, never as stored text. The unique candidate at the maximum instant
+supplies its non-empty `actor_id`; candidates also require
+`poc_marker = synthetic_poc`. Multiple candidates at that instant, an invalid
+timestamp, or missing evidence for a status that requires a decision fails
+closed with `data_scope_denied` before filtering, projection, or export. Draft
+and submitted requests project `decidedBy: null`, ignore historical decisions
+after resubmission, and never match a `decidedBy` filter.
+
 Lifecycle `organizationCode` has one authoritative request-time relation:
 
 - onboarding: the validated `mvp_a_onboarding_v1` payload assignment
@@ -96,9 +114,9 @@ The readiness label is not provenance. Before any list query, projection, or
 export, the server must load a trusted dataset manifest with evidence type
 `repo_owned_synthetic_fixture`, a concrete `datasetReference`,
 `tenantEnvironmentId` equal to `repo_owned_synthetic_p2list`, and source-row
-primary-key bindings for `person`, `employment`, `assignment`, and
-`transaction_request`. Every selected source primary key must belong to that
-verified manifest dataset and tenant/environment.
+primary-key bindings for `person`, `employment`, `assignment`,
+`transaction_request`, and `audit_event`. Every selected source primary key
+must belong to that verified manifest dataset and tenant/environment.
 
 Employee operations always require bound `person` and `employment` rows;
 `assignment` evidence is required only when an effective assignment row is
@@ -106,16 +124,17 @@ selected. Lifecycle request operations always require bound
 `transaction_request` and `person` rows. `employment` evidence is additionally
 required only when an employment row is selected for subject resolution, and
 `assignment` evidence only when an assignment row is selected for organization
-resolution. Pending onboarding requests therefore do not require employment or
-assignment rows that do not yet exist. A source not joined by a result is not
-an artificial prerequisite, but every source row actually selected must pass
-manifest membership verification.
+resolution. `audit_event` evidence is required whenever a decision event is
+selected for `decidedBy`. Pending onboarding requests therefore do not require
+employment or assignment rows that do not yet exist. A source not joined by a
+result is not an artificial prerequisite, but every source row actually
+selected must pass manifest membership verification.
 
-The manifest binds `person.id`, `employment.id`, `assignment.id`, and
-`transaction_request.id` sets explicitly. Its canonical JSON is authenticated
-with HMAC-SHA-256 using a server-injected, non-default local/test secret before
-row membership is evaluated. Missing fields, duplicate source keys, an invalid
-MAC, or an unlisted selected row fail closed.
+The manifest binds `person.id`, `employment.id`, `assignment.id`,
+`transaction_request.id`, and `audit_event.id` sets explicitly. Its canonical
+JSON is authenticated with HMAC-SHA-256 using a server-injected, non-default
+local/test secret before row membership is evaluated. Missing fields, duplicate
+source keys, an invalid MAC, or an unlisted selected row fail closed.
 The manifest body, source-row primary-key sets, and integrity value must never
 be written to application, audit, access, or support logs.
 
@@ -169,7 +188,9 @@ Allowed filters:
   100; leading/trailing whitespace, control whitespace, wildcard, and regex
   syntax fail closed.
 - `organizationCode`: exact code within the server-resolved actor scope.
-- `decidedBy`: exact decision actor ID when the actor has the required scope.
+- `decidedBy`: exact resolved current-status decision actor ID within rows
+  already authorized by lifecycle list permission and data scope; no additional
+  filter permission is implied.
 - `requestedFrom` and `requestedTo`: requested-at range.
 - `effectiveFrom` and `effectiveTo`: effective-date range.
 - `correlationId`: exact lookup for support actors with `support:correlation:read`.

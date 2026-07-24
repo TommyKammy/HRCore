@@ -89,7 +89,13 @@ export const p2ListSyntheticProvenanceContract = {
     "integrity",
   ],
   tenantEnvironmentId: "repo_owned_synthetic_p2list",
-  coveredSources: ["person", "employment", "assignment", "transaction_request"],
+  coveredSources: [
+    "person",
+    "employment",
+    "assignment",
+    "transaction_request",
+    "audit_event",
+  ],
   resourceRequiredSources: {
     employee: ["person", "employment"],
     lifecycleRequest: ["transaction_request", "person"],
@@ -101,6 +107,7 @@ export const p2ListSyntheticProvenanceContract = {
     lifecycleRequest: {
       employment: "when_any_employment_row_is_selected",
       assignment: "when_any_assignment_row_is_selected",
+      audit_event: "when_any_decision_audit_event_row_is_selected",
     },
   },
   sourceRowPrimaryKeyFields: {
@@ -108,6 +115,7 @@ export const p2ListSyntheticProvenanceContract = {
     employment: "employment.id",
     assignment: "assignment.id",
     transaction_request: "transaction_request.id",
+    audit_event: "audit_event.id",
   },
   integrity: {
     algorithm: "hmac_sha256",
@@ -216,6 +224,43 @@ export const p2ListLifecycleSubjectEmploymentResolutionContract = {
   zeroEmployments:
     "project_null_subjectEmployeeId_and_do_not_match_subjectEmployeeId_filter",
   multipleEmployments: "fail_closed_before_filter_scope_projection_and_export",
+  payloadInferenceAllowed: false,
+  failureCode: "data_scope_denied",
+} as const;
+
+export const p2ListLifecycleDecisionResolutionContract = {
+  sourceTable: "audit_event",
+  subjectPredicate:
+    "audit_event.subject_table_eq_transaction_request_and_subject_id_eq_transaction_request.id",
+  actionPrefixByPersistedRequestType: {
+    hire: "mvp_a.onboarding",
+    change: "mvp_b.transfer",
+    transfer: "mvp_b.transfer",
+    terminate: "mvp_c.termination",
+  },
+  decisionActionByCurrentStatus: {
+    draft: null,
+    submitted: null,
+    returned: "return",
+    rejected: "reject",
+    cancelled: "cancel",
+    approved: "approve",
+    completed: "approve",
+  },
+  candidateAction:
+    "exact_request_type_prefix_plus_decision_action_for_current_status",
+  requiredPocMarker: "synthetic_poc",
+  requiredActorId: "non_empty",
+  occurredAtComparison: "rfc3339_utc_instant",
+  selectedEvent: "unique_candidate_with_maximum_occurredAt_utc_instant",
+  sameMaximumInstant: "fail_closed",
+  noDecisionStatus:
+    "project_null_decidedBy_and_ignore_historical_decisions_for_draft_or_submitted",
+  missingExpectedEvent:
+    "fail_closed_for_returned_rejected_cancelled_approved_or_completed",
+  appliesTo: ["projection", "filter", "export"],
+  filterAuthorization:
+    "same_as_authorized_lifecycle_collection_no_additional_permission",
   payloadInferenceAllowed: false,
   failureCode: "data_scope_denied",
 } as const;
