@@ -591,6 +591,21 @@ test("P2LIST lifecycle repository normalizes all persisted request types and dec
     return;
   }
   const fixture = seedLifecycleNormalizationRows(db);
+  db.exec("PRAGMA ignore_check_constraints = ON");
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id, actor_id, action, subject_table, subject_id, occurred_at,
+        correlation_id, poc_marker
+      )
+      VALUES (
+        'audit-hire-ignored-history', '', 'mvp_a.onboarding.return',
+        'transaction_request', 'tr-hire', 'not-a-timestamp',
+        'correlation-hire-ignored-history', 'synthetic_poc'
+      )
+    `,
+  ).run();
+  db.exec("PRAGMA ignore_check_constraints = OFF");
   const provenance = verifyP2ListSyntheticDatasetManifest(
     signedManifest("lifecycle-normalization", fixture.sourceRowPrimaryKeys),
     manifestSecret,
@@ -817,6 +832,39 @@ test("P2LIST lifecycle validation fails before scope for malformed payload and t
       }),
     "data_scope_denied",
   );
+
+  db.exec("PRAGMA ignore_check_constraints = ON");
+  db.prepare(
+    `
+      INSERT INTO audit_event (
+        id, actor_id, action, subject_table, subject_id, occurred_at,
+        correlation_id, poc_marker
+      )
+      VALUES (
+        'audit-change-malformed-time', 'other-approver',
+        'mvp_b.transfer.approve', 'transaction_request', 'tr-change',
+        'not-a-timestamp', 'correlation-change-malformed-time', 'synthetic_poc'
+      )
+    `,
+  ).run();
+  db.exec("PRAGMA ignore_check_constraints = OFF");
+  const baselineProvenance = verifyP2ListSyntheticDatasetManifest(
+    signedManifest("lifecycle-malformed-decision-time", {
+      ...fixture.sourceRowPrimaryKeys,
+    }),
+    manifestSecret,
+  );
+  assertP2ListError(
+    () =>
+      repository.listLifecycleRequests({
+        actor: lifecycleActor,
+        provenance: baselineProvenance,
+      }),
+    "data_scope_denied",
+  );
+  db.prepare(
+    "DELETE FROM audit_event WHERE id = 'audit-change-malformed-time'",
+  ).run();
 
   db.prepare(
     `

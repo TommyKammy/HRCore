@@ -160,6 +160,14 @@ interface ValidatedLifecycleRow {
   correlationId: string | null;
 }
 
+interface UnvalidatedLifecycleAuditEvent {
+  id: unknown;
+  actorId: unknown;
+  action: unknown;
+  occurredAt: unknown;
+  pocMarker: unknown;
+}
+
 const employeeFilterKeys = [
   "q",
   "employeeId",
@@ -752,26 +760,10 @@ export class P2ListReadModelRepository {
     return result;
   }
 
-  #readLifecycleAuditEvents(transactionRequestIds: readonly string[]): Map<
-    string,
-    Array<{
-      id: string;
-      actorId: string;
-      action: string;
-      occurredAt: string;
-      pocMarker: string;
-    }>
-  > {
-    const result = new Map<
-      string,
-      Array<{
-        id: string;
-        actorId: string;
-        action: string;
-        occurredAt: string;
-        pocMarker: string;
-      }>
-    >();
+  #readLifecycleAuditEvents(
+    transactionRequestIds: readonly string[],
+  ): Map<string, UnvalidatedLifecycleAuditEvent[]> {
+    const result = new Map<string, UnvalidatedLifecycleAuditEvent[]>();
     if (transactionRequestIds.length === 0) {
       return result;
     }
@@ -791,11 +783,11 @@ export class P2ListReadModelRepository {
       const requestId = requireDatabaseString(row.subject_id);
       const values = result.get(requestId) ?? [];
       values.push({
-        id: requireDatabaseString(row.id),
-        actorId: requireDatabaseString(row.actor_id),
-        action: requireDatabaseString(row.action),
-        occurredAt: normalizeTimestamp(row.occurred_at, "data_scope_denied"),
-        pocMarker: requireDatabaseString(row.poc_marker),
+        id: row.id,
+        actorId: row.actor_id,
+        action: row.action,
+        occurredAt: row.occurred_at,
+        pocMarker: row.poc_marker,
       });
       result.set(requestId, values);
     }
@@ -1479,13 +1471,7 @@ function resolveLifecycleDecision(
   requestId: string,
   requestType: (typeof persistedLifecycleTypes)[number],
   status: LifecycleStatus,
-  auditEvents: readonly {
-    id: string;
-    actorId: string;
-    action: string;
-    occurredAt: string;
-    pocMarker: string;
-  }[],
+  auditEvents: readonly UnvalidatedLifecycleAuditEvent[],
   provenance: P2ListVerifiedSyntheticDataset,
 ): { auditEventId: string | null; actorId: string | null } {
   if (status === "draft" || status === "submitted") {
@@ -1498,15 +1484,21 @@ function resolveLifecycleDecision(
     (event) =>
       event.action === action &&
       event.pocMarker === "synthetic_poc" &&
+      typeof event.actorId === "string" &&
       event.actorId.length > 0,
   );
-  if (candidates.length === 0) {
+  const validatedCandidates = candidates.map((candidate) => ({
+    id: requireDatabaseString(candidate.id),
+    actorId: requireDatabaseString(candidate.actorId),
+    occurredAt: normalizeTimestamp(candidate.occurredAt, "data_scope_denied"),
+  }));
+  if (validatedCandidates.length === 0) {
     throw dataScopeDenied();
   }
   const latestTimestamp = Math.max(
-    ...candidates.map((candidate) => Date.parse(candidate.occurredAt)),
+    ...validatedCandidates.map((candidate) => Date.parse(candidate.occurredAt)),
   );
-  const latest = candidates.filter(
+  const latest = validatedCandidates.filter(
     (candidate) => Date.parse(candidate.occurredAt) === latestTimestamp,
   );
   if (latest.length !== 1 || !latest[0]) {
