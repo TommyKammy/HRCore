@@ -73,9 +73,11 @@ The default server always wires the bounded employee-list runtime. Without
 configuration it uses a verified empty repository-owned synthetic manifest and
 has no authorized actors. To expose an explicitly approved local synthetic
 dataset, configure `P2LIST_EMPLOYEE_MANIFEST_PATH` together with
-`P2LIST_EMPLOYEE_MANIFEST_SECRET`. `P2LIST_EMPLOYEE_CURSOR_SECRET` may be set to
-retain cursor validity across restarts; otherwise the server uses an ephemeral
-key. `P2LIST_EMPLOYEE_ACTORS_JSON` is a server-owned JSON array of
+`P2LIST_EMPLOYEE_MANIFEST_SECRET`. `P2LIST_EMPLOYEE_CURSOR_SECRET` may supply a
+server-owned HMAC key; otherwise the server uses an ephemeral key. Cursor
+continuation state remains process-local, so every existing cursor is
+invalidated on server restart regardless of which key is used.
+`P2LIST_EMPLOYEE_ACTORS_JSON` is a server-owned JSON array of
 `{"token":"...","actor":{...}}` entries. Each token must be at least 32
 characters, and the actor object supplies `actorId`, `tenantId`, `permissions`,
 and bounded `dataScope`. Browser persona state, query parameters, and request
