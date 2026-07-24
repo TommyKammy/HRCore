@@ -564,18 +564,7 @@ export class P2ListReadModelRepository {
       `,
       requestParameters,
     );
-    const personIds = [
-      ...new Set(
-        requestRows.map((row) => requireDatabaseString(row.person_id)),
-      ),
-    ];
-    const employmentsByPerson = this.#readLifecycleEmployments(personIds);
-    const assignmentsByPerson = this.#readLifecycleAssignments(personIds);
-    const auditEventsByRequest = this.#readLifecycleAuditEvents(
-      transactionRequestIds,
-    );
-
-    return requestRows.map((row) => {
+    const parsedRows = requestRows.map((row) => {
       const transactionRequestId = requireDatabaseString(
         row.transaction_request_id,
       );
@@ -588,87 +577,119 @@ export class P2ListReadModelRepository {
         persistedLifecycleTypes,
         "data_scope_denied",
       );
-      const status = normalizeAllowedValue(
-        row.status_code,
-        p2ListLifecycleStatuses,
-        "data_scope_denied",
-      );
-      const payload = parseLifecyclePayload(row, persistedRequestType);
-      const requestedAt = normalizeTimestamp(
-        row.requested_at,
-        "data_scope_denied",
-      );
-      const employments = employmentsByPerson.get(personId) ?? [];
-      if (employments.length > 1) {
-        throw dataScopeDenied();
-      }
-      const employment = employments[0];
-      if (employment && !provenance.has("employment", employment.id)) {
-        throw dataScopeDenied();
-      }
-
-      let assignmentSourceId: string | null = null;
-      let organizationCode: string;
-      if (persistedRequestType === "hire") {
-        organizationCode = payload.onboardingOrganizationCode;
-      } else if (
-        persistedRequestType === "change" ||
-        persistedRequestType === "transfer"
-      ) {
-        organizationCode = payload.transferOrganizationCode;
-      } else {
-        if (
-          !employment ||
-          employment.id !== payload.terminationEmploymentId ||
-          employment.code !== payload.terminationEmploymentCode
-        ) {
-          throw dataScopeDenied();
-        }
-        const matches = (assignmentsByPerson.get(personId) ?? []).filter(
-          (assignment) =>
-            assignment.id === payload.terminationAssignmentId &&
-            assignment.code === payload.terminationAssignmentCode &&
-            assignment.employmentId === payload.terminationEmploymentId &&
-            assignment.startDate <= payload.effectiveDate &&
-            (assignment.endDate === null ||
-              assignment.endDate >= payload.effectiveDate),
-        );
-        if (matches.length !== 1) {
-          throw dataScopeDenied();
-        }
-        const assignment = matches[0];
-        if (!assignment || !provenance.has("assignment", assignment.id)) {
-          throw dataScopeDenied();
-        }
-        assignmentSourceId = assignment.id;
-        organizationCode = assignment.organizationCode;
-      }
-
-      const decision = resolveLifecycleDecision(
-        transactionRequestId,
-        persistedRequestType,
-        status,
-        auditEventsByRequest.get(transactionRequestId) ?? [],
-        provenance,
-      );
       return {
+        row,
         transactionRequestId,
+        personId,
         persistedRequestType,
-        requestType: p2ListPersistedLifecycleTypeMap[persistedRequestType],
-        status,
-        subjectPersonId: personId,
-        subjectEmploymentSourceId: employment?.id ?? null,
-        subjectEmployeeId: employment?.code ?? null,
-        subjectDisplayName: requireDatabaseString(row.display_name),
-        organizationCode,
-        assignmentSourceId,
-        decisionAuditSourceId: decision.auditEventId,
-        decidedBy: decision.actorId,
-        requestedAt,
-        effectiveDate: payload.effectiveDate,
-        correlationId: requireNullableDatabaseString(row.correlation_id),
+        status: normalizeAllowedValue(
+          row.status_code,
+          p2ListLifecycleStatuses,
+          "data_scope_denied",
+        ),
+        payload: parseLifecyclePayload(row, persistedRequestType),
+        requestedAt: normalizeTimestamp(row.requested_at, "data_scope_denied"),
       };
     });
+    const personIds = [...new Set(parsedRows.map((row) => row.personId))];
+    const terminationAssignmentIds = [
+      ...new Set(
+        parsedRows
+          .filter((row) => row.persistedRequestType === "terminate")
+          .map((row) => row.payload.terminationAssignmentId),
+      ),
+    ];
+    const employmentsByPerson = this.#readLifecycleEmployments(personIds);
+    const assignmentsById = this.#readLifecycleAssignments(
+      terminationAssignmentIds,
+    );
+    const auditEventsByRequest = this.#readLifecycleAuditEvents(
+      transactionRequestIds,
+    );
+
+    return parsedRows.map(
+      ({
+        row,
+        transactionRequestId,
+        personId,
+        persistedRequestType,
+        status,
+        payload,
+        requestedAt,
+      }) => {
+        const employments = employmentsByPerson.get(personId) ?? [];
+        if (employments.length > 1) {
+          throw dataScopeDenied();
+        }
+        const employment = employments[0];
+        if (employment && !provenance.has("employment", employment.id)) {
+          throw dataScopeDenied();
+        }
+
+        let assignmentSourceId: string | null = null;
+        let organizationCode: string;
+        if (persistedRequestType === "hire") {
+          organizationCode = payload.onboardingOrganizationCode;
+        } else if (
+          persistedRequestType === "change" ||
+          persistedRequestType === "transfer"
+        ) {
+          organizationCode = payload.transferOrganizationCode;
+        } else {
+          if (
+            !employment ||
+            employment.id !== payload.terminationEmploymentId ||
+            employment.code !== payload.terminationEmploymentCode
+          ) {
+            throw dataScopeDenied();
+          }
+          const assignment = assignmentsById.get(
+            payload.terminationAssignmentId,
+          );
+          if (
+            !assignment ||
+            assignment.personId !== personId ||
+            assignment.code !== payload.terminationAssignmentCode ||
+            assignment.employmentId !== payload.terminationEmploymentId ||
+            assignment.startDate > payload.effectiveDate ||
+            (assignment.endDate !== null &&
+              assignment.endDate < payload.effectiveDate)
+          ) {
+            throw dataScopeDenied();
+          }
+          if (!provenance.has("assignment", assignment.id)) {
+            throw dataScopeDenied();
+          }
+          assignmentSourceId = assignment.id;
+          organizationCode = assignment.organizationCode;
+        }
+
+        const decision = resolveLifecycleDecision(
+          transactionRequestId,
+          persistedRequestType,
+          status,
+          auditEventsByRequest.get(transactionRequestId) ?? [],
+          provenance,
+        );
+        return {
+          transactionRequestId,
+          persistedRequestType,
+          requestType: p2ListPersistedLifecycleTypeMap[persistedRequestType],
+          status,
+          subjectPersonId: personId,
+          subjectEmploymentSourceId: employment?.id ?? null,
+          subjectEmployeeId: employment?.code ?? null,
+          subjectDisplayName: requireDatabaseString(row.display_name),
+          organizationCode,
+          assignmentSourceId,
+          decisionAuditSourceId: decision.auditEventId,
+          decidedBy: decision.actorId,
+          requestedAt,
+          effectiveDate: payload.effectiveDate,
+          correlationId: requireNullableDatabaseString(row.correlation_id),
+        };
+      },
+    );
   }
 
   #readLifecycleEmployments(
@@ -701,29 +722,31 @@ export class P2ListReadModelRepository {
     return result;
   }
 
-  #readLifecycleAssignments(personIds: readonly string[]): Map<
+  #readLifecycleAssignments(assignmentIds: readonly string[]): Map<
     string,
-    Array<{
+    {
       id: string;
+      personId: string;
       employmentId: string;
       code: string;
       organizationCode: string;
       startDate: string;
       endDate: string | null;
-    }>
+    }
   > {
     const result = new Map<
       string,
-      Array<{
+      {
         id: string;
+        personId: string;
         employmentId: string;
         code: string;
         organizationCode: string;
         startDate: string;
         endDate: string | null;
-      }>
+      }
     >();
-    if (personIds.length === 0) {
+    if (assignmentIds.length === 0) {
       return result;
     }
     const parameters: SqlValue[] = [];
@@ -739,23 +762,25 @@ export class P2ListReadModelRepository {
           start_date,
           end_date
         FROM assignment
-        WHERE ${inPredicate("person_id", personIds, parameters)}
+        WHERE ${inPredicate("id", assignmentIds, parameters)}
         ORDER BY id
       `,
       parameters,
     );
     for (const row of rows) {
-      const personId = requireDatabaseString(row.person_id);
-      const values = result.get(personId) ?? [];
-      values.push({
-        id: requireDatabaseString(row.id),
+      const id = requireDatabaseString(row.id);
+      if (result.has(id)) {
+        throw dataScopeDenied();
+      }
+      result.set(id, {
+        id,
+        personId: requireDatabaseString(row.person_id),
         employmentId: requireDatabaseString(row.employment_id),
         code: requireDatabaseString(row.assignment_code),
         organizationCode: requireDatabaseString(row.organization_code),
         startDate: requireIsoDatabaseDate(row.start_date),
         endDate: requireNullableIsoDatabaseDate(row.end_date),
       });
-      result.set(personId, values);
     }
     return result;
   }

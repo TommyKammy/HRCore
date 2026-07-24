@@ -591,6 +591,25 @@ test("P2LIST lifecycle repository normalizes all persisted request types and dec
     return;
   }
   const fixture = seedLifecycleNormalizationRows(db);
+  db.prepare(
+    `
+      INSERT INTO assignment (
+        id, person_id, employment_id, assignment_code, organization_code,
+        position_code, start_date, end_date
+      )
+      VALUES
+        (
+          'assignment-change-ignored-history', 'person-change',
+          'employment-change', 'ASSIGN-CHANGE-HISTORY', 'ORG-OLD',
+          'POS-OLD', '2026-02-30', NULL
+        ),
+        (
+          'assignment-terminate-ignored-history', 'person-terminate',
+          'employment-terminate', 'ASSIGN-TERMINATE-HISTORY', 'ORG-OLD',
+          'POS-OLD', '2026-02-30', NULL
+        )
+    `,
+  ).run();
   db.exec("PRAGMA ignore_check_constraints = ON");
   db.prepare(
     `
@@ -864,6 +883,21 @@ test("P2LIST lifecycle validation fails before scope for malformed payload and t
   );
   db.prepare(
     "DELETE FROM audit_event WHERE id = 'audit-change-malformed-time'",
+  ).run();
+
+  db.prepare(
+    "UPDATE assignment SET start_date = '2026-02-30' WHERE id = 'assignment-terminate'",
+  ).run();
+  assertP2ListError(
+    () =>
+      repository.listLifecycleRequests({
+        actor: lifecycleActor,
+        provenance: baselineProvenance,
+      }),
+    "data_scope_denied",
+  );
+  db.prepare(
+    "UPDATE assignment SET start_date = '2026-01-01' WHERE id = 'assignment-terminate'",
   ).run();
 
   db.prepare(
