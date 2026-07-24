@@ -1317,7 +1317,7 @@
                       "subjectDisplayName": "Synthetic Employee",
                       "organizationCode": "organization-product",
                       "decidedBy": null,
-                      "requestedAt": "2026-07-23T09:00:00+09:00",
+                      "requestedAt": "2026-07-23T00:00:00.000Z",
                       "effectiveDate": "2026-08-01",
                       "allowedActions": ["open_detail"]
                     }
@@ -1700,7 +1700,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "example": "transaction_request_id,request_type,status,subject_employee_id,subject_display_name,organization_code,requested_at,effective_date\ntransaction-request-synthetic-001,transfer,submitted,EMP-000128,Synthetic Employee,organization-product,2026-07-23T09:00:00+09:00,2026-08-01\n"
+                "example": "transaction_request_id,request_type,status,subject_employee_id,subject_display_name,organization_code,requested_at,effective_date\ntransaction-request-synthetic-001,transfer,submitted,EMP-000128,Synthetic Employee,organization-product,2026-07-23T00:00:00.000Z,2026-08-01\n"
               }
             }
           },
@@ -3451,7 +3451,8 @@
             ]
           },
           "subjectPersonId": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "subjectEmployeeId": {
             "type": ["string", "null"]
@@ -3461,7 +3462,8 @@
             "minLength": 1
           },
           "organizationCode": {
-            "type": ["string", "null"]
+            "type": "string",
+            "minLength": 1
           },
           "decidedBy": {
             "type": ["string", "null"]

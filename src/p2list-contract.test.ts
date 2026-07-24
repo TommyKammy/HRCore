@@ -993,10 +993,34 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     schemas.P2ListErrorResponse.properties?.code.enum,
     p2ListErrorCodes,
   );
-  assert.deepEqual(
-    schemas.P2ListLifecycleItem.properties?.subjectPersonId.type,
-    ["string", "null"],
+  for (const field of ["subjectPersonId", "organizationCode"] as const) {
+    assert.deepEqual(
+      schemas.P2ListLifecycleItem.properties?.[field],
+      {
+        type: "string",
+        minLength: 1,
+      },
+      `returned lifecycle ${field} must be resolved before projection`,
+    );
+  }
+  const lifecycleListExample =
+    lifecycleOperation.responses["200"].content?.["application/json"].example;
+  assert.ok(lifecycleListExample && typeof lifecycleListExample === "object");
+  const lifecycleListItems = (lifecycleListExample as { items?: unknown })
+    .items;
+  assert.ok(Array.isArray(lifecycleListItems));
+  const firstLifecycleListItem = lifecycleListItems[0];
+  assert.ok(
+    firstLifecycleListItem && typeof firstLifecycleListItem === "object",
   );
+  assert.equal(
+    (firstLifecycleListItem as Record<string, unknown>).requestedAt,
+    "2026-07-23T00:00:00.000Z",
+  );
+  const canonicalLifecycleCsvExample =
+    lifecycleExport.responses["200"].content?.["text/csv"].example;
+  assert.ok(typeof canonicalLifecycleCsvExample === "string");
+  assert.match(canonicalLifecycleCsvExample, /,2026-07-23T00:00:00\.000Z,/);
   assert.equal(
     schemas.P2ListErrorResponse.properties?.message.maxLength,
     p2ListErrorMessageMaximumLength,
