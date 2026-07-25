@@ -13,10 +13,12 @@ const requiredWritebackTables = [
   "writeback_provider_refresh",
   "writeback_work_email_conflict",
   "writeback_work_email_conflict_resolution",
+  "p2list_audit_event",
 ];
 const additiveWritebackMigrationByTable = new Map([
   ["writeback_work_email_conflict", "0005_white_imperial_guard.sql"],
   ["writeback_work_email_conflict_resolution", "0009_conflict_resolution.sql"],
+  ["p2list_audit_event", "0018_p2list_audit_event.sql"],
 ]);
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {

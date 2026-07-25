@@ -11,7 +11,10 @@ import {
   type P2ListDataScope,
   type P2ListSyntheticDatasetManifest,
 } from "./p2list-read-model-types.js";
-import type { P2ListEmployeeApiRuntime } from "./routes/p2list-employees.js";
+import type {
+  P2ListEmployeeApiRuntime,
+  P2ListEmployeeAuditEvent,
+} from "./routes/p2list-employees.js";
 
 const actorKeys = new Set(["actorId", "tenantId", "permissions", "dataScope"]);
 const scopeKeys = new Set([
@@ -51,7 +54,56 @@ export async function createServerP2ListEmployeeRuntime(
       return actors.find((entry) => timingSafeEqual(entry.tokenDigest, digest))
         ?.actor;
     },
+    emitAuditEvent(event) {
+      persistP2ListAuditEvent(db, event);
+    },
   };
+}
+
+function persistP2ListAuditEvent(
+  db: OnboardingTransactionRequestDatabase,
+  event: P2ListEmployeeAuditEvent,
+): void {
+  db.prepare(
+    `
+      INSERT INTO p2list_audit_event (
+        event_id,
+        event_type,
+        event_version,
+        occurred_at,
+        actor_id,
+        evaluated_permission,
+        data_scope_id,
+        filter_fingerprint,
+        sort,
+        page_size,
+        row_count,
+        resource_type,
+        correlation_id,
+        policy_decision,
+        reason_code,
+        poc_marker
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    event.eventId,
+    event.eventType,
+    event.eventVersion,
+    event.occurredAt,
+    event.actorId ?? null,
+    event.evaluatedPermission,
+    event.dataScopeId ?? null,
+    event.filterFingerprint ?? null,
+    event.sort ?? null,
+    event.pageSize ?? null,
+    event.rowCount ?? null,
+    event.resourceType,
+    event.correlationId,
+    event.policyDecision,
+    event.reasonCode ?? null,
+    "synthetic_poc",
+  );
 }
 
 async function loadVerifiedProvenance(

@@ -325,6 +325,91 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
       .items.map((item: { employeeId: string }) => item.employeeId),
     ["EMP-001"],
   );
+
+  const deniedResponse = await app.inject({
+    method: "GET",
+    url: "/employees",
+    headers: {
+      authorization: `Bearer ${"unknown-p2list-token-".padEnd(32, "x")}`,
+    },
+  });
+  assert.equal(deniedResponse.statusCode, 401);
+
+  const auditDb: OnboardingTransactionRequestDatabase & { close(): void } =
+    await openLocalSyntheticWritebackDatabase(`file:${databasePath}`);
+  try {
+    const auditRows = auditDb
+      .prepare(
+        `
+          SELECT
+            event_type,
+            event_version,
+            actor_id,
+            evaluated_permission,
+            data_scope_id,
+            filter_fingerprint,
+            sort,
+            page_size,
+            row_count,
+            resource_type,
+            correlation_id,
+            policy_decision,
+            reason_code,
+            poc_marker
+          FROM p2list_audit_event
+          ORDER BY rowid
+        `,
+      )
+      .all?.();
+    assert.equal(auditRows?.length, 2);
+    assert.deepEqual(
+      {
+        event_type: auditRows?.[0]?.event_type,
+        event_version: auditRows?.[0]?.event_version,
+        actor_id: auditRows?.[0]?.actor_id,
+        evaluated_permission: auditRows?.[0]?.evaluated_permission,
+        sort: auditRows?.[0]?.sort,
+        page_size: auditRows?.[0]?.page_size,
+        row_count: auditRows?.[0]?.row_count,
+        resource_type: auditRows?.[0]?.resource_type,
+        policy_decision: auditRows?.[0]?.policy_decision,
+        reason_code: auditRows?.[0]?.reason_code,
+        poc_marker: auditRows?.[0]?.poc_marker,
+      },
+      {
+        event_type: "employee_list.search_applied",
+        event_version: "p2list_audit_v1",
+        actor_id: "actor-person-scoped-operator",
+        evaluated_permission: p2ListPermissions.employeeListRead,
+        sort: "employeeId:asc",
+        page_size: 25,
+        row_count: 1,
+        resource_type: "employee",
+        policy_decision: "allow",
+        reason_code: null,
+        poc_marker: "synthetic_poc",
+      },
+    );
+    assert.equal(typeof auditRows?.[0]?.data_scope_id, "string");
+    assert.equal(typeof auditRows?.[0]?.filter_fingerprint, "string");
+    assert.equal(typeof auditRows?.[0]?.correlation_id, "string");
+    assert.deepEqual(
+      {
+        event_type: auditRows?.[1]?.event_type,
+        actor_id: auditRows?.[1]?.actor_id,
+        policy_decision: auditRows?.[1]?.policy_decision,
+        reason_code: auditRows?.[1]?.reason_code,
+      },
+      {
+        event_type: "authorization.denied",
+        actor_id: null,
+        policy_decision: "deny",
+        reason_code: "actor_context_required",
+      },
+    );
+  } finally {
+    auditDb.close();
+  }
 });
 
 test("GET /employees rejects unsupported and unbounded query inputs", async (t) => {

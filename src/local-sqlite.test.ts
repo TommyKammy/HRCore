@@ -124,6 +124,55 @@ test("local SQLite bootstrap applies additive work email conflict migrations", a
   }
 });
 
+test("local SQLite bootstrap adds the P2LIST audit sink to an existing database", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const tempDirectory = await mkdtemp(join(tmpdir(), "hrcore-local-db-"));
+  t.after(async () => {
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const databasePath = join(tempDirectory, "hrcore.sqlite");
+  const db = new sqlite.DatabaseSync(databasePath);
+  try {
+    db.exec(await readMigrationSqlBefore("0018_p2list_audit_event.sql"));
+  } finally {
+    db.close();
+  }
+
+  const migratedDb = await openLocalSyntheticWritebackDatabase(
+    `file:${databasePath}`,
+  );
+  try {
+    const migratedTable = migratedDb
+      .prepare(
+        `
+          SELECT name
+          FROM sqlite_master
+          WHERE type = 'table'
+            AND name = 'p2list_audit_event'
+        `,
+      )
+      .get();
+
+    assert.equal(migratedTable?.name, "p2list_audit_event");
+  } finally {
+    migratedDb.close();
+  }
+});
+
 test("local SQLite bootstrap upgrades existing conflict schemas with resolution table", async (t) => {
   let sqlite: typeof import("node:sqlite");
   try {

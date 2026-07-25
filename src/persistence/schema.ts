@@ -608,6 +608,119 @@ export const audit_event = sqliteTable(
   ],
 );
 
+export const p2list_audit_event = sqliteTable(
+  "p2list_audit_event",
+  {
+    eventId: text("event_id").primaryKey(),
+    eventType: text("event_type", {
+      enum: [
+        "employee_list.viewed",
+        "employee_list.search_applied",
+        "employee_list.page_requested",
+        "employee_detail.opened_from_list",
+        "lifecycle_request_list.viewed",
+        "lifecycle_request_list.search_applied",
+        "lifecycle_request_list.page_requested",
+        "lifecycle_request_detail.opened_from_list",
+        "bounded_export.requested",
+        "bounded_export.completed",
+        "bounded_export.denied",
+        "authorization.denied",
+      ],
+    }).notNull(),
+    eventVersion: text("event_version", {
+      enum: ["p2list_audit_v1"],
+    }).notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    actorId: text("actor_id"),
+    actorRole: text("actor_role"),
+    evaluatedPermission: text("evaluated_permission").notNull(),
+    dataScopeId: text("data_scope_id"),
+    filterFingerprint: text("filter_fingerprint"),
+    sort: text("sort"),
+    pageSize: integer("page_size"),
+    rowCount: integer("row_count"),
+    resourceType: text("resource_type", {
+      enum: ["employee", "lifecycleRequest"],
+    }).notNull(),
+    correlationId: text("correlation_id").notNull(),
+    policyDecision: text("policy_decision", {
+      enum: ["allow", "deny"],
+    }).notNull(),
+    reasonCode: text("reason_code"),
+    pocMarker: text("poc_marker", { enum: ["synthetic_poc"] })
+      .notNull()
+      .default("synthetic_poc"),
+  },
+  (table) => [
+    check("p2list_audit_event_id_non_empty", sql`length(${table.eventId}) > 0`),
+    check(
+      "p2list_audit_event_type_allowed",
+      sql`${table.eventType} in ('employee_list.viewed', 'employee_list.search_applied', 'employee_list.page_requested', 'employee_detail.opened_from_list', 'lifecycle_request_list.viewed', 'lifecycle_request_list.search_applied', 'lifecycle_request_list.page_requested', 'lifecycle_request_detail.opened_from_list', 'bounded_export.requested', 'bounded_export.completed', 'bounded_export.denied', 'authorization.denied')`,
+    ),
+    check(
+      "p2list_audit_event_version_allowed",
+      sql`${table.eventVersion} = 'p2list_audit_v1'`,
+    ),
+    check(
+      "p2list_audit_event_occurred_at_date",
+      sql`${table.occurredAt} glob '????-??-??*'`,
+    ),
+    check(
+      "p2list_audit_event_actor_id_non_empty",
+      sql`${table.actorId} is null or length(${table.actorId}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_actor_role_non_empty",
+      sql`${table.actorRole} is null or length(${table.actorRole}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_permission_non_empty",
+      sql`length(${table.evaluatedPermission}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_data_scope_id_non_empty",
+      sql`${table.dataScopeId} is null or length(${table.dataScopeId}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_filter_fingerprint_non_empty",
+      sql`${table.filterFingerprint} is null or length(${table.filterFingerprint}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_sort_non_empty",
+      sql`${table.sort} is null or length(${table.sort}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_page_size_bounded",
+      sql`${table.pageSize} is null or ${table.pageSize} between 1 and 100`,
+    ),
+    check(
+      "p2list_audit_event_row_count_bounded",
+      sql`${table.rowCount} is null or ${table.rowCount} between 0 and 100`,
+    ),
+    check(
+      "p2list_audit_event_resource_type_allowed",
+      sql`${table.resourceType} in ('employee', 'lifecycleRequest')`,
+    ),
+    check(
+      "p2list_audit_event_correlation_id_non_empty",
+      sql`length(${table.correlationId}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_policy_decision_allowed",
+      sql`${table.policyDecision} in ('allow', 'deny')`,
+    ),
+    check(
+      "p2list_audit_event_reason_code_non_empty",
+      sql`${table.reasonCode} is null or length(${table.reasonCode}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_poc_marker_allowed",
+      sql`${table.pocMarker} = 'synthetic_poc'`,
+    ),
+  ],
+);
+
 export const onboarding_apply_job_attempt = sqliteTable(
   "onboarding_apply_job_attempt",
   {
