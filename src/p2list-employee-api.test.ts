@@ -11,6 +11,7 @@ import { buildApp } from "./app.js";
 import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
 import { P2ListCursorManager } from "./p2list-cursor.js";
+import { createServerP2ListEmployeeRuntime } from "./p2list-employee-runtime.js";
 import {
   createP2ListEmployeeFixtureRows,
   createP2ListFixtureManifest,
@@ -463,6 +464,61 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
     );
   } finally {
     auditDb.close();
+  }
+});
+
+test("server runtime rejects whitespace-padded actor registry strings at startup", async (t) => {
+  let db: OnboardingTransactionRequestDatabase & { close(): void };
+  try {
+    db = await openLocalSyntheticWritebackDatabase(":memory:");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+    throw error;
+  }
+  t.after(() => {
+    db.close();
+  });
+
+  const token = "local-p2list-whitespace-test-token-at-least-32-bytes";
+  const actors = [
+    {
+      actorId: " actor-hr-operator",
+      tenantId: "tenant-repo-owned-synthetic",
+      permissions: [p2ListPermissions.employeeListRead],
+      dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
+    },
+    {
+      actorId: "actor-hr-operator",
+      tenantId: "tenant-repo-owned-synthetic ",
+      permissions: [p2ListPermissions.employeeListRead],
+      dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
+    },
+    {
+      actorId: "actor-hr-operator",
+      tenantId: "tenant-repo-owned-synthetic",
+      permissions: [`${p2ListPermissions.employeeListRead} `],
+      dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
+    },
+    {
+      actorId: "actor-hr-operator",
+      tenantId: "tenant-repo-owned-synthetic",
+      permissions: [p2ListPermissions.employeeListRead],
+      dataScope: { organizationCodes: [" ORG-SYNTHETIC"] },
+    },
+  ];
+
+  for (const actor of actors) {
+    await assert.rejects(
+      createServerP2ListEmployeeRuntime(db, {
+        P2LIST_EMPLOYEE_ACTORS_JSON: JSON.stringify([{ token, actor }]),
+      }),
+      /must contain valid server-owned actor profiles/u,
+    );
   }
 });
 

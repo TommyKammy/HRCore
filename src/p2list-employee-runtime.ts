@@ -236,7 +236,12 @@ function requirePlainRecord(value: unknown): Record<string, unknown> {
 }
 
 function requireBoundedString(value: unknown): string {
-  if (typeof value !== "string" || value.length < 1 || value.length > 256) {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 256 ||
+    value.trim() !== value
+  ) {
     throw invalidActorRegistry();
   }
   return value;
