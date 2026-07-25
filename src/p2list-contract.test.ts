@@ -888,8 +888,11 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     p2ListLifecycleDecisionResolutionContract,
   );
 
+  assert.equal(
+    employeeOperation["x-hrcore-implementation-status"],
+    "bounded_runtime",
+  );
   for (const operation of [
-    employeeOperation,
     lifecycleOperation,
     employeeExport,
     lifecycleExport,
@@ -1425,14 +1428,20 @@ test("P2LIST-00 documentation and policy scan preserve ADR and production bounda
   }
 });
 
-test("P2LIST-00 remains contract-only before runtime child issues", async (t) => {
+test("P2LIST runtime exposure advances only the implemented employee child", async (t) => {
   const app = await buildApp();
   t.after(async () => {
     await app.close();
   });
 
+  const employeeResponse = await app.inject({
+    method: "GET",
+    url: "/employees",
+  });
+  assert.equal(employeeResponse.statusCode, 401);
+  assert.equal(employeeResponse.json().code, "actor_context_required");
+
   for (const request of [
-    { method: "GET" as const, url: "/employees" },
     { method: "GET" as const, url: "/lifecycle/transaction-requests" },
     { method: "POST" as const, url: "/exports/employee-list" },
     { method: "POST" as const, url: "/exports/lifecycle-request-list" },

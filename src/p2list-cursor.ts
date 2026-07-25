@@ -213,7 +213,11 @@ function parseWireClaims(encodedClaims: string): P2ListCursorWireClaims {
 
 function decodeSignature(value: string): Buffer {
   try {
-    return Buffer.from(value, "base64url");
+    const decoded = Buffer.from(value, "base64url");
+    if (decoded.toString("base64url") !== value) {
+      throw cursorInvalid();
+    }
+    return decoded;
   } catch {
     throw cursorInvalid();
   }

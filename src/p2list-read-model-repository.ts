@@ -24,6 +24,7 @@ import {
 } from "./p2list-cursor.js";
 import {
   fingerprintP2ListValue,
+  normalizeP2ListDataScope,
   P2ListReadModelError,
   P2ListVerifiedSyntheticDataset,
   requireBoundedString,
@@ -189,12 +190,6 @@ const lifecycleFilterKeys = [
   "correlationId",
 ] as const;
 const actorKeys = ["actorId", "tenantId", "permissions", "dataScope"] as const;
-const scopeKeys = [
-  "organizationCodes",
-  "personIds",
-  "employeeIds",
-  "correlationIds",
-] as const;
 const queryPattern = new RegExp(p2ListQueryPattern, "u");
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/u;
 const persistedLifecycleTypes = [
@@ -1112,18 +1107,7 @@ function normalizeActorContext(
       "The list permission is required.",
     );
   }
-  const scope = requireRecord(
-    actor.dataScope,
-    "Server data scope is required.",
-    "data_scope_denied",
-  );
-  rejectUnknownKeys(scope, scopeKeys, "data_scope_denied");
-  const dataScope: Required<P2ListDataScope> = {
-    organizationCodes: normalizeScopeValues(scope.organizationCodes),
-    personIds: normalizeScopeValues(scope.personIds),
-    employeeIds: normalizeScopeValues(scope.employeeIds),
-    correlationIds: normalizeScopeValues(scope.correlationIds),
-  };
+  const dataScope = normalizeP2ListDataScope(actor.dataScope);
   if (!allowCorrelationScope && dataScope.correlationIds.length > 0) {
     throw dataScopeDenied();
   }
@@ -1147,12 +1131,6 @@ function normalizeActorContext(
       dataScope,
     }),
   };
-}
-
-function normalizeScopeValues(value: unknown): string[] {
-  return value === undefined
-    ? []
-    : requireUniqueStringArray(value, 0, 100, "data_scope_denied");
 }
 
 function requireVerifiedDataset(

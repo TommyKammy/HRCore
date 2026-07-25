@@ -733,7 +733,7 @@
         "summary": "List bounded synthetic employees",
         "description": "OpenAPI-first contract for a server-authorized, repository-owned synthetic employee collection. Actor context is resolved by the server; client persona state is not authoritative. The operation uses allowlisted filters and keyset pagination and does not expose raw payloads, sensitive personal information, broad search, unrestricted counts, real employee data, or production-ready authorization.",
         "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
-        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-implementation-status": "bounded_runtime",
         "x-hrcore-required-permission": "employee:list:read",
         "x-hrcore-cursor-version": "p2list_cursor_v1",
         "x-hrcore-resolved-filter-defaults": {
