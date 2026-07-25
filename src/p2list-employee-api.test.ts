@@ -165,6 +165,14 @@ test("GET /employees binds pagination to filters and rejects tampered cursors", 
   });
   assert.equal(empty.statusCode, 400);
   assert.equal(empty.json().code, "cursor_invalid");
+
+  const repeated = await harness.app.inject({
+    method: "GET",
+    url: "/employees?cursor=first&cursor=second",
+    headers: { authorization: "Bearer authorized" },
+  });
+  assert.equal(repeated.statusCode, 400);
+  assert.equal(repeated.json().code, "cursor_invalid");
   assert.deepEqual(
     harness.auditEvents.map((event) => event.eventType),
     ["employee_list.viewed", "employee_list.page_requested"],
@@ -189,6 +197,14 @@ test("GET /employees fails closed across actor, permission, and organization sco
       actorId: "actor-with-malformed-scope",
       dataScope: null,
     } as unknown as P2ListActorContext,
+    "empty-actor-id": {
+      ...authorizedActor,
+      actorId: "",
+    },
+    "padded-actor-id": {
+      ...authorizedActor,
+      actorId: " actor-with-padding",
+    },
     "person-scoped": {
       ...authorizedActor,
       actorId: "actor-person-scoped",
@@ -209,6 +225,8 @@ test("GET /employees fails closed across actor, permission, and organization sco
     { token: "missing-permission", status: 403, code: "permission_denied" },
     { token: "missing-scope", status: 403, code: "data_scope_denied" },
     { token: "malformed-scope", status: 403, code: "data_scope_denied" },
+    { token: "empty-actor-id", status: 401, code: "actor_context_required" },
+    { token: "padded-actor-id", status: 401, code: "actor_context_required" },
   ]) {
     const response: {
       statusCode: number;
@@ -235,7 +253,15 @@ test("GET /employees fails closed across actor, permission, and organization sco
     harness.auditEvents.filter(
       (event) => event.eventType === "authorization.denied",
     ).length,
-    5,
+    7,
+  );
+  assert.equal(
+    harness.auditEvents.some(
+      (event) =>
+        event.actorId === "" ||
+        (event.actorId !== undefined && event.actorId.trim() !== event.actorId),
+    ),
+    false,
   );
 
   for (const token of ["person-scoped", "employee-scoped"]) {
@@ -522,6 +548,25 @@ test("server runtime rejects whitespace-padded actor registry strings at startup
   }
 });
 
+test("GET /employees fails closed when an injected runtime omits its audit sink", async (t) => {
+  const harness = await createHarness(t, 1);
+  if (!harness) return;
+
+  (
+    harness.runtime as {
+      emitAuditEvent?: P2ListEmployeeApiRuntime["emitAuditEvent"];
+    }
+  ).emitAuditEvent = undefined;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/employees",
+    headers: { authorization: "Bearer authorized" },
+  });
+  assert.equal(response.statusCode, 500);
+  assert.equal(harness.auditEvents.length, 0);
+});
+
 test("GET /employees rejects unsupported and unbounded query inputs", async (t) => {
   const harness = await createHarness(t, 1);
   if (!harness) return;
@@ -575,6 +620,7 @@ async function createHarness(
   | {
       app: Awaited<ReturnType<typeof buildApp>>;
       auditEvents: P2ListEmployeeAuditEvent[];
+      runtime: P2ListEmployeeApiRuntime;
     }
   | undefined
 > {
@@ -628,7 +674,7 @@ async function createHarness(
     await app.close();
     db.close();
   });
-  return { app, auditEvents };
+  return { app, auditEvents, runtime };
 }
 
 function seedEmployeeRows(

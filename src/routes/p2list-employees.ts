@@ -20,6 +20,7 @@ import {
   fingerprintP2ListValue,
   normalizeP2ListDataScope,
   P2ListReadModelError,
+  requireBoundedString,
   type P2ListActorContext,
   type P2ListVerifiedSyntheticDataset,
 } from "../p2list-read-model-types.js";
@@ -78,7 +79,7 @@ export interface P2ListEmployeeApiRuntime {
   resolveActor(
     request: FastifyRequest,
   ): MaybePromise<P2ListActorContext | undefined>;
-  emitAuditEvent?(event: P2ListEmployeeAuditEvent): MaybePromise<void>;
+  emitAuditEvent(event: P2ListEmployeeAuditEvent): MaybePromise<void>;
   now?: () => Date;
   createCorrelationId?: () => string;
 }
@@ -89,6 +90,9 @@ export function registerP2ListEmployeeRoutes(
 ): void {
   app.get("/employees", { logLevel: "silent" }, async (request, reply) => {
     const runtime = options.p2ListEmployeeApi;
+    if (runtime && typeof runtime.emitAuditEvent !== "function") {
+      throw new Error("The employee list audit sink is required.");
+    }
     const correlationId =
       runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
     const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
@@ -241,13 +245,7 @@ function parseEmployeeQuery(value: unknown): ParsedEmployeeQuery {
     }
   }
 
-  const cursor = readOptionalString(query.cursor);
-  if (cursor === "") {
-    throw new P2ListReadModelError(
-      "cursor_invalid",
-      "The employee list cursor is invalid.",
-    );
-  }
+  const cursor = readOptionalCursor(query.cursor);
 
   return {
     filters,
@@ -268,10 +266,32 @@ function readOptionalString(value: unknown): string | undefined {
   return value;
 }
 
+function readOptionalCursor(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    throw new P2ListReadModelError(
+      "cursor_invalid",
+      "The employee list cursor is invalid.",
+    );
+  }
+  return value;
+}
+
 function safeActorId(
   actor: P2ListActorContext | undefined,
 ): string | undefined {
-  return typeof actor?.actorId === "string" ? actor.actorId : undefined;
+  try {
+    return requireBoundedString(
+      actor?.actorId,
+      1,
+      256,
+      "actor_context_required",
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 function safeDataScopeFingerprint(
@@ -294,7 +314,7 @@ async function emitAuditEvent(
   runtime: P2ListEmployeeApiRuntime,
   event: P2ListEmployeeAuditEvent,
 ): Promise<void> {
-  await runtime.emitAuditEvent?.(event);
+  await runtime.emitAuditEvent(event);
 }
 
 function invalidFilter(): P2ListReadModelError {
