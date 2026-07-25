@@ -15,6 +15,10 @@ import type {
   P2ListEmployeeApiRuntime,
   P2ListEmployeeAuditEvent,
 } from "./routes/p2list-employees.js";
+import type {
+  P2ListLifecycleApiRuntime,
+  P2ListLifecycleAuditEvent,
+} from "./routes/p2list-lifecycle-requests.js";
 
 const actorKeys = new Set(["actorId", "tenantId", "permissions", "dataScope"]);
 const scopeKeys = new Set([
@@ -29,21 +33,58 @@ interface ActorRegistryEntry {
   actor: P2ListActorContext;
 }
 
+interface P2ListServerBaseRuntime {
+  repository: P2ListReadModelRepository;
+  provenance: P2ListEmployeeApiRuntime["provenance"];
+  resolveActor: P2ListEmployeeApiRuntime["resolveActor"];
+}
+
 export async function createServerP2ListEmployeeRuntime(
   db: OnboardingTransactionRequestDatabase,
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<P2ListEmployeeApiRuntime> {
+  const runtime = await createServerP2ListBaseRuntime(environment, db);
+  return createEmployeeRuntime(db, runtime);
+}
+
+export async function createServerP2ListLifecycleRuntime(
+  db: OnboardingTransactionRequestDatabase,
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<P2ListLifecycleApiRuntime> {
+  const runtime = await createServerP2ListBaseRuntime(environment, db);
+  return createLifecycleRuntime(db, runtime);
+}
+
+export async function createServerP2ListRuntimes(
+  db: OnboardingTransactionRequestDatabase,
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<{
+  employee: P2ListEmployeeApiRuntime;
+  lifecycle: P2ListLifecycleApiRuntime;
+}> {
+  const runtime = await createServerP2ListBaseRuntime(environment, db);
+  return {
+    employee: createEmployeeRuntime(db, runtime),
+    lifecycle: createLifecycleRuntime(db, runtime),
+  };
+}
+
+async function createServerP2ListBaseRuntime(
+  environment: NodeJS.ProcessEnv,
+  db: OnboardingTransactionRequestDatabase,
+): Promise<P2ListServerBaseRuntime> {
   const provenance = await loadVerifiedProvenance(environment);
   const cursorSecret =
     readOptionalSecret(environment.P2LIST_EMPLOYEE_CURSOR_SECRET) ??
     createEphemeralSecret();
   const actors = parseActorRegistry(environment.P2LIST_EMPLOYEE_ACTORS_JSON);
 
+  const repository = new P2ListReadModelRepository(
+    db,
+    new P2ListCursorManager({ secret: cursorSecret }),
+  );
   return {
-    repository: new P2ListReadModelRepository(
-      db,
-      new P2ListCursorManager({ secret: cursorSecret }),
-    ),
+    repository,
     provenance,
     resolveActor(request) {
       const token = readBearerToken(request.headers.authorization);
@@ -54,6 +95,27 @@ export async function createServerP2ListEmployeeRuntime(
       return actors.find((entry) => timingSafeEqual(entry.tokenDigest, digest))
         ?.actor;
     },
+  };
+}
+
+function createEmployeeRuntime(
+  db: OnboardingTransactionRequestDatabase,
+  runtime: P2ListServerBaseRuntime,
+): P2ListEmployeeApiRuntime {
+  return {
+    ...runtime,
+    emitAuditEvent(event) {
+      persistP2ListAuditEvent(db, event);
+    },
+  };
+}
+
+function createLifecycleRuntime(
+  db: OnboardingTransactionRequestDatabase,
+  runtime: P2ListServerBaseRuntime,
+): P2ListLifecycleApiRuntime {
+  return {
+    ...runtime,
     emitAuditEvent(event) {
       persistP2ListAuditEvent(db, event);
     },
@@ -62,7 +124,7 @@ export async function createServerP2ListEmployeeRuntime(
 
 function persistP2ListAuditEvent(
   db: OnboardingTransactionRequestDatabase,
-  event: P2ListEmployeeAuditEvent,
+  event: P2ListEmployeeAuditEvent | P2ListLifecycleAuditEvent,
 ): void {
   db.prepare(
     `

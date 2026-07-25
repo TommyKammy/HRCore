@@ -11,6 +11,10 @@ import {
   registerP2ListEmployeeRoutes,
   type P2ListEmployeeApiRuntime,
 } from "./routes/p2list-employees.js";
+import {
+  registerP2ListLifecycleRoutes,
+  type P2ListLifecycleApiRuntime,
+} from "./routes/p2list-lifecycle-requests.js";
 import { registerTerminationRoutes } from "./routes/termination.js";
 import { registerTransferRoutes } from "./routes/transfer.js";
 import { registerWritebackRoutes } from "./routes/writeback.js";
@@ -22,6 +26,7 @@ export interface BuildAppOptions {
   auditTraceDb?: MvpAOnboardingTraceabilityDatabase;
   writebackDb?: SyntheticWritebackDatabase;
   p2ListEmployeeApi?: P2ListEmployeeApiRuntime;
+  p2ListLifecycleApi?: P2ListLifecycleApiRuntime;
 }
 
 export async function buildApp(
@@ -47,6 +52,7 @@ export async function buildApp(
   registerMvpAOnboardingAuditRoutes(app, options);
   registerMvpAOnboardingSupportReviewRoutes(app, options);
   registerP2ListEmployeeRoutes(app, options);
+  registerP2ListLifecycleRoutes(app, options);
   registerOnboardingRoutes(app, options);
   registerTerminationRoutes(app, options);
   registerTransferRoutes(app, options);
