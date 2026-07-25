@@ -1,0 +1,89 @@
+.surface,
+.summary-card,
+.workflow-panel,
+.empty-state,
+.notice,
+.skeleton-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.surface {
+  min-width: 0;
+  padding: 18px;
+}
+
+.section-heading {
+  display: flex;
+  min-height: 38px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-heading > svg {
+  color: var(--text-soft);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.summary-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-height: 110px;
+  align-items: start;
+  gap: 12px;
+  padding: 16px;
+}
+
+.summary-card > div {
+  display: grid;
+}
+
+.summary-card p,
+.summary-card small {
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.summary-card strong {
+  margin: 2px 0;
+  font-size: 1.65rem;
+  line-height: 1.1;
+}
+
+.summary-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.tone-blue .summary-icon {
+  background: #dfebff;
+  color: var(--accent);
+}
+
+.tone-green .summary-icon {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.tone-amber .summary-icon {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.tone-red .summary-icon {
+  background: var(--danger-soft);
+  color: var(--danger);
+}

@@ -34,7 +34,14 @@ test("CHILD-P2Y-01 WebUI foundation is wired to a documented local command and g
   assert.match(readme, /npm run dev:web/);
   assert.match(readme, /bounded\/non-production persona switcher/);
 
-  const appSource = await readRepoFile("web/src/App.tsx");
+  const appEntrySource = await readRepoFile("web/src/App.tsx");
+  const appSource = (
+    await Promise.all([
+      readRepoFile("web/src/app/AppShell.tsx"),
+      readRepoFile("web/src/app/shared.tsx"),
+    ])
+  ).join("\n");
+  assert.match(appEntrySource, /export \{ App \} from "\.\/app\/AppShell"/u);
   assert.match(appSource, /role="navigation"/);
   assert.match(appSource, /aria-busy="true"/);
   assert.match(appSource, /ErrorBoundary/);
