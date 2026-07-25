@@ -975,7 +975,7 @@
         "summary": "List bounded synthetic lifecycle transaction requests",
         "description": "OpenAPI-first contract for a server-authorized collection that normalizes onboarding, transfer, and termination requests. Type-specific payloads remain on existing detail surfaces. The operation does not expose raw payloads, free-form notes, broad history export, real employee data, or production-ready authorization.",
         "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
-        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-implementation-status": "bounded_runtime",
         "x-hrcore-required-permission": "lifecycle-request:list:read",
         "x-hrcore-cursor-version": "p2list_cursor_v1",
         "x-hrcore-maximum-date-range-days": 366,
@@ -1352,36 +1352,109 @@
                 "schema": {
                   "$ref": "#/components/schemas/P2ListLifecycleResponse"
                 },
-                "example": {
-                  "items": [
-                    {
-                      "transactionRequestId": "transaction-request-synthetic-001",
-                      "requestType": "transfer",
-                      "status": "submitted",
-                      "subjectPersonId": "person-synthetic-001",
-                      "subjectEmployeeId": "EMP-000128",
-                      "subjectDisplayName": "Synthetic Employee",
-                      "organizationCode": "organization-product",
-                      "decidedBy": null,
-                      "requestedAt": "2026-07-23T00:00:00.000Z",
-                      "effectiveDate": "2026-08-01"
+                "examples": {
+                  "onboarding": {
+                    "summary": "Bounded onboarding request",
+                    "value": {
+                      "items": [
+                        {
+                          "transactionRequestId": "transaction-request-onboarding-synthetic-001",
+                          "requestType": "onboarding",
+                          "status": "submitted",
+                          "subjectPersonId": "person-onboarding-synthetic-001",
+                          "subjectEmployeeId": null,
+                          "subjectDisplayName": "Synthetic New Hire",
+                          "organizationCode": "organization-people",
+                          "decidedBy": null,
+                          "requestedAt": "2026-07-22T00:00:00.000Z",
+                          "effectiveDate": "2026-08-01"
+                        }
+                      ],
+                      "pageInfo": {
+                        "limit": 25,
+                        "hasNextPage": false,
+                        "nextCursor": null
+                      },
+                      "appliedFilters": {
+                        "requestType": ["onboarding"],
+                        "status": ["submitted"]
+                      },
+                      "authorization": {
+                        "dataScope": "bounded",
+                        "maskedFields": [],
+                        "readiness": "bounded_synthetic_only_not_production_ready"
+                      },
+                      "correlationId": "p2list-lifecycle-onboarding-correlation-001"
                     }
-                  ],
-                  "pageInfo": {
-                    "limit": 25,
-                    "hasNextPage": false,
-                    "nextCursor": null
                   },
-                  "appliedFilters": {
-                    "requestType": ["transfer"],
-                    "status": ["submitted"]
+                  "transfer": {
+                    "summary": "Bounded transfer request",
+                    "value": {
+                      "items": [
+                        {
+                          "transactionRequestId": "transaction-request-transfer-synthetic-001",
+                          "requestType": "transfer",
+                          "status": "submitted",
+                          "subjectPersonId": "person-transfer-synthetic-001",
+                          "subjectEmployeeId": "EMP-000128",
+                          "subjectDisplayName": "Synthetic Employee",
+                          "organizationCode": "organization-product",
+                          "decidedBy": null,
+                          "requestedAt": "2026-07-23T00:00:00.000Z",
+                          "effectiveDate": "2026-08-01"
+                        }
+                      ],
+                      "pageInfo": {
+                        "limit": 25,
+                        "hasNextPage": false,
+                        "nextCursor": null
+                      },
+                      "appliedFilters": {
+                        "requestType": ["transfer"],
+                        "status": ["submitted"]
+                      },
+                      "authorization": {
+                        "dataScope": "bounded",
+                        "maskedFields": [],
+                        "readiness": "bounded_synthetic_only_not_production_ready"
+                      },
+                      "correlationId": "p2list-lifecycle-transfer-correlation-001"
+                    }
                   },
-                  "authorization": {
-                    "dataScope": "bounded",
-                    "maskedFields": [],
-                    "readiness": "bounded_synthetic_only_not_production_ready"
-                  },
-                  "correlationId": "p2list-lifecycle-correlation-001"
+                  "termination": {
+                    "summary": "Bounded termination request",
+                    "value": {
+                      "items": [
+                        {
+                          "transactionRequestId": "transaction-request-termination-synthetic-001",
+                          "requestType": "termination",
+                          "status": "approved",
+                          "subjectPersonId": "person-termination-synthetic-001",
+                          "subjectEmployeeId": "EMP-000256",
+                          "subjectDisplayName": "Synthetic Employee",
+                          "organizationCode": "organization-finance",
+                          "decidedBy": "actor-synthetic-approver",
+                          "requestedAt": "2026-07-24T00:00:00.000Z",
+                          "effectiveDate": "2026-08-31"
+                        }
+                      ],
+                      "pageInfo": {
+                        "limit": 25,
+                        "hasNextPage": false,
+                        "nextCursor": null
+                      },
+                      "appliedFilters": {
+                        "requestType": ["termination"],
+                        "status": ["approved"]
+                      },
+                      "authorization": {
+                        "dataScope": "bounded",
+                        "maskedFields": [],
+                        "readiness": "bounded_synthetic_only_not_production_ready"
+                      },
+                      "correlationId": "p2list-lifecycle-termination-correlation-001"
+                    }
+                  }
                 }
               }
             }
@@ -1392,6 +1465,12 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/P2ListErrorResponse"
+                },
+                "example": {
+                  "code": "invalid_filter",
+                  "message": "The lifecycle request list request is invalid.",
+                  "correlationId": "p2list-lifecycle-invalid-correlation-001",
+                  "readiness": "bounded_synthetic_only_not_production_ready"
                 }
               }
             }
@@ -1402,6 +1481,12 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/P2ListErrorResponse"
+                },
+                "example": {
+                  "code": "actor_context_required",
+                  "message": "Server actor context is required.",
+                  "correlationId": "p2list-lifecycle-unauthenticated-correlation-001",
+                  "readiness": "bounded_synthetic_only_not_production_ready"
                 }
               }
             }
@@ -1412,6 +1497,12 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/P2ListErrorResponse"
+                },
+                "example": {
+                  "code": "permission_denied",
+                  "message": "The requested lifecycle request list is not authorized.",
+                  "correlationId": "p2list-lifecycle-denied-correlation-001",
+                  "readiness": "bounded_synthetic_only_not_production_ready"
                 }
               }
             }

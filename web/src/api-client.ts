@@ -1,4 +1,8 @@
-export type ApiPath = "/health" | "/openapi.json" | "/employees";
+export type ApiPath =
+  | "/health"
+  | "/openapi.json"
+  | "/employees"
+  | "/lifecycle/transaction-requests";
 type ApiRequestPath = ApiPath | `${ApiPath}?${string}`;
 
 export interface ApiContract {
@@ -59,6 +63,71 @@ export interface EmployeeListResponse {
   correlationId: string;
 }
 
+export interface LifecycleRequestListQuery {
+  requestType?: Array<"onboarding" | "transfer" | "termination">;
+  status?: Array<
+    | "draft"
+    | "submitted"
+    | "returned"
+    | "rejected"
+    | "cancelled"
+    | "approved"
+    | "completed"
+  >;
+  subjectEmployeeId?: string;
+  q?: string;
+  organizationCode?: string;
+  decidedBy?: string;
+  requestedFrom?: string;
+  requestedTo?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  correlationId?: string;
+  sort?: "requestedAt" | "effectiveDate";
+  direction?: "asc" | "desc";
+  limit?: number;
+  cursor?: string;
+}
+
+export interface LifecycleRequestListItem {
+  transactionRequestId: string;
+  requestType: "onboarding" | "transfer" | "termination";
+  status:
+    | "draft"
+    | "submitted"
+    | "returned"
+    | "rejected"
+    | "cancelled"
+    | "approved"
+    | "completed";
+  subjectPersonId: string;
+  subjectEmployeeId: string | null;
+  subjectDisplayName: string;
+  organizationCode: string;
+  decidedBy: string | null;
+  requestedAt: string;
+  effectiveDate: string;
+}
+
+export interface LifecycleRequestListResponse {
+  items: LifecycleRequestListItem[];
+  pageInfo: {
+    limit: number;
+    hasNextPage: boolean;
+    nextCursor: string | null;
+  };
+  appliedFilters: Omit<
+    LifecycleRequestListQuery,
+    "sort" | "direction" | "limit" | "cursor"
+  >;
+  authorization: {
+    dataScope: "bounded";
+    maskedFields: Array<keyof LifecycleRequestListItem>;
+    readiness: "bounded_synthetic_only_not_production_ready";
+  };
+  correlationId: string;
+}
+
 export class ApiClientError extends Error {
   constructor(message: string) {
     super(message);
@@ -107,6 +176,28 @@ export async function fetchEmployees(
   return readJson<EmployeeListResponse>(
     queryString ? `/employees?${queryString}` : "/employees",
     "/employees",
+    init,
+  );
+}
+
+export async function fetchLifecycleRequests(
+  query: LifecycleRequestListQuery = {},
+  init?: RequestInit,
+): Promise<LifecycleRequestListResponse> {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) {
+      parameters.set(
+        key,
+        Array.isArray(value) ? value.join(",") : String(value),
+      );
+    }
+  }
+  const queryString = parameters.toString();
+  const path = "/lifecycle/transaction-requests";
+  return readJson<LifecycleRequestListResponse>(
+    queryString ? `${path}?${queryString}` : path,
+    path,
     init,
   );
 }

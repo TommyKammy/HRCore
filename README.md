@@ -69,7 +69,8 @@ The CHILD-P2Y-05 bounded browser UAT package is recorded in [P2Y WebUI Practical
 The final CHILD-P2Y-06 WebUI practical-use candidate review is recorded in [P2Y WebUI Practical-Use Readiness Review Closeout](docs/p2y-webui-practical-readiness-review-closeout.md).
 The bounded employee/lifecycle list API, authorization, cursor, export, and audit contract is recorded in [P2LIST-00 List API Contract and Authorization Gate](docs/p2list-00-list-api-contract-authorization-gate.md).
 
-The default server always wires the bounded employee-list runtime. Without
+The default server always wires the bounded employee and lifecycle-list
+runtimes. Without
 configuration it uses a verified empty repository-owned synthetic manifest and
 has no authorized actors. To expose an explicitly approved local synthetic
 dataset, configure `P2LIST_EMPLOYEE_MANIFEST_PATH` together with
@@ -80,8 +81,9 @@ invalidated on server restart regardless of which key is used.
 `P2LIST_EMPLOYEE_ACTORS_JSON` is a server-owned JSON array of
 `{"token":"...","actor":{...}}` entries. Each token must be at least 32
 characters, and the actor object supplies `actorId`, `tenantId`, `permissions`,
-and bounded `dataScope`. Browser persona state, query parameters, and request
-headers never supply permissions or scope.
+and bounded `dataScope`. The same server-owned manifest, actor registry, and
+cursor manager authorize both collection APIs. Browser persona state, query
+parameters, and request headers never supply permissions or scope.
 The bounded visual redesign contract is recorded in [P2Z WebUI Visual Alignment Contract](docs/p2z-webui-visual-alignment-contract.md).
 The browser-based visual UAT scenarios and screenshot matrix are recorded in [P2Z WebUI Visual UAT Package](docs/p2z-webui-visual-uat-package.md).
 

@@ -115,6 +115,7 @@ interface OpenApiOperation {
       {
         schema: OpenApiSchema;
         example?: unknown;
+        examples?: Record<string, { value?: unknown }>;
       }
     >;
   };
@@ -126,6 +127,7 @@ interface OpenApiOperation {
         {
           schema: OpenApiSchema;
           example?: unknown;
+          examples?: Record<string, { value?: unknown }>;
         }
       >;
       headers?: Record<string, { schema: OpenApiSchema }>;
@@ -892,11 +894,11 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     employeeOperation["x-hrcore-implementation-status"],
     "bounded_runtime",
   );
-  for (const operation of [
-    lifecycleOperation,
-    employeeExport,
-    lifecycleExport,
-  ]) {
+  assert.equal(
+    lifecycleOperation["x-hrcore-implementation-status"],
+    "bounded_runtime",
+  );
+  for (const operation of [employeeExport, lifecycleExport]) {
     assert.deepEqual(
       operation["x-hrcore-synthetic-provenance"],
       p2ListSyntheticProvenanceContract,
@@ -1123,8 +1125,14 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     description:
       "Canonical UTC output in YYYY-MM-DDTHH:mm:ss.sssZ form. RFC 3339 values are normalized to the same UTC instant before filtering, sorting, cursor-state persistence, and projection; text comparison of unnormalized offsets is prohibited.",
   });
-  const lifecycleListExample =
-    lifecycleOperation.responses["200"].content?.["application/json"].example;
+  const lifecycleExamples =
+    lifecycleOperation.responses["200"].content?.["application/json"].examples;
+  assert.deepEqual(Object.keys(lifecycleExamples ?? {}), [
+    "onboarding",
+    "transfer",
+    "termination",
+  ]);
+  const lifecycleListExample = lifecycleExamples?.transfer?.value;
   assert.ok(lifecycleListExample && typeof lifecycleListExample === "object");
   const lifecycleListItems = (lifecycleListExample as { items?: unknown })
     .items;
@@ -1136,6 +1144,32 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.equal(
     (firstLifecycleListItem as Record<string, unknown>).requestedAt,
     "2026-07-23T00:00:00.000Z",
+  );
+  for (const [name, requestType] of [
+    ["onboarding", "onboarding"],
+    ["transfer", "transfer"],
+    ["termination", "termination"],
+  ] as const) {
+    const value = lifecycleExamples?.[name]?.value as
+      | { items?: Array<{ requestType?: string }> }
+      | undefined;
+    assert.equal(value?.items?.[0]?.requestType, requestType);
+  }
+  assert.deepEqual(
+    Object.fromEntries(
+      ["400", "401", "403"].map((status) => [
+        status,
+        (
+          lifecycleOperation.responses[status]?.content?.["application/json"]
+            .example as { code?: string } | undefined
+        )?.code,
+      ]),
+    ),
+    {
+      "400": "invalid_filter",
+      "401": "actor_context_required",
+      "403": "permission_denied",
+    },
   );
   const canonicalLifecycleCsvExample =
     lifecycleExport.responses["200"].content?.["text/csv"].example;
@@ -1428,7 +1462,7 @@ test("P2LIST-00 documentation and policy scan preserve ADR and production bounda
   }
 });
 
-test("P2LIST runtime exposure advances only the implemented employee child", async (t) => {
+test("P2LIST runtime exposes bounded employee and lifecycle collection APIs", async (t) => {
   const app = await buildApp();
   t.after(async () => {
     await app.close();
@@ -1441,8 +1475,14 @@ test("P2LIST runtime exposure advances only the implemented employee child", asy
   assert.equal(employeeResponse.statusCode, 401);
   assert.equal(employeeResponse.json().code, "actor_context_required");
 
+  const lifecycleResponse = await app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests",
+  });
+  assert.equal(lifecycleResponse.statusCode, 401);
+  assert.equal(lifecycleResponse.json().code, "actor_context_required");
+
   for (const request of [
-    { method: "GET" as const, url: "/lifecycle/transaction-requests" },
     { method: "POST" as const, url: "/exports/employee-list" },
     { method: "POST" as const, url: "/exports/lifecycle-request-list" },
   ]) {
