@@ -156,6 +156,18 @@ test("GET /employees binds pagination to filters and rejects tampered cursors", 
   });
   assert.equal(tampered.statusCode, 400);
   assert.equal(tampered.json().code, "cursor_invalid");
+
+  const empty = await harness.app.inject({
+    method: "GET",
+    url: "/employees?cursor=",
+    headers: { authorization: "Bearer authorized" },
+  });
+  assert.equal(empty.statusCode, 400);
+  assert.equal(empty.json().code, "cursor_invalid");
+  assert.deepEqual(
+    harness.auditEvents.map((event) => event.eventType),
+    ["employee_list.viewed", "employee_list.page_requested"],
+  );
 });
 
 test("GET /employees fails closed across actor, permission, and organization scope", async (t) => {
@@ -218,6 +230,12 @@ test("GET /employees fails closed across actor, permission, and organization sco
     );
     assert.doesNotMatch(response.body, /EMP-001|Synthetic Employee/u);
   }
+  assert.equal(
+    harness.auditEvents.filter(
+      (event) => event.eventType === "authorization.denied",
+    ).length,
+    5,
+  );
 
   for (const token of ["person-scoped", "employee-scoped"]) {
     const response: {
@@ -242,6 +260,42 @@ test("GET /employees fails closed across actor, permission, and organization sco
   });
   assert.equal(narrowedOutsideScope.statusCode, 200);
   assert.deepEqual(narrowedOutsideScope.json().items, []);
+});
+
+test("GET /employees uses one canonical audit ID for equivalent data scopes", async (t) => {
+  const harness = await createHarness(t, 2, {
+    "scope-order-a": {
+      ...authorizedActor,
+      actorId: "actor-scope-order-a",
+      dataScope: {
+        personIds: ["p2list-person-002", "p2list-person-001"],
+      },
+    },
+    "scope-order-b": {
+      ...authorizedActor,
+      actorId: "actor-scope-order-b",
+      dataScope: {
+        organizationCodes: [],
+        personIds: ["p2list-person-001", "p2list-person-002"],
+      },
+    },
+  });
+  if (!harness) return;
+
+  for (const token of ["scope-order-a", "scope-order-b"]) {
+    const response: { statusCode: number } = await harness.app.inject({
+      method: "GET",
+      url: "/employees",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+  }
+
+  assert.equal(harness.auditEvents.length, 2);
+  assert.equal(
+    harness.auditEvents[0]?.dataScopeId,
+    harness.auditEvents[1]?.dataScopeId,
+  );
 });
 
 test("buildServerApp wires verified provenance and server-owned person scope", async (t) => {
@@ -315,7 +369,7 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
   const response = await app.inject({
     method: "GET",
     url: "/employees?organizationCode=ORG-SYNTHETIC",
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `bEaReR  ${token}` },
   });
 
   assert.equal(response.statusCode, 200);
@@ -447,6 +501,12 @@ test("GET /employees rejects unsupported and unbounded query inputs", async (t) 
   });
   assert.equal(maximum.statusCode, 200);
   assert.equal(maximum.json().pageInfo.limit, 100);
+  assert.equal(
+    harness.auditEvents.some(
+      (event) => event.eventType === "authorization.denied",
+    ),
+    false,
+  );
 });
 
 async function createHarness(

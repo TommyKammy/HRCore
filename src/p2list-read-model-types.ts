@@ -35,6 +35,39 @@ export interface P2ListActorContext {
   dataScope: P2ListDataScope;
 }
 
+const p2ListDataScopeKeys = [
+  "organizationCodes",
+  "personIds",
+  "employeeIds",
+  "correlationIds",
+] as const satisfies readonly (keyof P2ListDataScope)[];
+const p2ListDataScopeKeySet = new Set<string>(p2ListDataScopeKeys);
+
+export function normalizeP2ListDataScope(
+  value: unknown,
+): Required<P2ListDataScope> {
+  const scope = requireRecord(
+    value,
+    "Server data scope is required.",
+    "data_scope_denied",
+  );
+  if (Object.keys(scope).some((key) => !p2ListDataScopeKeySet.has(key))) {
+    throw dataScopeDenied();
+  }
+  return {
+    organizationCodes: normalizeP2ListDataScopeValues(scope.organizationCodes),
+    personIds: normalizeP2ListDataScopeValues(scope.personIds),
+    employeeIds: normalizeP2ListDataScopeValues(scope.employeeIds),
+    correlationIds: normalizeP2ListDataScopeValues(scope.correlationIds),
+  };
+}
+
+function normalizeP2ListDataScopeValues(value: unknown): string[] {
+  return value === undefined
+    ? []
+    : requireUniqueStringArray(value, 0, 100, "data_scope_denied");
+}
+
 export interface P2ListSyntheticDatasetManifest {
   evidenceType: "repo_owned_synthetic_fixture";
   datasetReference: string;

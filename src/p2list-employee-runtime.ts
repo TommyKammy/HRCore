@@ -254,13 +254,12 @@ function requireStringArray(value: unknown): string[] {
 }
 
 function readBearerToken(value: string | undefined): string | undefined {
-  if (!value?.startsWith("Bearer ")) {
+  const match = /^Bearer +(\S+)$/iu.exec(value ?? "");
+  if (!match) {
     return undefined;
   }
-  const token = value.slice("Bearer ".length);
-  return token.length >= 32 && token.length <= 512 && !/\s/u.test(token)
-    ? token
-    : undefined;
+  const token = match[1]!;
+  return token.length >= 32 && token.length <= 512 ? token : undefined;
 }
 
 function digestToken(value: string): Buffer {

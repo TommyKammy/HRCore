@@ -18,6 +18,7 @@ import {
 } from "../p2list-read-model-repository.js";
 import {
   fingerprintP2ListValue,
+  normalizeP2ListDataScope,
   P2ListReadModelError,
   type P2ListActorContext,
   type P2ListVerifiedSyntheticDataset,
@@ -33,6 +34,11 @@ const employeeQueryKeys = new Set([
   "direction",
   "limit",
   "cursor",
+]);
+const authorizationAuditErrorCodes = new Set<P2ListErrorCode>([
+  "actor_context_required",
+  "permission_denied",
+  "data_scope_denied",
 ]);
 
 type MaybePromise<T> = T | Promise<T>;
@@ -132,7 +138,9 @@ export function registerP2ListEmployeeRoutes(
         occurredAt,
         actorId: actor.actorId,
         evaluatedPermission: p2ListPermissions.employeeListRead,
-        dataScopeId: fingerprintP2ListValue(actor.dataScope),
+        dataScopeId: fingerprintP2ListValue(
+          normalizeP2ListDataScope(actor.dataScope),
+        ),
         filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
         sort: `${query.sort ?? "employeeId"}:${query.direction ?? "asc"}`,
         pageSize: page.pageInfo.limit,
@@ -147,7 +155,7 @@ export function registerP2ListEmployeeRoutes(
         throw error;
       }
 
-      if (runtime) {
+      if (runtime && authorizationAuditErrorCodes.has(error.code)) {
         await emitAuditEvent(runtime, {
           eventId: randomUUID(),
           eventType: "authorization.denied",
@@ -233,12 +241,20 @@ function parseEmployeeQuery(value: unknown): ParsedEmployeeQuery {
     }
   }
 
+  const cursor = readOptionalString(query.cursor);
+  if (cursor === "") {
+    throw new P2ListReadModelError(
+      "cursor_invalid",
+      "The employee list cursor is invalid.",
+    );
+  }
+
   return {
     filters,
     sort: sort as EmployeeSort | undefined,
     direction: direction as "asc" | "desc" | undefined,
     limit,
-    cursor: readOptionalString(query.cursor),
+    cursor,
   };
 }
 
@@ -263,7 +279,7 @@ function safeDataScopeFingerprint(
 ): string | undefined {
   try {
     return actor?.dataScope
-      ? fingerprintP2ListValue(actor.dataScope)
+      ? fingerprintP2ListValue(normalizeP2ListDataScope(actor.dataScope))
       : undefined;
   } catch {
     return undefined;

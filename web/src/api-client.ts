@@ -68,25 +68,29 @@ export class ApiClientError extends Error {
 
 async function readJson<T>(
   path: ApiRequestPath,
+  operation: ApiPath,
   init?: RequestInit,
 ): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("accept")) {
+    headers.set("accept", "application/json");
+  }
   const response = await fetch(path, {
     ...init,
-    headers: {
-      accept: "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
-    throw new ApiClientError(`Request failed for ${path}: ${response.status}`);
+    throw new ApiClientError(
+      `Request failed for ${operation}: ${response.status}`,
+    );
   }
 
   return (await response.json()) as T;
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  return readJson<HealthResponse>("/health");
+  return readJson<HealthResponse>("/health", "/health");
 }
 
 export async function fetchEmployees(
@@ -102,12 +106,16 @@ export async function fetchEmployees(
   const queryString = parameters.toString();
   return readJson<EmployeeListResponse>(
     queryString ? `/employees?${queryString}` : "/employees",
+    "/employees",
     init,
   );
 }
 
 export async function fetchOpenApiContract(): Promise<ApiContract> {
-  const contract = await readJson<ApiContract>("/openapi.json");
+  const contract = await readJson<ApiContract>(
+    "/openapi.json",
+    "/openapi.json",
+  );
 
   if (
     contract.openapi !== "3.1.0" ||
