@@ -117,6 +117,14 @@ describe("employee list screen", () => {
       name: "氏名・従業員ID",
     });
     expect(searchInput).toHaveAttribute("maxlength", "100");
+    expect(screen.getByRole("textbox", { name: "従業員ID" })).toHaveAttribute(
+      "maxlength",
+      "128",
+    );
+    expect(screen.getByRole("textbox", { name: "組織コード" })).toHaveAttribute(
+      "maxlength",
+      "128",
+    );
     await user.type(searchInput, "Synthetic");
     await user.click(screen.getByRole("button", { name: "検索" }));
 

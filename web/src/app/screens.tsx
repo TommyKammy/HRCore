@@ -19,6 +19,7 @@ import {
   type TerminationRequest,
   type TransferRequest,
 } from "./model";
+import { employeeStatusClass, lifecycleStatusClass } from "./record-status";
 import { EvidenceItem, SummaryCard } from "./shared";
 
 export function DashboardView({
@@ -280,7 +281,13 @@ export function EmployeeDetailView({
               {employee.hireDate.replaceAll("-", "/")} 入社
             </p>
             <div className="badge-row" aria-label="従業員状態">
-              <span className="soft-badge state-success">{status}</span>
+              <span
+                className={`soft-badge ${employeeStatusClass(
+                  employee.employmentStatus,
+                )}`}
+              >
+                {status}
+              </span>
               <span className="soft-badge">bounded list scope</span>
             </div>
           </div>
@@ -507,7 +514,11 @@ export function LifecycleRequestDetailView({
           <h2>{request.subjectDisplayName}</h2>
           <div className="badge-row" aria-label="手続き状態">
             <span className="soft-badge">{request.requestType}</span>
-            <span className="soft-badge state-success">{request.status}</span>
+            <span
+              className={`soft-badge ${lifecycleStatusClass(request.status)}`}
+            >
+              {request.status}
+            </span>
           </div>
         </div>
         <button className="secondary-button" type="button" onClick={onBack}>

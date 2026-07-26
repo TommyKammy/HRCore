@@ -30,6 +30,7 @@ import {
   parseLifecycleListQuery,
   writeListQuery,
 } from "./list-query-state";
+import { employeeStatusClass, lifecycleStatusClass } from "./record-status";
 import { LoadingState } from "./shared";
 
 type CollectionErrorKind = "denied" | "invalid" | "network";
@@ -293,14 +294,6 @@ function employeeStatusLabel(status: EmployeeListItem["employmentStatus"]) {
   }[status];
 }
 
-function employeeStatusClass(status: EmployeeListItem["employmentStatus"]) {
-  return {
-    active: "status-success",
-    inactive: "status-queued",
-    terminated: "status-failed",
-  }[status];
-}
-
 function lifecycleTypeLabel(type: LifecycleRequestListItem["requestType"]) {
   return {
     onboarding: "入社",
@@ -319,19 +312,6 @@ function lifecycleStatusLabel(status: LifecycleRequestListItem["status"]) {
     approved: "承認済み",
     completed: "完了",
   }[status];
-}
-
-function lifecycleStatusClass(status: LifecycleRequestListItem["status"]) {
-  if (status === "approved" || status === "completed") {
-    return "status-success";
-  }
-  if (status === "rejected" || status === "cancelled") {
-    return "status-failed";
-  }
-  if (status === "submitted") {
-    return "status-running";
-  }
-  return "status-queued";
 }
 
 function formatDate(value: string) {
@@ -489,7 +469,7 @@ export function EmployeeListView({
           <span>従業員ID</span>
           <input
             value={draft.employeeId}
-            maxLength={64}
+            maxLength={128}
             placeholder="EMP-001"
             onChange={(event) =>
               setDraft((current) => ({
@@ -521,7 +501,7 @@ export function EmployeeListView({
           <span>組織コード</span>
           <input
             value={draft.organizationCode}
-            maxLength={64}
+            maxLength={128}
             placeholder="ORG-SYNTHETIC"
             onChange={(event) =>
               setDraft((current) => ({

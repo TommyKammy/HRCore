@@ -137,4 +137,41 @@ describe("bounded list URL query state", () => {
       parseLifecycleListQuery(`?view=lifecycle&q=${invalidQuery}`).errors,
     ).toContain("q は 100 文字以内で指定してください。");
   });
+
+  it("accepts full-length employee identifiers and rejects 129 characters", () => {
+    const validValue = "A".repeat(128);
+    const invalidValue = "B".repeat(129);
+    const valid = parseEmployeeListQuery(
+      `?view=employees&employeeId=${validValue}&organizationCode=${validValue}`,
+    );
+    const invalid = parseEmployeeListQuery(
+      `?view=employees&employeeId=${invalidValue}&organizationCode=${invalidValue}`,
+    );
+
+    expect(valid.errors).toEqual([]);
+    expect(valid.query.employeeId).toBe(validValue);
+    expect(valid.query.organizationCode).toBe(validValue);
+    expect(invalid.errors).toEqual([
+      "employeeId は 128 文字以内で指定してください。",
+      "organizationCode は 128 文字以内で指定してください。",
+    ]);
+  });
+
+  it("rejects padded or oversized opaque cursors without normalizing them", () => {
+    const padded = parseEmployeeListQuery(
+      "?view=employees&cursor=%20opaque-page%20",
+    );
+    const oversized = parseLifecycleListQuery(
+      `?view=lifecycle&cursor=${"A".repeat(2049)}`,
+    );
+
+    expect(padded.query.cursor).toBeUndefined();
+    expect(padded.errors).toContain(
+      "ページ情報の前後に空白を含めないでください。",
+    );
+    expect(oversized.query.cursor).toBeUndefined();
+    expect(oversized.errors).toContain(
+      "ページ情報が長すぎます。フィルターをリセットしてください。",
+    );
+  });
 });

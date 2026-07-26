@@ -278,7 +278,7 @@ describe("App shell", () => {
               personId: "person-reload-001",
               employeeId: "EMP-000128",
               displayName: "Synthetic Reload Subject",
-              employmentStatus: "active",
+              employmentStatus: "inactive",
               organizationCode: "ORG-RELOAD",
               positionCode: "POS-RELOAD",
               hireDate: "2026-01-01",
@@ -311,6 +311,9 @@ describe("App shell", () => {
       await screen.findByRole("heading", { name: "Synthetic Reload Subject" }),
     ).toBeInTheDocument();
     expect(screen.getByText("ORG-RELOAD")).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("従業員状態")).getByText("休止"),
+    ).toHaveClass("status-queued");
     expect(screen.queryByText("ヤマダ タロウ")).not.toBeInTheDocument();
     expect(screen.queryByText("taro.yamada@***")).not.toBeInTheDocument();
     expect(screen.queryByText("外部ID / 連携状態")).not.toBeInTheDocument();
@@ -431,7 +434,7 @@ describe("App shell", () => {
             item: {
               transactionRequestId: "request-reload-001",
               requestType: "transfer",
-              status: "submitted",
+              status: "rejected",
               subjectPersonId: "person-reload-001",
               subjectEmployeeId: "EMP-RELOAD-001",
               subjectDisplayName: "Synthetic Reload Request",
@@ -465,6 +468,9 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Synthetic Reload Request" }),
     ).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("手続き状態")).getByText("rejected"),
+    ).toHaveClass("status-failed");
     expect(screen.getByText("手続きレコード情報")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Create transfer request" }),

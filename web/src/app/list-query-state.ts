@@ -148,9 +148,17 @@ function readCursor(
   if (!parameters.has("cursor")) {
     return undefined;
   }
-  const cursor = parameters.get("cursor")?.trim();
+  const cursor = parameters.get("cursor");
   if (!cursor) {
     errors.push("ページ情報が空です。フィルターをリセットしてください。");
+    return undefined;
+  }
+  if (cursor.trim() !== cursor) {
+    errors.push("ページ情報の前後に空白を含めないでください。");
+    return undefined;
+  }
+  if (cursor.length > 2048) {
+    errors.push("ページ情報が長すぎます。フィルターをリセットしてください。");
     return undefined;
   }
   return cursor;
@@ -247,14 +255,14 @@ export function parseEmployeeListQuery(
   validateParameterNames(parameters, employeeUrlKeys, errors);
   const query: EmployeeListQuery = {
     q: readText(parameters, "q", 100, errors),
-    employeeId: readText(parameters, "employeeId", 64, errors),
+    employeeId: readText(parameters, "employeeId", 128, errors),
     employmentStatus: readAllowedValue(
       parameters,
       "employmentStatus",
       employeeStatuses,
       errors,
     ),
-    organizationCode: readText(parameters, "organizationCode", 64, errors),
+    organizationCode: readText(parameters, "organizationCode", 128, errors),
     asOf: readDate(parameters, "asOf", errors),
     sort:
       readAllowedValue(parameters, "sort", employeeSorts, errors) ??
