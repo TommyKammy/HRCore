@@ -197,7 +197,7 @@ async function mockBoundedCollectionApis(page: Page) {
       await route.fulfill({ status: 403, body: "" });
       return;
     }
-    if (url.searchParams.get("q") === "NETWORK") {
+    if (url.searchParams.get("q") === "SERVICE") {
       await route.fulfill({ status: 503, body: "" });
       return;
     }
@@ -369,9 +369,9 @@ test("matches the bounded practical-use visual contract", async ({
   await page.getByRole("button", { name: "条件をリセット" }).click();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
 
-  await page.getByRole("textbox", { name: "氏名・従業員ID" }).fill("NETWORK");
+  await page.getByRole("textbox", { name: "氏名・従業員ID" }).fill("SERVICE");
   await page.getByRole("button", { name: "検索" }).click();
-  await expect(page.getByText("一覧APIに接続できません")).toBeVisible();
+  await expect(page.getByText("一覧APIの応答を確認できません")).toBeVisible();
   await page.getByRole("button", { name: "条件をリセット" }).click();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
 

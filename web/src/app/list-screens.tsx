@@ -39,7 +39,7 @@ import { LoadingState } from "./shared";
 
 const presetPageSizes = [25, 50, 100] as const;
 
-type CollectionErrorKind = "denied" | "invalid" | "network";
+type CollectionErrorKind = "denied" | "invalid" | "service" | "network";
 
 interface CollectionError {
   kind: CollectionErrorKind;
@@ -183,7 +183,15 @@ function useBoundedCollection<Query, Response>({
   );
 
   const applyNextQuery = useCallback(
-    (query: Query) => {
+    (query: Query, previousQuery?: Query) => {
+      if (previousQuery) {
+        writeListQuery(
+          view,
+          previousQuery as EmployeeListQuery | LifecycleRequestListQuery,
+          "replace",
+          window.history.state,
+        );
+      }
       const previousLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       const nextPreviousLocations = [...previousLocations, previousLocation];
       setPreviousLocations(nextPreviousLocations);
@@ -249,6 +257,12 @@ function classifyCollectionError(caught: unknown): CollectionError {
         correlationId: caught.correlationId,
       };
     }
+    return {
+      kind: "service",
+      title: "一覧APIの応答を確認できません",
+      body: "APIサーバーの障害または応答契約の不一致が発生しました。同じ条件で再試行してください。",
+      correlationId: caught.correlationId,
+    };
   }
   return {
     kind: "network",
@@ -521,6 +535,7 @@ export function EmployeeListView({
     setDraftError(null);
     applyQuery({
       ...state.location.query,
+      asOf: state.response?.appliedFilters.asOf ?? state.location.query.asOf,
       q: draft.q || undefined,
       employeeId: draft.employeeId || undefined,
       employmentStatus: draft.employmentStatus || undefined,
@@ -789,10 +804,17 @@ export function EmployeeListView({
             onPrevious={goToPrevious}
             onNext={() => {
               if (state.response?.pageInfo.nextCursor) {
-                applyNextQuery({
+                const snapshotQuery = {
                   ...state.location.query,
-                  cursor: state.response.pageInfo.nextCursor,
-                });
+                  asOf: state.response.appliedFilters.asOf,
+                };
+                applyNextQuery(
+                  {
+                    ...snapshotQuery,
+                    cursor: state.response.pageInfo.nextCursor,
+                  },
+                  snapshotQuery,
+                );
               }
             }}
           />

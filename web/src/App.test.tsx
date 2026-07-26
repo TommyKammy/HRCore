@@ -494,6 +494,36 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["onboarding", "Create onboarding request"],
+    ["transfer", "Create transfer request"],
+    ["termination", "Create termination request"],
+  ])(
+    "rejects an explicitly empty %s detail identifier",
+    async (view, workflowAction) => {
+      window.history.replaceState(null, "", `/?view=${view}&requestId=`);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json(repositoryOwnedApiContract)),
+      );
+
+      render(<App />);
+      await userEvent.selectOptions(
+        screen.getByLabelText("Persona"),
+        "hr-operator",
+      );
+
+      expect(
+        await screen.findByRole("heading", {
+          name: "手続き詳細URLが無効です",
+        }),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: workflowAction }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("opens lifecycle list records read-only instead of an unrelated workflow", async () => {
     const listSearch =
       "?view=lifecycle&status=submitted&q=Synthetic&sort=effectiveDate&direction=asc&limit=50&cursor=opaque-page";

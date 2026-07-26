@@ -78,6 +78,19 @@ function readRouteParameter(key: string): string | null {
   return new URLSearchParams(window.location.search).get(key);
 }
 
+function InvalidLifecycleDetailRoute() {
+  return (
+    <section className="blocked-state" role="alert">
+      <span className="blocked-icon" aria-hidden="true">
+        <LockKeyhole size={24} />
+      </span>
+      <p className="context-label">Invalid lifecycle route</p>
+      <h2>手続き詳細URLが無効です</h2>
+      <p>Request IDが空です。手続き一覧から対象を選び直してください。</p>
+    </section>
+  );
+}
+
 export function AppShell() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<
     BoundedPersonaId | ""
@@ -415,7 +428,10 @@ export function AppShell() {
 
     if (activeArea?.id === "onboarding") {
       const requestId = readRouteParameter("requestId");
-      if (requestId) {
+      if (requestId === "") {
+        return <InvalidLifecycleDetailRoute />;
+      }
+      if (requestId !== null) {
         return selectedPersonaId ? (
           <LifecycleDetailRoute
             key={`${selectedPersonaId}:${requestId}`}
@@ -445,7 +461,10 @@ export function AppShell() {
 
     if (activeArea?.id === "transfer") {
       const requestId = readRouteParameter("requestId");
-      if (requestId) {
+      if (requestId === "") {
+        return <InvalidLifecycleDetailRoute />;
+      }
+      if (requestId !== null) {
         return selectedPersonaId ? (
           <LifecycleDetailRoute
             key={`${selectedPersonaId}:${requestId}`}
@@ -475,7 +494,10 @@ export function AppShell() {
 
     if (activeArea?.id === "termination") {
       const requestId = readRouteParameter("requestId");
-      if (requestId) {
+      if (requestId === "") {
+        return <InvalidLifecycleDetailRoute />;
+      }
+      if (requestId !== null) {
         return selectedPersonaId ? (
           <LifecycleDetailRoute
             key={`${selectedPersonaId}:${requestId}`}

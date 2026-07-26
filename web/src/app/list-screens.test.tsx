@@ -232,6 +232,7 @@ describe("employee list screen", () => {
 
     await user.click(screen.getByRole("button", { name: "次のページへ" }));
     await screen.findByText("条件に一致する従業員はいません");
+    expect(window.location.search).toContain("asOf=2026-07-26");
     firstRender.unmount();
 
     render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
@@ -242,6 +243,7 @@ describe("employee list screen", () => {
     expect(
       await screen.findByText("Synthetic Employee 001"),
     ).toBeInTheDocument();
+    expect(window.location.search).toContain("asOf=2026-07-26");
     expect(window.location.search).not.toContain("cursor=");
   });
 
@@ -341,6 +343,42 @@ describe("employee list screen", () => {
       await screen.findByText("Synthetic Employee 001"),
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("distinguishes service and contract failures from network failures", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 503,
+          headers: { "x-correlation-id": "employee-list-service-failure" },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ items: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+
+    expect(
+      await screen.findByText("一覧APIの応答を確認できません"),
+    ).toBeVisible();
+    expect(screen.getByText("employee-list-service-failure")).toBeVisible();
+    expect(
+      screen.queryByText("一覧APIに接続できません"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.queryByText("employee-list-service-failure"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("一覧APIの応答を確認できません")).toBeVisible();
+    expect(
+      screen.queryByText("一覧APIに接続できません"),
+    ).not.toBeInTheDocument();
   });
 
   it("fails closed for invalid URL state until filters are reset", async () => {
