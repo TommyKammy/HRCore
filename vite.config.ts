@@ -14,6 +14,8 @@ export default defineConfig({
     proxy: {
       "/openapi.json": "http://127.0.0.1:3000",
       "/health": "http://127.0.0.1:3000",
+      "/employees": "http://127.0.0.1:3000",
+      "/lifecycle": "http://127.0.0.1:3000",
     },
   },
   test: {

@@ -9,6 +9,7 @@ import {
   Cloud,
   Search,
 } from "lucide-react";
+import type { EmployeeListItem } from "../api-client";
 import {
   type OnboardingRequest,
   type OpsDlqEvidence,
@@ -248,22 +249,34 @@ export function DashboardView({
 }
 
 export function EmployeeDetailView({
+  employee,
   onOpenTransfer,
 }: {
+  employee?: EmployeeListItem | null;
   onOpenTransfer: (() => void) | null;
 }) {
+  const displayName = employee?.displayName ?? "山田 太郎";
+  const employeeId = employee?.employeeId ?? "EMP-000128";
+  const hireDate = employee?.hireDate.replaceAll("-", "/") ?? "2024/04/01";
+  const organization = employee?.organizationCode ?? "営業本部 / 第1営業部";
+  const position = employee?.positionCode ?? "主任";
+  const status =
+    employee?.employmentStatus === "terminated" ? "退職" : "在籍中";
+
   return (
     <div className="employee-detail">
       <section className="surface employee-hero">
         <div className="employee-avatar" aria-hidden="true">
-          山
+          {displayName.slice(0, 1)}
         </div>
         <div className="employee-identity">
           <p className="context-label">Repository-owned synthetic record</p>
-          <h2>山田 太郎</h2>
-          <p>社員番号 EMP-000128 / 正社員 / 2024/04/01 入社</p>
+          <h2>{displayName}</h2>
+          <p>
+            社員番号 {employeeId} / {position} / {hireDate} 入社
+          </p>
           <div className="badge-row" aria-label="従業員状態">
-            <span className="soft-badge state-success">在籍中</span>
+            <span className="soft-badge state-success">{status}</span>
             <span className="soft-badge">主系: Okta</span>
             <span className="soft-badge">会社メール連携済</span>
           </div>
@@ -291,7 +304,7 @@ export function EmployeeDetailView({
           <dl className="profile-grid">
             <div>
               <dt>氏名</dt>
-              <dd>山田 太郎</dd>
+              <dd>{displayName}</dd>
             </div>
             <div>
               <dt>氏名カナ</dt>
@@ -299,19 +312,19 @@ export function EmployeeDetailView({
             </div>
             <div>
               <dt>個人番号</dt>
-              <dd>PER-000128</dd>
+              <dd>{employee?.personId ?? "PER-000128"}</dd>
             </div>
             <div>
               <dt>社員番号</dt>
-              <dd>EMP-000128</dd>
+              <dd>{employeeId}</dd>
             </div>
             <div>
               <dt>所属</dt>
-              <dd>営業本部 / 第1営業部</dd>
+              <dd>{organization}</dd>
             </div>
             <div>
               <dt>役職</dt>
-              <dd>主任</dd>
+              <dd>{position}</dd>
             </div>
             <div>
               <dt>勤務地</dt>

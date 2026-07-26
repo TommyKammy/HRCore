@@ -123,13 +123,71 @@ describe("App shell", () => {
   it("renders only shortcuts allowed for the active persona", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/lifecycle/transaction-requests")) {
+          return Response.json({
+            items: [
+              {
+                transactionRequestId: "request-approver-001",
+                requestType: "onboarding",
+                status: "submitted",
+                subjectPersonId: "person-approver-001",
+                subjectEmployeeId: "EMP-APPROVER-001",
+                subjectDisplayName: "Synthetic Approver Subject",
+                organizationCode: "ORG-APPROVER",
+                decidedBy: null,
+                requestedAt: "2026-07-01T00:00:00.000Z",
+                effectiveDate: "2026-08-01",
+              },
+            ],
+            pageInfo: {
+              limit: 25,
+              hasNextPage: false,
+              nextCursor: null,
+            },
+            appliedFilters: {},
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "approver-list-correlation",
+          });
+        }
+        if (String(input).startsWith("/employees")) {
+          return Response.json({
+            items: [
+              {
+                personId: "person-support-001",
+                employeeId: "EMP-SUPPORT-001",
+                displayName: "Synthetic Support Subject",
+                employmentStatus: "active",
+                organizationCode: "ORG-SUPPORT",
+                positionCode: "POS-SUPPORT",
+                hireDate: "2026-01-01",
+                terminationDate: null,
+              },
+            ],
+            pageInfo: {
+              limit: 25,
+              hasNextPage: false,
+              nextCursor: null,
+            },
+            appliedFilters: { asOf: "2026-07-26" },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "support-list-correlation",
+          });
+        }
+        return Response.json({
           openapi: "3.1.0",
           info: { title: "HRCore API", version: "0.0.0" },
           paths: { "/health": {} },
-        }),
-      ),
+        });
+      }),
     );
 
     render(<App />);
@@ -151,10 +209,22 @@ describe("App shell", () => {
       screen.queryByRole("button", { name: /異動手続き \/ 山田 太郎/ }),
     ).not.toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole("button", { name: /Procedures/ }));
+    expect(
+      await screen.findByText("Synthetic Approver Subject"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "Synthetic Approver Subjectの入社手続きを開く",
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("閲覧不可")).toBeInTheDocument();
+
     await userEvent.selectOptions(
       screen.getByLabelText("Persona"),
       "hr-ops-support",
     );
+    await userEvent.click(screen.getByRole("button", { name: /Work queue/ }));
 
     expect(screen.getByLabelText("Bounded record ID")).toBeInTheDocument();
     expect(
@@ -168,8 +238,41 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Synthetic Support Subjectの詳細を開く",
+      }),
+    );
     expect(
       screen.queryByRole("button", { name: "異動手続きを開く" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("replaces a URL route that the selected persona cannot access", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employees&q=must-not-survive",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+
+    await waitFor(() => {
+      expect(window.location.search).toBe("?view=queue");
+    });
+    expect(
+      screen.queryByRole("button", { name: /Employees/ }),
     ).not.toBeInTheDocument();
   });
 

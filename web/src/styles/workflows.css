@@ -3,6 +3,16 @@
   gap: 14px;
 }
 
+.list-origin-context {
+  margin: 0;
+  border-left: 3px solid var(--accent);
+  padding: 9px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
 .procedure-toolbar {
   display: flex;
   min-height: 62px;

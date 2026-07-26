@@ -350,7 +350,7 @@ npm run dev:web
 ```
 
 The WebUI runs through Vite at `http://127.0.0.1:5173` and proxies
-`/openapi.json` and `/health` to the local Fastify API on
+`/openapi.json`, `/health`, `/employees`, and `/lifecycle` to the local Fastify API on
 `http://127.0.0.1:3000`. Build and preview the static shell with:
 
 ```sh
@@ -362,7 +362,24 @@ The browser shell includes a bounded/non-production persona switcher that fails
 closed until a repository-owned local persona is selected. It is not production
 auth, not live IdP/Okta/provider integration, and not production
 authorization/RLS. The shell connects to the repository-owned OpenAPI contract
-only for bounded route and contract status scaffolding.
+and collection APIs for bounded route, contract-status, employee-list, and
+lifecycle-list workflows. It does not substitute fixtures when a collection
+request is denied or unavailable.
+
+To exercise the collection screens against an explicitly approved local
+synthetic dataset, set the matching public Vite token before starting the WebUI:
+
+```sh
+VITE_P2LIST_HR_OPERATOR_TOKEN=replace-with-local-opaque-token npm run dev:web
+```
+
+`VITE_P2LIST_APPROVER_TOKEN` and `VITE_P2LIST_SUPPORT_TOKEN` configure the other
+bounded personas. Every value must match a token in the API server's
+`P2LIST_EMPLOYEE_ACTORS_JSON` registry. These `VITE_` values are embedded in the
+browser bundle, so they are for repository-owned or explicitly approved
+non-production synthetic access only. They must never contain production
+credentials. The API remains authoritative for permissions, tenant, data scope,
+masking, and denial.
 
 Install Playwright Chromium once before the browser smoke:
 

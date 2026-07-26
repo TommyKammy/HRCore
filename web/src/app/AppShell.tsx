@@ -8,6 +8,8 @@ import {
 import { LockKeyhole, Menu, Search, X } from "lucide-react";
 import {
   type ApiContract,
+  type EmployeeListItem,
+  type LifecycleRequestListItem,
   ApiClientError,
   fetchOpenApiContract,
 } from "../api-client";
@@ -23,6 +25,7 @@ import {
   TerminationWorkflow,
   TransferWorkflow,
 } from "./lifecycle-workflows";
+import { EmployeeListView, LifecycleListView } from "./list-screens";
 import {
   type OnboardingDecision,
   type OnboardingRequest,
@@ -46,11 +49,34 @@ import {
 } from "./screens";
 import { ContractStatus, EmptyState, ProcedureFrame } from "./shared";
 
+function readRouteFromLocation(): RouteId {
+  const candidate = new URLSearchParams(window.location.search).get("view");
+  return plannedAreas.some((area) => area.id === candidate)
+    ? (candidate as RouteId)
+    : "queue";
+}
+
+function writeRouteToLocation(
+  route: RouteId,
+  parameters: Record<string, string> = {},
+  mode: "push" | "replace" = "push",
+) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("view", route);
+  for (const [key, value] of Object.entries(parameters)) {
+    url.searchParams.set(key, value);
+  }
+  window.history[mode === "push" ? "pushState" : "replaceState"](null, "", url);
+}
+
 export function AppShell() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<
     BoundedPersonaId | ""
   >("");
-  const [activeRoute, setActiveRoute] = useState<RouteId>("queue");
+  const [activeRoute, setActiveRoute] = useState<RouteId>(
+    readRouteFromLocation,
+  );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [directLookup, setDirectLookup] = useState("");
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
@@ -63,6 +89,10 @@ export function AppShell() {
     useState<TransferRequest | null>(null);
   const [terminationRequest, setTerminationRequest] =
     useState<TerminationRequest | null>(null);
+  const [selectedEmployee, setSelectedEmployee] =
+    useState<EmployeeListItem | null>(null);
+  const [selectedLifecycleRequest, setSelectedLifecycleRequest] =
+    useState<LifecycleRequestListItem | null>(null);
   const [opsDlqEvidence, setOpsDlqEvidence] = useState<OpsDlqEvidence>(
     initialOpsDlqEvidence,
   );
@@ -113,13 +143,21 @@ export function AppShell() {
     return loadContract();
   }, [loadContract, personaDecision.allowed]);
 
-  const visibleAreas = personaDecision.persona
-    ? plannedAreas.filter((area) =>
-        personaDecision.persona?.allowedRoutes.includes(area.id),
-      )
-    : [];
+  const authorizedAreas = useMemo(
+    () =>
+      personaDecision.persona
+        ? plannedAreas.filter((area) =>
+            personaDecision.persona?.allowedRoutes.includes(area.id),
+          )
+        : [],
+    [personaDecision.persona],
+  );
+  const visibleAreas = useMemo(
+    () => authorizedAreas.filter((area) => area.navigation !== false),
+    [authorizedAreas],
+  );
   const activeArea =
-    visibleAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
+    authorizedAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
 
   const decideOnboardingRequest = useCallback(
     (decision: OnboardingDecision, comment: string) => {
@@ -212,21 +250,49 @@ export function AppShell() {
   );
 
   useEffect(() => {
+    setSelectedEmployee(null);
+    setSelectedLifecycleRequest(null);
+  }, [selectedPersonaId]);
+
+  useEffect(() => {
     if (
       visibleAreas.length > 0 &&
-      !visibleAreas.some((area) => area.id === activeRoute)
+      !authorizedAreas.some((area) => area.id === activeRoute)
     ) {
-      setActiveRoute(visibleAreas[0].id);
+      const fallbackRoute = visibleAreas[0].id;
+      setActiveRoute(fallbackRoute);
+      writeRouteToLocation(fallbackRoute, {}, "replace");
     }
-  }, [activeRoute, visibleAreas]);
+  }, [activeRoute, authorizedAreas, visibleAreas]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = readRouteFromLocation();
+      if (authorizedAreas.some((area) => area.id === route)) {
+        setActiveRoute(route);
+      } else if (visibleAreas[0]) {
+        setActiveRoute(visibleAreas[0].id);
+        writeRouteToLocation(visibleAreas[0].id, {}, "replace");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [authorizedAreas, visibleAreas]);
 
   const canNavigateTo = (route: RouteId) =>
-    visibleAreas.some((area) => area.id === route);
+    authorizedAreas.some((area) => area.id === route);
 
-  const navigateTo = (route: RouteId) => {
+  const navigateTo = (
+    route: RouteId,
+    parameters: Record<string, string> = {},
+  ) => {
     if (canNavigateTo(route)) {
+      if (!parameters.requestId) {
+        setSelectedLifecycleRequest(null);
+      }
       setActiveRoute(route);
       setMobileNavOpen(false);
+      writeRouteToLocation(route, parameters);
     }
   };
 
@@ -241,7 +307,8 @@ export function AppShell() {
     const normalized = directLookup.trim().toUpperCase();
 
     if (normalized === "EMP-000128") {
-      setActiveRoute("employee");
+      setSelectedEmployee(null);
+      navigateTo("employee", { employeeId: normalized });
       setLookupMessage("EMP-000128 を bounded fixture から表示しました。");
       return;
     }
@@ -267,11 +334,57 @@ export function AppShell() {
       );
     }
 
+    if (activeArea?.id === "employees" && selectedPersonaId) {
+      return (
+        <EmployeeListView
+          personaId={selectedPersonaId}
+          onOpenEmployee={
+            canNavigateTo("employee")
+              ? (employee) => {
+                  setSelectedEmployee(employee);
+                  navigateTo("employee", {
+                    employeeId: employee.employeeId,
+                  });
+                }
+              : null
+          }
+        />
+      );
+    }
+
     if (activeArea?.id === "employee") {
       return (
         <EmployeeDetailView
+          employee={selectedEmployee}
           onOpenTransfer={
             canNavigateTo("transfer") ? () => navigateTo("transfer") : null
+          }
+        />
+      );
+    }
+
+    if (activeArea?.id === "lifecycle" && selectedPersonaId) {
+      return (
+        <LifecycleListView
+          personaId={selectedPersonaId}
+          onOpenRequest={
+            canNavigateTo("onboarding") ||
+            canNavigateTo("transfer") ||
+            canNavigateTo("termination")
+              ? (request) => {
+                  const route: RouteId =
+                    request.requestType === "onboarding"
+                      ? "onboarding"
+                      : request.requestType;
+                  if (!canNavigateTo(route)) {
+                    return;
+                  }
+                  setSelectedLifecycleRequest(request);
+                  navigateTo(route, {
+                    requestId: request.transactionRequestId,
+                  });
+                }
+              : null
           }
         />
       );
@@ -282,6 +395,11 @@ export function AppShell() {
         <ProcedureFrame
           procedure="onboarding"
           requestStatus={onboardingRequest?.status ?? null}
+          originContext={
+            selectedLifecycleRequest?.requestType === "onboarding"
+              ? `${selectedLifecycleRequest.transactionRequestId} / ${selectedLifecycleRequest.subjectDisplayName} / ${selectedLifecycleRequest.status}`
+              : undefined
+          }
         >
           <OnboardingWorkflow
             personaId={selectedPersonaId}
@@ -298,6 +416,11 @@ export function AppShell() {
         <ProcedureFrame
           procedure="transfer"
           requestStatus={transferRequest?.status ?? null}
+          originContext={
+            selectedLifecycleRequest?.requestType === "transfer"
+              ? `${selectedLifecycleRequest.transactionRequestId} / ${selectedLifecycleRequest.subjectDisplayName} / ${selectedLifecycleRequest.status}`
+              : undefined
+          }
         >
           <TransferWorkflow
             personaId={selectedPersonaId}
@@ -314,6 +437,11 @@ export function AppShell() {
         <ProcedureFrame
           procedure="termination"
           requestStatus={terminationRequest?.status ?? null}
+          originContext={
+            selectedLifecycleRequest?.requestType === "termination"
+              ? `${selectedLifecycleRequest.transactionRequestId} / ${selectedLifecycleRequest.subjectDisplayName} / ${selectedLifecycleRequest.status}`
+              : undefined
+          }
         >
           <TerminationWorkflow
             personaId={selectedPersonaId}

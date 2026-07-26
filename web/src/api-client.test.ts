@@ -2,19 +2,47 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiClientError,
+  createP2ListRequestInit,
   fetchEmployees,
   fetchLifecycleRequests,
+  type EmployeeListResponse,
+  type LifecycleRequestListResponse,
 } from "./api-client";
+
+const employeeListResponse: EmployeeListResponse = {
+  items: [],
+  pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+  appliedFilters: { asOf: "2026-07-26" },
+  authorization: {
+    dataScope: "bounded",
+    maskedFields: [],
+    readiness: "bounded_synthetic_only_not_production_ready",
+  },
+  correlationId: "employee-list-test-correlation",
+};
+
+const lifecycleListResponse: LifecycleRequestListResponse = {
+  items: [],
+  pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+  appliedFilters: {},
+  authorization: {
+    dataScope: "bounded",
+    maskedFields: [],
+    readiness: "bounded_synthetic_only_not_production_ready",
+  },
+  correlationId: "lifecycle-list-test-correlation",
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe("lifecycle request API client", () => {
   it("serializes array filters using the contract form encoding", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        Response.json({}),
+        Response.json(lifecycleListResponse),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -63,10 +91,28 @@ describe("lifecycle request API client", () => {
 });
 
 describe("employee API client", () => {
+  it("uses only the configured opaque actor token for the selected persona", () => {
+    vi.stubEnv(
+      "VITE_P2LIST_HR_OPERATOR_TOKEN",
+      "bounded-local-hr-operator-token-000001",
+    );
+
+    expect(
+      new Headers(createP2ListRequestInit("hr-operator").headers).get(
+        "authorization",
+      ),
+    ).toBe("Bearer bounded-local-hr-operator-token-000001");
+    expect(
+      new Headers(createP2ListRequestInit("bounded-admin").headers).has(
+        "authorization",
+      ),
+    ).toBe(false);
+  });
+
   it("preserves every RequestInit headers form", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        Response.json({}),
+        Response.json(employeeListResponse),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -115,6 +161,24 @@ describe("employee API client", () => {
     await expect(request).rejects.not.toHaveProperty(
       "message",
       expect.stringMatching(/Private|private-cursor/u),
+    );
+  });
+
+  it("rejects malformed successful collection payloads", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...employeeListResponse,
+          authorization: undefined,
+        }),
+      ),
+    );
+
+    await expect(fetchEmployees()).rejects.toEqual(
+      new ApiClientError(
+        "Response contract did not match the repository-owned shape for /employees.",
+      ),
     );
   });
 });

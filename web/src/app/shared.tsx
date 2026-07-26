@@ -69,10 +69,12 @@ export function LoadingState() {
 export function ProcedureFrame({
   procedure,
   requestStatus,
+  originContext,
   children,
 }: {
   procedure: ProcedureKind;
   requestStatus: PracticalWorkflowStatus | null;
+  originContext?: string;
   children: ReactNode;
 }) {
   const { currentStep, statusLabel } = getProcedureProgress(
@@ -108,6 +110,11 @@ export function ProcedureFrame({
           <span className="utility-badge utility-muted">{statusLabel}</span>
         </div>
       </div>
+      {originContext ? (
+        <p className="list-origin-context" role="status">
+          一覧から参照中: {originContext}
+        </p>
+      ) : null}
       {children}
     </div>
   );
