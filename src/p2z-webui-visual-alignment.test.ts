@@ -8,14 +8,32 @@ import { readRepoFile } from "./test-helpers/database.js";
 const contractPath = "docs/p2z-webui-visual-alignment-contract.md";
 const uatPath = "docs/p2z-webui-visual-uat-package.md";
 const evidencePath = "docs/evidence/p2z-webui";
+const appModulePaths = [
+  "web/src/App.tsx",
+  "web/src/app/AppShell.tsx",
+  "web/src/app/approvals-workflow.tsx",
+  "web/src/app/lifecycle-workflows.tsx",
+  "web/src/app/operations-workflows.tsx",
+  "web/src/app/screens.tsx",
+  "web/src/app/shared.tsx",
+] as const;
+const styleModulePaths = [
+  "web/src/styles.css",
+  "web/src/styles/foundations.css",
+  "web/src/styles/shell.css",
+  "web/src/styles/shared.css",
+  "web/src/styles/screens.css",
+  "web/src/styles/workflows.css",
+  "web/src/styles/responsive.css",
+] as const;
 
 test("P2Z visual alignment contract is implemented and reproducible", async () => {
   const [
     contract,
     uat,
     evidenceReadme,
-    app,
-    styles,
+    appModules,
+    styleModules,
     persona,
     e2e,
     packageJson,
@@ -25,14 +43,22 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     readRepoFile(contractPath),
     readRepoFile(uatPath),
     readRepoFile(`${evidencePath}/README.md`),
-    readRepoFile("web/src/App.tsx"),
-    readRepoFile("web/src/styles.css"),
+    Promise.all(appModulePaths.map(readRepoFile)),
+    Promise.all(styleModulePaths.map(readRepoFile)),
     readRepoFile("web/src/persona.ts"),
     readRepoFile("web/e2e/visual-alignment.spec.ts"),
     readRepoFile("package.json"),
     readRepoFile(".github/workflows/ci.yml"),
     readRepoFile("README.md"),
   ]);
+  const app = appModules.join("\n");
+  const styles = styleModules.join("\n");
+
+  assert.match(
+    appModules[0],
+    /export \{ App \} from "\.\/app\/AppShell"/u,
+    "the stable App entrypoint must delegate to the bounded application shell",
+  );
 
   for (const screen of [
     "Dashboard",

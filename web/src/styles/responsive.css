@@ -1,0 +1,233 @@
+@keyframes pulse {
+  from {
+    background-position: 120% 0;
+  }
+
+  to {
+    background-position: -60% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .topbar-tools {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-grid,
+  .employee-grid,
+  .approval-layout,
+  .job-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .drafts-surface,
+  .external-identities {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-frame {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .content {
+    padding: 16px;
+  }
+
+  .topbar {
+    flex-direction: column;
+  }
+
+  .topbar-tools {
+    justify-content: flex-start;
+  }
+
+  .workflow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .procedure-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .procedure-toolbar ol {
+    width: 100%;
+  }
+
+  .procedure-toolbar li {
+    flex: 1;
+  }
+
+  .procedure-toolbar li strong {
+    display: none;
+  }
+
+  .procedure-toolbar li:not(:last-child)::after {
+    width: 100%;
+  }
+
+  .employee-hero {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .employee-hero .secondary-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 768px) {
+  .environment-banner {
+    justify-content: flex-start;
+    padding-left: 54px;
+  }
+
+  .environment-banner strong {
+    display: none;
+  }
+
+  .mobile-nav-toggle {
+    position: fixed;
+    z-index: 60;
+    top: 33px;
+    left: 8px;
+    display: grid;
+  }
+
+  .app-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 45;
+    top: 28px;
+    bottom: 0;
+    left: 0;
+    width: min(280px, 88vw);
+    height: auto;
+    transform: translateX(-105%);
+    box-shadow: 18px 0 40px rgb(31 52 78 / 18%);
+    transition: transform 180ms ease;
+  }
+
+  .sidebar-open {
+    transform: translateX(0);
+  }
+
+  .content {
+    padding: 58px 12px 20px;
+  }
+
+  .topbar {
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .topbar-tools,
+  .direct-lookup {
+    width: 100%;
+  }
+
+  .direct-lookup {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+  }
+
+  .utility-badge {
+    display: none;
+  }
+
+  .contract-strip {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .contract-strip small {
+    width: 100%;
+    margin-left: 25px;
+  }
+
+  .employee-grid,
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-hero {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .employee-avatar {
+    width: 52px;
+    height: 52px;
+  }
+
+  .integration-list > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .integration-list time,
+  .integration-list code {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  .summary-grid,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .failed-list > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .summary-card {
+    min-height: 96px;
+  }
+
+  .schedule-row {
+    grid-template-columns: 54px minmax(0, 1fr) 18px;
+    padding-inline: 10px;
+  }
+
+  .timeline li {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .decision-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .decision-bar button {
+    width: 100%;
+  }
+}
