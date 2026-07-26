@@ -319,6 +319,58 @@ describe("App shell", () => {
     expect(screen.queryByText("外部ID / 連携状態")).not.toBeInTheDocument();
   });
 
+  it("does not apply fixture mode to a different employee ID", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employee&employeeId=EMP-OTHER&source=fixture",
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith("/employees/EMP-OTHER")) {
+        return Response.json({
+          item: {
+            personId: "person-other-001",
+            employeeId: "EMP-OTHER",
+            displayName: "Authorized Other Employee",
+            employmentStatus: "active",
+            organizationCode: "ORG-OTHER",
+            positionCode: "POS-OTHER",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+          asOf: "2026-07-26",
+          authorization: {
+            dataScope: "bounded",
+            maskedFields: [],
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          correlationId: "employee-other-correlation",
+        });
+      }
+      return Response.json({
+        openapi: "3.1.0",
+        info: { title: "HRCore API", version: "0.0.0" },
+        paths: { "/health": {} },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Authorized Other Employee" }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/employees/EMP-OTHER",
+      expect.any(Object),
+    );
+    expect(screen.queryByText("山田 太郎")).not.toBeInTheDocument();
+  });
+
   it("remounts employee detail before loading a different persona scope", async () => {
     window.history.replaceState(
       null,

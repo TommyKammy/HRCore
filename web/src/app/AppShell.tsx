@@ -350,7 +350,9 @@ export function AppShell() {
           employeeId={employeeId}
           asOf={asOf}
           useLegacyFixture={
-            employeeId === null || readRouteParameter("source") === "fixture"
+            employeeId === null ||
+            (employeeId === "EMP-000128" &&
+              readRouteParameter("source") === "fixture")
           }
           onOpenTransfer={
             canNavigateTo("transfer") ? () => navigateTo("transfer") : null

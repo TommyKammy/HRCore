@@ -174,4 +174,37 @@ describe("bounded list URL query state", () => {
       "ページ情報が長すぎます。フィルターをリセットしてください。",
     );
   });
+
+  it("rejects duplicate or empty lifecycle array members", () => {
+    const parsed = parseLifecycleListQuery(
+      "?view=lifecycle&status=approved,approved&requestType=transfer,",
+    );
+
+    expect(parsed.query.status).toBeUndefined();
+    expect(parsed.query.requestType).toBeUndefined();
+    expect(parsed.errors).toEqual([
+      "requestType に空、重複、または許可されていない値が指定されています。",
+      "status に空、重複、または許可されていない値が指定されています。",
+    ]);
+  });
+
+  it("rejects whitespace-padded and empty temporal filters without normalizing them", () => {
+    const employee = parseEmployeeListQuery(
+      "?view=employees&asOf=%202026-07-01",
+    );
+    const lifecycle = parseLifecycleListQuery(
+      "?view=lifecycle&requestedFrom=2026-07-01T00%3A00%3A00Z%20&requestedTo=2026-07-02T00%3A00%3A00Z&effectiveFrom=&effectiveTo=2026-07-02",
+    );
+
+    expect(employee.query.asOf).toBeUndefined();
+    expect(employee.errors).toContain(
+      "asOf の前後に空白を含めないでください。",
+    );
+    expect(lifecycle.query.requestedFrom).toBeUndefined();
+    expect(lifecycle.errors).toContain(
+      "requestedFrom の前後に空白を含めないでください。",
+    );
+    expect(lifecycle.query.effectiveFrom).toBeUndefined();
+    expect(lifecycle.errors).toContain("effectiveFrom が空です。");
+  });
 });

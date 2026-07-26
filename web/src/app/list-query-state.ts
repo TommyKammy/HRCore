@@ -94,7 +94,11 @@ function readAllowedValue<const Value extends string>(
   errors: string[],
 ): Value | undefined {
   const value = parameters.get(key);
-  if (value === null || value === "") {
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "") {
+    errors.push(`${key} が空です。`);
     return undefined;
   }
   if (!allowed.includes(value as Value)) {
@@ -111,15 +115,19 @@ function readAllowedValues<const Value extends string>(
   errors: string[],
 ): Value[] | undefined {
   const value = parameters.get(key);
-  if (value === null || value === "") {
+  if (value === null) {
     return undefined;
   }
-  const values = [...new Set(value.split(",").filter(Boolean))];
+  const values = value.split(",");
   if (
+    values.some((candidate) => candidate === "") ||
+    new Set(values).size !== values.length ||
     values.length === 0 ||
     values.some((candidate) => !allowed.includes(candidate as Value))
   ) {
-    errors.push(`${key} に許可されていない値が指定されています。`);
+    errors.push(
+      `${key} に空、重複、または許可されていない値が指定されています。`,
+    );
     return undefined;
   }
   return values as Value[];
@@ -130,7 +138,11 @@ function readPageSize(
   errors: string[],
 ): (typeof pageSizes)[number] {
   const value = parameters.get("limit");
-  if (value === null || value === "") {
+  if (value === null) {
+    return 25;
+  }
+  if (value === "") {
+    errors.push("表示件数が空です。");
     return 25;
   }
   const parsed = Number(value);
@@ -171,7 +183,11 @@ function readText(
   errors: string[],
 ): string | undefined {
   const value = parameters.get(key);
-  if (value === null || value === "") {
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "") {
+    errors.push(`${key} が空です。`);
     return undefined;
   }
   if (value.trim() !== value) {
@@ -190,8 +206,16 @@ function readDate(
   key: string,
   errors: string[],
 ): string | undefined {
-  const value = parameters.get(key)?.trim();
-  if (!value) {
+  const value = parameters.get(key);
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "") {
+    errors.push(`${key} が空です。`);
+    return undefined;
+  }
+  if (value.trim() !== value) {
+    errors.push(`${key} の前後に空白を含めないでください。`);
     return undefined;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
@@ -214,8 +238,16 @@ function readTimestamp(
   key: string,
   errors: string[],
 ): string | undefined {
-  const value = parameters.get(key)?.trim();
-  if (!value) {
+  const value = parameters.get(key);
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "") {
+    errors.push(`${key} が空です。`);
+    return undefined;
+  }
+  if (value.trim() !== value) {
+    errors.push(`${key} の前後に空白を含めないでください。`);
     return undefined;
   }
   const match =
