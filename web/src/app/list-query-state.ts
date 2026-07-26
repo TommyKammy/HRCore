@@ -2,6 +2,10 @@ import type {
   EmployeeListQuery,
   LifecycleRequestListQuery,
 } from "../api-client";
+import {
+  p2ListMaximumQueryLength,
+  p2ListQueryPattern,
+} from "../../../src/p2list-contract";
 
 export type ListView = "employees" | "lifecycle";
 
@@ -41,6 +45,7 @@ const lifecycleStatuses = [
 const lifecycleSorts = ["requestedAt", "effectiveDate"] as const;
 const directions = ["asc", "desc"] as const;
 const pageSizes = [25, 50, 100] as const;
+const boundedQueryPattern = new RegExp(p2ListQueryPattern, "u");
 const employeeUrlKeys = [
   "q",
   "employeeId",
@@ -205,6 +210,43 @@ function readText(
   return value;
 }
 
+export function validateBoundedQuery(value: string): string | null {
+  if (value.length < 2) {
+    return "q は 2 文字以上で指定してください。";
+  }
+  if (value.length > p2ListMaximumQueryLength) {
+    return `q は ${p2ListMaximumQueryLength} 文字以内で指定してください。`;
+  }
+  if (!boundedQueryPattern.test(value)) {
+    return "q に使用できない文字が含まれています。";
+  }
+  return null;
+}
+
+function readBoundedQuery(
+  parameters: URLSearchParams,
+  errors: string[],
+): string | undefined {
+  const value = parameters.get("q");
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "") {
+    errors.push("q が空です。");
+    return undefined;
+  }
+  if (value.trim() !== value) {
+    errors.push("q の前後に空白を含めないでください。");
+    return undefined;
+  }
+  const error = validateBoundedQuery(value);
+  if (error) {
+    errors.push(error);
+    return undefined;
+  }
+  return value;
+}
+
 function readDate(
   parameters: URLSearchParams,
   key: string,
@@ -290,7 +332,7 @@ export function parseEmployeeListQuery(
   const errors: string[] = [];
   validateParameterNames(parameters, employeeUrlKeys, errors);
   const query: EmployeeListQuery = {
-    q: readText(parameters, "q", 100, errors),
+    q: readBoundedQuery(parameters, errors),
     employeeId: readText(parameters, "employeeId", 128, errors),
     employmentStatus: readAllowedValue(
       parameters,
@@ -327,7 +369,7 @@ export function parseLifecycleListQuery(
     ),
     status: readAllowedValues(parameters, "status", lifecycleStatuses, errors),
     subjectEmployeeId: readText(parameters, "subjectEmployeeId", 128, errors),
-    q: readText(parameters, "q", 100, errors),
+    q: readBoundedQuery(parameters, errors),
     organizationCode: readText(parameters, "organizationCode", 128, errors),
     decidedBy: readText(parameters, "decidedBy", 128, errors),
     requestedFrom: readTimestamp(parameters, "requestedFrom", errors),
@@ -377,6 +419,7 @@ export function writeListQuery(
   view: ListView,
   query: EmployeeListQuery | LifecycleRequestListQuery,
   mode: "push" | "replace" = "push",
+  state: unknown = null,
 ): void {
   const url = new URL(window.location.href);
   url.search = "";
@@ -393,7 +436,11 @@ export function writeListQuery(
       Array.isArray(value) ? value.join(",") : String(value),
     );
   }
-  window.history[mode === "push" ? "pushState" : "replaceState"](null, "", url);
+  window.history[mode === "push" ? "pushState" : "replaceState"](
+    state,
+    "",
+    url,
+  );
 }
 
 function compactQuery<Query extends object>(query: Query): Query {

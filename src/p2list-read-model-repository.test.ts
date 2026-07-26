@@ -39,6 +39,13 @@ const employeeActor: P2ListActorContext = {
   permissions: [p2ListPermissions.employeeListRead],
   dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
 };
+const employeeDetailActor: P2ListActorContext = {
+  ...employeeActor,
+  permissions: [
+    p2ListPermissions.employeeListRead,
+    p2ListPermissions.employeeDetailRead,
+  ],
+};
 const lifecycleActor: P2ListActorContext = {
   actorId: "actor-hr-support",
   tenantId: "tenant-repo-owned-synthetic",
@@ -407,6 +414,13 @@ test("P2LIST employee scope is query-layer, fail-closed, and provenance-bound", 
       }),
     "data_scope_denied",
   );
+  const detail = repository.getEmployee({
+    actor: employeeDetailActor,
+    provenance: ambiguousManifest,
+    acceptedAt,
+    employeeId: rows[0]!.employeeId,
+  });
+  assert.equal(detail.item?.employeeId, rows[0]!.employeeId);
 });
 
 test("P2LIST employee projection applies employment and assignment dates at the resolved asOf", async (t) => {
@@ -854,7 +868,7 @@ test("P2LIST lifecycle keysets cover 0/1/25/26/100/101 with equal sort values", 
   assert.deepEqual(ids, rows.map((row) => row.transactionRequestId).reverse());
 });
 
-test("P2LIST lifecycle validation fails before scope for malformed payload and tied decisions", async (t) => {
+test("P2LIST lifecycle list validation fails before scope for malformed payload and tied decisions", async (t) => {
   const db = await openTestDatabase(t);
   if (!db) {
     return;
@@ -899,6 +913,12 @@ test("P2LIST lifecycle validation fails before scope for malformed payload and t
       }),
     "data_scope_denied",
   );
+  const detail = repository.getLifecycleRequest({
+    actor: lifecycleDetailActor,
+    provenance: malformedProvenance,
+    transactionRequestId: "tr-hire",
+  });
+  assert.equal(detail?.transactionRequestId, "tr-hire");
 
   db.exec("PRAGMA ignore_check_constraints = ON");
   db.prepare(
@@ -928,6 +948,14 @@ test("P2LIST lifecycle validation fails before scope for malformed payload and t
         provenance: baselineProvenance,
       }),
     "data_scope_denied",
+  );
+  assert.equal(
+    repository.getLifecycleRequest({
+      actor: lifecycleDetailActor,
+      provenance: baselineProvenance,
+      transactionRequestId: "tr-hire",
+    })?.transactionRequestId,
+    "tr-hire",
   );
   db.prepare(
     "DELETE FROM audit_event WHERE id = 'audit-change-malformed-time'",

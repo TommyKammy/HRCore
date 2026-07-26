@@ -170,7 +170,12 @@ describe("employee list screen", () => {
 
   it("does not use global browser history for a bookmarked cursor", async () => {
     window.history.replaceState(
-      null,
+      {
+        p2ListCollection: {
+          view: "employees",
+          previousLocations: ["http://["],
+        },
+      },
       "",
       "/?view=employees&cursor=bookmarked-page",
     );
@@ -190,6 +195,47 @@ describe("employee list screen", () => {
       await screen.findByText("Synthetic Employee 001"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "前のページへ" })).toBeDisabled();
+  });
+
+  it("restores cursor history after the list is remounted", async () => {
+    window.history.replaceState(null, "", "/?view=employees");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        Response.json(
+          String(input).includes("cursor=opaque-next-page")
+            ? {
+                ...employeeResponse,
+                items: [],
+                pageInfo: {
+                  limit: 25,
+                  hasNextPage: false,
+                  nextCursor: null,
+                },
+              }
+            : employeeResponse,
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    const firstRender = render(
+      <EmployeeListView personaId="hr-operator" onOpenEmployee={null} />,
+    );
+    await screen.findByText("Synthetic Employee 001");
+
+    await user.click(screen.getByRole("button", { name: "次のページへ" }));
+    await screen.findByText("条件に一致する従業員はいません");
+    firstRender.unmount();
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+    await screen.findByText("条件に一致する従業員はいません");
+    expect(screen.getByRole("button", { name: "前のページへ" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "前のページへ" }));
+    expect(
+      await screen.findByText("Synthetic Employee 001"),
+    ).toBeInTheDocument();
+    expect(window.location.search).not.toContain("cursor=");
   });
 
   it("distinguishes masked assignments from genuinely unassigned fields", async () => {
@@ -238,6 +284,25 @@ describe("employee list screen", () => {
 
     expect(
       screen.getByText("検索条件の前後に空白を含めないでください。"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a locally invalid bounded search term", async () => {
+    const fetchMock = vi.fn(async () => Response.json(employeeResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+    await screen.findByText("Synthetic Employee 001");
+    await user.type(
+      screen.getByRole("textbox", { name: "氏名・従業員ID" }),
+      "A",
+    );
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    expect(
+      screen.getByText("q は 2 文字以上で指定してください。"),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -406,6 +471,27 @@ describe("lifecycle list screen", () => {
 
     expect(
       screen.getByText("検索条件の前後に空白を含めないでください。"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects prohibited lifecycle search characters locally", async () => {
+    const fetchMock = vi.fn(async () => Response.json(lifecycleResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <LifecycleListView personaId="hr-operator" onOpenRequest={vi.fn()} />,
+    );
+    await screen.findByText("Synthetic Lifecycle Subject");
+    await user.type(
+      screen.getByRole("textbox", { name: "対象者・従業員ID" }),
+      "A%",
+    );
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    expect(
+      screen.getByText("q に使用できない文字が含まれています。"),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

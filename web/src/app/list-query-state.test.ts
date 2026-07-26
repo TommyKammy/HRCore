@@ -150,6 +150,20 @@ describe("bounded list URL query state", () => {
     ).toContain("q は 100 文字以内で指定してください。");
   });
 
+  it("rejects short and prohibited bounded search terms", () => {
+    expect(parseEmployeeListQuery("?view=employees&q=A").errors).toContain(
+      "q は 2 文字以上で指定してください。",
+    );
+    for (const encodedQuery of ["A%25", "A_", "A.", "A%28B%29"]) {
+      expect(
+        parseLifecycleListQuery(`?view=lifecycle&q=${encodedQuery}`).errors,
+      ).toContain("q に使用できない文字が含まれています。");
+    }
+    expect(
+      parseEmployeeListQuery("?view=employees&q=Synthetic%20Employee").errors,
+    ).toEqual([]);
+  });
+
   it("accepts full-length employee identifiers and rejects 129 characters", () => {
     const validValue = "A".repeat(128);
     const invalidValue = "B".repeat(129);

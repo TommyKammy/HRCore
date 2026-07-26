@@ -28,6 +28,7 @@ import {
   type ParsedListQuery,
   parseEmployeeListQuery,
   parseLifecycleListQuery,
+  validateBoundedQuery,
   writeListQuery,
 } from "./list-query-state";
 import { employeeStatusClass, lifecycleStatusClass } from "./record-status";
@@ -48,6 +49,57 @@ interface CollectionState<Query, Response> {
   error: CollectionError | null;
 }
 
+interface CollectionHistoryState {
+  p2ListCollection?: {
+    view: ListView;
+    previousLocations: string[];
+  };
+}
+
+function collectionHistoryState(
+  view: ListView,
+  previousLocations: string[],
+): CollectionHistoryState {
+  return {
+    p2ListCollection: {
+      view,
+      previousLocations,
+    },
+  };
+}
+
+function readPreviousLocations(view: ListView): string[] {
+  const state = window.history.state as CollectionHistoryState | null;
+  const candidate = state?.p2ListCollection;
+  if (
+    candidate?.view !== view ||
+    !Array.isArray(candidate.previousLocations) ||
+    candidate.previousLocations.length > 100
+  ) {
+    return [];
+  }
+  const locations: string[] = [];
+  for (const location of candidate.previousLocations) {
+    if (typeof location !== "string") {
+      return [];
+    }
+    let url: URL;
+    try {
+      url = new URL(location, window.location.href);
+    } catch {
+      return [];
+    }
+    if (
+      url.origin !== window.location.origin ||
+      url.searchParams.get("view") !== view
+    ) {
+      return [];
+    }
+    locations.push(`${url.pathname}${url.search}${url.hash}`);
+  }
+  return locations;
+}
+
 function useBoundedCollection<Query, Response>({
   view,
   parse,
@@ -62,11 +114,13 @@ function useBoundedCollection<Query, Response>({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<CollectionError | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
-  const [previousLocations, setPreviousLocations] = useState<string[]>([]);
+  const [previousLocations, setPreviousLocations] = useState<string[]>(() =>
+    readPreviousLocations(view),
+  );
 
   useEffect(() => {
     const handlePopState = () => {
-      setPreviousLocations([]);
+      setPreviousLocations(readPreviousLocations(view));
       setLocation(parse());
     };
     window.addEventListener("popstate", handlePopState);
@@ -125,14 +179,17 @@ function useBoundedCollection<Query, Response>({
   const applyNextQuery = useCallback(
     (query: Query) => {
       const previousLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      setPreviousLocations((current) => [...current, previousLocation]);
+      const nextPreviousLocations = [...previousLocations, previousLocation];
+      setPreviousLocations(nextPreviousLocations);
       writeListQuery(
         view,
         query as EmployeeListQuery | LifecycleRequestListQuery,
+        "push",
+        collectionHistoryState(view, nextPreviousLocations),
       );
       setLocation({ query, errors: [] });
     },
-    [view],
+    [previousLocations, view],
   );
 
   const goToPrevious = useCallback(() => {
@@ -140,10 +197,15 @@ function useBoundedCollection<Query, Response>({
     if (!previousLocation) {
       return;
     }
-    window.history.pushState(null, "", previousLocation);
-    setPreviousLocations((current) => current.slice(0, -1));
+    const nextPreviousLocations = previousLocations.slice(0, -1);
+    window.history.pushState(
+      collectionHistoryState(view, nextPreviousLocations),
+      "",
+      previousLocation,
+    );
+    setPreviousLocations(nextPreviousLocations);
     setLocation(parse());
-  }, [parse, previousLocations]);
+  }, [parse, previousLocations, view]);
 
   const state: CollectionState<Query, Response> = {
     location,
@@ -409,6 +471,11 @@ export function EmployeeListView({
       )
     ) {
       setDraftError("検索条件の前後に空白を含めないでください。");
+      return;
+    }
+    const queryError = draft.q ? validateBoundedQuery(draft.q) : null;
+    if (queryError) {
+      setDraftError(queryError);
       return;
     }
     setDraftError(null);
@@ -758,6 +825,11 @@ export function LifecycleListView({
     event.preventDefault();
     if (draft.q.trim() !== draft.q) {
       setDraftError("検索条件の前後に空白を含めないでください。");
+      return;
+    }
+    const queryError = draft.q ? validateBoundedQuery(draft.q) : null;
+    if (queryError) {
+      setDraftError(queryError);
       return;
     }
     if ((draft.effectiveFrom === "") !== (draft.effectiveTo === "")) {

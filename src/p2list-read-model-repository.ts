@@ -333,7 +333,11 @@ export class P2ListReadModelRepository {
       ...suppliedFilters,
       asOf: resolvedAsOf,
     };
-    this.#assertEmployeeProjectionIntegrity(provenance, resolvedAsOf);
+    this.#assertEmployeeProjectionIntegrity(
+      provenance,
+      resolvedAsOf,
+      employeeId,
+    );
     const rows = this.#queryEmployees({
       actor,
       provenance,
@@ -425,9 +429,15 @@ export class P2ListReadModelRepository {
       256,
       "invalid_filter",
     );
+    const validatedRows = provenance.has(
+      "transaction_request",
+      transactionRequestId,
+    )
+      ? this.#loadValidatedLifecycleRows(provenance, [transactionRequestId])
+      : [];
     const rows = this.#queryLifecycleRows({
       actor,
-      validatedRows: this.#loadValidatedLifecycleRows(provenance),
+      validatedRows,
       filters: {},
       sort: "requestedAt",
       direction: "desc",
@@ -469,6 +479,7 @@ export class P2ListReadModelRepository {
   #assertEmployeeProjectionIntegrity(
     provenance: P2ListVerifiedSyntheticDataset,
     asOf: string,
+    employeeId?: string,
   ): void {
     const personIds = provenance.values("person");
     const employmentIds = provenance.values("employment");
@@ -511,9 +522,18 @@ export class P2ListReadModelRepository {
           AND ${employmentPredicate}
           AND employment.start_date <= ?
           AND (employment.end_date IS NULL OR employment.end_date >= ?)
+          ${employeeId === undefined ? "" : "AND employment.employment_code = ?"}
         GROUP BY employment.id
       `,
-      [...assignmentParameters, asOf, asOf, ...sourceParameters, asOf, asOf],
+      [
+        ...assignmentParameters,
+        asOf,
+        asOf,
+        ...sourceParameters,
+        asOf,
+        asOf,
+        ...(employeeId === undefined ? [] : [employeeId]),
+      ],
     );
     for (const row of rows) {
       const assignmentCount = requireDatabaseNumber(row.assignment_count);
@@ -627,8 +647,11 @@ export class P2ListReadModelRepository {
 
   #loadValidatedLifecycleRows(
     provenance: P2ListVerifiedSyntheticDataset,
+    requestedTransactionRequestIds?: readonly string[],
   ): ValidatedLifecycleRow[] {
-    const transactionRequestIds = provenance.values("transaction_request");
+    const transactionRequestIds =
+      requestedTransactionRequestIds ??
+      provenance.values("transaction_request");
     if (transactionRequestIds.length === 0) {
       return [];
     }
