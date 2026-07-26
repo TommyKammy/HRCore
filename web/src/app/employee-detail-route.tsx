@@ -51,6 +51,17 @@ export function EmployeeDetailRoute({
       createP2ListRequestInit(personaId, controller.signal),
     )
       .then((response) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (
+          response.item.employeeId !== employeeId ||
+          (asOf !== null && response.asOf !== asOf)
+        ) {
+          throw new ApiClientError(
+            "Employee detail response did not match the requested resource.",
+          );
+        }
         setState({
           employee: response.item,
           loading: false,

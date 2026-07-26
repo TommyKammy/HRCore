@@ -258,6 +258,39 @@ describe("employee API client", () => {
     );
   });
 
+  it("rejects additional properties in bounded list items", async () => {
+    const employeeItem = {
+      personId: "person-001",
+      employeeId: "EMP-001",
+      displayName: "Synthetic Employee",
+      employmentStatus: "active",
+      organizationCode: "ORG-001",
+      positionCode: "POS-001",
+      hireDate: "2026-01-01",
+      terminationDate: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          ...employeeListResponse,
+          items: [{ ...employeeItem, payload: { private: true } }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          ...lifecycleListResponse,
+          items: [{ ...lifecycleListItem, notes: "private" }],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchEmployees()).rejects.toBeInstanceOf(ApiClientError);
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+  });
+
   it("accepts every contract-valid page limit", async () => {
     vi.stubGlobal(
       "fetch",

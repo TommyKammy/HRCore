@@ -34,6 +34,18 @@ describe("bounded list URL query state", () => {
     ]);
   });
 
+  it.each(["25.0", "0x19", "%2025%20"])(
+    "rejects noncanonical page size %s",
+    (limit) => {
+      const parsed = parseEmployeeListQuery(`?view=employees&limit=${limit}`);
+
+      expect(parsed.query.limit).toBe(25);
+      expect(parsed.errors).toEqual([
+        "表示件数は 25、50、100 のいずれかを指定してください。",
+      ]);
+    },
+  );
+
   it("parses lifecycle filters and rejects reversed date ranges", () => {
     const parsed = parseLifecycleListQuery(
       "?view=lifecycle&requestType=onboarding,termination&status=submitted,approved&subjectEmployeeId=EMP-001&organizationCode=ORG-001&decidedBy=approver-001&requestedFrom=2026-08-20T00%3A00%3A00.000Z&requestedTo=2026-08-01T00%3A00%3A00.000Z&effectiveFrom=2026-08-20&effectiveTo=2026-08-01&correlationId=correlation-001",

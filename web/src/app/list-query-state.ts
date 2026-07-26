@@ -145,6 +145,10 @@ function readPageSize(
     errors.push("表示件数が空です。");
     return 25;
   }
+  if (!/^[1-9]\d*$/u.test(value)) {
+    errors.push("表示件数は 25、50、100 のいずれかを指定してください。");
+    return 25;
+  }
   const parsed = Number(value);
   if (!pageSizes.includes(parsed as (typeof pageSizes)[number])) {
     errors.push("表示件数は 25、50、100 のいずれかを指定してください。");

@@ -162,6 +162,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  allowedKeys: ReadonlySet<string>,
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === allowedKeys.size &&
+    keys.every((key) => allowedKeys.has(key))
+  );
+}
+
 function isNullableString(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
 }
@@ -248,6 +259,7 @@ const employeeFields = new Set([
 function isEmployeeListItem(value: unknown): value is EmployeeListItem {
   return (
     isRecord(value) &&
+    hasExactKeys(value, employeeFields) &&
     typeof value.personId === "string" &&
     typeof value.employeeId === "string" &&
     typeof value.displayName === "string" &&
@@ -316,6 +328,7 @@ function isLifecycleRequestListItem(
 ): value is LifecycleRequestListItem {
   return (
     isRecord(value) &&
+    hasExactKeys(value, lifecycleFields) &&
     typeof value.transactionRequestId === "string" &&
     lifecycleRequestTypes.has(String(value.requestType)) &&
     lifecycleStatuses.has(String(value.status)) &&
