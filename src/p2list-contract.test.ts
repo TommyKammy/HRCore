@@ -597,6 +597,26 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     p2ListRoleActionMatrix.hrOperator.employeeList.requiredPermission,
     p2ListPermissions.employeeListRead,
   );
+  assert.deepEqual(
+    p2ListRoleActionMatrix.hrOperator.employeeDetail.requiredPermissions,
+    [p2ListPermissions.employeeListRead, p2ListPermissions.employeeDetailRead],
+  );
+  assert.deepEqual(
+    p2ListRoleActionMatrix.hrOperator.lifecycleRequestDetail
+      .requiredPermissions,
+    [
+      p2ListPermissions.lifecycleRequestListRead,
+      p2ListPermissions.lifecycleRequestDetailRead,
+    ],
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.hrOpsSupport.employeeDetail.uiVisible,
+    true,
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.hrOpsSupport.lifecycleRequestDetail.uiVisible,
+    false,
+  );
   assert.equal(p2ListRoleActionMatrix.approver.employeeList.uiVisible, false);
   assert.equal(
     p2ListRoleActionMatrix.approver.employeeList.requiredPermission,
@@ -752,14 +772,14 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.ok(lifecycleDetail);
   assert.ok(employeeExport);
   assert.ok(lifecycleExport);
-  assert.equal(
-    employeeDetail["x-hrcore-required-permission"],
+  assert.deepEqual(employeeDetail["x-hrcore-required-permissions"], [
     p2ListPermissions.employeeListRead,
-  );
-  assert.equal(
-    lifecycleDetail["x-hrcore-required-permission"],
+    p2ListPermissions.employeeDetailRead,
+  ]);
+  assert.deepEqual(lifecycleDetail["x-hrcore-required-permissions"], [
     p2ListPermissions.lifecycleRequestListRead,
-  );
+    p2ListPermissions.lifecycleRequestDetailRead,
+  ]);
 
   assert.deepEqual(parameterNames(employeeOperation), [
     ...p2ListEmployeeFilters,

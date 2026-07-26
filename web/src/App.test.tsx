@@ -316,6 +316,103 @@ describe("App shell", () => {
     expect(screen.queryByText("外部ID / 連携状態")).not.toBeInTheDocument();
   });
 
+  it("remounts employee detail before loading a different persona scope", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employee&employeeId=EMP-SCOPED-001",
+    );
+    vi.stubEnv(
+      "VITE_P2LIST_HR_OPERATOR_TOKEN",
+      "bounded-local-hr-operator-token-000001",
+    );
+    vi.stubEnv(
+      "VITE_P2LIST_SUPPORT_TOKEN",
+      "bounded-local-support-token-000000000001",
+    );
+    let releaseSupport: ((response: Response) => void) | undefined;
+    const supportResponse = new Promise<Response>((resolve) => {
+      releaseSupport = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).startsWith("/employees/EMP-SCOPED-001")) {
+          const authorization = new Headers(init?.headers).get("authorization");
+          if (authorization?.includes("support-token")) {
+            return supportResponse;
+          }
+          return Response.json({
+            item: {
+              personId: "person-operator-detail",
+              employeeId: "EMP-SCOPED-001",
+              displayName: "Operator Scope Detail",
+              employmentStatus: "active",
+              organizationCode: "ORG-OPERATOR",
+              positionCode: "POS-OPERATOR",
+              hireDate: "2026-01-01",
+              terminationDate: null,
+            },
+            asOf: "2026-07-26",
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "operator-detail-correlation",
+          });
+        }
+        return Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        });
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Operator Scope Detail" }),
+    ).toBeVisible();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Operator Scope Detail" }),
+    ).not.toBeInTheDocument();
+
+    releaseSupport?.(
+      Response.json({
+        item: {
+          personId: "person-support-detail",
+          employeeId: "EMP-SCOPED-001",
+          displayName: "Support Scope Detail",
+          employmentStatus: "active",
+          organizationCode: "ORG-SUPPORT",
+          positionCode: "POS-SUPPORT",
+          hireDate: "2026-01-01",
+          terminationDate: null,
+        },
+        asOf: "2026-07-26",
+        authorization: {
+          dataScope: "bounded",
+          maskedFields: [],
+          readiness: "bounded_synthetic_only_not_production_ready",
+        },
+        correlationId: "support-detail-correlation",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Support Scope Detail" }),
+    ).toBeVisible();
+  });
+
   it("rehydrates a lifecycle detail URL through the authorized detail API", async () => {
     window.history.replaceState(
       null,

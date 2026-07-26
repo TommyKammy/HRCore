@@ -118,9 +118,23 @@ export interface P2ListEmployeeQuery extends P2ListQueryBase {
   acceptedAt: string;
 }
 
+export interface P2ListEmployeeDetailQuery {
+  actor: P2ListActorContext;
+  provenance: P2ListVerifiedSyntheticDataset;
+  employeeId: string;
+  asOf?: string;
+  acceptedAt: string;
+}
+
 export interface P2ListLifecycleQuery extends P2ListQueryBase {
   filters?: P2ListLifecycleFilters;
   sort?: LifecycleSort;
+}
+
+export interface P2ListLifecycleDetailQuery {
+  actor: P2ListActorContext;
+  provenance: P2ListVerifiedSyntheticDataset;
+  transactionRequestId: string;
 }
 
 interface NormalizedActorContext {
@@ -287,6 +301,56 @@ export class P2ListReadModelRepository {
     );
   }
 
+  getEmployee(input: P2ListEmployeeDetailQuery): {
+    item: P2ListEmployeeItem | null;
+    appliedFilters: P2ListEmployeeAppliedFilters;
+  } {
+    const provenance = requireVerifiedDataset(input?.provenance);
+    const actor = normalizeActorContext(
+      input?.actor,
+      [
+        p2ListPermissions.employeeListRead,
+        p2ListPermissions.employeeDetailRead,
+      ],
+      false,
+    );
+    const employeeId = requireBoundedString(
+      input?.employeeId,
+      1,
+      128,
+      "invalid_filter",
+    );
+    const suppliedFilters = normalizeEmployeeFilters({
+      employeeId,
+      ...(input?.asOf ? { asOf: input.asOf } : {}),
+    });
+    const resolvedAsOf = resolveEmployeeAsOf(
+      suppliedFilters.asOf,
+      input?.acceptedAt,
+      undefined,
+    );
+    const appliedFilters: P2ListEmployeeAppliedFilters = {
+      ...suppliedFilters,
+      asOf: resolvedAsOf,
+    };
+    this.#assertEmployeeProjectionIntegrity(provenance, resolvedAsOf);
+    const rows = this.#queryEmployees({
+      actor,
+      provenance,
+      filters: appliedFilters,
+      sort: "employeeId",
+      direction: "asc",
+      limit: 1,
+    });
+    if (rows.length > 1) {
+      throw dataScopeDenied();
+    }
+    return {
+      item: rows[0] ? employeeItemFromRow(rows[0]) : null,
+      appliedFilters,
+    };
+  }
+
   listLifecycleRequests(
     input: P2ListLifecycleQuery,
   ): P2ListPage<P2ListLifecycleItem, P2ListLifecycleFilters> {
@@ -341,6 +405,39 @@ export class P2ListReadModelRepository {
       filterFingerprint,
       this.#cursors,
     );
+  }
+
+  getLifecycleRequest(
+    input: P2ListLifecycleDetailQuery,
+  ): P2ListLifecycleItem | null {
+    const provenance = requireVerifiedDataset(input?.provenance);
+    const actor = normalizeActorContext(
+      input?.actor,
+      [
+        p2ListPermissions.lifecycleRequestListRead,
+        p2ListPermissions.lifecycleRequestDetailRead,
+      ],
+      true,
+    );
+    const transactionRequestId = requireBoundedString(
+      input?.transactionRequestId,
+      2,
+      256,
+      "invalid_filter",
+    );
+    const rows = this.#queryLifecycleRows({
+      actor,
+      validatedRows: this.#loadValidatedLifecycleRows(provenance),
+      filters: {},
+      sort: "requestedAt",
+      direction: "desc",
+      limit: 1,
+      exactTransactionRequestId: transactionRequestId,
+    });
+    if (rows.length > 1) {
+      throw dataScopeDenied();
+    }
+    return rows[0] ? lifecycleItemFromRow(rows[0]) : null;
   }
 
   #readCursor(
@@ -822,6 +919,7 @@ export class P2ListReadModelRepository {
     direction: P2ListDirection;
     limit: number;
     cursorState?: Readonly<P2ListCursorState>;
+    exactTransactionRequestId?: string;
   }): ValidatedLifecycleRow[] {
     const {
       actor,
@@ -831,6 +929,7 @@ export class P2ListReadModelRepository {
       direction,
       limit,
       cursorState,
+      exactTransactionRequestId,
     } = options;
     if (validatedRows.length === 0) {
       return [];
@@ -870,6 +969,10 @@ export class P2ListReadModelRepository {
         parameters,
       ),
     ];
+    if (exactTransactionRequestId) {
+      clauses.push("transaction_request_id = ?");
+      parameters.push(exactTransactionRequestId);
+    }
     if (filters.requestType?.length) {
       clauses.push(
         inPredicate("request_type", filters.requestType, parameters),
@@ -1074,7 +1177,7 @@ function normalizeLifecycleFilters(
 
 function normalizeActorContext(
   input: P2ListActorContext,
-  requiredPermission: string,
+  requiredPermissions: string | readonly string[],
   allowCorrelationScope: boolean,
 ): NormalizedActorContext {
   const actor = requireRecord(
@@ -1101,10 +1204,17 @@ function normalizeActorContext(
     100,
     "actor_context_required",
   );
-  if (!permissions.includes(requiredPermission)) {
+  const permissionsRequired = Array.isArray(requiredPermissions)
+    ? requiredPermissions
+    : [requiredPermissions];
+  if (
+    permissionsRequired.some(
+      (requiredPermission) => !permissions.includes(requiredPermission),
+    )
+  ) {
     throw new P2ListReadModelError(
       "permission_denied",
-      "The list permission is required.",
+      "The required permission is missing.",
     );
   }
   const dataScope = normalizeP2ListDataScope(actor.dataScope);

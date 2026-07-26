@@ -62,7 +62,9 @@ export interface P2ListEmployeeAuditEvent {
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
-  evaluatedPermission: typeof p2ListPermissions.employeeListRead;
+  evaluatedPermission:
+    | typeof p2ListPermissions.employeeListRead
+    | typeof p2ListPermissions.employeeDetailRead;
   dataScopeId?: string;
   filterFingerprint?: string;
   sort?: string;
@@ -219,19 +221,14 @@ export function registerP2ListEmployeeRoutes(
           "invalid_filter",
         );
         const detailQuery = parseEmployeeDetailQuery(request.query);
-        const page = runtime.repository.listEmployees({
+        const detail = runtime.repository.getEmployee({
           actor,
           provenance: runtime.provenance,
           acceptedAt: occurredAt,
-          filters: {
-            employeeId,
-            ...(detailQuery.asOf ? { asOf: detailQuery.asOf } : {}),
-          },
-          limit: 1,
+          employeeId,
+          ...(detailQuery.asOf ? { asOf: detailQuery.asOf } : {}),
         });
-        const item =
-          page.items.find((candidate) => candidate.employeeId === employeeId) ??
-          null;
+        const item = detail.item;
         if (!item) {
           await emitAuditEvent(runtime, {
             eventId: randomUUID(),
@@ -239,7 +236,7 @@ export function registerP2ListEmployeeRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: actor.actorId,
-            evaluatedPermission: p2ListPermissions.employeeListRead,
+            evaluatedPermission: p2ListPermissions.employeeDetailRead,
             dataScopeId: fingerprintP2ListValue(
               normalizeP2ListDataScope(actor.dataScope),
             ),
@@ -262,11 +259,11 @@ export function registerP2ListEmployeeRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
-          evaluatedPermission: p2ListPermissions.employeeListRead,
+          evaluatedPermission: p2ListPermissions.employeeDetailRead,
           dataScopeId: fingerprintP2ListValue(
             normalizeP2ListDataScope(actor.dataScope),
           ),
-          filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
+          filterFingerprint: fingerprintP2ListValue(detail.appliedFilters),
           rowCount: 1,
           resourceType: "employee",
           correlationId,
@@ -274,7 +271,7 @@ export function registerP2ListEmployeeRoutes(
         });
         return reply.send({
           item,
-          asOf: page.appliedFilters.asOf,
+          asOf: detail.appliedFilters.asOf,
           authorization: {
             dataScope: "bounded" as const,
             maskedFields: [] as string[],
@@ -293,7 +290,7 @@ export function registerP2ListEmployeeRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: safeActorId(actor),
-            evaluatedPermission: p2ListPermissions.employeeListRead,
+            evaluatedPermission: p2ListPermissions.employeeDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
             resourceType: "employee",
             correlationId,

@@ -102,4 +102,39 @@ describe("bounded list URL query state", () => {
     expect(employee.query.q).toBeUndefined();
     expect(lifecycle.query.q).toBeUndefined();
   });
+
+  it("rejects unknown and duplicate collection URL parameters", () => {
+    const employee = parseEmployeeListQuery(
+      "?view=employees&organization=ORG-001&q=first&q=second",
+    );
+    const lifecycle = parseLifecycleListQuery(
+      "?view=lifecycle&requestStatus=submitted",
+    );
+
+    expect(employee.errors).toContain(
+      "organization は対応していない検索条件です。",
+    );
+    expect(employee.errors).toContain("q を複数回指定することはできません。");
+    expect(lifecycle.errors).toContain(
+      "requestStatus は対応していない検索条件です。",
+    );
+  });
+
+  it("accepts the full 100-character search contract and rejects 101 characters", () => {
+    const validQuery = "A".repeat(100);
+    const invalidQuery = "B".repeat(101);
+
+    expect(
+      parseEmployeeListQuery(`?view=employees&q=${validQuery}`).errors,
+    ).toEqual([]);
+    expect(
+      parseLifecycleListQuery(`?view=lifecycle&q=${validQuery}`).errors,
+    ).toEqual([]);
+    expect(
+      parseEmployeeListQuery(`?view=employees&q=${invalidQuery}`).errors,
+    ).toContain("q は 100 文字以内で指定してください。");
+    expect(
+      parseLifecycleListQuery(`?view=lifecycle&q=${invalidQuery}`).errors,
+    ).toContain("q は 100 文字以内で指定してください。");
+  });
 });

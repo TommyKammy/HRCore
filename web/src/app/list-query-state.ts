@@ -70,6 +70,23 @@ const lifecycleUrlKeys = [
   "cursor",
 ] as const;
 
+function validateParameterNames(
+  parameters: URLSearchParams,
+  allowedKeys: readonly string[],
+  errors: string[],
+): void {
+  const allowed = new Set(["view", ...allowedKeys]);
+  for (const key of new Set(parameters.keys())) {
+    if (!allowed.has(key)) {
+      errors.push(`${key} は対応していない検索条件です。`);
+      continue;
+    }
+    if (parameters.getAll(key).length > 1) {
+      errors.push(`${key} を複数回指定することはできません。`);
+    }
+  }
+}
+
 function readAllowedValue<const Value extends string>(
   parameters: URLSearchParams,
   key: string,
@@ -227,8 +244,9 @@ export function parseEmployeeListQuery(
 ): ParsedListQuery<EmployeeListQuery> {
   const parameters = new URLSearchParams(search);
   const errors: string[] = [];
+  validateParameterNames(parameters, employeeUrlKeys, errors);
   const query: EmployeeListQuery = {
-    q: readText(parameters, "q", 80, errors),
+    q: readText(parameters, "q", 100, errors),
     employeeId: readText(parameters, "employeeId", 64, errors),
     employmentStatus: readAllowedValue(
       parameters,
@@ -255,6 +273,7 @@ export function parseLifecycleListQuery(
 ): ParsedListQuery<LifecycleRequestListQuery> {
   const parameters = new URLSearchParams(search);
   const errors: string[] = [];
+  validateParameterNames(parameters, lifecycleUrlKeys, errors);
   const query: LifecycleRequestListQuery = {
     requestType: readAllowedValues(
       parameters,
@@ -264,7 +283,7 @@ export function parseLifecycleListQuery(
     ),
     status: readAllowedValues(parameters, "status", lifecycleStatuses, errors),
     subjectEmployeeId: readText(parameters, "subjectEmployeeId", 128, errors),
-    q: readText(parameters, "q", 80, errors),
+    q: readText(parameters, "q", 100, errors),
     organizationCode: readText(parameters, "organizationCode", 128, errors),
     decidedBy: readText(parameters, "decidedBy", 128, errors),
     requestedFrom: readTimestamp(parameters, "requestedFrom", errors),

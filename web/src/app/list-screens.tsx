@@ -474,7 +474,7 @@ export function EmployeeListView({
             <Search size={16} aria-hidden="true" />
             <input
               value={draft.q}
-              maxLength={80}
+              maxLength={100}
               placeholder="許可された検索語"
               onChange={(event) =>
                 setDraft((current) => ({
@@ -844,7 +844,7 @@ export function LifecycleListView({
             <Search size={16} aria-hidden="true" />
             <input
               value={draft.q}
-              maxLength={80}
+              maxLength={100}
               placeholder="許可された検索語"
               onChange={(event) =>
                 setDraft((current) => ({

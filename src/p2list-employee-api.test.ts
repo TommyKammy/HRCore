@@ -40,6 +40,13 @@ const authorizedActor: P2ListActorContext = {
   permissions: [p2ListPermissions.employeeListRead],
   dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
 };
+const authorizedDetailActor: P2ListActorContext = {
+  ...authorizedActor,
+  permissions: [
+    p2ListPermissions.employeeListRead,
+    p2ListPermissions.employeeDetailRead,
+  ],
+};
 
 test("GET /employees suppresses raw query values from request logs", async (t) => {
   let logs = "";
@@ -611,7 +618,9 @@ test("GET /employees rejects unsupported and unbounded query inputs", async (t) 
 });
 
 test("GET /employees/:employeeId authorizes detail and emits detail-open evidence", async (t) => {
-  const harness = await createHarness(t, 1);
+  const harness = await createHarness(t, 1, {
+    authorized: authorizedDetailActor,
+  });
   if (!harness) return;
 
   const response = await harness.app.inject({
@@ -629,13 +638,37 @@ test("GET /employees/:employeeId authorizes detail and emits detail-open evidenc
     "employee_detail.opened_from_list",
   );
   assert.equal(harness.auditEvents[0]?.rowCount, 1);
+  assert.equal(
+    harness.auditEvents[0]?.evaluatedPermission,
+    p2ListPermissions.employeeDetailRead,
+  );
   assert.doesNotMatch(JSON.stringify(harness.auditEvents), /EMP-001/u);
+});
+
+test("GET /employees/:employeeId denies list-only actors", async (t) => {
+  const harness = await createHarness(t, 1);
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/employees/EMP-001",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.json().code, "permission_denied");
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(
+    harness.auditEvents[0]?.evaluatedPermission,
+    p2ListPermissions.employeeDetailRead,
+  );
 });
 
 test("GET /employees/:employeeId does not expose out-of-scope records", async (t) => {
   const harness = await createHarness(t, 1, {
     restricted: {
-      ...authorizedActor,
+      ...authorizedDetailActor,
       actorId: "actor-restricted",
       dataScope: { organizationCodes: ["ORG-OTHER"] },
     },

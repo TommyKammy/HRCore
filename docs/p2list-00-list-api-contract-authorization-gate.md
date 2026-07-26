@@ -309,13 +309,20 @@ never raw/detail payload fields.
 Permissions:
 
 - `employee:list:read`
+- `employee:detail:read`
 - `employee:list:export`
 - `lifecycle-request:list:read`
+- `lifecycle-request:detail:read`
 - `lifecycle-request:list:export`
 - `support:correlation:read`
 - `mvp_d.synthetic_csv_download`
 
 Every read and export requires both permission and a supported data scope.
+Detail API responses additionally require the resource-specific list-read and
+detail-read permissions. HR operator receives both detail permissions; HR
+Ops/support receives employee detail permission only. Approver and bounded
+admin receive neither detail permission. UI route visibility is not an
+authorization source of truth.
 Export additionally requires the corresponding list-read permission, the
 resource-specific export permission, and `mvp_d.synthetic_csv_download`.
 Filtering lifecycle data by `correlationId` additionally requires

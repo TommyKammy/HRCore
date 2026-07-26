@@ -68,7 +68,9 @@ export interface P2ListLifecycleAuditEvent {
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
-  evaluatedPermission: typeof p2ListPermissions.lifecycleRequestListRead;
+  evaluatedPermission:
+    | typeof p2ListPermissions.lifecycleRequestListRead
+    | typeof p2ListPermissions.lifecycleRequestDetailRead;
   dataScopeId?: string;
   filterFingerprint?: string;
   sort?: string;
@@ -240,16 +242,11 @@ export function registerP2ListLifecycleRoutes(
           256,
           "invalid_filter",
         );
-        const page = runtime.repository.listLifecycleRequests({
+        const item = runtime.repository.getLifecycleRequest({
           actor,
           provenance: runtime.provenance,
-          filters: { q: requestId },
-          limit: 1,
+          transactionRequestId: requestId,
         });
-        const item =
-          page.items.find(
-            (candidate) => candidate.transactionRequestId === requestId,
-          ) ?? null;
         if (!item) {
           await runtime.emitAuditEvent({
             eventId: randomUUID(),
@@ -257,7 +254,7 @@ export function registerP2ListLifecycleRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: actor.actorId,
-            evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
+            evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: fingerprintP2ListValue(
               normalizeP2ListDataScope(actor.dataScope),
             ),
@@ -280,11 +277,13 @@ export function registerP2ListLifecycleRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
-          evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
+          evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
           dataScopeId: fingerprintP2ListValue(
             normalizeP2ListDataScope(actor.dataScope),
           ),
-          filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
+          filterFingerprint: fingerprintP2ListValue({
+            transactionRequestId: requestId,
+          }),
           rowCount: 1,
           resourceType: "lifecycleRequest",
           correlationId,
@@ -310,7 +309,7 @@ export function registerP2ListLifecycleRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: safeActorId(actor),
-            evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
+            evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
             resourceType: "lifecycleRequest",
             correlationId,

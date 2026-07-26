@@ -113,10 +113,11 @@ describe("employee list screen", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("employee-list-correlation")).toBeInTheDocument();
 
-    await user.type(
-      screen.getByRole("textbox", { name: "氏名・従業員ID" }),
-      "Synthetic",
-    );
+    const searchInput = screen.getByRole("textbox", {
+      name: "氏名・従業員ID",
+    });
+    expect(searchInput).toHaveAttribute("maxlength", "100");
+    await user.type(searchInput, "Synthetic");
     await user.click(screen.getByRole("button", { name: "検索" }));
 
     await waitFor(() =>
@@ -298,6 +299,9 @@ describe("lifecycle list screen", () => {
       await screen.findByText("Synthetic Lifecycle Subject"),
     ).toBeVisible();
     expect(screen.getByText(/2026\/07\/01 00:00/u)).toBeVisible();
+    expect(
+      screen.getByRole("textbox", { name: "対象者・従業員ID" }),
+    ).toHaveAttribute("maxlength", "100");
     await user.selectOptions(
       screen.getByRole("combobox", { name: "手続き種別" }),
       "onboarding",

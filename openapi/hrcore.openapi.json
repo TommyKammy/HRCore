@@ -973,10 +973,13 @@
       "get": {
         "operationId": "getBoundedEmployeeDetail",
         "summary": "Get one authorized bounded synthetic employee",
-        "description": "Resolves one employee through the same server-authoritative permission, scope, provenance, and effective-date controls as the bounded employee list, then emits employee_detail.opened_from_list audit evidence only after a successful authorized response.",
+        "description": "Resolves one employee through independent server-authoritative list-read plus detail-read permissions, scope, provenance, and effective-date controls, then emits employee_detail.opened_from_list audit evidence only after a successful authorized response.",
         "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
         "x-hrcore-implementation-status": "bounded_runtime",
-        "x-hrcore-required-permission": "employee:list:read",
+        "x-hrcore-required-permissions": [
+          "employee:list:read",
+          "employee:detail:read"
+        ],
         "parameters": [
           {
             "name": "employeeId",
@@ -1596,10 +1599,13 @@
       "get": {
         "operationId": "getBoundedLifecycleRequestDetail",
         "summary": "Get one authorized bounded synthetic lifecycle request",
-        "description": "Resolves one lifecycle request through the same server-authoritative permission, scope, and provenance controls as the bounded lifecycle list, then emits lifecycle_request_detail.opened_from_list audit evidence only after a successful authorized response.",
+        "description": "Resolves one lifecycle request by exact transaction request ID through independent server-authoritative list-read plus detail-read permissions, scope, and provenance controls, then emits lifecycle_request_detail.opened_from_list audit evidence only after a successful authorized response.",
         "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
         "x-hrcore-implementation-status": "bounded_runtime",
-        "x-hrcore-required-permission": "lifecycle-request:list:read",
+        "x-hrcore-required-permissions": [
+          "lifecycle-request:list:read",
+          "lifecycle-request:detail:read"
+        ],
         "parameters": [
           {
             "name": "requestId",

@@ -56,6 +56,13 @@ const lifecycleActor: P2ListActorContext = {
     ],
   },
 };
+const lifecycleDetailActor: P2ListActorContext = {
+  ...lifecycleActor,
+  permissions: [
+    ...lifecycleActor.permissions,
+    p2ListPermissions.lifecycleRequestDetailRead,
+  ],
+};
 type EmployeePage = P2ListPage<
   P2ListEmployeeItem,
   P2ListEmployeeAppliedFilters
@@ -725,6 +732,47 @@ test("P2LIST lifecycle repository normalizes all persisted request types and dec
       }),
     "permission_denied",
   );
+});
+
+test("P2LIST lifecycle detail resolves an exact request ID despite broad-search collisions", async (t) => {
+  const db = await openTestDatabase(t);
+  if (!db) {
+    return;
+  }
+  const rows = createP2ListLifecycleFixtureRows(2);
+  const targetId = rows[0]!.transactionRequestId;
+  rows[1] = {
+    ...rows[1]!,
+    displayName: `${targetId} unrelated subject`,
+    requestedAt: "2026-07-02T00:00:00.000Z",
+  };
+  seedLifecycleFixtureRows(db, rows);
+  const provenance = verifyP2ListSyntheticDatasetManifest(
+    createP2ListFixtureManifest(
+      {
+        datasetReference: "lifecycle-detail-exact-id",
+        lifecycleRequests: rows,
+      },
+      manifestSecret,
+    ),
+    manifestSecret,
+  );
+  const repository = new P2ListReadModelRepository(db, createCursorManager());
+
+  const broadPage = repository.listLifecycleRequests({
+    actor: lifecycleActor,
+    provenance,
+    filters: { q: targetId },
+    limit: 1,
+  });
+  assert.notEqual(broadPage.items[0]?.transactionRequestId, targetId);
+
+  const detail = repository.getLifecycleRequest({
+    actor: lifecycleDetailActor,
+    provenance,
+    transactionRequestId: targetId,
+  });
+  assert.equal(detail?.transactionRequestId, targetId);
 });
 
 test("P2LIST lifecycle keysets cover 0/1/25/26/100/101 with equal sort values", async (t) => {

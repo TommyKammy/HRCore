@@ -341,14 +341,16 @@ export function AppShell() {
     }
 
     if (activeArea?.id === "employee" && selectedPersonaId) {
+      const employeeId = readRouteParameter("employeeId");
+      const asOf = readRouteParameter("asOf");
       return (
         <EmployeeDetailRoute
+          key={`${selectedPersonaId}:${employeeId ?? "fixture"}:${asOf ?? ""}`}
           personaId={selectedPersonaId}
-          employeeId={readRouteParameter("employeeId")}
-          asOf={readRouteParameter("asOf")}
+          employeeId={employeeId}
+          asOf={asOf}
           useLegacyFixture={
-            readRouteParameter("employeeId") === null ||
-            readRouteParameter("source") === "fixture"
+            employeeId === null || readRouteParameter("source") === "fixture"
           }
           onOpenTransfer={
             canNavigateTo("transfer") ? () => navigateTo("transfer") : null
@@ -389,6 +391,7 @@ export function AppShell() {
       if (requestId) {
         return selectedPersonaId ? (
           <LifecycleDetailRoute
+            key={`${selectedPersonaId}:${requestId}`}
             personaId={selectedPersonaId}
             requestId={requestId}
             expectedType="onboarding"
@@ -418,6 +421,7 @@ export function AppShell() {
       if (requestId) {
         return selectedPersonaId ? (
           <LifecycleDetailRoute
+            key={`${selectedPersonaId}:${requestId}`}
             personaId={selectedPersonaId}
             requestId={requestId}
             expectedType="transfer"
@@ -447,6 +451,7 @@ export function AppShell() {
       if (requestId) {
         return selectedPersonaId ? (
           <LifecycleDetailRoute
+            key={`${selectedPersonaId}:${requestId}`}
             personaId={selectedPersonaId}
             requestId={requestId}
             expectedType="termination"

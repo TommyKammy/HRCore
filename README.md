@@ -84,6 +84,10 @@ characters, and the actor object supplies `actorId`, `tenantId`, `permissions`,
 and bounded `dataScope`. The same server-owned manifest, actor registry, and
 cursor manager authorize both collection APIs. Browser persona state, query
 parameters, and request headers never supply permissions or scope.
+Detail navigation requires both the matching `*:list:read` permission and the
+independent `employee:detail:read` or `lifecycle-request:detail:read`
+permission. HR Ops/support is intentionally not granted lifecycle detail-open
+authority by the bounded role contract.
 The bounded visual redesign contract is recorded in [P2Z WebUI Visual Alignment Contract](docs/p2z-webui-visual-alignment-contract.md).
 The browser-based visual UAT scenarios and screenshot matrix are recorded in [P2Z WebUI Visual UAT Package](docs/p2z-webui-visual-uat-package.md).
 
