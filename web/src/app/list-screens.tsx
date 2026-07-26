@@ -6,8 +6,10 @@ import {
   RefreshCw,
   Search,
   Users,
+  X,
 } from "lucide-react";
 
+import { p2ListMaximumDateRangeDays } from "../../../src/p2list-contract";
 import {
   type EmployeeListItem,
   type EmployeeListQuery,
@@ -24,6 +26,7 @@ import type { BoundedPersonaId } from "../persona";
 import {
   defaultEmployeeListQuery,
   defaultLifecycleListQuery,
+  isLifecycleRangeTooWide,
   type ListView,
   type ParsedListQuery,
   parseEmployeeListQuery,
@@ -33,6 +36,8 @@ import {
 } from "./list-query-state";
 import { employeeStatusClass, lifecycleStatusClass } from "./record-status";
 import { LoadingState } from "./shared";
+
+const presetPageSizes = [25, 50, 100] as const;
 
 type CollectionErrorKind = "denied" | "invalid" | "network";
 
@@ -437,6 +442,12 @@ function lifecycleEmployeeId(
   return maskedFields.includes("subjectEmployeeId") ? "masked" : "未採番";
 }
 
+function pageSizeOptions(limit: number) {
+  return presetPageSizes.includes(limit as (typeof presetPageSizes)[number])
+    ? presetPageSizes
+    : [...presetPageSizes, limit].sort((left, right) => left - right);
+}
+
 interface EmployeeListDraft {
   q: string;
   employeeId: string;
@@ -649,9 +660,11 @@ export function EmployeeListView({
               }))
             }
           >
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
+            {pageSizeOptions(draft.limit).map((limit) => (
+              <option value={limit} key={limit}>
+                {limit}
+              </option>
+            ))}
           </select>
         </label>
         <div className="collection-filter-actions">
@@ -874,6 +887,16 @@ export function LifecycleListView({
       setDraftError("適用日の開始日は終了日以前にしてください。");
       return;
     }
+    if (
+      draft.effectiveFrom &&
+      draft.effectiveTo &&
+      isLifecycleRangeTooWide(draft.effectiveFrom, draft.effectiveTo, "date")
+    ) {
+      setDraftError(
+        `適用日の範囲は ${p2ListMaximumDateRangeDays} 日以内で指定してください。`,
+      );
+      return;
+    }
     setDraftError(null);
     const currentQuery = state.location.query;
     applyQuery({
@@ -896,6 +919,63 @@ export function LifecycleListView({
     applyQuery(defaultLifecycleListQuery);
   };
   const maskedFields = state.response?.authorization.maskedFields ?? [];
+  const allRetainedFilters: Array<{
+    key: string;
+    label: string;
+    value: string;
+    clearKeys: Array<keyof LifecycleRequestListQuery>;
+  }> = [
+    {
+      key: "subjectEmployeeId",
+      label: "従業員ID",
+      value: state.location.query.subjectEmployeeId ?? "",
+      clearKeys: ["subjectEmployeeId"],
+    },
+    {
+      key: "organizationCode",
+      label: "組織コード",
+      value: state.location.query.organizationCode ?? "",
+      clearKeys: ["organizationCode"],
+    },
+    {
+      key: "decidedBy",
+      label: "決裁者",
+      value: state.location.query.decidedBy ?? "",
+      clearKeys: ["decidedBy"],
+    },
+    {
+      key: "requestedRange",
+      label: "申請日時",
+      value:
+        state.location.query.requestedFrom && state.location.query.requestedTo
+          ? `${formatDateTime(state.location.query.requestedFrom)} – ${formatDateTime(
+              state.location.query.requestedTo,
+            )}`
+          : (state.location.query.requestedFrom ??
+            state.location.query.requestedTo ??
+            ""),
+      clearKeys: ["requestedFrom", "requestedTo"],
+    },
+    {
+      key: "correlationId",
+      label: "correlation",
+      value: state.location.query.correlationId ?? "",
+      clearKeys: ["correlationId"],
+    },
+  ];
+  const retainedFilters = allRetainedFilters.filter(
+    (filter) => filter.value !== "",
+  );
+
+  const clearRetainedFilter = (
+    clearKeys: Array<keyof LifecycleRequestListQuery>,
+  ) => {
+    const query = { ...state.location.query, cursor: undefined };
+    for (const key of clearKeys) {
+      delete query[key];
+    }
+    applyQuery(query);
+  };
 
   return (
     <div className="collection-view" aria-labelledby="lifecycle-list-heading">
@@ -1043,9 +1123,11 @@ export function LifecycleListView({
               }))
             }
           >
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
+            {pageSizeOptions(draft.limit).map((limit) => (
+              <option value={limit} key={limit}>
+                {limit}
+              </option>
+            ))}
           </select>
         </label>
         <div className="collection-filter-actions">
@@ -1063,6 +1145,31 @@ export function LifecycleListView({
           </p>
         ) : null}
       </form>
+
+      {retainedFilters.length > 0 ? (
+        <div
+          className="collection-active-filters"
+          aria-label="適用中の追加条件"
+        >
+          <strong>追加条件</strong>
+          <div>
+            {retainedFilters.map((filter) => (
+              <span className="collection-filter-chip" key={filter.key}>
+                <span>{filter.label}</span>
+                <code>{filter.value}</code>
+                <button
+                  type="button"
+                  title={`${filter.label}を解除`}
+                  aria-label={`${filter.label}を解除`}
+                  onClick={() => clearRetainedFilter(filter.clearKeys)}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {state.loading ? <LoadingState /> : null}
       {!state.loading && state.error ? (

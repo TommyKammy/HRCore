@@ -29,19 +29,34 @@ describe("bounded list URL query state", () => {
     );
     expect(invalid.errors).toEqual([
       "employmentStatus に許可されていない値が指定されています。",
-      "表示件数は 25、50、100 のいずれかを指定してください。",
+      "表示件数は 1 以上 100 以下で指定してください。",
       "ページ情報が空です。フィルターをリセットしてください。",
     ]);
   });
 
-  it.each(["25.0", "0x19", "%2025%20"])(
+  it.each([1, 10, 100])("accepts contract-valid page size %i", (limit) => {
+    expect(
+      parseEmployeeListQuery(`?view=employees&limit=${limit}`),
+    ).toMatchObject({
+      query: { limit },
+      errors: [],
+    });
+    expect(
+      parseLifecycleListQuery(`?view=lifecycle&limit=${limit}`),
+    ).toMatchObject({
+      query: { limit },
+      errors: [],
+    });
+  });
+
+  it.each(["0", "25.0", "0x19", "%2025%20", "025", "101"])(
     "rejects noncanonical page size %s",
     (limit) => {
       const parsed = parseEmployeeListQuery(`?view=employees&limit=${limit}`);
 
       expect(parsed.query.limit).toBe(25);
       expect(parsed.errors).toEqual([
-        "表示件数は 25、50、100 のいずれかを指定してください。",
+        "表示件数は 1 以上 100 以下で指定してください。",
       ]);
     },
   );
@@ -86,6 +101,23 @@ describe("bounded list URL query state", () => {
     );
     expect(incomplete.errors).toContain(
       "適用日の開始日と終了日を両方指定してください。",
+    );
+  });
+
+  it("enforces the inclusive 366-day lifecycle range bound", () => {
+    const valid = parseLifecycleListQuery(
+      "?view=lifecycle&requestedFrom=2026-01-01T00%3A00%3A00.000Z&requestedTo=2027-01-01T00%3A00%3A00.000Z&effectiveFrom=2026-01-01&effectiveTo=2027-01-01",
+    );
+    expect(valid.errors).toEqual([]);
+
+    const invalid = parseLifecycleListQuery(
+      "?view=lifecycle&requestedFrom=2026-01-01T00%3A00%3A00.000Z&requestedTo=2027-01-02T00%3A00%3A00.000Z&effectiveFrom=2026-01-01&effectiveTo=2027-01-02",
+    );
+    expect(invalid.errors).toContain(
+      "申請日時の範囲は 366 日以内で指定してください。",
+    );
+    expect(invalid.errors).toContain(
+      "適用日の範囲は 366 日以内で指定してください。",
     );
   });
 

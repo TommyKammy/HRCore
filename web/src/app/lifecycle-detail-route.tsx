@@ -53,6 +53,9 @@ export function LifecycleDetailRoute({
       createP2ListRequestInit(personaId, controller.signal),
     )
       .then((response) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         if (
           response.item.transactionRequestId !== requestId ||
           response.item.requestType !== expectedType

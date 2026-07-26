@@ -431,11 +431,29 @@ describe("lifecycle list screen", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not submit an effective-date range over 366 inclusive days", async () => {
+    const fetchMock = vi.fn(async () => Response.json(lifecycleResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<LifecycleListView personaId="approver" onOpenRequest={vi.fn()} />);
+
+    await screen.findByText("Synthetic Lifecycle Subject");
+    await user.type(screen.getByLabelText("適用日（開始）"), "2026-01-01");
+    await user.type(screen.getByLabelText("適用日（終了）"), "2027-01-02");
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    expect(
+      screen.getByText("適用日の範囲は 366 日以内で指定してください。"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves hidden and multi-value lifecycle URL filters on submit", async () => {
     window.history.replaceState(
       null,
       "",
-      "/?view=lifecycle&requestType=onboarding,termination&status=submitted,approved&subjectEmployeeId=EMP-001&organizationCode=ORG-001&decidedBy=approver-001&requestedFrom=2026-07-01T00%3A00%3A00.000Z&requestedTo=2026-07-02T00%3A00%3A00.000Z&correlationId=correlation-001",
+      "/?view=lifecycle&requestType=onboarding,termination&status=submitted,approved&subjectEmployeeId=EMP-001&organizationCode=ORG-001&decidedBy=approver-001&requestedFrom=2026-07-01T00%3A00%3A00.000Z&requestedTo=2026-07-02T00%3A00%3A00.000Z&correlationId=correlation-001&limit=10",
     );
     const fetchMock = vi.fn(async () => Response.json(lifecycleResponse));
     vi.stubGlobal("fetch", fetchMock);
@@ -453,6 +471,23 @@ describe("lifecycle list screen", () => {
       "submitted",
       "approved",
     ]);
+    expect(screen.getByRole("combobox", { name: "表示件数" })).toHaveValue(
+      "10",
+    );
+    const activeFilters = screen.getByLabelText("適用中の追加条件");
+    for (const visibleFilter of [
+      "EMP-001",
+      "ORG-001",
+      "approver-001",
+      "correlation-001",
+    ]) {
+      expect(within(activeFilters).getByText(visibleFilter)).toBeVisible();
+    }
+    expect(
+      within(activeFilters).getByText(
+        /2026\/07\/01 00:00.*2026\/07\/02 00:00/u,
+      ),
+    ).toBeVisible();
     await user.type(
       screen.getByRole("textbox", { name: "対象者・従業員ID" }),
       "Synthetic",
@@ -473,6 +508,12 @@ describe("lifecycle list screen", () => {
     ]) {
       expect(window.location.search).toContain(retained);
     }
+
+    await user.click(screen.getByRole("button", { name: "correlationを解除" }));
+    await waitFor(() =>
+      expect(window.location.search).not.toContain("correlationId="),
+    );
+    expect(window.location.search).toContain("subjectEmployeeId=EMP-001");
   });
 
   it("renders masked employee IDs without substituting request IDs", async () => {

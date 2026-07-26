@@ -647,6 +647,68 @@ td code {
   font-size: 0.76rem;
 }
 
+.collection-active-filters {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.collection-active-filters > strong {
+  flex: 0 0 auto;
+  padding-top: 7px;
+}
+
+.collection-active-filters > div {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.collection-filter-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding-left: 9px;
+  background: var(--surface-subtle);
+}
+
+.collection-filter-chip > span {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.collection-filter-chip code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.collection-filter-chip button {
+  display: inline-grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.collection-filter-chip button:hover {
+  background: var(--surface-selected);
+  color: var(--accent-strong);
+}
+
 .collection-search-field {
   grid-column: span 2;
 }

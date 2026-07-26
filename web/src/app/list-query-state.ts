@@ -3,6 +3,8 @@ import type {
   LifecycleRequestListQuery,
 } from "../api-client";
 import {
+  p2ListMaximumDateRangeDays,
+  p2ListMaximumLimit,
   p2ListMaximumQueryLength,
   p2ListQueryPattern,
 } from "../../../src/p2list-contract";
@@ -44,8 +46,8 @@ const lifecycleStatuses = [
 ] as const;
 const lifecycleSorts = ["requestedAt", "effectiveDate"] as const;
 const directions = ["asc", "desc"] as const;
-const pageSizes = [25, 50, 100] as const;
 const boundedQueryPattern = new RegExp(p2ListQueryPattern, "u");
+const millisecondsPerDay = 86_400_000;
 const employeeUrlKeys = [
   "q",
   "employeeId",
@@ -138,10 +140,7 @@ function readAllowedValues<const Value extends string>(
   return values as Value[];
 }
 
-function readPageSize(
-  parameters: URLSearchParams,
-  errors: string[],
-): (typeof pageSizes)[number] {
+function readPageSize(parameters: URLSearchParams, errors: string[]): number {
   const value = parameters.get("limit");
   if (value === null) {
     return 25;
@@ -151,15 +150,19 @@ function readPageSize(
     return 25;
   }
   if (!/^[1-9]\d*$/u.test(value)) {
-    errors.push("表示件数は 25、50、100 のいずれかを指定してください。");
+    errors.push(
+      `表示件数は 1 以上 ${p2ListMaximumLimit} 以下で指定してください。`,
+    );
     return 25;
   }
   const parsed = Number(value);
-  if (!pageSizes.includes(parsed as (typeof pageSizes)[number])) {
-    errors.push("表示件数は 25、50、100 のいずれかを指定してください。");
+  if (parsed > p2ListMaximumLimit) {
+    errors.push(
+      `表示件数は 1 以上 ${p2ListMaximumLimit} 以下で指定してください。`,
+    );
     return 25;
   }
-  return parsed as (typeof pageSizes)[number];
+  return parsed;
 }
 
 function readCursor(
@@ -221,6 +224,26 @@ export function validateBoundedQuery(value: string): string | null {
     return "q に使用できない文字が含まれています。";
   }
   return null;
+}
+
+export function isLifecycleRangeTooWide(
+  from: string,
+  to: string,
+  type: "timestamp" | "date",
+) {
+  const fromTime = Date.parse(type === "date" ? `${from}T00:00:00.000Z` : from);
+  const toTime = Date.parse(type === "date" ? `${to}T00:00:00.000Z` : to);
+  if (
+    !Number.isFinite(fromTime) ||
+    !Number.isFinite(toTime) ||
+    fromTime > toTime
+  ) {
+    return false;
+  }
+  return (
+    Math.floor((toTime - fromTime) / millisecondsPerDay) + 1 >
+    p2ListMaximumDateRangeDays
+  );
 }
 
 function readBoundedQuery(
@@ -398,6 +421,14 @@ export function parseLifecycleListQuery(
     Date.parse(query.requestedFrom) > Date.parse(query.requestedTo)
   ) {
     errors.push("申請日時の開始日時は終了日時以前にしてください。");
+  } else if (
+    query.requestedFrom &&
+    query.requestedTo &&
+    isLifecycleRangeTooWide(query.requestedFrom, query.requestedTo, "timestamp")
+  ) {
+    errors.push(
+      `申請日時の範囲は ${p2ListMaximumDateRangeDays} 日以内で指定してください。`,
+    );
   }
   if (
     (query.effectiveFrom === undefined) !==
@@ -411,6 +442,14 @@ export function parseLifecycleListQuery(
     query.effectiveFrom > query.effectiveTo
   ) {
     errors.push("適用日の開始日は終了日以前にしてください。");
+  } else if (
+    query.effectiveFrom &&
+    query.effectiveTo &&
+    isLifecycleRangeTooWide(query.effectiveFrom, query.effectiveTo, "date")
+  ) {
+    errors.push(
+      `適用日の範囲は ${p2ListMaximumDateRangeDays} 日以内で指定してください。`,
+    );
   }
   return { query: compactQuery(query), errors };
 }

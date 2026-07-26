@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LifecycleDetailRoute } from "./lifecycle-detail-route";
@@ -113,5 +113,74 @@ describe("LifecycleDetailRoute", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("サーバー応答または契約");
     expect(alert).not.toHaveTextContent("権限またはRequest ID");
+  });
+
+  it("ignores a late response after detail navigation aborts it", async () => {
+    const responseFor = (
+      requestType: "onboarding" | "transfer",
+      subjectDisplayName: string,
+    ) =>
+      Response.json({
+        item: {
+          transactionRequestId: "request-shared",
+          requestType,
+          status: "submitted",
+          subjectPersonId: `person-${requestType}`,
+          subjectEmployeeId: `EMP-${requestType}`,
+          subjectDisplayName,
+          organizationCode: "ORG-001",
+          decidedBy: null,
+          requestedAt: "2026-07-01T00:00:00.000Z",
+          effectiveDate: "2026-08-01",
+        },
+        authorization: {
+          dataScope: "bounded",
+          maskedFields: [],
+          readiness: "bounded_synthetic_only_not_production_ready",
+        },
+        correlationId: `lifecycle-detail-${requestType}`,
+      });
+    let resolveFirstRequest: ((response: Response) => void) | undefined;
+    const firstRequest = new Promise<Response>((resolve) => {
+      resolveFirstRequest = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementationOnce(() => firstRequest)
+        .mockResolvedValueOnce(responseFor("transfer", "Current Transfer")),
+    );
+    const onBack = vi.fn();
+    const { rerender } = render(
+      <LifecycleDetailRoute
+        personaId="hr-operator"
+        requestId="request-shared"
+        expectedType="onboarding"
+        onBack={onBack}
+      />,
+    );
+
+    rerender(
+      <LifecycleDetailRoute
+        personaId="hr-operator"
+        requestId="request-shared"
+        expectedType="transfer"
+        onBack={onBack}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Current Transfer" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirstRequest?.(responseFor("onboarding", "Stale Onboarding"));
+      await firstRequest;
+    });
+
+    expect(screen.queryByText("Stale Onboarding")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Current Transfer" }),
+    ).toBeInTheDocument();
   });
 });
