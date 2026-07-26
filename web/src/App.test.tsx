@@ -248,6 +248,202 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("rehydrates an employee detail URL without mixing legacy fixture fields", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employee&employeeId=EMP-000128",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/employees")) {
+          return Response.json({
+            items: [
+              {
+                personId: "person-reload-001",
+                employeeId: "EMP-000128",
+                displayName: "Synthetic Reload Subject",
+                employmentStatus: "active",
+                organizationCode: "ORG-RELOAD",
+                positionCode: "POS-RELOAD",
+                hireDate: "2026-01-01",
+                terminationDate: null,
+              },
+            ],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: {
+              employeeId: "EMP-000128",
+              asOf: "2026-07-26",
+            },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "employee-reload-correlation",
+          });
+        }
+        return Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        });
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Synthetic Reload Subject" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("ORG-RELOAD")).toBeInTheDocument();
+    expect(screen.queryByText("ヤマダ タロウ")).not.toBeInTheDocument();
+    expect(screen.queryByText("taro.yamada@***")).not.toBeInTheDocument();
+    expect(screen.queryByText("外部ID / 連携状態")).not.toBeInTheDocument();
+  });
+
+  it("fails closed when a lifecycle detail URL cannot be rehydrated", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=transfer&requestId=request-reload-001",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        }),
+      ),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    expect(
+      await screen.findByText("手続き詳細を復元できません"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create transfer request" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens lifecycle list records read-only instead of an unrelated workflow", async () => {
+    window.history.replaceState(null, "", "/?view=queue");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/lifecycle/transaction-requests")) {
+          return Response.json({
+            items: [
+              {
+                transactionRequestId: "request-selected-001",
+                requestType: "transfer",
+                status: "submitted",
+                subjectPersonId: "person-selected-001",
+                subjectEmployeeId: "EMP-SELECTED-001",
+                subjectDisplayName: "Synthetic Selected Subject",
+                organizationCode: "ORG-SELECTED",
+                decidedBy: null,
+                requestedAt: "2026-07-01T00:00:00.000Z",
+                effectiveDate: "2026-08-01",
+              },
+            ],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: {},
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "lifecycle-selected-correlation",
+          });
+        }
+        return Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        });
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Procedures/ }));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Synthetic Selected Subjectの異動手続きを開く",
+      }),
+    );
+
+    expect(screen.getByText("手続きレコード情報")).toBeInTheDocument();
+    expect(screen.getByText("request-selected-001")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create transfer request" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears stale filters when the active collection route is selected again", async () => {
+    window.history.replaceState(null, "", "/?view=queue");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/employees")) {
+          return Response.json({
+            items: [],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: { asOf: "2026-07-26" },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "employee-route-correlation",
+          });
+        }
+        return Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        });
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    await screen.findByText("条件に一致する従業員はいません");
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "氏名・従業員ID" }),
+      "stale",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "検索" }));
+    await waitFor(() => expect(window.location.search).toContain("q=stale"));
+
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+
+    await waitFor(() => expect(window.location.search).toBe("?view=employees"));
+    expect(screen.getByRole("textbox", { name: "氏名・従業員ID" })).toHaveValue(
+      "",
+    );
+  });
+
   it("replaces a URL route that the selected persona cannot access", async () => {
     window.history.replaceState(
       null,

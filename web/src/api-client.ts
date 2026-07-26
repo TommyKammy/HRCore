@@ -146,15 +146,40 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function isIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
   return (
-    typeof value === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/u.test(value) &&
-    !Number.isNaN(Date.parse(`${value}T00:00:00Z`))
+    Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
   );
 }
 
 function isIsoTimestamp(value: unknown): value is string {
-  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+  if (typeof value !== "string") {
+    return false;
+  }
+  const match =
+    /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})T(?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})\.\d{3}Z$/u.exec(
+      value,
+    );
+  const groups = match?.groups;
+  if (!groups) {
+    return false;
+  }
+  const calendarProbe = new Date(
+    Date.UTC(Number(groups.year), Number(groups.month) - 1, Number(groups.day)),
+  );
+  return (
+    calendarProbe.getUTCFullYear() === Number(groups.year) &&
+    calendarProbe.getUTCMonth() === Number(groups.month) - 1 &&
+    calendarProbe.getUTCDate() === Number(groups.day) &&
+    Number(groups.hour) <= 23 &&
+    Number(groups.minute) <= 59 &&
+    Number(groups.second) <= 59 &&
+    Number.isFinite(new Date(value).getTime())
+  );
 }
 
 const listPageLimits = new Set([25, 50, 100]);

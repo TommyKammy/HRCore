@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   ArrowRight,
   Bell,
   CalendarClock,
@@ -9,7 +10,7 @@ import {
   Cloud,
   Search,
 } from "lucide-react";
-import type { EmployeeListItem } from "../api-client";
+import type { EmployeeListItem, LifecycleRequestListItem } from "../api-client";
 import {
   type OnboardingRequest,
   type OpsDlqEvidence,
@@ -255,13 +256,91 @@ export function EmployeeDetailView({
   employee?: EmployeeListItem | null;
   onOpenTransfer: (() => void) | null;
 }) {
-  const displayName = employee?.displayName ?? "山田 太郎";
-  const employeeId = employee?.employeeId ?? "EMP-000128";
-  const hireDate = employee?.hireDate.replaceAll("-", "/") ?? "2024/04/01";
-  const organization = employee?.organizationCode ?? "営業本部 / 第1営業部";
-  const position = employee?.positionCode ?? "主任";
-  const status =
-    employee?.employmentStatus === "terminated" ? "退職" : "在籍中";
+  if (employee) {
+    const status =
+      employee.employmentStatus === "terminated"
+        ? "退職"
+        : employee.employmentStatus === "inactive"
+          ? "休止"
+          : "在籍";
+    const unavailableAssignment = "未提供またはマスク済み";
+
+    return (
+      <div className="employee-detail">
+        <section className="surface employee-hero">
+          <div className="employee-avatar" aria-hidden="true">
+            {employee.displayName.slice(0, 1)}
+          </div>
+          <div className="employee-identity">
+            <p className="context-label">Bounded employee list record</p>
+            <h2>{employee.displayName}</h2>
+            <p>
+              社員番号 {employee.employeeId} /{" "}
+              {employee.positionCode ?? unavailableAssignment} /{" "}
+              {employee.hireDate.replaceAll("-", "/")} 入社
+            </p>
+            <div className="badge-row" aria-label="従業員状態">
+              <span className="soft-badge state-success">{status}</span>
+              <span className="soft-badge">bounded list scope</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="surface" aria-labelledby="bounded-information">
+          <div className="section-heading">
+            <div>
+              <p className="context-label">List API fields only</p>
+              <h2 id="bounded-information">一覧レコード情報</h2>
+            </div>
+          </div>
+          <dl className="profile-grid">
+            <div>
+              <dt>氏名</dt>
+              <dd>{employee.displayName}</dd>
+            </div>
+            <div>
+              <dt>個人ID</dt>
+              <dd>{employee.personId}</dd>
+            </div>
+            <div>
+              <dt>社員番号</dt>
+              <dd>{employee.employeeId}</dd>
+            </div>
+            <div>
+              <dt>所属</dt>
+              <dd>{employee.organizationCode ?? unavailableAssignment}</dd>
+            </div>
+            <div>
+              <dt>役職</dt>
+              <dd>{employee.positionCode ?? unavailableAssignment}</dd>
+            </div>
+            <div>
+              <dt>在籍状態</dt>
+              <dd>{status}</dd>
+            </div>
+            <div>
+              <dt>入社日</dt>
+              <dd>{employee.hireDate}</dd>
+            </div>
+            <div>
+              <dt>退職日</dt>
+              <dd>{employee.terminationDate ?? "該当なし"}</dd>
+            </div>
+          </dl>
+          <p className="muted">
+            連絡先、外部ID、上長、勤務地、履歴は一覧APIの契約対象外のため表示しません。
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  const displayName = "山田 太郎";
+  const employeeId = "EMP-000128";
+  const hireDate = "2024/04/01";
+  const organization = "営業本部 / 第1営業部";
+  const position = "主任";
+  const status = "在籍中";
 
   return (
     <div className="employee-detail">
@@ -312,7 +391,7 @@ export function EmployeeDetailView({
             </div>
             <div>
               <dt>個人番号</dt>
-              <dd>{employee?.personId ?? "PER-000128"}</dd>
+              <dd>PER-000128</dd>
             </div>
             <div>
               <dt>社員番号</dt>
@@ -409,6 +488,79 @@ export function EmployeeDetailView({
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+export function LifecycleRequestDetailView({
+  request,
+  onBack,
+}: {
+  request: LifecycleRequestListItem;
+  onBack: () => void;
+}) {
+  return (
+    <div className="employee-detail">
+      <section className="surface employee-hero">
+        <div className="employee-identity">
+          <p className="context-label">Bounded lifecycle list record</p>
+          <h2>{request.subjectDisplayName}</h2>
+          <div className="badge-row" aria-label="手続き状態">
+            <span className="soft-badge">{request.requestType}</span>
+            <span className="soft-badge state-success">{request.status}</span>
+          </div>
+        </div>
+        <button className="secondary-button" type="button" onClick={onBack}>
+          <ArrowLeft size={17} aria-hidden="true" />
+          手続き一覧へ戻る
+        </button>
+      </section>
+
+      <section className="surface" aria-labelledby="lifecycle-record-detail">
+        <div className="section-heading">
+          <div>
+            <p className="context-label">Read only</p>
+            <h2 id="lifecycle-record-detail">手続きレコード情報</h2>
+          </div>
+        </div>
+        <dl className="profile-grid">
+          <div>
+            <dt>Request ID</dt>
+            <dd>{request.transactionRequestId}</dd>
+          </div>
+          <div>
+            <dt>種別</dt>
+            <dd>{request.requestType}</dd>
+          </div>
+          <div>
+            <dt>状態</dt>
+            <dd>{request.status}</dd>
+          </div>
+          <div>
+            <dt>対象者</dt>
+            <dd>{request.subjectDisplayName}</dd>
+          </div>
+          <div>
+            <dt>従業員ID</dt>
+            <dd>{request.subjectEmployeeId ?? "未採番"}</dd>
+          </div>
+          <div>
+            <dt>組織</dt>
+            <dd>{request.organizationCode}</dd>
+          </div>
+          <div>
+            <dt>申請日時</dt>
+            <dd>{request.requestedAt}</dd>
+          </div>
+          <div>
+            <dt>適用日</dt>
+            <dd>{request.effectiveDate}</dd>
+          </div>
+        </dl>
+        <p className="muted">
+          一覧の選択結果を読み取り専用で表示しています。作成・更新フォームとは関連付けません。
+        </p>
+      </section>
     </div>
   );
 }

@@ -61,9 +61,13 @@ function useBoundedCollection<Query, Response>({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<CollectionError | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
+  const [previousLocations, setPreviousLocations] = useState<string[]>([]);
 
   useEffect(() => {
-    const handlePopState = () => setLocation(parse());
+    const handlePopState = () => {
+      setPreviousLocations([]);
+      setLocation(parse());
+    };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [parse]);
@@ -106,6 +110,7 @@ function useBoundedCollection<Query, Response>({
 
   const applyQuery = useCallback(
     (query: Query, mode: "push" | "replace" = "push") => {
+      setPreviousLocations([]);
       writeListQuery(
         view,
         query as EmployeeListQuery | LifecycleRequestListQuery,
@@ -116,6 +121,29 @@ function useBoundedCollection<Query, Response>({
     [view],
   );
 
+  const applyNextQuery = useCallback(
+    (query: Query) => {
+      const previousLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      setPreviousLocations((current) => [...current, previousLocation]);
+      writeListQuery(
+        view,
+        query as EmployeeListQuery | LifecycleRequestListQuery,
+      );
+      setLocation({ query, errors: [] });
+    },
+    [view],
+  );
+
+  const goToPrevious = useCallback(() => {
+    const previousLocation = previousLocations.at(-1);
+    if (!previousLocation) {
+      return;
+    }
+    window.history.pushState(null, "", previousLocation);
+    setPreviousLocations((current) => current.slice(0, -1));
+    setLocation(parse());
+  }, [parse, previousLocations]);
+
   const state: CollectionState<Query, Response> = {
     location,
     response,
@@ -125,6 +153,9 @@ function useBoundedCollection<Query, Response>({
   return {
     state,
     applyQuery,
+    applyNextQuery,
+    canGoPrevious: previousLocations.length > 0,
+    goToPrevious,
     retry: () => setRetryVersion((version) => version + 1),
   };
 }
@@ -214,13 +245,15 @@ function CollectionMeta({
 
 function PaginationControls({
   count,
-  cursor,
+  canGoPrevious,
   hasNextPage,
+  onPrevious,
   onNext,
 }: {
   count: number;
-  cursor?: string;
+  canGoPrevious: boolean;
   hasNextPage: boolean;
+  onPrevious: () => void;
   onNext: () => void;
 }) {
   return (
@@ -232,8 +265,8 @@ function PaginationControls({
           type="button"
           title="前のページへ"
           aria-label="前のページへ"
-          disabled={!cursor}
-          onClick={() => window.history.back()}
+          disabled={!canGoPrevious}
+          onClick={onPrevious}
         >
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
@@ -306,7 +339,19 @@ function formatDate(value: string) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    timeZone: "UTC",
   }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`));
+}
+
+function nullableEmployeeField(
+  value: string | null,
+  field: "organizationCode" | "positionCode",
+  maskedFields: readonly (keyof EmployeeListItem)[],
+) {
+  if (value !== null) {
+    return value;
+  }
+  return maskedFields.includes(field) ? "masked" : "未割当";
 }
 
 interface EmployeeListDraft {
@@ -343,10 +388,14 @@ export function EmployeeListView({
       fetchEmployees(query, createP2ListRequestInit(personaId, signal)),
     [personaId],
   );
-  const { state, applyQuery, retry } = useBoundedCollection<
-    EmployeeListQuery,
-    EmployeeListResponse
-  >({
+  const {
+    state,
+    applyQuery,
+    applyNextQuery,
+    canGoPrevious,
+    goToPrevious,
+    retry,
+  } = useBoundedCollection<EmployeeListQuery, EmployeeListResponse>({
     view: "employees",
     parse: parseEmployeeListQuery,
     load,
@@ -376,6 +425,7 @@ export function EmployeeListView({
     setDraft(employeeDraftFromQuery(defaultEmployeeListQuery));
     applyQuery(defaultEmployeeListQuery);
   };
+  const maskedFields = state.response?.authorization.maskedFields ?? [];
 
   return (
     <div className="collection-view" aria-labelledby="employee-list-heading">
@@ -556,7 +606,7 @@ export function EmployeeListView({
                 </thead>
                 <tbody>
                   {state.response.items.map((employee) => (
-                    <tr key={employee.personId}>
+                    <tr key={employee.employeeId}>
                       <td data-label="従業員">
                         <strong>{employee.displayName}</strong>
                         <small>{employee.employeeId}</small>
@@ -571,10 +621,18 @@ export function EmployeeListView({
                         </span>
                       </td>
                       <td data-label="組織">
-                        {employee.organizationCode ?? "masked"}
+                        {nullableEmployeeField(
+                          employee.organizationCode,
+                          "organizationCode",
+                          maskedFields,
+                        )}
                       </td>
                       <td data-label="ポジション">
-                        {employee.positionCode ?? "masked"}
+                        {nullableEmployeeField(
+                          employee.positionCode,
+                          "positionCode",
+                          maskedFields,
+                        )}
                       </td>
                       <td data-label="入社日">
                         {formatDate(employee.hireDate)}
@@ -602,11 +660,12 @@ export function EmployeeListView({
           )}
           <PaginationControls
             count={state.response.items.length}
-            cursor={state.location.query.cursor}
+            canGoPrevious={canGoPrevious}
             hasNextPage={state.response.pageInfo.hasNextPage}
+            onPrevious={goToPrevious}
             onNext={() => {
               if (state.response?.pageInfo.nextCursor) {
-                applyQuery({
+                applyNextQuery({
                   ...state.location.query,
                   cursor: state.response.pageInfo.nextCursor,
                 });
@@ -657,7 +716,14 @@ export function LifecycleListView({
       fetchLifecycleRequests(query, createP2ListRequestInit(personaId, signal)),
     [personaId],
   );
-  const { state, applyQuery, retry } = useBoundedCollection<
+  const {
+    state,
+    applyQuery,
+    applyNextQuery,
+    canGoPrevious,
+    goToPrevious,
+    retry,
+  } = useBoundedCollection<
     LifecycleRequestListQuery,
     LifecycleRequestListResponse
   >({
@@ -676,6 +742,10 @@ export function LifecycleListView({
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if ((draft.effectiveFrom === "") !== (draft.effectiveTo === "")) {
+      setDraftError("適用日の開始日と終了日を両方指定してください。");
+      return;
+    }
     if (
       draft.effectiveFrom &&
       draft.effectiveTo &&
@@ -961,11 +1031,12 @@ export function LifecycleListView({
           )}
           <PaginationControls
             count={state.response.items.length}
-            cursor={state.location.query.cursor}
+            canGoPrevious={canGoPrevious}
             hasNextPage={state.response.pageInfo.hasNextPage}
+            onPrevious={goToPrevious}
             onNext={() => {
               if (state.response?.pageInfo.nextCursor) {
-                applyQuery({
+                applyNextQuery({
                   ...state.location.query,
                   cursor: state.response.pageInfo.nextCursor,
                 });

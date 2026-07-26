@@ -169,6 +169,52 @@ function readDate(
     errors.push(`${key} は YYYY-MM-DD 形式で指定してください。`);
     return undefined;
   }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    errors.push(`${key} は実在する日付で指定してください。`);
+    return undefined;
+  }
+  return value;
+}
+
+function readTimestamp(
+  parameters: URLSearchParams,
+  key: string,
+  errors: string[],
+): string | undefined {
+  const value = parameters.get(key)?.trim();
+  if (!value) {
+    return undefined;
+  }
+  const match =
+    /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})T(?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})(?:\.(?<fraction>\d+))?(?<zone>Z|[+-](?<offsetHour>\d{2}):(?<offsetMinute>\d{2}))$/u.exec(
+      value,
+    );
+  const groups = match?.groups;
+  if (!groups) {
+    errors.push(`${key} は RFC3339 日時形式で指定してください。`);
+    return undefined;
+  }
+  const calendarProbe = new Date(
+    Date.UTC(Number(groups.year), Number(groups.month) - 1, Number(groups.day)),
+  );
+  if (
+    calendarProbe.getUTCFullYear() !== Number(groups.year) ||
+    calendarProbe.getUTCMonth() !== Number(groups.month) - 1 ||
+    calendarProbe.getUTCDate() !== Number(groups.day) ||
+    Number(groups.hour) > 23 ||
+    Number(groups.minute) > 59 ||
+    Number(groups.second) > 59 ||
+    Number(groups.offsetHour ?? 0) > 23 ||
+    Number(groups.offsetMinute ?? 0) > 59 ||
+    Number.isNaN(Date.parse(value))
+  ) {
+    errors.push(`${key} は RFC3339 日時形式で指定してください。`);
+    return undefined;
+  }
   return value;
 }
 
@@ -213,11 +259,15 @@ export function parseLifecycleListQuery(
       errors,
     ),
     status: readAllowedValues(parameters, "status", lifecycleStatuses, errors),
-    subjectEmployeeId: readText(parameters, "subjectEmployeeId", 64, errors),
+    subjectEmployeeId: readText(parameters, "subjectEmployeeId", 128, errors),
     q: readText(parameters, "q", 80, errors),
-    organizationCode: readText(parameters, "organizationCode", 64, errors),
+    organizationCode: readText(parameters, "organizationCode", 128, errors),
+    decidedBy: readText(parameters, "decidedBy", 128, errors),
+    requestedFrom: readTimestamp(parameters, "requestedFrom", errors),
+    requestedTo: readTimestamp(parameters, "requestedTo", errors),
     effectiveFrom: readDate(parameters, "effectiveFrom", errors),
     effectiveTo: readDate(parameters, "effectiveTo", errors),
+    correlationId: readText(parameters, "correlationId", 256, errors),
     sort:
       readAllowedValue(parameters, "sort", lifecycleSorts, errors) ??
       defaultLifecycleListQuery.sort,
@@ -227,6 +277,25 @@ export function parseLifecycleListQuery(
     limit: readPageSize(parameters, errors),
     cursor: readCursor(parameters, errors),
   };
+  if (
+    (query.requestedFrom === undefined) !==
+    (query.requestedTo === undefined)
+  ) {
+    errors.push("申請日時の開始日時と終了日時を両方指定してください。");
+  }
+  if (
+    query.requestedFrom &&
+    query.requestedTo &&
+    Date.parse(query.requestedFrom) > Date.parse(query.requestedTo)
+  ) {
+    errors.push("申請日時の開始日時は終了日時以前にしてください。");
+  }
+  if (
+    (query.effectiveFrom === undefined) !==
+    (query.effectiveTo === undefined)
+  ) {
+    errors.push("適用日の開始日と終了日を両方指定してください。");
+  }
   if (
     query.effectiveFrom &&
     query.effectiveTo &&

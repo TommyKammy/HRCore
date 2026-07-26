@@ -347,7 +347,7 @@ test("matches the bounded practical-use visual contract", async ({
   await page.getByRole("button", { name: "次のページへ" }).click();
   await expect(page.getByText("Synthetic Employee 002")).toBeVisible();
   await expect(page).toHaveURL(/cursor=e2e-opaque-next-page/u);
-  await page.goBack();
+  await page.getByRole("button", { name: "前のページへ" }).click();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
 
   await page
@@ -357,8 +357,11 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "Employee detail" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "外部ID / 連携状態" }),
+    page.getByRole("heading", { name: "一覧レコード情報" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "外部ID / 連携状態" }),
+  ).toHaveCount(0);
   await assertNoHorizontalOverflow(page);
   await capture(page, testInfo, "employee-detail");
 

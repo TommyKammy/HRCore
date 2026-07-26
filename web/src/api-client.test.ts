@@ -32,6 +32,18 @@ const lifecycleListResponse: LifecycleRequestListResponse = {
   },
   correlationId: "lifecycle-list-test-correlation",
 };
+const lifecycleListItem: LifecycleRequestListResponse["items"][number] = {
+  transactionRequestId: "request-001",
+  requestType: "transfer",
+  status: "submitted",
+  subjectPersonId: "person-001",
+  subjectEmployeeId: "EMP-001",
+  subjectDisplayName: "Synthetic Subject",
+  organizationCode: "ORG-001",
+  decidedBy: null,
+  requestedAt: "2026-07-01T00:00:00.000Z",
+  effectiveDate: "2026-08-01",
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -86,6 +98,45 @@ describe("lifecycle request API client", () => {
     await expect(request).rejects.not.toHaveProperty(
       "message",
       expect.stringMatching(/Private|private-cursor/u),
+    );
+  });
+
+  it("rejects noncanonical timestamps and impossible calendar dates", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          ...lifecycleListResponse,
+          items: [{ ...lifecycleListItem, requestedAt: "0" }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          ...lifecycleListResponse,
+          items: [{ ...lifecycleListItem, effectiveDate: "2026-02-30" }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          ...lifecycleListResponse,
+          items: [
+            {
+              ...lifecycleListItem,
+              requestedAt: "2026-07-01T09:00:00+09:00",
+            },
+          ],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
     );
   });
 });

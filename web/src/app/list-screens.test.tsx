@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,10 +67,12 @@ const lifecycleResponse: LifecycleRequestListResponse = {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("employee list screen", () => {
   it("loads the API, synchronizes filters and paging, and opens detail", async () => {
+    window.history.replaceState(null, "", "/?view=employees");
     vi.stubEnv(
       "VITE_P2LIST_HR_OPERATOR_TOKEN",
       "bounded-local-hr-operator-token-000001",
@@ -139,6 +141,69 @@ describe("employee list screen", () => {
     expect(
       await screen.findByText("条件に一致する従業員はいません"),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "前のページへ" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "前のページへ" }));
+    expect(
+      await screen.findByText("Synthetic Employee 001"),
+    ).toBeInTheDocument();
+    expect(window.location.search).toContain("q=Synthetic");
+    expect(window.location.search).not.toContain("cursor=");
+  });
+
+  it("does not use global browser history for a bookmarked cursor", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employees&cursor=bookmarked-page",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...employeeResponse,
+          pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+        }),
+      ),
+    );
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+
+    expect(
+      await screen.findByText("Synthetic Employee 001"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前のページへ" })).toBeDisabled();
+  });
+
+  it("distinguishes masked assignments from genuinely unassigned fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...employeeResponse,
+          items: [
+            {
+              ...employeeResponse.items[0],
+              organizationCode: null,
+              positionCode: null,
+            },
+          ],
+          authorization: {
+            ...employeeResponse.authorization,
+            maskedFields: ["organizationCode"],
+          },
+          pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+        }),
+      ),
+    );
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+
+    const row = await screen.findByRole("row", {
+      name: /Synthetic Employee 001/u,
+    });
+    expect(within(row).getByText("masked")).toBeInTheDocument();
+    expect(within(row).getByText("未割当")).toBeInTheDocument();
   });
 
   it("shows actionable denied and network retry states without fixtures", async () => {
@@ -229,5 +294,22 @@ describe("lifecycle list screen", () => {
       }),
     );
     expect(onOpenRequest).toHaveBeenCalledWith(lifecycleResponse.items[0]);
+  });
+
+  it("does not submit an incomplete effective-date range", async () => {
+    const fetchMock = vi.fn(async () => Response.json(lifecycleResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<LifecycleListView personaId="approver" onOpenRequest={vi.fn()} />);
+
+    await screen.findByText("Synthetic Lifecycle Subject");
+    await user.type(screen.getByLabelText("適用日（開始）"), "2026-08-01");
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    expect(
+      screen.getByText("適用日の開始日と終了日を両方指定してください。"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -36,12 +36,44 @@ describe("bounded list URL query state", () => {
 
   it("parses lifecycle filters and rejects reversed date ranges", () => {
     const parsed = parseLifecycleListQuery(
-      "?view=lifecycle&requestType=onboarding,termination&status=submitted,approved&effectiveFrom=2026-08-20&effectiveTo=2026-08-01",
+      "?view=lifecycle&requestType=onboarding,termination&status=submitted,approved&subjectEmployeeId=EMP-001&organizationCode=ORG-001&decidedBy=approver-001&requestedFrom=2026-08-20T00%3A00%3A00.000Z&requestedTo=2026-08-01T00%3A00%3A00.000Z&effectiveFrom=2026-08-20&effectiveTo=2026-08-01&correlationId=correlation-001",
     );
     expect(parsed.query.requestType).toEqual(["onboarding", "termination"]);
     expect(parsed.query.status).toEqual(["submitted", "approved"]);
+    expect(parsed.query).toMatchObject({
+      subjectEmployeeId: "EMP-001",
+      organizationCode: "ORG-001",
+      decidedBy: "approver-001",
+      requestedFrom: "2026-08-20T00:00:00.000Z",
+      requestedTo: "2026-08-01T00:00:00.000Z",
+      correlationId: "correlation-001",
+    });
+    expect(parsed.errors).toContain(
+      "申請日時の開始日時は終了日時以前にしてください。",
+    );
     expect(parsed.errors).toContain(
       "適用日の開始日は終了日以前にしてください。",
+    );
+  });
+
+  it("rejects incomplete and malformed lifecycle ranges", () => {
+    const parsed = parseLifecycleListQuery(
+      "?view=lifecycle&requestedFrom=0&effectiveFrom=2026-02-30",
+    );
+
+    expect(parsed.errors).toEqual([
+      "requestedFrom は RFC3339 日時形式で指定してください。",
+      "effectiveFrom は実在する日付で指定してください。",
+    ]);
+
+    const incomplete = parseLifecycleListQuery(
+      "?view=lifecycle&requestedFrom=2026-08-01T00%3A00%3A00Z&effectiveFrom=2026-08-01",
+    );
+    expect(incomplete.errors).toContain(
+      "申請日時の開始日時と終了日時を両方指定してください。",
+    );
+    expect(incomplete.errors).toContain(
+      "適用日の開始日と終了日を両方指定してください。",
     );
   });
 

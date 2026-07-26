@@ -20,6 +20,7 @@ import {
   type BoundedPersonaId,
 } from "../persona";
 import { ApprovalsWorkflow } from "./approvals-workflow";
+import { EmployeeDetailRoute } from "./employee-detail-route";
 import {
   OnboardingWorkflow,
   TerminationWorkflow,
@@ -44,7 +45,7 @@ import { CsvWorkflow, OpsDlqWorkflow } from "./operations-workflows";
 import {
   AuditWorkflow,
   DashboardView,
-  EmployeeDetailView,
+  LifecycleRequestDetailView,
   SecondaryAreaView,
 } from "./screens";
 import { ContractStatus, EmptyState, ProcedureFrame } from "./shared";
@@ -68,6 +69,10 @@ function writeRouteToLocation(
     url.searchParams.set(key, value);
   }
   window.history[mode === "push" ? "pushState" : "replaceState"](null, "", url);
+}
+
+function readRouteParameter(key: string): string | null {
+  return new URLSearchParams(window.location.search).get(key);
 }
 
 export function AppShell() {
@@ -293,6 +298,7 @@ export function AppShell() {
       setActiveRoute(route);
       setMobileNavOpen(false);
       writeRouteToLocation(route, parameters);
+      window.dispatchEvent(new PopStateEvent("popstate"));
     }
   };
 
@@ -308,7 +314,7 @@ export function AppShell() {
 
     if (normalized === "EMP-000128") {
       setSelectedEmployee(null);
-      navigateTo("employee", { employeeId: normalized });
+      navigateTo("employee", { employeeId: normalized, source: "fixture" });
       setLookupMessage("EMP-000128 を bounded fixture から表示しました。");
       return;
     }
@@ -352,10 +358,16 @@ export function AppShell() {
       );
     }
 
-    if (activeArea?.id === "employee") {
+    if (activeArea?.id === "employee" && selectedPersonaId) {
       return (
-        <EmployeeDetailView
-          employee={selectedEmployee}
+        <EmployeeDetailRoute
+          personaId={selectedPersonaId}
+          employeeId={readRouteParameter("employeeId")}
+          useLegacyFixture={
+            readRouteParameter("employeeId") === null ||
+            readRouteParameter("source") === "fixture"
+          }
+          selectedEmployee={selectedEmployee}
           onOpenTransfer={
             canNavigateTo("transfer") ? () => navigateTo("transfer") : null
           }
@@ -391,15 +403,22 @@ export function AppShell() {
     }
 
     if (activeArea?.id === "onboarding") {
+      const requestId = readRouteParameter("requestId");
+      if (requestId) {
+        return selectedLifecycleRequest?.requestType === "onboarding" &&
+          selectedLifecycleRequest.transactionRequestId === requestId ? (
+          <LifecycleRequestDetailView
+            request={selectedLifecycleRequest}
+            onBack={() => navigateTo("lifecycle")}
+          />
+        ) : (
+          <LifecycleRequestUnavailable onBack={() => navigateTo("lifecycle")} />
+        );
+      }
       return (
         <ProcedureFrame
           procedure="onboarding"
           requestStatus={onboardingRequest?.status ?? null}
-          originContext={
-            selectedLifecycleRequest?.requestType === "onboarding"
-              ? `${selectedLifecycleRequest.transactionRequestId} / ${selectedLifecycleRequest.subjectDisplayName} / ${selectedLifecycleRequest.status}`
-              : undefined
-          }
         >
           <OnboardingWorkflow
             personaId={selectedPersonaId}
@@ -412,15 +431,22 @@ export function AppShell() {
     }
 
     if (activeArea?.id === "transfer") {
+      const requestId = readRouteParameter("requestId");
+      if (requestId) {
+        return selectedLifecycleRequest?.requestType === "transfer" &&
+          selectedLifecycleRequest.transactionRequestId === requestId ? (
+          <LifecycleRequestDetailView
+            request={selectedLifecycleRequest}
+            onBack={() => navigateTo("lifecycle")}
+          />
+        ) : (
+          <LifecycleRequestUnavailable onBack={() => navigateTo("lifecycle")} />
+        );
+      }
       return (
         <ProcedureFrame
           procedure="transfer"
           requestStatus={transferRequest?.status ?? null}
-          originContext={
-            selectedLifecycleRequest?.requestType === "transfer"
-              ? `${selectedLifecycleRequest.transactionRequestId} / ${selectedLifecycleRequest.subjectDisplayName} / ${selectedLifecycleRequest.status}`
-              : undefined
-          }
         >
           <TransferWorkflow
             personaId={selectedPersonaId}
@@ -433,15 +459,22 @@ export function AppShell() {
     }
 
     if (activeArea?.id === "termination") {
+      const requestId = readRouteParameter("requestId");
+      if (requestId) {
+        return selectedLifecycleRequest?.requestType === "termination" &&
+          selectedLifecycleRequest.transactionRequestId === requestId ? (
+          <LifecycleRequestDetailView
+            request={selectedLifecycleRequest}
+            onBack={() => navigateTo("lifecycle")}
+          />
+        ) : (
+          <LifecycleRequestUnavailable onBack={() => navigateTo("lifecycle")} />
+        );
+      }
       return (
         <ProcedureFrame
           procedure="termination"
           requestStatus={terminationRequest?.status ?? null}
-          originContext={
-            selectedLifecycleRequest?.requestType === "termination"
-              ? `${selectedLifecycleRequest.transactionRequestId} / ${selectedLifecycleRequest.subjectDisplayName} / ${selectedLifecycleRequest.status}`
-              : undefined
-          }
         >
           <TerminationWorkflow
             personaId={selectedPersonaId}
@@ -663,6 +696,23 @@ export function AppShell() {
         </main>
       </div>
     </div>
+  );
+}
+
+function LifecycleRequestUnavailable({ onBack }: { onBack: () => void }) {
+  return (
+    <section className="collection-feedback feedback-invalid" role="alert">
+      <div>
+        <strong>手続き詳細を復元できません</strong>
+        <p>
+          この一覧APIにはRequest
+          ID単体取得契約がありません。手続き一覧から対象を選び直してください。
+        </p>
+      </div>
+      <button className="secondary-button" type="button" onClick={onBack}>
+        手続き一覧へ戻る
+      </button>
+    </section>
   );
 }
 
