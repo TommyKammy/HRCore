@@ -436,6 +436,46 @@ describe("employee API client", () => {
     );
   });
 
+  it("rejects additional properties in bounded response envelopes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({ ...employeeListResponse, rawPayload: {} }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          item: employeeListItem,
+          asOf: "2026-07-26",
+          authorization: employeeListResponse.authorization,
+          correlationId: "employee-detail-correlation",
+          rawPayload: {},
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ ...lifecycleListResponse, rawPayload: {} }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          item: lifecycleListItem,
+          authorization: lifecycleListResponse.authorization,
+          correlationId: "lifecycle-detail-correlation",
+          rawPayload: {},
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchEmployees()).rejects.toBeInstanceOf(ApiClientError);
+    await expect(fetchEmployeeDetail("EMP-001")).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+    await expect(
+      fetchLifecycleRequestDetail("request-001"),
+    ).rejects.toBeInstanceOf(ApiClientError);
+  });
+
   it("rejects empty identifiers in bounded list items", async () => {
     const employeeItem = {
       personId: "person-001",

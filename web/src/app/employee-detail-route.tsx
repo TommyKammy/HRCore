@@ -40,10 +40,11 @@ export function EmployeeDetailRoute({
     error: null,
     correlationId: null,
   });
-  const isLegacyFixture = useLegacyFixture;
+  const isLegacyFixture = useLegacyFixture || employeeId === null;
+  const hasInvalidEmployeeId = employeeId === "";
 
   useEffect(() => {
-    if (isLegacyFixture || !employeeId) {
+    if (isLegacyFixture || hasInvalidEmployeeId) {
       setState({
         employee: null,
         maskedFields: [],
@@ -111,8 +112,27 @@ export function EmployeeDetailRoute({
       });
 
     return () => controller.abort();
-  }, [asOf, employeeId, isLegacyFixture, personaId, retryVersion]);
+  }, [
+    asOf,
+    employeeId,
+    hasInvalidEmployeeId,
+    isLegacyFixture,
+    personaId,
+    retryVersion,
+  ]);
 
+  if (hasInvalidEmployeeId) {
+    return (
+      <section className="collection-feedback feedback-invalid" role="alert">
+        <div>
+          <strong>従業員詳細を表示できません</strong>
+          <p>
+            従業員詳細URLの従業員IDが空です。従業員一覧から対象を選び直してください。
+          </p>
+        </div>
+      </section>
+    );
+  }
   if (isLegacyFixture) {
     return (
       <EmployeeDetailView employee={null} onOpenTransfer={onOpenTransfer} />

@@ -15,6 +15,26 @@ afterEach(() => {
 });
 
 describe("EmployeeDetailRoute", () => {
+  it("rejects an explicitly empty employee ID without fetching", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <EmployeeDetailRoute
+        personaId="hr-operator"
+        employeeId=""
+        asOf={null}
+        useLegacyFixture={false}
+        onOpenTransfer={null}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "従業員詳細URLの従業員IDが空です",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("distinguishes a masked termination date from an absent value", async () => {
     vi.stubGlobal(
       "fetch",

@@ -280,6 +280,19 @@ const employeeFields = new Set([
   "hireDate",
   "terminationDate",
 ]);
+const employeeListResponseFields = new Set([
+  "items",
+  "pageInfo",
+  "appliedFilters",
+  "authorization",
+  "correlationId",
+]);
+const employeeDetailResponseFields = new Set([
+  "item",
+  "asOf",
+  "authorization",
+  "correlationId",
+]);
 
 function isEmployeeListItem(value: unknown): value is EmployeeListItem {
   return (
@@ -299,6 +312,7 @@ function isEmployeeListItem(value: unknown): value is EmployeeListItem {
 function isEmployeeListResponse(value: unknown): value is EmployeeListResponse {
   return (
     isRecord(value) &&
+    hasExactKeys(value, employeeListResponseFields) &&
     Array.isArray(value.items) &&
     value.items.length <= p2ListMaximumLimit &&
     value.items.every(isEmployeeListItem) &&
@@ -315,6 +329,7 @@ function isEmployeeDetailResponse(
 ): value is EmployeeDetailResponse {
   return (
     isRecord(value) &&
+    hasExactKeys(value, employeeDetailResponseFields) &&
     isEmployeeListItem(value.item) &&
     isIsoDate(value.asOf) &&
     isAuthorization(value.authorization, employeeFields) &&
@@ -348,6 +363,18 @@ const lifecycleFields = new Set([
   "requestedAt",
   "effectiveDate",
 ]);
+const lifecycleListResponseFields = new Set([
+  "items",
+  "pageInfo",
+  "appliedFilters",
+  "authorization",
+  "correlationId",
+]);
+const lifecycleDetailResponseFields = new Set([
+  "item",
+  "authorization",
+  "correlationId",
+]);
 
 function isLifecycleRequestListItem(
   value: unknown,
@@ -373,6 +400,7 @@ function isLifecycleRequestListResponse(
 ): value is LifecycleRequestListResponse {
   return (
     isRecord(value) &&
+    hasExactKeys(value, lifecycleListResponseFields) &&
     Array.isArray(value.items) &&
     value.items.length <= p2ListMaximumLimit &&
     value.items.every(isLifecycleRequestListItem) &&
@@ -388,6 +416,7 @@ function isLifecycleRequestDetailResponse(
 ): value is LifecycleRequestDetailResponse {
   return (
     isRecord(value) &&
+    hasExactKeys(value, lifecycleDetailResponseFields) &&
     isLifecycleRequestListItem(value.item) &&
     isAuthorization(value.authorization, lifecycleFields) &&
     isNonEmptyString(value.correlationId)
