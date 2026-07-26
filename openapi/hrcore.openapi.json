@@ -969,6 +969,88 @@
         }
       }
     },
+    "/employees/{employeeId}": {
+      "get": {
+        "operationId": "getBoundedEmployeeDetail",
+        "summary": "Get one authorized bounded synthetic employee",
+        "description": "Resolves one employee through the same server-authoritative permission, scope, provenance, and effective-date controls as the bounded employee list, then emits employee_detail.opened_from_list audit evidence only after a successful authorized response.",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "bounded_runtime",
+        "x-hrcore-required-permission": "employee:list:read",
+        "parameters": [
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized bounded employee detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListEmployeeDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The identifier or effective date is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative actor context is missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission or data-scope authorization failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No authorized employee record is available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/lifecycle/transaction-requests": {
       "get": {
         "operationId": "listBoundedLifecycleTransactionRequests",
@@ -1503,6 +1585,80 @@
                   "message": "The requested lifecycle request list is not authorized.",
                   "correlationId": "p2list-lifecycle-denied-correlation-001",
                   "readiness": "bounded_synthetic_only_not_production_ready"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lifecycle/transaction-requests/{requestId}": {
+      "get": {
+        "operationId": "getBoundedLifecycleRequestDetail",
+        "summary": "Get one authorized bounded synthetic lifecycle request",
+        "description": "Resolves one lifecycle request through the same server-authoritative permission, scope, and provenance controls as the bounded lifecycle list, then emits lifecycle_request_detail.opened_from_list audit evidence only after a successful authorized response.",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "bounded_runtime",
+        "x-hrcore-required-permission": "lifecycle-request:list:read",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized bounded lifecycle request detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListLifecycleDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request identifier is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative actor context is missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission or data-scope authorization failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No authorized lifecycle request is available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
                 }
               }
             }
@@ -3632,6 +3788,27 @@
         },
         "additionalProperties": false
       },
+      "P2ListEmployeeDetailResponse": {
+        "type": "object",
+        "required": ["item", "asOf", "authorization", "correlationId"],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/P2ListEmployeeItem"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/P2ListAuthorizationSummary"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "P2ListLifecycleItem": {
         "type": "object",
         "required": [
@@ -3905,6 +4082,23 @@
           },
           "appliedFilters": {
             "$ref": "#/components/schemas/P2ListLifecycleFilters"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/P2ListAuthorizationSummary"
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListLifecycleDetailResponse": {
+        "type": "object",
+        "required": ["item", "authorization", "correlationId"],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/P2ListLifecycleItem"
           },
           "authorization": {
             "$ref": "#/components/schemas/P2ListAuthorizationSummary"

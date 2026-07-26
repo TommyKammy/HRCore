@@ -343,6 +343,18 @@ function formatDate(value: string) {
   }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`));
 }
 
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
 function nullableEmployeeField(
   value: string | null,
   field: "organizationCode" | "positionCode",
@@ -381,7 +393,7 @@ export function EmployeeListView({
   onOpenEmployee,
 }: {
   personaId: BoundedPersonaId;
-  onOpenEmployee: ((employee: EmployeeListItem) => void) | null;
+  onOpenEmployee: ((employee: EmployeeListItem, asOf: string) => void) | null;
 }) {
   const load = useCallback(
     (query: EmployeeListQuery, signal: AbortSignal) =>
@@ -403,6 +415,7 @@ export function EmployeeListView({
   const [draft, setDraft] = useState<EmployeeListDraft>(() =>
     employeeDraftFromQuery(state.location.query),
   );
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(employeeDraftFromQuery(state.location.query));
@@ -410,22 +423,36 @@ export function EmployeeListView({
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (
+      [draft.q, draft.employeeId, draft.organizationCode].some(
+        (value) => value.trim() !== value,
+      )
+    ) {
+      setDraftError("検索条件の前後に空白を含めないでください。");
+      return;
+    }
+    setDraftError(null);
     applyQuery({
-      q: draft.q.trim() || undefined,
-      employeeId: draft.employeeId.trim() || undefined,
+      ...state.location.query,
+      q: draft.q || undefined,
+      employeeId: draft.employeeId || undefined,
       employmentStatus: draft.employmentStatus || undefined,
-      organizationCode: draft.organizationCode.trim() || undefined,
+      organizationCode: draft.organizationCode || undefined,
       sort: draft.sort,
       direction: draft.direction,
       limit: draft.limit,
+      cursor: undefined,
     });
   };
 
   const reset = () => {
+    setDraftError(null);
     setDraft(employeeDraftFromQuery(defaultEmployeeListQuery));
     applyQuery(defaultEmployeeListQuery);
   };
   const maskedFields = state.response?.authorization.maskedFields ?? [];
+  const appliedAsOf =
+    state.response?.appliedFilters.asOf ?? state.location.query.asOf ?? "";
 
   return (
     <div className="collection-view" aria-labelledby="employee-list-heading">
@@ -560,6 +587,11 @@ export function EmployeeListView({
             検索
           </button>
         </div>
+        {draftError ? (
+          <p className="collection-form-error" role="alert">
+            {draftError}
+          </p>
+        ) : null}
       </form>
 
       {state.loading ? <LoadingState /> : null}
@@ -643,7 +675,9 @@ export function EmployeeListView({
                             className="row-action"
                             type="button"
                             aria-label={`${employee.displayName}の詳細を開く`}
-                            onClick={() => onOpenEmployee(employee)}
+                            onClick={() =>
+                              onOpenEmployee(employee, appliedAsOf)
+                            }
                           >
                             詳細
                             <ChevronRight size={16} aria-hidden="true" />
@@ -742,6 +776,10 @@ export function LifecycleListView({
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (draft.q.trim() !== draft.q) {
+      setDraftError("検索条件の前後に空白を含めないでください。");
+      return;
+    }
     if ((draft.effectiveFrom === "") !== (draft.effectiveTo === "")) {
       setDraftError("適用日の開始日と終了日を両方指定してください。");
       return;
@@ -755,15 +793,30 @@ export function LifecycleListView({
       return;
     }
     setDraftError(null);
+    const currentQuery = state.location.query;
+    const requestType =
+      draft.requestType === (currentQuery.requestType?.[0] ?? "")
+        ? currentQuery.requestType
+        : draft.requestType
+          ? [draft.requestType]
+          : undefined;
+    const status =
+      draft.status === (currentQuery.status?.[0] ?? "")
+        ? currentQuery.status
+        : draft.status
+          ? [draft.status]
+          : undefined;
     applyQuery({
-      q: draft.q.trim() || undefined,
-      requestType: draft.requestType ? [draft.requestType] : undefined,
-      status: draft.status ? [draft.status] : undefined,
+      ...currentQuery,
+      q: draft.q || undefined,
+      requestType,
+      status,
       effectiveFrom: draft.effectiveFrom || undefined,
       effectiveTo: draft.effectiveTo || undefined,
       sort: draft.sort,
       direction: draft.direction,
       limit: draft.limit,
+      cursor: undefined,
     });
   };
 
@@ -998,7 +1051,7 @@ export function LifecycleListView({
                       <td data-label="組織">{request.organizationCode}</td>
                       <td data-label="申請日時">
                         <time dateTime={request.requestedAt}>
-                          {formatDate(request.requestedAt)}
+                          {formatDateTime(request.requestedAt)}
                         </time>
                       </td>
                       <td data-label="適用日">

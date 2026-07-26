@@ -8,8 +8,6 @@ import {
 import { LockKeyhole, Menu, Search, X } from "lucide-react";
 import {
   type ApiContract,
-  type EmployeeListItem,
-  type LifecycleRequestListItem,
   ApiClientError,
   fetchOpenApiContract,
 } from "../api-client";
@@ -21,6 +19,7 @@ import {
 } from "../persona";
 import { ApprovalsWorkflow } from "./approvals-workflow";
 import { EmployeeDetailRoute } from "./employee-detail-route";
+import { LifecycleDetailRoute } from "./lifecycle-detail-route";
 import {
   OnboardingWorkflow,
   TerminationWorkflow,
@@ -42,12 +41,7 @@ import {
   plannedAreas,
 } from "./model";
 import { CsvWorkflow, OpsDlqWorkflow } from "./operations-workflows";
-import {
-  AuditWorkflow,
-  DashboardView,
-  LifecycleRequestDetailView,
-  SecondaryAreaView,
-} from "./screens";
+import { AuditWorkflow, DashboardView, SecondaryAreaView } from "./screens";
 import { ContractStatus, EmptyState, ProcedureFrame } from "./shared";
 
 function readRouteFromLocation(): RouteId {
@@ -94,10 +88,6 @@ export function AppShell() {
     useState<TransferRequest | null>(null);
   const [terminationRequest, setTerminationRequest] =
     useState<TerminationRequest | null>(null);
-  const [selectedEmployee, setSelectedEmployee] =
-    useState<EmployeeListItem | null>(null);
-  const [selectedLifecycleRequest, setSelectedLifecycleRequest] =
-    useState<LifecycleRequestListItem | null>(null);
   const [opsDlqEvidence, setOpsDlqEvidence] = useState<OpsDlqEvidence>(
     initialOpsDlqEvidence,
   );
@@ -255,11 +245,6 @@ export function AppShell() {
   );
 
   useEffect(() => {
-    setSelectedEmployee(null);
-    setSelectedLifecycleRequest(null);
-  }, [selectedPersonaId]);
-
-  useEffect(() => {
     if (
       visibleAreas.length > 0 &&
       !authorizedAreas.some((area) => area.id === activeRoute)
@@ -292,9 +277,6 @@ export function AppShell() {
     parameters: Record<string, string> = {},
   ) => {
     if (canNavigateTo(route)) {
-      if (!parameters.requestId) {
-        setSelectedLifecycleRequest(null);
-      }
       setActiveRoute(route);
       setMobileNavOpen(false);
       writeRouteToLocation(route, parameters);
@@ -313,7 +295,6 @@ export function AppShell() {
     const normalized = directLookup.trim().toUpperCase();
 
     if (normalized === "EMP-000128") {
-      setSelectedEmployee(null);
       navigateTo("employee", { employeeId: normalized, source: "fixture" });
       setLookupMessage("EMP-000128 を bounded fixture から表示しました。");
       return;
@@ -343,13 +324,14 @@ export function AppShell() {
     if (activeArea?.id === "employees" && selectedPersonaId) {
       return (
         <EmployeeListView
+          key={selectedPersonaId}
           personaId={selectedPersonaId}
           onOpenEmployee={
             canNavigateTo("employee")
-              ? (employee) => {
-                  setSelectedEmployee(employee);
+              ? (employee, asOf) => {
                   navigateTo("employee", {
                     employeeId: employee.employeeId,
+                    asOf,
                   });
                 }
               : null
@@ -363,11 +345,11 @@ export function AppShell() {
         <EmployeeDetailRoute
           personaId={selectedPersonaId}
           employeeId={readRouteParameter("employeeId")}
+          asOf={readRouteParameter("asOf")}
           useLegacyFixture={
             readRouteParameter("employeeId") === null ||
             readRouteParameter("source") === "fixture"
           }
-          selectedEmployee={selectedEmployee}
           onOpenTransfer={
             canNavigateTo("transfer") ? () => navigateTo("transfer") : null
           }
@@ -378,6 +360,7 @@ export function AppShell() {
     if (activeArea?.id === "lifecycle" && selectedPersonaId) {
       return (
         <LifecycleListView
+          key={selectedPersonaId}
           personaId={selectedPersonaId}
           onOpenRequest={
             canNavigateTo("onboarding") ||
@@ -391,7 +374,6 @@ export function AppShell() {
                   if (!canNavigateTo(route)) {
                     return;
                   }
-                  setSelectedLifecycleRequest(request);
                   navigateTo(route, {
                     requestId: request.transactionRequestId,
                   });
@@ -405,14 +387,15 @@ export function AppShell() {
     if (activeArea?.id === "onboarding") {
       const requestId = readRouteParameter("requestId");
       if (requestId) {
-        return selectedLifecycleRequest?.requestType === "onboarding" &&
-          selectedLifecycleRequest.transactionRequestId === requestId ? (
-          <LifecycleRequestDetailView
-            request={selectedLifecycleRequest}
+        return selectedPersonaId ? (
+          <LifecycleDetailRoute
+            personaId={selectedPersonaId}
+            requestId={requestId}
+            expectedType="onboarding"
             onBack={() => navigateTo("lifecycle")}
           />
         ) : (
-          <LifecycleRequestUnavailable onBack={() => navigateTo("lifecycle")} />
+          <EmptyState />
         );
       }
       return (
@@ -433,14 +416,15 @@ export function AppShell() {
     if (activeArea?.id === "transfer") {
       const requestId = readRouteParameter("requestId");
       if (requestId) {
-        return selectedLifecycleRequest?.requestType === "transfer" &&
-          selectedLifecycleRequest.transactionRequestId === requestId ? (
-          <LifecycleRequestDetailView
-            request={selectedLifecycleRequest}
+        return selectedPersonaId ? (
+          <LifecycleDetailRoute
+            personaId={selectedPersonaId}
+            requestId={requestId}
+            expectedType="transfer"
             onBack={() => navigateTo("lifecycle")}
           />
         ) : (
-          <LifecycleRequestUnavailable onBack={() => navigateTo("lifecycle")} />
+          <EmptyState />
         );
       }
       return (
@@ -461,14 +445,15 @@ export function AppShell() {
     if (activeArea?.id === "termination") {
       const requestId = readRouteParameter("requestId");
       if (requestId) {
-        return selectedLifecycleRequest?.requestType === "termination" &&
-          selectedLifecycleRequest.transactionRequestId === requestId ? (
-          <LifecycleRequestDetailView
-            request={selectedLifecycleRequest}
+        return selectedPersonaId ? (
+          <LifecycleDetailRoute
+            personaId={selectedPersonaId}
+            requestId={requestId}
+            expectedType="termination"
             onBack={() => navigateTo("lifecycle")}
           />
         ) : (
-          <LifecycleRequestUnavailable onBack={() => navigateTo("lifecycle")} />
+          <EmptyState />
         );
       }
       return (
@@ -696,23 +681,6 @@ export function AppShell() {
         </main>
       </div>
     </div>
-  );
-}
-
-function LifecycleRequestUnavailable({ onBack }: { onBack: () => void }) {
-  return (
-    <section className="collection-feedback feedback-invalid" role="alert">
-      <div>
-        <strong>手続き詳細を復元できません</strong>
-        <p>
-          この一覧APIにはRequest
-          ID単体取得契約がありません。手続き一覧から対象を選び直してください。
-        </p>
-      </div>
-      <button className="secondary-button" type="button" onClick={onBack}>
-        手続き一覧へ戻る
-      </button>
-    </section>
   );
 }
 

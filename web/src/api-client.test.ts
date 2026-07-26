@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiClientError,
   createP2ListRequestInit,
+  fetchEmployeeDetail,
   fetchEmployees,
+  fetchLifecycleRequestDetail,
   fetchLifecycleRequests,
   type EmployeeListResponse,
   type LifecycleRequestListResponse,
@@ -139,6 +141,29 @@ describe("lifecycle request API client", () => {
       ApiClientError,
     );
   });
+
+  it("loads a server-authorized lifecycle detail response", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        item: lifecycleListItem,
+        authorization: lifecycleListResponse.authorization,
+        correlationId: "lifecycle-detail-correlation",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchLifecycleRequestDetail("request-001", {
+        headers: { authorization: "Bearer lifecycle-token" },
+      }),
+    ).resolves.toMatchObject({
+      item: { transactionRequestId: "request-001" },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/lifecycle/transaction-requests/request-001",
+      expect.any(Object),
+    );
+  });
 });
 
 describe("employee API client", () => {
@@ -230,6 +255,56 @@ describe("employee API client", () => {
       new ApiClientError(
         "Response contract did not match the repository-owned shape for /employees.",
       ),
+    );
+  });
+
+  it("accepts every contract-valid page limit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...employeeListResponse,
+          pageInfo: { limit: 10, hasNextPage: false, nextCursor: null },
+        }),
+      ),
+    );
+
+    await expect(fetchEmployees({ limit: 10 })).resolves.toMatchObject({
+      pageInfo: { limit: 10 },
+    });
+  });
+
+  it("loads a server-authorized employee detail response", async () => {
+    const item = {
+      personId: "person-001",
+      employeeId: "EMP-001",
+      displayName: "Synthetic Employee",
+      employmentStatus: "active" as const,
+      organizationCode: "ORG-001",
+      positionCode: "POS-001",
+      hireDate: "2026-01-01",
+      terminationDate: null,
+    };
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        item,
+        asOf: "2026-01-01",
+        authorization: employeeListResponse.authorization,
+        correlationId: "employee-detail-correlation",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchEmployeeDetail(
+        "EMP-001",
+        { asOf: "2026-01-01" },
+        { headers: { authorization: "Bearer employee-token" } },
+      ),
+    ).resolves.toMatchObject({ item: { employeeId: "EMP-001" } });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/employees/EMP-001?asOf=2026-01-01",
+      expect.any(Object),
     );
   });
 });

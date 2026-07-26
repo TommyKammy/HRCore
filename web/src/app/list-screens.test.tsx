@@ -72,7 +72,7 @@ afterEach(() => {
 
 describe("employee list screen", () => {
   it("loads the API, synchronizes filters and paging, and opens detail", async () => {
-    window.history.replaceState(null, "", "/?view=employees");
+    window.history.replaceState(null, "", "/?view=employees&asOf=2026-01-01");
     vi.stubEnv(
       "VITE_P2LIST_HR_OPERATOR_TOKEN",
       "bounded-local-hr-operator-token-000001",
@@ -122,8 +122,13 @@ describe("employee list screen", () => {
     await waitFor(() =>
       expect(window.location.search).toContain("q=Synthetic"),
     );
+    expect(window.location.search).toContain("asOf=2026-01-01");
     expect(fetchMock).toHaveBeenLastCalledWith(
       expect.stringContaining("q=Synthetic"),
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining("asOf=2026-01-01"),
       expect.any(Object),
     );
 
@@ -132,7 +137,10 @@ describe("employee list screen", () => {
         name: "Synthetic Employee 001の詳細を開く",
       }),
     );
-    expect(onOpenEmployee).toHaveBeenCalledWith(employeeResponse.items[0]);
+    expect(onOpenEmployee).toHaveBeenCalledWith(
+      employeeResponse.items[0],
+      "2026-07-26",
+    );
 
     await user.click(screen.getByRole("button", { name: "次のページへ" }));
     await waitFor(() =>
@@ -206,6 +214,25 @@ describe("employee list screen", () => {
     expect(within(row).getByText("未割当")).toBeInTheDocument();
   });
 
+  it("rejects boundary whitespace without rewriting the search", async () => {
+    const fetchMock = vi.fn(async () => Response.json(employeeResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+    await screen.findByText("Synthetic Employee 001");
+    await user.type(
+      screen.getByRole("textbox", { name: "氏名・従業員ID" }),
+      " Synthetic",
+    );
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    expect(
+      screen.getByText("検索条件の前後に空白を含めないでください。"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("shows actionable denied and network retry states without fixtures", async () => {
     const fetchMock = vi
       .fn()
@@ -270,6 +297,7 @@ describe("lifecycle list screen", () => {
     expect(
       await screen.findByText("Synthetic Lifecycle Subject"),
     ).toBeVisible();
+    expect(screen.getByText(/2026\/07\/01 00:00/u)).toBeVisible();
     await user.selectOptions(
       screen.getByRole("combobox", { name: "手続き種別" }),
       "onboarding",
@@ -309,6 +337,63 @@ describe("lifecycle list screen", () => {
 
     expect(
       screen.getByText("適用日の開始日と終了日を両方指定してください。"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves hidden and multi-value lifecycle URL filters on submit", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=lifecycle&requestType=onboarding,termination&status=submitted,approved&subjectEmployeeId=EMP-001&organizationCode=ORG-001&decidedBy=approver-001&requestedFrom=2026-07-01T00%3A00%3A00.000Z&requestedTo=2026-07-02T00%3A00%3A00.000Z&correlationId=correlation-001",
+    );
+    const fetchMock = vi.fn(async () => Response.json(lifecycleResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <LifecycleListView personaId="hr-operator" onOpenRequest={vi.fn()} />,
+    );
+    await screen.findByText("Synthetic Lifecycle Subject");
+    await user.type(
+      screen.getByRole("textbox", { name: "対象者・従業員ID" }),
+      "Synthetic",
+    );
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    await waitFor(() =>
+      expect(window.location.search).toContain("q=Synthetic"),
+    );
+    for (const retained of [
+      "requestType=onboarding%2Ctermination",
+      "status=submitted%2Capproved",
+      "subjectEmployeeId=EMP-001",
+      "organizationCode=ORG-001",
+      "decidedBy=approver-001",
+      "requestedFrom=2026-07-01T00%3A00%3A00.000Z",
+      "correlationId=correlation-001",
+    ]) {
+      expect(window.location.search).toContain(retained);
+    }
+  });
+
+  it("rejects lifecycle search boundary whitespace without an API request", async () => {
+    const fetchMock = vi.fn(async () => Response.json(lifecycleResponse));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <LifecycleListView personaId="hr-operator" onOpenRequest={vi.fn()} />,
+    );
+    await screen.findByText("Synthetic Lifecycle Subject");
+    await user.type(
+      screen.getByRole("textbox", { name: "対象者・従業員ID" }),
+      "Synthetic ",
+    );
+    await user.click(screen.getByRole("button", { name: "検索" }));
+
+    expect(
+      screen.getByText("検索条件の前後に空白を含めないでください。"),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

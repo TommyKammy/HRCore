@@ -92,4 +92,14 @@ describe("bounded list URL query state", () => {
     expect(window.location.search).not.toContain("rawPayload");
     expect(window.location.search).not.toContain("must-not-leak");
   });
+
+  it("rejects boundary whitespace instead of silently normalizing it", () => {
+    const employee = parseEmployeeListQuery("?view=employees&q=%20Synthetic");
+    const lifecycle = parseLifecycleListQuery("?view=lifecycle&q=Synthetic%20");
+
+    expect(employee.errors).toContain("q の前後に空白を含めないでください。");
+    expect(lifecycle.errors).toContain("q の前後に空白を含めないでください。");
+    expect(employee.query.q).toBeUndefined();
+    expect(lifecycle.query.q).toBeUndefined();
+  });
 });

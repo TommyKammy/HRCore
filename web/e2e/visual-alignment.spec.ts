@@ -165,8 +165,34 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
 }
 
 async function mockBoundedCollectionApis(page: Page) {
-  await page.route("**/employees*", async (route) => {
+  await page.route("**/employees**", async (route) => {
     const url = new URL(route.request().url());
+    const employeeDetailId = url.pathname.match(/^\/employees\/([^/]+)$/u)?.[1];
+    if (employeeDetailId) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          item: {
+            personId: "person-001",
+            employeeId: decodeURIComponent(employeeDetailId),
+            displayName: "Synthetic Employee 001",
+            employmentStatus: "active",
+            organizationCode: "ORG-SYNTHETIC",
+            positionCode: "POS-001",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+          asOf: url.searchParams.get("asOf") ?? "2026-07-26",
+          authorization: {
+            dataScope: "bounded",
+            maskedFields: ["terminationDate"],
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          correlationId: "employee-detail-correlation",
+        }),
+      });
+      return;
+    }
     if (url.searchParams.get("organizationCode") === "DENIED") {
       await route.fulfill({ status: 403, body: "" });
       return;
@@ -216,7 +242,7 @@ async function mockBoundedCollectionApis(page: Page) {
     });
   });
 
-  await page.route("**/lifecycle/transaction-requests*", async (route) => {
+  await page.route("**/lifecycle/transaction-requests**", async (route) => {
     const url = new URL(route.request().url());
     const requests = [
       {
@@ -256,6 +282,33 @@ async function mockBoundedCollectionApis(page: Page) {
         effectiveDate: "2026-08-03",
       },
     ];
+    const requestDetailId = url.pathname.match(
+      /^\/lifecycle\/transaction-requests\/([^/]+)$/u,
+    )?.[1];
+    if (requestDetailId) {
+      const item = requests.find(
+        (request) =>
+          request.transactionRequestId === decodeURIComponent(requestDetailId),
+      );
+      await route.fulfill({
+        status: item ? 200 : 404,
+        contentType: "application/json",
+        body: JSON.stringify(
+          item
+            ? {
+                item,
+                authorization: {
+                  dataScope: "bounded",
+                  maskedFields: ["decidedBy"],
+                  readiness: "bounded_synthetic_only_not_production_ready",
+                },
+                correlationId: "lifecycle-detail-correlation",
+              }
+            : {},
+        ),
+      });
+      return;
+    }
     const requestType = url.searchParams.get("requestType");
     const filteredRequests = requestType
       ? requests.filter((request) => request.requestType === requestType)

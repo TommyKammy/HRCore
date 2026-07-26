@@ -610,6 +610,50 @@ test("GET /employees rejects unsupported and unbounded query inputs", async (t) 
   );
 });
 
+test("GET /employees/:employeeId authorizes detail and emits detail-open evidence", async (t) => {
+  const harness = await createHarness(t, 1);
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/employees/EMP-001?asOf=2026-01-01",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().item.employeeId, "EMP-001");
+  assert.equal(response.json().asOf, "2026-01-01");
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(
+    harness.auditEvents[0]?.eventType,
+    "employee_detail.opened_from_list",
+  );
+  assert.equal(harness.auditEvents[0]?.rowCount, 1);
+  assert.doesNotMatch(JSON.stringify(harness.auditEvents), /EMP-001/u);
+});
+
+test("GET /employees/:employeeId does not expose out-of-scope records", async (t) => {
+  const harness = await createHarness(t, 1, {
+    restricted: {
+      ...authorizedActor,
+      actorId: "actor-restricted",
+      dataScope: { organizationCodes: ["ORG-OTHER"] },
+    },
+  });
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/employees/EMP-001",
+    headers: { authorization: "Bearer restricted" },
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(harness.auditEvents[0]?.reasonCode, "data_scope_denied");
+});
+
 async function createHarness(
   t: TestContext,
   count: number,

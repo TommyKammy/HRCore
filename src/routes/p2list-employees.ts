@@ -57,6 +57,7 @@ export interface P2ListEmployeeAuditEvent {
     | "employee_list.viewed"
     | "employee_list.search_applied"
     | "employee_list.page_requested"
+    | "employee_detail.opened_from_list"
     | "authorization.denied";
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
@@ -182,6 +183,147 @@ export function registerP2ListEmployeeRoutes(
       });
     }
   });
+
+  app.get(
+    "/employees/:employeeId",
+    { logLevel: "silent" },
+    async (request, reply) => {
+      const runtime = options.p2ListEmployeeApi;
+      if (runtime && typeof runtime.emitAuditEvent !== "function") {
+        throw new Error("The employee detail audit sink is required.");
+      }
+      const correlationId =
+        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      reply.header("x-correlation-id", correlationId);
+
+      let actor: P2ListActorContext | undefined;
+      try {
+        if (!runtime) {
+          throw new P2ListReadModelError(
+            "actor_context_required",
+            "Server actor context is required.",
+          );
+        }
+        actor = await runtime.resolveActor(request);
+        if (!actor) {
+          throw new P2ListReadModelError(
+            "actor_context_required",
+            "Server actor context is required.",
+          );
+        }
+        const employeeId = requireBoundedString(
+          (request.params as Record<string, unknown>).employeeId,
+          1,
+          128,
+          "invalid_filter",
+        );
+        const detailQuery = parseEmployeeDetailQuery(request.query);
+        const page = runtime.repository.listEmployees({
+          actor,
+          provenance: runtime.provenance,
+          acceptedAt: occurredAt,
+          filters: {
+            employeeId,
+            ...(detailQuery.asOf ? { asOf: detailQuery.asOf } : {}),
+          },
+          limit: 1,
+        });
+        const item =
+          page.items.find((candidate) => candidate.employeeId === employeeId) ??
+          null;
+        if (!item) {
+          await emitAuditEvent(runtime, {
+            eventId: randomUUID(),
+            eventType: "authorization.denied",
+            eventVersion: p2ListAuditEventVersion,
+            occurredAt,
+            actorId: actor.actorId,
+            evaluatedPermission: p2ListPermissions.employeeListRead,
+            dataScopeId: fingerprintP2ListValue(
+              normalizeP2ListDataScope(actor.dataScope),
+            ),
+            resourceType: "employee",
+            correlationId,
+            policyDecision: "deny",
+            reasonCode: "data_scope_denied",
+          });
+          return reply.code(404).send({
+            code: "data_scope_denied",
+            message: "The requested employee detail is unavailable.",
+            correlationId,
+            readiness: p2ListReadiness,
+          });
+        }
+
+        await emitAuditEvent(runtime, {
+          eventId: randomUUID(),
+          eventType: "employee_detail.opened_from_list",
+          eventVersion: p2ListAuditEventVersion,
+          occurredAt,
+          actorId: actor.actorId,
+          evaluatedPermission: p2ListPermissions.employeeListRead,
+          dataScopeId: fingerprintP2ListValue(
+            normalizeP2ListDataScope(actor.dataScope),
+          ),
+          filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
+          rowCount: 1,
+          resourceType: "employee",
+          correlationId,
+          policyDecision: "allow",
+        });
+        return reply.send({
+          item,
+          asOf: page.appliedFilters.asOf,
+          authorization: {
+            dataScope: "bounded" as const,
+            maskedFields: [] as string[],
+            readiness: p2ListReadiness,
+          },
+          correlationId,
+        });
+      } catch (error) {
+        if (!(error instanceof P2ListReadModelError)) {
+          throw error;
+        }
+        if (runtime && authorizationAuditErrorCodes.has(error.code)) {
+          await emitAuditEvent(runtime, {
+            eventId: randomUUID(),
+            eventType: "authorization.denied",
+            eventVersion: p2ListAuditEventVersion,
+            occurredAt,
+            actorId: safeActorId(actor),
+            evaluatedPermission: p2ListPermissions.employeeListRead,
+            dataScopeId: safeDataScopeFingerprint(actor),
+            resourceType: "employee",
+            correlationId,
+            policyDecision: "deny",
+            reasonCode: error.code,
+          });
+        }
+        return reply.code(statusForError(error.code)).send({
+          code: error.code,
+          message: publicErrorMessage(error.code),
+          correlationId,
+          readiness: p2ListReadiness,
+        });
+      }
+    },
+  );
+}
+
+function parseEmployeeDetailQuery(value: unknown): { asOf?: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidFilter();
+  }
+  const query = value as Record<string, unknown>;
+  if (Object.keys(query).some((key) => key !== "asOf")) {
+    throw new P2ListReadModelError(
+      "unsupported_filter",
+      "The employee detail filter is not supported.",
+    );
+  }
+  return { asOf: readOptionalString(query.asOf) };
 }
 
 function parseEmployeeQuery(value: unknown): ParsedEmployeeQuery {

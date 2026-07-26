@@ -5,7 +5,15 @@ export type ApiPath =
   | "/openapi.json"
   | "/employees"
   | "/lifecycle/transaction-requests";
-type ApiRequestPath = ApiPath | `${ApiPath}?${string}`;
+type ApiOperationPath =
+  | ApiPath
+  | "/employees/{employeeId}"
+  | "/lifecycle/transaction-requests/{requestId}";
+type ApiRequestPath =
+  | ApiPath
+  | `${ApiPath}?${string}`
+  | `/employees/${string}`
+  | `/lifecycle/transaction-requests/${string}`;
 
 export interface ApiContract {
   openapi: "3.1.0";
@@ -62,6 +70,13 @@ export interface EmployeeListResponse {
     maskedFields: Array<keyof EmployeeListItem>;
     readiness: "bounded_synthetic_only_not_production_ready";
   };
+  correlationId: string;
+}
+
+export interface EmployeeDetailResponse {
+  item: EmployeeListItem;
+  asOf: string;
+  authorization: EmployeeListResponse["authorization"];
   correlationId: string;
 }
 
@@ -130,6 +145,12 @@ export interface LifecycleRequestListResponse {
   correlationId: string;
 }
 
+export interface LifecycleRequestDetailResponse {
+  item: LifecycleRequestListItem;
+  authorization: LifecycleRequestListResponse["authorization"];
+  correlationId: string;
+}
+
 export class ApiClientError extends Error {
   constructor(message: string) {
     super(message);
@@ -182,14 +203,13 @@ function isIsoTimestamp(value: unknown): value is string {
   );
 }
 
-const listPageLimits = new Set([25, 50, 100]);
-
 function isPageInfo(value: unknown): value is EmployeeListResponse["pageInfo"] {
   return (
     isRecord(value) &&
     typeof value.limit === "number" &&
     Number.isInteger(value.limit) &&
-    listPageLimits.has(value.limit) &&
+    value.limit >= 1 &&
+    value.limit <= 100 &&
     typeof value.hasNextPage === "boolean" &&
     isNullableString(value.nextCursor) &&
     (value.hasNextPage
@@ -247,6 +267,18 @@ function isEmployeeListResponse(value: unknown): value is EmployeeListResponse {
     isPageInfo(value.pageInfo) &&
     isRecord(value.appliedFilters) &&
     isIsoDate(value.appliedFilters.asOf) &&
+    isAuthorization(value.authorization, employeeFields) &&
+    typeof value.correlationId === "string"
+  );
+}
+
+function isEmployeeDetailResponse(
+  value: unknown,
+): value is EmployeeDetailResponse {
+  return (
+    isRecord(value) &&
+    isEmployeeListItem(value.item) &&
+    isIsoDate(value.asOf) &&
     isAuthorization(value.authorization, employeeFields) &&
     typeof value.correlationId === "string"
   );
@@ -311,6 +343,17 @@ function isLifecycleRequestListResponse(
   );
 }
 
+function isLifecycleRequestDetailResponse(
+  value: unknown,
+): value is LifecycleRequestDetailResponse {
+  return (
+    isRecord(value) &&
+    isLifecycleRequestListItem(value.item) &&
+    isAuthorization(value.authorization, lifecycleFields) &&
+    typeof value.correlationId === "string"
+  );
+}
+
 export function createP2ListRequestInit(
   personaId: BoundedPersonaId,
   signal?: AbortSignal,
@@ -336,7 +379,7 @@ export function createP2ListRequestInit(
 
 async function readJson<T>(
   path: ApiRequestPath,
-  operation: ApiPath,
+  operation: ApiOperationPath,
   init?: RequestInit,
   validate?: (value: unknown) => value is T,
 ): Promise<T> {
@@ -387,6 +430,26 @@ export async function fetchEmployees(
   );
 }
 
+export async function fetchEmployeeDetail(
+  employeeId: string,
+  query: Pick<EmployeeListQuery, "asOf"> = {},
+  init?: RequestInit,
+): Promise<EmployeeDetailResponse> {
+  const parameters = new URLSearchParams();
+  if (query.asOf !== undefined) {
+    parameters.set("asOf", query.asOf);
+  }
+  const queryString = parameters.toString();
+  const operation = "/employees/{employeeId}";
+  const path: `/employees/${string}` = `/employees/${encodeURIComponent(employeeId)}`;
+  return readJson<EmployeeDetailResponse>(
+    queryString ? `${path}?${queryString}` : path,
+    operation,
+    init,
+    isEmployeeDetailResponse,
+  );
+}
+
 export async function fetchLifecycleRequests(
   query: LifecycleRequestListQuery = {},
   init?: RequestInit,
@@ -407,6 +470,19 @@ export async function fetchLifecycleRequests(
     path,
     init,
     isLifecycleRequestListResponse,
+  );
+}
+
+export async function fetchLifecycleRequestDetail(
+  requestId: string,
+  init?: RequestInit,
+): Promise<LifecycleRequestDetailResponse> {
+  const operation = "/lifecycle/transaction-requests/{requestId}";
+  return readJson<LifecycleRequestDetailResponse>(
+    `/lifecycle/transaction-requests/${encodeURIComponent(requestId)}`,
+    operation,
+    init,
+    isLifecycleRequestDetailResponse,
   );
 }
 

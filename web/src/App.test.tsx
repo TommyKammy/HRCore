@@ -124,6 +124,27 @@ describe("App shell", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/employees/EMP-SUPPORT-001")) {
+          return Response.json({
+            item: {
+              personId: "person-support-001",
+              employeeId: "EMP-SUPPORT-001",
+              displayName: "Synthetic Support Subject",
+              employmentStatus: "active",
+              organizationCode: "ORG-SUPPORT",
+              positionCode: "POS-SUPPORT",
+              hireDate: "2026-01-01",
+              terminationDate: null,
+            },
+            asOf: "2026-07-26",
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "support-detail-correlation",
+          });
+        }
         if (String(input).startsWith("/lifecycle/transaction-requests")) {
           return Response.json({
             items: [
@@ -209,16 +230,9 @@ describe("App shell", () => {
       screen.queryByRole("button", { name: /異動手続き \/ 山田 太郎/ }),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Procedures/ }));
     expect(
-      await screen.findByText("Synthetic Approver Subject"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", {
-        name: "Synthetic Approver Subjectの入社手続きを開く",
-      }),
+      screen.queryByRole("button", { name: /Procedures/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("閲覧不可")).toBeInTheDocument();
 
     await userEvent.selectOptions(
       screen.getByLabelText("Persona"),
@@ -243,6 +257,7 @@ describe("App shell", () => {
         name: "Synthetic Support Subjectの詳細を開く",
       }),
     );
+    expect(window.location.search).toContain("asOf=2026-07-26");
     expect(
       screen.queryByRole("button", { name: "異動手続きを開く" }),
     ).not.toBeInTheDocument();
@@ -257,25 +272,19 @@ describe("App shell", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
-        if (String(input).startsWith("/employees")) {
+        if (String(input).startsWith("/employees/EMP-000128")) {
           return Response.json({
-            items: [
-              {
-                personId: "person-reload-001",
-                employeeId: "EMP-000128",
-                displayName: "Synthetic Reload Subject",
-                employmentStatus: "active",
-                organizationCode: "ORG-RELOAD",
-                positionCode: "POS-RELOAD",
-                hireDate: "2026-01-01",
-                terminationDate: null,
-              },
-            ],
-            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
-            appliedFilters: {
+            item: {
+              personId: "person-reload-001",
               employeeId: "EMP-000128",
-              asOf: "2026-07-26",
+              displayName: "Synthetic Reload Subject",
+              employmentStatus: "active",
+              organizationCode: "ORG-RELOAD",
+              positionCode: "POS-RELOAD",
+              hireDate: "2026-01-01",
+              terminationDate: null,
             },
+            asOf: "2026-07-26",
             authorization: {
               dataScope: "bounded",
               maskedFields: [],
@@ -307,7 +316,7 @@ describe("App shell", () => {
     expect(screen.queryByText("外部ID / 連携状態")).not.toBeInTheDocument();
   });
 
-  it("fails closed when a lifecycle detail URL cannot be rehydrated", async () => {
+  it("rehydrates a lifecycle detail URL through the authorized detail API", async () => {
     window.history.replaceState(
       null,
       "",
@@ -315,13 +324,39 @@ describe("App shell", () => {
     );
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (
+          String(input).startsWith(
+            "/lifecycle/transaction-requests/request-reload-001",
+          )
+        ) {
+          return Response.json({
+            item: {
+              transactionRequestId: "request-reload-001",
+              requestType: "transfer",
+              status: "submitted",
+              subjectPersonId: "person-reload-001",
+              subjectEmployeeId: "EMP-RELOAD-001",
+              subjectDisplayName: "Synthetic Reload Request",
+              organizationCode: "ORG-RELOAD",
+              decidedBy: null,
+              requestedAt: "2026-07-01T00:00:00.000Z",
+              effectiveDate: "2026-08-01",
+            },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "lifecycle-reload-correlation",
+          });
+        }
+        return Response.json({
           openapi: "3.1.0",
           info: { title: "HRCore API", version: "0.0.0" },
           paths: { "/health": {} },
-        }),
-      ),
+        });
+      }),
     );
 
     render(<App />);
@@ -331,8 +366,9 @@ describe("App shell", () => {
     );
 
     expect(
-      await screen.findByText("手続き詳細を復元できません"),
+      await screen.findByRole("heading", { name: "Synthetic Reload Request" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("手続きレコード情報")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Create transfer request" }),
     ).not.toBeInTheDocument();
@@ -343,6 +379,32 @@ describe("App shell", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
+        if (
+          String(input).startsWith(
+            "/lifecycle/transaction-requests/request-selected-001",
+          )
+        ) {
+          return Response.json({
+            item: {
+              transactionRequestId: "request-selected-001",
+              requestType: "transfer",
+              status: "submitted",
+              subjectPersonId: "person-selected-001",
+              subjectEmployeeId: "EMP-SELECTED-001",
+              subjectDisplayName: "Synthetic Selected Subject",
+              organizationCode: "ORG-SELECTED",
+              decidedBy: null,
+              requestedAt: "2026-07-01T00:00:00.000Z",
+              effectiveDate: "2026-08-01",
+            },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "lifecycle-selected-detail-correlation",
+          });
+        }
         if (String(input).startsWith("/lifecycle/transaction-requests")) {
           return Response.json({
             items: [
@@ -442,6 +504,102 @@ describe("App shell", () => {
     expect(screen.getByRole("textbox", { name: "氏名・従業員ID" })).toHaveValue(
       "",
     );
+  });
+
+  it("remounts collection state before loading a different persona scope", async () => {
+    window.history.replaceState(null, "", "/?view=queue");
+    vi.stubEnv(
+      "VITE_P2LIST_HR_OPERATOR_TOKEN",
+      "bounded-local-hr-operator-token-000001",
+    );
+    vi.stubEnv(
+      "VITE_P2LIST_SUPPORT_TOKEN",
+      "bounded-local-support-token-000000000001",
+    );
+    let releaseSupport: ((response: Response) => void) | undefined;
+    const supportResponse = new Promise<Response>((resolve) => {
+      releaseSupport = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).startsWith("/employees")) {
+          const authorization = new Headers(init?.headers).get("authorization");
+          if (authorization?.includes("support-token")) {
+            return supportResponse;
+          }
+          return Response.json({
+            items: [
+              {
+                personId: "person-operator-001",
+                employeeId: "EMP-OPERATOR-001",
+                displayName: "Operator Scope Employee",
+                employmentStatus: "active",
+                organizationCode: "ORG-OPERATOR",
+                positionCode: "POS-OPERATOR",
+                hireDate: "2026-01-01",
+                terminationDate: null,
+              },
+            ],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: { asOf: "2026-07-26" },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "operator-scope-correlation",
+          });
+        }
+        return Response.json({
+          openapi: "3.1.0",
+          info: { title: "HRCore API", version: "0.0.0" },
+          paths: { "/health": {} },
+        });
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    expect(await screen.findByText("Operator Scope Employee")).toBeVisible();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    expect(
+      screen.queryByText("Operator Scope Employee"),
+    ).not.toBeInTheDocument();
+
+    releaseSupport?.(
+      Response.json({
+        items: [
+          {
+            personId: "person-support-002",
+            employeeId: "EMP-SUPPORT-002",
+            displayName: "Support Scope Employee",
+            employmentStatus: "active",
+            organizationCode: "ORG-SUPPORT",
+            positionCode: "POS-SUPPORT",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+        ],
+        pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+        appliedFilters: { asOf: "2026-07-26" },
+        authorization: {
+          dataScope: "bounded",
+          maskedFields: [],
+          readiness: "bounded_synthetic_only_not_production_ready",
+        },
+        correlationId: "support-scope-correlation",
+      }),
+    );
+    expect(await screen.findByText("Support Scope Employee")).toBeVisible();
   });
 
   it("replaces a URL route that the selected persona cannot access", async () => {

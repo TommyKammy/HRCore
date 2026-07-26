@@ -474,6 +474,59 @@ test("GET /lifecycle/transaction-requests requires its audit sink", async (t) =>
   assert.equal(harness.auditEvents.length, 0);
 });
 
+test("GET /lifecycle/transaction-requests/:requestId authorizes detail and emits detail-open evidence", async (t) => {
+  const harness = await createHarness(t, 1);
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/p2list-transaction-001",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(
+    response.json().item.transactionRequestId,
+    "p2list-transaction-001",
+  );
+  assert.equal(
+    response.json().item.subjectDisplayName,
+    "Synthetic Lifecycle Subject 001",
+  );
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(
+    harness.auditEvents[0]?.eventType,
+    "lifecycle_request_detail.opened_from_list",
+  );
+  assert.equal(harness.auditEvents[0]?.rowCount, 1);
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    /p2list-transaction-001/u,
+  );
+});
+
+test("GET /lifecycle/transaction-requests/:requestId does not expose out-of-scope records", async (t) => {
+  const harness = await createHarness(t, 1, {
+    restricted: {
+      ...authorizedActor,
+      actorId: "actor-restricted",
+      dataScope: { organizationCodes: ["ORG-OTHER"] },
+    },
+  });
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/p2list-transaction-001",
+    headers: { authorization: "Bearer restricted" },
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(harness.auditEvents[0]?.reasonCode, "data_scope_denied");
+});
+
 async function createHarness(
   t: TestContext,
   count: number,

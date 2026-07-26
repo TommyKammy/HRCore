@@ -145,8 +145,12 @@ function readText(
   maximumLength: number,
   errors: string[],
 ): string | undefined {
-  const value = parameters.get(key)?.trim();
-  if (!value) {
+  const value = parameters.get(key);
+  if (value === null || value === "") {
+    return undefined;
+  }
+  if (value.trim() !== value) {
+    errors.push(`${key} の前後に空白を含めないでください。`);
     return undefined;
   }
   if (value.length > maximumLength) {

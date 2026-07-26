@@ -739,14 +739,27 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   const employeeOperation = contract.paths["/employees"]?.get;
   const lifecycleOperation =
     contract.paths["/lifecycle/transaction-requests"]?.get;
+  const employeeDetail = contract.paths["/employees/{employeeId}"]?.get;
+  const lifecycleDetail =
+    contract.paths["/lifecycle/transaction-requests/{requestId}"]?.get;
   const employeeExport = contract.paths["/exports/employee-list"]?.post;
   const lifecycleExport =
     contract.paths["/exports/lifecycle-request-list"]?.post;
 
   assert.ok(employeeOperation);
   assert.ok(lifecycleOperation);
+  assert.ok(employeeDetail);
+  assert.ok(lifecycleDetail);
   assert.ok(employeeExport);
   assert.ok(lifecycleExport);
+  assert.equal(
+    employeeDetail["x-hrcore-required-permission"],
+    p2ListPermissions.employeeListRead,
+  );
+  assert.equal(
+    lifecycleDetail["x-hrcore-required-permission"],
+    p2ListPermissions.lifecycleRequestListRead,
+  );
 
   assert.deepEqual(parameterNames(employeeOperation), [
     ...p2ListEmployeeFilters,

@@ -4,7 +4,7 @@ import {
   type EmployeeListItem,
   ApiClientError,
   createP2ListRequestInit,
-  fetchEmployees,
+  fetchEmployeeDetail,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import { EmployeeDetailView } from "./screens";
@@ -19,14 +19,14 @@ interface EmployeeDetailState {
 export function EmployeeDetailRoute({
   personaId,
   employeeId,
+  asOf,
   useLegacyFixture,
-  selectedEmployee,
   onOpenTransfer,
 }: {
   personaId: BoundedPersonaId;
   employeeId: string | null;
+  asOf: string | null;
   useLegacyFixture: boolean;
-  selectedEmployee: EmployeeListItem | null;
   onOpenTransfer: (() => void) | null;
 }) {
   const [retryVersion, setRetryVersion] = useState(0);
@@ -35,36 +35,26 @@ export function EmployeeDetailRoute({
     loading: false,
     error: null,
   });
-  const selectedRecord =
-    selectedEmployee?.employeeId === employeeId ? selectedEmployee : null;
-  const isLegacyFixture = !selectedRecord && useLegacyFixture;
+  const isLegacyFixture = useLegacyFixture;
 
   useEffect(() => {
-    if (isLegacyFixture || selectedRecord || !employeeId) {
+    if (isLegacyFixture || !employeeId) {
       setState({ employee: null, loading: false, error: null });
       return;
     }
 
     const controller = new AbortController();
     setState({ employee: null, loading: true, error: null });
-    void fetchEmployees(
-      {
-        employeeId,
-        sort: "employeeId",
-        direction: "asc",
-        limit: 25,
-      },
+    void fetchEmployeeDetail(
+      employeeId,
+      { asOf: asOf ?? undefined },
       createP2ListRequestInit(personaId, controller.signal),
     )
       .then((response) => {
-        const employee =
-          response.items.find((item) => item.employeeId === employeeId) ?? null;
         setState({
-          employee,
+          employee: response.item,
           loading: false,
-          error: employee
-            ? null
-            : "指定された従業員は現在の bounded scope では確認できません。",
+          error: null,
         });
       })
       .catch((caught: unknown) => {
@@ -82,16 +72,11 @@ export function EmployeeDetailRoute({
       });
 
     return () => controller.abort();
-  }, [employeeId, isLegacyFixture, personaId, retryVersion, selectedRecord]);
+  }, [asOf, employeeId, isLegacyFixture, personaId, retryVersion]);
 
   if (isLegacyFixture) {
     return (
       <EmployeeDetailView employee={null} onOpenTransfer={onOpenTransfer} />
-    );
-  }
-  if (selectedRecord) {
-    return (
-      <EmployeeDetailView employee={selectedRecord} onOpenTransfer={null} />
     );
   }
   if (state.loading) {
