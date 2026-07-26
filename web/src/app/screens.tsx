@@ -252,9 +252,11 @@ export function DashboardView({
 
 export function EmployeeDetailView({
   employee,
+  maskedFields = [],
   onOpenTransfer,
 }: {
   employee?: EmployeeListItem | null;
+  maskedFields?: readonly (keyof EmployeeListItem)[];
   onOpenTransfer: (() => void) | null;
 }) {
   if (employee) {
@@ -264,7 +266,11 @@ export function EmployeeDetailView({
         : employee.employmentStatus === "inactive"
           ? "休止"
           : "在籍";
-    const unavailableAssignment = "未提供またはマスク済み";
+    const nullableValue = (
+      value: string | null,
+      field: keyof EmployeeListItem,
+      unavailable: string,
+    ) => value ?? (maskedFields.includes(field) ? "masked" : unavailable);
 
     return (
       <div className="employee-detail">
@@ -277,7 +283,7 @@ export function EmployeeDetailView({
             <h2>{employee.displayName}</h2>
             <p>
               社員番号 {employee.employeeId} /{" "}
-              {employee.positionCode ?? unavailableAssignment} /{" "}
+              {nullableValue(employee.positionCode, "positionCode", "未提供")} /{" "}
               {employee.hireDate.replaceAll("-", "/")} 入社
             </p>
             <div className="badge-row" aria-label="従業員状態">
@@ -315,11 +321,19 @@ export function EmployeeDetailView({
             </div>
             <div>
               <dt>所属</dt>
-              <dd>{employee.organizationCode ?? unavailableAssignment}</dd>
+              <dd>
+                {nullableValue(
+                  employee.organizationCode,
+                  "organizationCode",
+                  "未提供",
+                )}
+              </dd>
             </div>
             <div>
               <dt>役職</dt>
-              <dd>{employee.positionCode ?? unavailableAssignment}</dd>
+              <dd>
+                {nullableValue(employee.positionCode, "positionCode", "未提供")}
+              </dd>
             </div>
             <div>
               <dt>在籍状態</dt>
@@ -331,7 +345,13 @@ export function EmployeeDetailView({
             </div>
             <div>
               <dt>退職日</dt>
-              <dd>{employee.terminationDate ?? "該当なし"}</dd>
+              <dd>
+                {nullableValue(
+                  employee.terminationDate,
+                  "terminationDate",
+                  "該当なし",
+                )}
+              </dd>
             </div>
           </dl>
           <p className="muted">
@@ -501,9 +521,11 @@ export function EmployeeDetailView({
 
 export function LifecycleRequestDetailView({
   request,
+  maskedFields = [],
   onBack,
 }: {
   request: LifecycleRequestListItem;
+  maskedFields?: readonly (keyof LifecycleRequestListItem)[];
   onBack: () => void;
 }) {
   return (
@@ -553,7 +575,12 @@ export function LifecycleRequestDetailView({
           </div>
           <div>
             <dt>従業員ID</dt>
-            <dd>{request.subjectEmployeeId ?? "未採番"}</dd>
+            <dd>
+              {request.subjectEmployeeId ??
+                (maskedFields.includes("subjectEmployeeId")
+                  ? "masked"
+                  : "未採番")}
+            </dd>
           </div>
           <div>
             <dt>組織</dt>

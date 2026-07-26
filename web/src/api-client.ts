@@ -1,4 +1,5 @@
 import type { BoundedPersonaId } from "./persona";
+import { p2ListMaximumLimit } from "../../src/p2list-contract";
 
 export type ApiPath =
   | "/health"
@@ -152,9 +153,21 @@ export interface LifecycleRequestDetailResponse {
 }
 
 export class ApiClientError extends Error {
-  constructor(message: string) {
+  declare readonly status?: number;
+  declare readonly correlationId?: string;
+
+  constructor(
+    message: string,
+    options?: { status?: number; correlationId?: string },
+  ) {
     super(message);
     this.name = "ApiClientError";
+    if (options?.status !== undefined) {
+      this.status = options.status;
+    }
+    if (options?.correlationId !== undefined) {
+      this.correlationId = options.correlationId;
+    }
   }
 }
 
@@ -287,12 +300,13 @@ function isEmployeeListResponse(value: unknown): value is EmployeeListResponse {
   return (
     isRecord(value) &&
     Array.isArray(value.items) &&
+    value.items.length <= p2ListMaximumLimit &&
     value.items.every(isEmployeeListItem) &&
     isPageInfo(value.pageInfo) &&
     isRecord(value.appliedFilters) &&
     isIsoDate(value.appliedFilters.asOf) &&
     isAuthorization(value.authorization, employeeFields) &&
-    typeof value.correlationId === "string"
+    isNonEmptyString(value.correlationId)
   );
 }
 
@@ -304,7 +318,7 @@ function isEmployeeDetailResponse(
     isEmployeeListItem(value.item) &&
     isIsoDate(value.asOf) &&
     isAuthorization(value.authorization, employeeFields) &&
-    typeof value.correlationId === "string"
+    isNonEmptyString(value.correlationId)
   );
 }
 
@@ -360,11 +374,12 @@ function isLifecycleRequestListResponse(
   return (
     isRecord(value) &&
     Array.isArray(value.items) &&
+    value.items.length <= p2ListMaximumLimit &&
     value.items.every(isLifecycleRequestListItem) &&
     isPageInfo(value.pageInfo) &&
     isRecord(value.appliedFilters) &&
     isAuthorization(value.authorization, lifecycleFields) &&
-    typeof value.correlationId === "string"
+    isNonEmptyString(value.correlationId)
   );
 }
 
@@ -375,7 +390,7 @@ function isLifecycleRequestDetailResponse(
     isRecord(value) &&
     isLifecycleRequestListItem(value.item) &&
     isAuthorization(value.authorization, lifecycleFields) &&
-    typeof value.correlationId === "string"
+    isNonEmptyString(value.correlationId)
   );
 }
 
@@ -418,8 +433,10 @@ async function readJson<T>(
   });
 
   if (!response.ok) {
+    const correlationId = await readErrorCorrelationId(response);
     throw new ApiClientError(
       `Request failed for ${operation}: ${response.status}`,
+      { status: response.status, correlationId },
     );
   }
 
@@ -430,6 +447,23 @@ async function readJson<T>(
     );
   }
   return payload as T;
+}
+
+async function readErrorCorrelationId(
+  response: Response,
+): Promise<string | undefined> {
+  const headerValue = response.headers.get("x-correlation-id")?.trim();
+  if (headerValue) {
+    return headerValue;
+  }
+  try {
+    const payload: unknown = await response.json();
+    return isRecord(payload) && isNonEmptyString(payload.correlationId)
+      ? payload.correlationId
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
@@ -521,7 +555,10 @@ export async function fetchOpenApiContract(): Promise<ApiContract> {
     contract.openapi !== "3.1.0" ||
     contract.info?.title !== "HRCore API" ||
     !isRecord(contract.paths) ||
-    requiredApiContractPaths.some((path) => !isRecord(contract.paths[path]))
+    requiredApiContractPaths.some((path) => {
+      const pathItem = contract.paths[path];
+      return !isRecord(pathItem) || !isRecord(pathItem.get);
+    })
   ) {
     throw new ApiClientError(
       "OpenAPI contract did not match the repository-owned HRCore API shape.",

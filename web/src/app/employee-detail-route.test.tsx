@@ -15,6 +15,79 @@ afterEach(() => {
 });
 
 describe("EmployeeDetailRoute", () => {
+  it("distinguishes a masked termination date from an absent value", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          item: {
+            personId: "person-masked",
+            employeeId: "EMP-MASKED",
+            displayName: "Masked Employee",
+            employmentStatus: "active",
+            organizationCode: "ORG-001",
+            positionCode: "POS-001",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+          asOf: "2026-07-26",
+          authorization: {
+            ...authorization,
+            maskedFields: ["terminationDate"],
+          },
+          correlationId: "employee-detail-masked",
+        }),
+      ),
+    );
+
+    render(
+      <EmployeeDetailRoute
+        personaId="hr-operator"
+        employeeId="EMP-MASKED"
+        asOf={null}
+        useLegacyFixture={false}
+        onOpenTransfer={null}
+      />,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Masked Employee" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("masked")).toBeInTheDocument();
+    expect(screen.queryByText("該当なし")).not.toBeInTheDocument();
+  });
+
+  it("shows the server correlation ID for a failed detail request", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            code: "permission_denied",
+            message: "The bounded operation was denied.",
+            correlationId: "employee-detail-denied",
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    render(
+      <EmployeeDetailRoute
+        personaId="hr-operator"
+        employeeId="EMP-DENIED"
+        asOf={null}
+        useLegacyFixture={false}
+        onOpenTransfer={null}
+      />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "employee-detail-denied",
+    );
+  });
+
   it.each([
     {
       name: "employee ID",

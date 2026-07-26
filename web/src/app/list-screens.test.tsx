@@ -310,7 +310,12 @@ describe("employee list screen", () => {
   it("shows actionable denied and network retry states without fixtures", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 403,
+          headers: { "x-correlation-id": "employee-list-denied" },
+        }),
+      )
       .mockRejectedValueOnce(new TypeError("network down"))
       .mockResolvedValueOnce(Response.json(employeeResponse));
     vi.stubGlobal("fetch", fetchMock);
@@ -321,6 +326,7 @@ describe("employee list screen", () => {
     expect(
       await screen.findByText("この一覧を表示する権限が確認できません"),
     ).toBeVisible();
+    expect(screen.getByText("employee-list-denied")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "再試行" }));
     expect(await screen.findByText("一覧APIに接続できません")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "再試行" }));

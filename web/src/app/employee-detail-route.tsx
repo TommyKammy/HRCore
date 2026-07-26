@@ -12,8 +12,10 @@ import { LoadingState } from "./shared";
 
 interface EmployeeDetailState {
   employee: EmployeeListItem | null;
+  maskedFields: Array<keyof EmployeeListItem>;
   loading: boolean;
   error: string | null;
+  correlationId: string | null;
 }
 
 export function EmployeeDetailRoute({
@@ -32,19 +34,33 @@ export function EmployeeDetailRoute({
   const [retryVersion, setRetryVersion] = useState(0);
   const [state, setState] = useState<EmployeeDetailState>({
     employee: null,
+    maskedFields: [],
     loading: false,
     error: null,
+    correlationId: null,
   });
   const isLegacyFixture = useLegacyFixture;
 
   useEffect(() => {
     if (isLegacyFixture || !employeeId) {
-      setState({ employee: null, loading: false, error: null });
+      setState({
+        employee: null,
+        maskedFields: [],
+        loading: false,
+        error: null,
+        correlationId: null,
+      });
       return;
     }
 
     const controller = new AbortController();
-    setState({ employee: null, loading: true, error: null });
+    setState({
+      employee: null,
+      maskedFields: [],
+      loading: true,
+      error: null,
+      correlationId: null,
+    });
     void fetchEmployeeDetail(
       employeeId,
       { asOf: asOf ?? undefined },
@@ -60,12 +76,15 @@ export function EmployeeDetailRoute({
         ) {
           throw new ApiClientError(
             "Employee detail response did not match the requested resource.",
+            { correlationId: response.correlationId },
           );
         }
         setState({
           employee: response.item,
+          maskedFields: response.authorization.maskedFields,
           loading: false,
           error: null,
+          correlationId: response.correlationId,
         });
       })
       .catch((caught: unknown) => {
@@ -74,11 +93,16 @@ export function EmployeeDetailRoute({
         }
         setState({
           employee: null,
+          maskedFields: [],
           loading: false,
           error:
             caught instanceof ApiClientError
               ? "従業員詳細を再取得できません。権限または検索条件を確認してください。"
               : "従業員詳細APIに接続できません。",
+          correlationId:
+            caught instanceof ApiClientError
+              ? (caught.correlationId ?? null)
+              : null,
         });
       });
 
@@ -99,6 +123,11 @@ export function EmployeeDetailRoute({
         <div>
           <strong>従業員詳細を表示できません</strong>
           <p>{state.error}</p>
+          {state.correlationId ? (
+            <p>
+              correlation <code>{state.correlationId}</code>
+            </p>
+          ) : null}
         </div>
         <button
           className="secondary-button"
@@ -111,6 +140,10 @@ export function EmployeeDetailRoute({
     );
   }
   return state.employee ? (
-    <EmployeeDetailView employee={state.employee} onOpenTransfer={null} />
+    <EmployeeDetailView
+      employee={state.employee}
+      maskedFields={state.maskedFields}
+      onOpenTransfer={null}
+    />
   ) : null;
 }

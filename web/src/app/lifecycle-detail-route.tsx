@@ -12,8 +12,10 @@ import { LoadingState } from "./shared";
 
 interface LifecycleDetailState {
   request: LifecycleRequestListItem | null;
+  maskedFields: Array<keyof LifecycleRequestListItem>;
   loading: boolean;
   error: string | null;
+  correlationId: string | null;
 }
 
 export function LifecycleDetailRoute({
@@ -30,13 +32,21 @@ export function LifecycleDetailRoute({
   const [retryVersion, setRetryVersion] = useState(0);
   const [state, setState] = useState<LifecycleDetailState>({
     request: null,
+    maskedFields: [],
     loading: true,
     error: null,
+    correlationId: null,
   });
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ request: null, loading: true, error: null });
+    setState({
+      request: null,
+      maskedFields: [],
+      loading: true,
+      error: null,
+      correlationId: null,
+    });
     void fetchLifecycleRequestDetail(
       requestId,
       createP2ListRequestInit(personaId, controller.signal),
@@ -48,12 +58,20 @@ export function LifecycleDetailRoute({
         ) {
           setState({
             request: null,
+            maskedFields: [],
             loading: false,
             error: "取得した手続き詳細がURLの対象と一致しません。",
+            correlationId: response.correlationId,
           });
           return;
         }
-        setState({ request: response.item, loading: false, error: null });
+        setState({
+          request: response.item,
+          maskedFields: response.authorization.maskedFields,
+          loading: false,
+          error: null,
+          correlationId: response.correlationId,
+        });
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted) {
@@ -61,11 +79,16 @@ export function LifecycleDetailRoute({
         }
         setState({
           request: null,
+          maskedFields: [],
           loading: false,
           error:
             caught instanceof ApiClientError
               ? "手続き詳細を再取得できません。権限またはRequest IDを確認してください。"
               : "手続き詳細APIに接続できません。",
+          correlationId:
+            caught instanceof ApiClientError
+              ? (caught.correlationId ?? null)
+              : null,
         });
       });
 
@@ -81,6 +104,11 @@ export function LifecycleDetailRoute({
         <div>
           <strong>手続き詳細を表示できません</strong>
           <p>{state.error}</p>
+          {state.correlationId ? (
+            <p>
+              correlation <code>{state.correlationId}</code>
+            </p>
+          ) : null}
         </div>
         <div className="collection-feedback-actions">
           <button className="secondary-button" type="button" onClick={onBack}>
@@ -98,6 +126,10 @@ export function LifecycleDetailRoute({
     );
   }
   return state.request ? (
-    <LifecycleRequestDetailView request={state.request} onBack={onBack} />
+    <LifecycleRequestDetailView
+      request={state.request}
+      maskedFields={state.maskedFields}
+      onBack={onBack}
+    />
   ) : null;
 }

@@ -48,6 +48,16 @@ const lifecycleListItem: LifecycleRequestListResponse["items"][number] = {
   requestedAt: "2026-07-01T00:00:00.000Z",
   effectiveDate: "2026-08-01",
 };
+const employeeListItem: EmployeeListResponse["items"][number] = {
+  personId: "person-001",
+  employeeId: "EMP-001",
+  displayName: "Synthetic Employee",
+  employmentStatus: "active",
+  organizationCode: "ORG-001",
+  positionCode: "POS-001",
+  hireDate: "2026-01-01",
+  terminationDate: null,
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -89,6 +99,23 @@ describe("OpenAPI contract API client", () => {
       ),
     );
   });
+
+  it("rejects a required path without a GET operation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...repositoryOwnedApiContract,
+          paths: {
+            ...repositoryOwnedApiContract.paths,
+            "/employees": { post: {} },
+          },
+        }),
+      ),
+    );
+
+    await expect(fetchOpenApiContract()).rejects.toBeInstanceOf(ApiClientError);
+  });
 });
 
 describe("lifecycle request API client", () => {
@@ -122,7 +149,17 @@ describe("lifecycle request API client", () => {
   it("does not expose lifecycle query values in errors", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(null, { status: 403 })),
+      vi.fn(async () =>
+        Response.json(
+          {
+            code: "permission_denied",
+            message: "The bounded operation was denied.",
+            correlationId: "lifecycle-denied-correlation",
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          { status: 403 },
+        ),
+      ),
     );
 
     const request = fetchLifecycleRequests({
@@ -131,11 +168,11 @@ describe("lifecycle request API client", () => {
       cursor: "private-cursor",
     });
 
-    await expect(request).rejects.toEqual(
-      new ApiClientError(
-        "Request failed for /lifecycle/transaction-requests: 403",
-      ),
-    );
+    await expect(request).rejects.toMatchObject({
+      message: "Request failed for /lifecycle/transaction-requests: 403",
+      status: 403,
+      correlationId: "lifecycle-denied-correlation",
+    });
     await expect(request).rejects.not.toHaveProperty(
       "message",
       expect.stringMatching(/Private|private-cursor/u),
@@ -261,7 +298,13 @@ describe("employee API client", () => {
   it("does not expose employee query values in errors", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(null, { status: 400 })),
+      vi.fn(
+        async () =>
+          new Response(null, {
+            status: 400,
+            headers: { "x-correlation-id": "employee-invalid-correlation" },
+          }),
+      ),
     );
 
     const request = fetchEmployees({
@@ -270,9 +313,11 @@ describe("employee API client", () => {
       cursor: "private-cursor",
     });
 
-    await expect(request).rejects.toEqual(
-      new ApiClientError("Request failed for /employees: 400"),
-    );
+    await expect(request).rejects.toMatchObject({
+      message: "Request failed for /employees: 400",
+      status: 400,
+      correlationId: "employee-invalid-correlation",
+    });
     await expect(request).rejects.not.toHaveProperty(
       "message",
       expect.stringMatching(/Private|private-cursor/u),
@@ -295,6 +340,67 @@ describe("employee API client", () => {
         "Response contract did not match the repository-owned shape for /employees.",
       ),
     );
+  });
+
+  it("rejects collection responses over the bounded row limit", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          ...employeeListResponse,
+          items: Array.from({ length: 101 }, () => employeeListItem),
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          ...lifecycleListResponse,
+          items: Array.from({ length: 101 }, () => lifecycleListItem),
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchEmployees()).rejects.toBeInstanceOf(ApiClientError);
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+  });
+
+  it("rejects empty correlation IDs in bounded responses", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({ ...employeeListResponse, correlationId: "" }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ ...lifecycleListResponse, correlationId: "" }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          item: employeeListItem,
+          asOf: "2026-07-26",
+          authorization: employeeListResponse.authorization,
+          correlationId: "",
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          item: lifecycleListItem,
+          authorization: lifecycleListResponse.authorization,
+          correlationId: "",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchEmployees()).rejects.toBeInstanceOf(ApiClientError);
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+    await expect(fetchEmployeeDetail("EMP-001")).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+    await expect(
+      fetchLifecycleRequestDetail("request-001"),
+    ).rejects.toBeInstanceOf(ApiClientError);
   });
 
   it("rejects additional properties in bounded list items", async () => {

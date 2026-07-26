@@ -40,6 +40,7 @@ interface CollectionError {
   kind: CollectionErrorKind;
   title: string;
   body: string;
+  correlationId?: string;
 }
 
 interface CollectionState<Query, Response> {
@@ -225,12 +226,14 @@ function useBoundedCollection<Query, Response>({
 
 function classifyCollectionError(caught: unknown): CollectionError {
   if (caught instanceof ApiClientError) {
-    const status = Number(caught.message.match(/: (\d{3})$/u)?.[1]);
+    const status =
+      caught.status ?? Number(caught.message.match(/: (\d{3})$/u)?.[1]);
     if (status === 401 || status === 403) {
       return {
         kind: "denied",
         title: "この一覧を表示する権限が確認できません",
         body: "サーバーの actor context と bounded data scope を確認してください。persona の表示状態だけではアクセスできません。",
+        correlationId: caught.correlationId,
       };
     }
     if (status === 400) {
@@ -238,6 +241,7 @@ function classifyCollectionError(caught: unknown): CollectionError {
         kind: "invalid",
         title: "検索条件またはページ情報が無効です",
         body: "条件をリセットして再実行してください。期限切れ・改変済み cursor は再利用できません。",
+        correlationId: caught.correlationId,
       };
     }
   }
@@ -265,6 +269,11 @@ function CollectionFeedback({
       <div>
         <strong>{error.title}</strong>
         <p>{error.body}</p>
+        {error.correlationId ? (
+          <p>
+            correlation <code>{error.correlationId}</code>
+          </p>
+        ) : null}
       </div>
       <div className="collection-feedback-actions">
         <button className="secondary-button" type="button" onClick={onReset}>
