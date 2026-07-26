@@ -645,6 +645,23 @@ test("GET /employees/:employeeId authorizes detail and emits detail-open evidenc
   assert.doesNotMatch(JSON.stringify(harness.auditEvents), /EMP-001/u);
 });
 
+test("GET /employees/:employeeId rejects an explicitly empty asOf", async (t) => {
+  const harness = await createHarness(t, 1, {
+    authorized: authorizedDetailActor,
+  });
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/employees/EMP-001?asOf=",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().code, "invalid_filter");
+  assert.equal(harness.auditEvents.length, 0);
+});
+
 test("GET /employees/:employeeId denies list-only actors", async (t) => {
   const harness = await createHarness(t, 1);
   if (!harness) return;

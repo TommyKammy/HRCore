@@ -7,9 +7,11 @@ import {
   fetchEmployees,
   fetchLifecycleRequestDetail,
   fetchLifecycleRequests,
+  fetchOpenApiContract,
   type EmployeeListResponse,
   type LifecycleRequestListResponse,
 } from "./api-client";
+import { repositoryOwnedApiContract } from "./test-api-contract";
 
 const employeeListResponse: EmployeeListResponse = {
   items: [],
@@ -50,6 +52,43 @@ const lifecycleListItem: LifecycleRequestListResponse["items"][number] = {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+describe("OpenAPI contract API client", () => {
+  it("accepts the repository-owned contract paths", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
+    );
+
+    await expect(fetchOpenApiContract()).resolves.toEqual(
+      repositoryOwnedApiContract,
+    );
+  });
+
+  it.each([
+    "/employees",
+    "/employees/{employeeId}",
+    "/lifecycle/transaction-requests",
+    "/lifecycle/transaction-requests/{requestId}",
+  ])("rejects a contract missing %s", async (missingPath) => {
+    const paths: Record<string, unknown> = {
+      ...repositoryOwnedApiContract.paths,
+    };
+    delete paths[missingPath];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ ...repositoryOwnedApiContract, paths }),
+      ),
+    );
+
+    await expect(fetchOpenApiContract()).rejects.toEqual(
+      new ApiClientError(
+        "OpenAPI contract did not match the repository-owned HRCore API shape.",
+      ),
+    );
+  });
 });
 
 describe("lifecycle request API client", () => {
@@ -281,6 +320,39 @@ describe("employee API client", () => {
         Response.json({
           ...lifecycleListResponse,
           items: [{ ...lifecycleListItem, notes: "private" }],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchEmployees()).rejects.toBeInstanceOf(ApiClientError);
+    await expect(fetchLifecycleRequests()).rejects.toBeInstanceOf(
+      ApiClientError,
+    );
+  });
+
+  it("rejects empty identifiers in bounded list items", async () => {
+    const employeeItem = {
+      personId: "person-001",
+      employeeId: "EMP-001",
+      displayName: "Synthetic Employee",
+      employmentStatus: "active",
+      organizationCode: "ORG-001",
+      positionCode: "POS-001",
+      hireDate: "2026-01-01",
+      terminationDate: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          ...employeeListResponse,
+          items: [{ ...employeeItem, employeeId: "" }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          ...lifecycleListResponse,
+          items: [{ ...lifecycleListItem, transactionRequestId: "" }],
         }),
       );
     vi.stubGlobal("fetch", fetchMock);

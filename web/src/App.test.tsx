@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { repositoryOwnedApiContract } from "./test-api-contract";
 
 describe("App shell", () => {
   it("fails closed until a bounded non-production persona is selected", () => {
@@ -26,11 +27,7 @@ describe("App shell", () => {
 
   it("loads the repository-owned API contract after persona selection", async () => {
     const fetchMock = vi.fn(async () =>
-      Response.json({
-        openapi: "3.1.0",
-        info: { title: "HRCore API", version: "0.0.0" },
-        paths: { "/health": {} },
-      }),
+      Response.json(repositoryOwnedApiContract),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -56,13 +53,7 @@ describe("App shell", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 503 }))
-      .mockResolvedValueOnce(
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      );
+      .mockResolvedValueOnce(Response.json(repositoryOwnedApiContract));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
@@ -88,13 +79,7 @@ describe("App shell", () => {
   it("marks the selected route button for assistive technologies", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -203,11 +188,7 @@ describe("App shell", () => {
             correlationId: "support-list-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -293,11 +274,7 @@ describe("App shell", () => {
             correlationId: "employee-reload-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -347,11 +324,7 @@ describe("App shell", () => {
           correlationId: "employee-other-correlation",
         });
       }
-      return Response.json({
-        openapi: "3.1.0",
-        info: { title: "HRCore API", version: "0.0.0" },
-        paths: { "/health": {} },
-      });
+      return Response.json(repositoryOwnedApiContract);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -417,11 +390,7 @@ describe("App shell", () => {
             correlationId: "operator-detail-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -503,11 +472,7 @@ describe("App shell", () => {
             correlationId: "lifecycle-reload-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -588,11 +553,7 @@ describe("App shell", () => {
             correlationId: "lifecycle-selected-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -640,11 +601,7 @@ describe("App shell", () => {
             correlationId: "employee-route-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -715,11 +672,7 @@ describe("App shell", () => {
             correlationId: "operator-scope-correlation",
           });
         }
-        return Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        });
+        return Response.json(repositoryOwnedApiContract);
       }),
     );
 
@@ -774,13 +727,7 @@ describe("App shell", () => {
     );
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -797,13 +744,7 @@ describe("App shell", () => {
   it("reports an empty approval queue when no requests exist", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -817,13 +758,7 @@ describe("App shell", () => {
   it("supports bounded onboarding create, inspection, evidence, and approver decisions", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -997,13 +932,7 @@ describe("App shell", () => {
     async (decisionButton, terminalStatus) => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () =>
-          Response.json({
-            openapi: "3.1.0",
-            info: { title: "HRCore API", version: "0.0.0" },
-            paths: { "/health": {} },
-          }),
-        ),
+        vi.fn(async () => Response.json(repositoryOwnedApiContract)),
       );
 
       render(<App />);
@@ -1056,13 +985,7 @@ describe("App shell", () => {
   it("validates required and malformed onboarding assignment and contact fields before submit", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -1130,13 +1053,7 @@ describe("App shell", () => {
   it("supports bounded transfer and termination practical workflows with approval evidence", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -1374,13 +1291,7 @@ describe("App shell", () => {
   it("uses the active CSV actor in audit evidence", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -1403,13 +1314,7 @@ describe("App shell", () => {
   it("requires reason and confirmation before recording DLQ decisions", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -1477,13 +1382,7 @@ describe("App shell", () => {
   it("rejects terminal DLQ decisions and retry attempts beyond the bounded limit", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     let app = render(<App />);

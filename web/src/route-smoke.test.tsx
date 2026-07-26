@@ -3,18 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { repositoryOwnedApiContract } from "./test-api-contract";
 
 describe("route smoke", () => {
   it("shows persona-scoped planned practical-use routes", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);

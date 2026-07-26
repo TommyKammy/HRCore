@@ -322,7 +322,7 @@ export class P2ListReadModelRepository {
     );
     const suppliedFilters = normalizeEmployeeFilters({
       employeeId,
-      ...(input?.asOf ? { asOf: input.asOf } : {}),
+      ...(input?.asOf !== undefined ? { asOf: input.asOf } : {}),
     });
     const resolvedAsOf = resolveEmployeeAsOf(
       suppliedFilters.asOf,

@@ -226,7 +226,7 @@ export function registerP2ListEmployeeRoutes(
           provenance: runtime.provenance,
           acceptedAt: occurredAt,
           employeeId,
-          ...(detailQuery.asOf ? { asOf: detailQuery.asOf } : {}),
+          ...(detailQuery.asOf !== undefined ? { asOf: detailQuery.asOf } : {}),
         });
         const item = detail.item;
         if (!item) {

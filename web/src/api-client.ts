@@ -158,8 +158,20 @@ export class ApiClientError extends Error {
   }
 }
 
+const requiredApiContractPaths = [
+  "/health",
+  "/employees",
+  "/employees/{employeeId}",
+  "/lifecycle/transaction-requests",
+  "/lifecycle/transaction-requests/{requestId}",
+] as const;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function hasExactKeys(
@@ -260,9 +272,9 @@ function isEmployeeListItem(value: unknown): value is EmployeeListItem {
   return (
     isRecord(value) &&
     hasExactKeys(value, employeeFields) &&
-    typeof value.personId === "string" &&
-    typeof value.employeeId === "string" &&
-    typeof value.displayName === "string" &&
+    isNonEmptyString(value.personId) &&
+    isNonEmptyString(value.employeeId) &&
+    isNonEmptyString(value.displayName) &&
     employeeStatuses.has(String(value.employmentStatus)) &&
     isNullableString(value.organizationCode) &&
     isNullableString(value.positionCode) &&
@@ -329,13 +341,13 @@ function isLifecycleRequestListItem(
   return (
     isRecord(value) &&
     hasExactKeys(value, lifecycleFields) &&
-    typeof value.transactionRequestId === "string" &&
+    isNonEmptyString(value.transactionRequestId) &&
     lifecycleRequestTypes.has(String(value.requestType)) &&
     lifecycleStatuses.has(String(value.status)) &&
-    typeof value.subjectPersonId === "string" &&
+    isNonEmptyString(value.subjectPersonId) &&
     isNullableString(value.subjectEmployeeId) &&
-    typeof value.subjectDisplayName === "string" &&
-    typeof value.organizationCode === "string" &&
+    isNonEmptyString(value.subjectDisplayName) &&
+    isNonEmptyString(value.organizationCode) &&
     isNullableString(value.decidedBy) &&
     isIsoTimestamp(value.requestedAt) &&
     isIsoDate(value.effectiveDate)
@@ -508,7 +520,8 @@ export async function fetchOpenApiContract(): Promise<ApiContract> {
   if (
     contract.openapi !== "3.1.0" ||
     contract.info?.title !== "HRCore API" ||
-    !contract.paths?.["/health"]
+    !isRecord(contract.paths) ||
+    requiredApiContractPaths.some((path) => !isRecord(contract.paths[path]))
   ) {
     throw new ApiClientError(
       "OpenAPI contract did not match the repository-owned HRCore API shape.",
