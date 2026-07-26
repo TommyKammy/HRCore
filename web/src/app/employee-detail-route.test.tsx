@@ -86,6 +86,39 @@ describe("EmployeeDetailRoute", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "employee-detail-denied",
     );
+    expect(screen.getByRole("alert")).toHaveTextContent("権限または検索条件");
+  });
+
+  it("reports server failures separately from client authorization errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            code: "service_unavailable",
+            message: "The bounded detail service is unavailable.",
+            correlationId: "employee-detail-service-failure",
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+
+    render(
+      <EmployeeDetailRoute
+        personaId="hr-operator"
+        employeeId="EMP-FAILED"
+        asOf={null}
+        useLegacyFixture={false}
+        onOpenTransfer={null}
+      />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("サーバー応答または契約");
+    expect(alert).toHaveTextContent("employee-detail-service-failure");
+    expect(alert).not.toHaveTextContent("権限または検索条件");
   });
 
   it.each([

@@ -77,12 +77,16 @@ describe("employee list screen", () => {
       "VITE_P2LIST_HR_OPERATOR_TOKEN",
       "bounded-local-hr-operator-token-000001",
     );
+    const historicalEmployeeResponse = {
+      ...employeeResponse,
+      appliedFilters: { asOf: "2026-01-01" },
+    };
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         const response = url.includes("cursor=opaque-next-page")
           ? {
-              ...employeeResponse,
+              ...historicalEmployeeResponse,
               items: [],
               pageInfo: {
                 limit: 25,
@@ -90,7 +94,7 @@ describe("employee list screen", () => {
                 nextCursor: null,
               },
             }
-          : employeeResponse;
+          : historicalEmployeeResponse;
         expect(new Headers(init?.headers).get("authorization")).toBe(
           "Bearer bounded-local-hr-operator-token-000001",
         );
@@ -112,6 +116,9 @@ describe("employee list screen", () => {
       await screen.findByText("Synthetic Employee 001"),
     ).toBeInTheDocument();
     expect(screen.getByText("employee-list-correlation")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("status")).getByText("2026/01/01"),
+    ).toBeVisible();
 
     const searchInput = screen.getByRole("textbox", {
       name: "氏名・従業員ID",
@@ -148,7 +155,7 @@ describe("employee list screen", () => {
     );
     expect(onOpenEmployee).toHaveBeenCalledWith(
       employeeResponse.items[0],
-      "2026-07-26",
+      "2026-01-01",
     );
 
     await user.click(screen.getByRole("button", { name: "次のページへ" }));
@@ -382,11 +389,11 @@ describe("lifecycle list screen", () => {
       screen.getByRole("textbox", { name: "対象者・従業員ID" }),
     ).toHaveAttribute("maxlength", "100");
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "手続き種別" }),
+      screen.getByRole("listbox", { name: "手続き種別" }),
       "onboarding",
     );
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "状態" }),
+      screen.getByRole("listbox", { name: "状態" }),
       "submitted",
     );
     await user.type(screen.getByLabelText("適用日（開始）"), "2026-08-01");
@@ -438,6 +445,14 @@ describe("lifecycle list screen", () => {
       <LifecycleListView personaId="hr-operator" onOpenRequest={vi.fn()} />,
     );
     await screen.findByText("Synthetic Lifecycle Subject");
+    expect(screen.getByRole("listbox", { name: "手続き種別" })).toHaveValue([
+      "onboarding",
+      "termination",
+    ]);
+    expect(screen.getByRole("listbox", { name: "状態" })).toHaveValue([
+      "submitted",
+      "approved",
+    ]);
     await user.type(
       screen.getByRole("textbox", { name: "対象者・従業員ID" }),
       "Synthetic",
@@ -458,6 +473,38 @@ describe("lifecycle list screen", () => {
     ]) {
       expect(window.location.search).toContain(retained);
     }
+  });
+
+  it("renders masked employee IDs without substituting request IDs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          ...lifecycleResponse,
+          items: [
+            {
+              ...lifecycleResponse.items[0],
+              subjectEmployeeId: null,
+            },
+          ],
+          authorization: {
+            ...lifecycleResponse.authorization,
+            maskedFields: ["subjectEmployeeId"],
+          },
+        }),
+      ),
+    );
+
+    render(
+      <LifecycleListView personaId="hr-operator" onOpenRequest={vi.fn()} />,
+    );
+
+    const row = await screen.findByRole("row", {
+      name: /Synthetic Lifecycle Subject/u,
+    });
+    expect(within(row).getByText("masked")).toBeInTheDocument();
+    expect(within(row).queryByText("request-001")).not.toBeInTheDocument();
+    expect(within(row).queryByText("未採番")).not.toBeInTheDocument();
   });
 
   it("rejects lifecycle search boundary whitespace without an API request", async () => {

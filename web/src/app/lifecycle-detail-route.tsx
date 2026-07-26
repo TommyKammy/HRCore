@@ -7,6 +7,7 @@ import {
   fetchLifecycleRequestDetail,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
+import { detailRouteErrorMessage } from "./detail-route-error";
 import { LifecycleRequestDetailView } from "./screens";
 import { LoadingState } from "./shared";
 
@@ -81,10 +82,13 @@ export function LifecycleDetailRoute({
           request: null,
           maskedFields: [],
           loading: false,
-          error:
-            caught instanceof ApiClientError
-              ? "手続き詳細を再取得できません。権限またはRequest IDを確認してください。"
-              : "手続き詳細APIに接続できません。",
+          error: detailRouteErrorMessage(caught, {
+            client:
+              "手続き詳細を再取得できません。権限またはRequest IDを確認してください。",
+            service:
+              "手続き詳細APIのサーバー応答または契約を確認できません。時間をおいて再試行してください。",
+            network: "手続き詳細APIに接続できません。",
+          }),
           correlationId:
             caught instanceof ApiClientError
               ? (caught.correlationId ?? null)

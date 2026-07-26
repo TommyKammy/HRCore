@@ -80,5 +80,38 @@ describe("LifecycleDetailRoute", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "lifecycle-detail-denied",
     );
+    expect(screen.getByRole("alert")).toHaveTextContent("権限またはRequest ID");
+  });
+
+  it("reports response-contract failures separately from client errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          item: {
+            transactionRequestId: "request-invalid",
+          },
+          authorization: {
+            dataScope: "bounded",
+            maskedFields: [],
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          correlationId: "lifecycle-detail-invalid",
+        }),
+      ),
+    );
+
+    render(
+      <LifecycleDetailRoute
+        personaId="hr-operator"
+        requestId="request-invalid"
+        expectedType="transfer"
+        onBack={vi.fn()}
+      />,
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("サーバー応答または契約");
+    expect(alert).not.toHaveTextContent("権限またはRequest ID");
   });
 });

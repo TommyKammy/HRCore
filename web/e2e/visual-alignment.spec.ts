@@ -436,9 +436,9 @@ test("matches the bounded practical-use visual contract", async ({
     ).toBeVisible();
   }
   await page
-    .getByRole("combobox", { name: "手続き種別" })
+    .getByRole("listbox", { name: "手続き種別" })
     .selectOption("onboarding");
-  await page.getByRole("combobox", { name: "状態" }).selectOption("submitted");
+  await page.getByRole("listbox", { name: "状態" }).selectOption("submitted");
   await page.getByRole("button", { name: "検索" }).click();
   await expect(page).toHaveURL(/requestType=onboarding/u);
   await assertNoHorizontalOverflow(page);

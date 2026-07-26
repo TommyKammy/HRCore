@@ -293,9 +293,11 @@ function CollectionFeedback({
 function CollectionMeta({
   correlationId,
   maskedFields,
+  appliedAsOf,
 }: {
   correlationId: string;
   maskedFields: readonly string[];
+  appliedAsOf?: string;
 }) {
   return (
     <div className="collection-meta" role="status">
@@ -311,6 +313,14 @@ function CollectionMeta({
           {maskedFields.length > 0 ? maskedFields.length : "none"}
         </strong>
       </span>
+      {appliedAsOf ? (
+        <span>
+          基準日{" "}
+          <strong>
+            <time dateTime={appliedAsOf}>{formatDate(appliedAsOf)}</time>
+          </strong>
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -415,6 +425,16 @@ function nullableEmployeeField(
     return value;
   }
   return maskedFields.includes(field) ? "masked" : "未割当";
+}
+
+function lifecycleEmployeeId(
+  request: LifecycleRequestListItem,
+  maskedFields: readonly (keyof LifecycleRequestListItem)[],
+) {
+  if (request.subjectEmployeeId !== null) {
+    return request.subjectEmployeeId;
+  }
+  return maskedFields.includes("subjectEmployeeId") ? "masked" : "未採番";
 }
 
 interface EmployeeListDraft {
@@ -663,6 +683,7 @@ export function EmployeeListView({
           <CollectionMeta
             correlationId={state.response.correlationId}
             maskedFields={state.response.authorization.maskedFields}
+            appliedAsOf={appliedAsOf}
           />
           {state.response.items.length === 0 ? (
             <div className="collection-empty">
@@ -770,8 +791,8 @@ export function EmployeeListView({
 
 interface LifecycleListDraft {
   q: string;
-  requestType: LifecycleRequestListItem["requestType"] | "";
-  status: LifecycleRequestListItem["status"] | "";
+  requestType: LifecycleRequestListItem["requestType"][];
+  status: LifecycleRequestListItem["status"][];
   effectiveFrom: string;
   effectiveTo: string;
   sort: NonNullable<LifecycleRequestListQuery["sort"]>;
@@ -784,8 +805,8 @@ function lifecycleDraftFromQuery(
 ): LifecycleListDraft {
   return {
     q: query.q ?? "",
-    requestType: query.requestType?.[0] ?? "",
-    status: query.status?.[0] ?? "",
+    requestType: query.requestType ?? [],
+    status: query.status ?? [],
     effectiveFrom: query.effectiveFrom ?? "",
     effectiveTo: query.effectiveTo ?? "",
     sort: query.sort ?? "requestedAt",
@@ -855,23 +876,11 @@ export function LifecycleListView({
     }
     setDraftError(null);
     const currentQuery = state.location.query;
-    const requestType =
-      draft.requestType === (currentQuery.requestType?.[0] ?? "")
-        ? currentQuery.requestType
-        : draft.requestType
-          ? [draft.requestType]
-          : undefined;
-    const status =
-      draft.status === (currentQuery.status?.[0] ?? "")
-        ? currentQuery.status
-        : draft.status
-          ? [draft.status]
-          : undefined;
     applyQuery({
       ...currentQuery,
       q: draft.q || undefined,
-      requestType,
-      status,
+      requestType: draft.requestType.length > 0 ? draft.requestType : undefined,
+      status: draft.status.length > 0 ? draft.status : undefined,
       effectiveFrom: draft.effectiveFrom || undefined,
       effectiveTo: draft.effectiveTo || undefined,
       sort: draft.sort,
@@ -886,6 +895,7 @@ export function LifecycleListView({
     setDraft(lifecycleDraftFromQuery(defaultLifecycleListQuery));
     applyQuery(defaultLifecycleListQuery);
   };
+  const maskedFields = state.response?.authorization.maskedFields ?? [];
 
   return (
     <div className="collection-view" aria-labelledby="lifecycle-list-heading">
@@ -919,16 +929,21 @@ export function LifecycleListView({
         <label>
           <span>手続き種別</span>
           <select
+            multiple
+            size={3}
             value={draft.requestType}
-            onChange={(event) =>
+            onChange={(event) => {
+              const requestType = Array.from(
+                event.currentTarget.selectedOptions,
+                (option) =>
+                  option.value as LifecycleRequestListItem["requestType"],
+              );
               setDraft((current) => ({
                 ...current,
-                requestType: event.target
-                  .value as LifecycleListDraft["requestType"],
-              }))
-            }
+                requestType,
+              }));
+            }}
           >
-            <option value="">すべて</option>
             <option value="onboarding">入社</option>
             <option value="transfer">異動</option>
             <option value="termination">退職</option>
@@ -937,15 +952,20 @@ export function LifecycleListView({
         <label>
           <span>状態</span>
           <select
+            multiple
+            size={5}
             value={draft.status}
-            onChange={(event) =>
+            onChange={(event) => {
+              const status = Array.from(
+                event.currentTarget.selectedOptions,
+                (option) => option.value as LifecycleRequestListItem["status"],
+              );
               setDraft((current) => ({
                 ...current,
-                status: event.target.value as LifecycleListDraft["status"],
-              }))
-            }
+                status,
+              }));
+            }}
           >
-            <option value="">すべて</option>
             <option value="draft">下書き</option>
             <option value="submitted">申請済み</option>
             <option value="returned">差戻し</option>
@@ -1093,8 +1113,7 @@ export function LifecycleListView({
                       <td data-label="対象者">
                         <strong>{request.subjectDisplayName}</strong>
                         <small>
-                          {request.subjectEmployeeId ??
-                            request.transactionRequestId}
+                          {lifecycleEmployeeId(request, maskedFields)}
                         </small>
                       </td>
                       <td data-label="種別">

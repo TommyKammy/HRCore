@@ -7,6 +7,7 @@ import {
   fetchEmployeeDetail,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
+import { detailRouteErrorMessage } from "./detail-route-error";
 import { EmployeeDetailView } from "./screens";
 import { LoadingState } from "./shared";
 
@@ -95,10 +96,13 @@ export function EmployeeDetailRoute({
           employee: null,
           maskedFields: [],
           loading: false,
-          error:
-            caught instanceof ApiClientError
-              ? "従業員詳細を再取得できません。権限または検索条件を確認してください。"
-              : "従業員詳細APIに接続できません。",
+          error: detailRouteErrorMessage(caught, {
+            client:
+              "従業員詳細を再取得できません。権限または検索条件を確認してください。",
+            service:
+              "従業員詳細APIのサーバー応答または契約を確認できません。時間をおいて再試行してください。",
+            network: "従業員詳細APIに接続できません。",
+          }),
           correlationId:
             caught instanceof ApiClientError
               ? (caught.correlationId ?? null)
