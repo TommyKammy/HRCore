@@ -518,6 +518,30 @@ test("GET /lifecycle/transaction-requests/:requestId authorizes detail and emits
   );
 });
 
+test("GET /lifecycle/transaction-requests/:requestId accepts a one-character listed ID", async (t) => {
+  const harness = await createHarness(
+    t,
+    1,
+    { authorized: authorizedDetailActor },
+    (rows) => {
+      rows[0] = {
+        ...rows[0]!,
+        transactionRequestId: "x",
+      };
+    },
+  );
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/x",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().item.transactionRequestId, "x");
+});
+
 test("GET /lifecycle/transaction-requests/:requestId denies list-only actors", async (t) => {
   const harness = await createHarness(t, 1);
   if (!harness) return;
@@ -566,6 +590,7 @@ async function createHarness(
   actors: Record<string, P2ListActorContext> = {
     authorized: authorizedActor,
   },
+  configureRows?: (rows: P2ListLifecycleFixtureRow[]) => void,
 ): Promise<
   | {
       app: Awaited<ReturnType<typeof buildApp>>;
@@ -587,6 +612,7 @@ async function createHarness(
     throw error;
   }
   const rows = createP2ListLifecycleFixtureRows(count);
+  configureRows?.(rows);
   seedLifecycleRows(db, rows);
   const provenance = verifyP2ListSyntheticDatasetManifest(
     createP2ListFixtureManifest(

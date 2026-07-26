@@ -238,7 +238,7 @@ export function registerP2ListLifecycleRoutes(
         }
         const requestId = requireBoundedString(
           (request.params as Record<string, unknown>).requestId,
-          2,
+          1,
           256,
           "invalid_filter",
         );

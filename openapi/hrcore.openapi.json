@@ -1613,7 +1613,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "minLength": 2,
+              "minLength": 1,
               "maxLength": 256
             }
           }

@@ -44,6 +44,10 @@ import { CsvWorkflow, OpsDlqWorkflow } from "./operations-workflows";
 import { AuditWorkflow, DashboardView, SecondaryAreaView } from "./screens";
 import { ContractStatus, EmptyState, ProcedureFrame } from "./shared";
 
+interface RouteHistoryState {
+  lifecycleListOrigin?: true;
+}
+
 function readRouteFromLocation(): RouteId {
   const candidate = new URLSearchParams(window.location.search).get("view");
   return plannedAreas.some((area) => area.id === candidate)
@@ -55,6 +59,7 @@ function writeRouteToLocation(
   route: RouteId,
   parameters: Record<string, string> = {},
   mode: "push" | "replace" = "push",
+  state: RouteHistoryState | null = null,
 ) {
   const url = new URL(window.location.href);
   url.search = "";
@@ -62,7 +67,11 @@ function writeRouteToLocation(
   for (const [key, value] of Object.entries(parameters)) {
     url.searchParams.set(key, value);
   }
-  window.history[mode === "push" ? "pushState" : "replaceState"](null, "", url);
+  window.history[mode === "push" ? "pushState" : "replaceState"](
+    state,
+    "",
+    url,
+  );
 }
 
 function readRouteParameter(key: string): string | null {
@@ -275,13 +284,23 @@ export function AppShell() {
   const navigateTo = (
     route: RouteId,
     parameters: Record<string, string> = {},
+    state: RouteHistoryState | null = null,
   ) => {
     if (canNavigateTo(route)) {
       setActiveRoute(route);
       setMobileNavOpen(false);
-      writeRouteToLocation(route, parameters);
+      writeRouteToLocation(route, parameters, "push", state);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
+  };
+
+  const returnToLifecycleList = () => {
+    const state = window.history.state as RouteHistoryState | null;
+    if (state?.lifecycleListOrigin === true && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    navigateTo("lifecycle");
   };
 
   const submitDirectLookup = (event: FormEvent<HTMLFormElement>) => {
@@ -378,9 +397,15 @@ export function AppShell() {
                   if (!canNavigateTo(route)) {
                     return;
                   }
-                  navigateTo(route, {
-                    requestId: request.transactionRequestId,
-                  });
+                  navigateTo(
+                    route,
+                    {
+                      requestId: request.transactionRequestId,
+                    },
+                    {
+                      lifecycleListOrigin: true,
+                    },
+                  );
                 }
               : null
           }
@@ -397,7 +422,7 @@ export function AppShell() {
             personaId={selectedPersonaId}
             requestId={requestId}
             expectedType="onboarding"
-            onBack={() => navigateTo("lifecycle")}
+            onBack={returnToLifecycleList}
           />
         ) : (
           <EmptyState />
@@ -427,7 +452,7 @@ export function AppShell() {
             personaId={selectedPersonaId}
             requestId={requestId}
             expectedType="transfer"
-            onBack={() => navigateTo("lifecycle")}
+            onBack={returnToLifecycleList}
           />
         ) : (
           <EmptyState />
@@ -457,7 +482,7 @@ export function AppShell() {
             personaId={selectedPersonaId}
             requestId={requestId}
             expectedType="termination"
-            onBack={() => navigateTo("lifecycle")}
+            onBack={returnToLifecycleList}
           />
         ) : (
           <EmptyState />

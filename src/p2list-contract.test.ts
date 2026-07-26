@@ -780,6 +780,12 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     p2ListPermissions.lifecycleRequestListRead,
     p2ListPermissions.lifecycleRequestDetailRead,
   ]);
+  assert.equal(
+    lifecycleDetail.parameters?.find(
+      (parameter) => parameter.name === "requestId",
+    )?.schema.minLength,
+    1,
+  );
 
   assert.deepEqual(parameterNames(employeeOperation), [
     ...p2ListEmployeeFilters,

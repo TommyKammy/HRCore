@@ -421,7 +421,7 @@ export class P2ListReadModelRepository {
     );
     const transactionRequestId = requireBoundedString(
       input?.transactionRequestId,
-      2,
+      1,
       256,
       "invalid_filter",
     );

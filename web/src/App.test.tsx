@@ -530,7 +530,9 @@ describe("App shell", () => {
   });
 
   it("opens lifecycle list records read-only instead of an unrelated workflow", async () => {
-    window.history.replaceState(null, "", "/?view=queue");
+    const listSearch =
+      "?view=lifecycle&status=submitted&q=Synthetic&sort=effectiveDate&direction=asc&limit=50&cursor=opaque-page";
+    window.history.replaceState(null, "", `/${listSearch}`);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -599,7 +601,6 @@ describe("App shell", () => {
       screen.getByLabelText("Persona"),
       "hr-operator",
     );
-    await userEvent.click(screen.getByRole("button", { name: /Procedures/ }));
     await userEvent.click(
       await screen.findByRole("button", {
         name: "Synthetic Selected Subjectの異動手続きを開く",
@@ -611,6 +612,14 @@ describe("App shell", () => {
     expect(
       screen.queryByRole("button", { name: "Create transfer request" }),
     ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "手続き一覧へ戻る" }),
+    );
+    await waitFor(() => expect(window.location.search).toBe(listSearch));
+    expect(
+      await screen.findByRole("heading", { name: "手続きを横断検索" }),
+    ).toBeVisible();
   });
 
   it("clears stale filters when the active collection route is selected again", async () => {
