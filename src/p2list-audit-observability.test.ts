@@ -18,6 +18,8 @@ const interactionCorrelationId =
 const responseCorrelationId = "p2list-ui-223e4567-e89b-42d3-a456-426614174000";
 const exportCorrelationId = "p2list-ui-323e4567-e89b-42d3-a456-426614174000";
 const operatorToken = "p2list-observability-operator-token-0001";
+const otherTenantOperatorToken =
+  "p2list-observability-other-tenant-operator-token-0001";
 const supportToken = "p2list-observability-support-token-00001";
 
 test("P2LIST WebUI correlation is idempotently traceable through policy and bounded support evidence", async (t) => {
@@ -36,6 +38,20 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
           actorId: "actor-observability-operator",
           actorRole: "hr_operator",
           tenantId: "tenant-repo-owned-synthetic",
+          permissions: [
+            p2ListPermissions.employeeListRead,
+            p2ListPermissions.employeeListExport,
+            p2ListPermissions.csvDownload,
+          ],
+          dataScope: { organizationCodes: ["ORG-NONE"] },
+        },
+      },
+      {
+        token: otherTenantOperatorToken,
+        actor: {
+          actorId: "actor-observability-operator",
+          actorRole: "hr_operator",
+          tenantId: "tenant-repo-owned-synthetic-other",
           permissions: [
             p2ListPermissions.employeeListRead,
             p2ListPermissions.employeeListExport,
@@ -84,6 +100,19 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     );
     assert.equal(response.json().correlationId, interactionCorrelationId);
   }
+  const conflictingTenantRetry = await app.inject({
+    method: "GET",
+    url: "/employees",
+    headers: {
+      authorization: `Bearer ${otherTenantOperatorToken}`,
+      "x-hrcore-correlation-id": interactionCorrelationId,
+    },
+  });
+  assert.equal(conflictingTenantRetry.statusCode, 400);
+  assert.equal(
+    conflictingTenantRetry.json().code,
+    "correlation_reuse_conflict",
+  );
   const conflictingRetry = await app.inject({
     method: "GET",
     url: "/employees?sort=displayName",

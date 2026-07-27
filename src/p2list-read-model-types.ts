@@ -250,6 +250,15 @@ export function fingerprintP2ListValue(value: unknown): string {
     .digest("base64url");
 }
 
+export function fingerprintP2ListAuthorizationScope(
+  actor: Pick<P2ListActorContext, "tenantId" | "dataScope">,
+): string {
+  return fingerprintP2ListValue({
+    tenantId: actor.tenantId,
+    dataScope: normalizeP2ListDataScope(actor.dataScope),
+  });
+}
+
 export function canonicalizeP2ListValue(value: unknown): string {
   if (
     value === null ||

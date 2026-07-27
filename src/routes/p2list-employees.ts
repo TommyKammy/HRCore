@@ -24,8 +24,8 @@ import {
   type P2ListEmployeeQuery,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListAuthorizationScope,
   fingerprintP2ListValue,
-  normalizeP2ListDataScope,
   P2ListReadModelError,
   requireBoundedString,
   type P2ListActorContext,
@@ -159,9 +159,7 @@ export function registerP2ListEmployeeRoutes(
         actorId: actor.actorId,
         actorRole: actor.actorRole,
         evaluatedPermission: p2ListPermissions.employeeListRead,
-        dataScopeId: fingerprintP2ListValue(
-          normalizeP2ListDataScope(actor.dataScope),
-        ),
+        dataScopeId: fingerprintP2ListAuthorizationScope(actor),
         filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
         sort: `${query.sort ?? "employeeId"}:${query.direction ?? "asc"}`,
         pageSize: page.pageInfo.limit,
@@ -259,9 +257,7 @@ export function registerP2ListEmployeeRoutes(
             actorId: actor.actorId,
             actorRole: actor.actorRole,
             evaluatedPermission: p2ListPermissions.employeeDetailRead,
-            dataScopeId: fingerprintP2ListValue(
-              normalizeP2ListDataScope(actor.dataScope),
-            ),
+            dataScopeId: fingerprintP2ListAuthorizationScope(actor),
             resourceType: "employee",
             correlationId,
             policyDecision: "deny",
@@ -284,9 +280,7 @@ export function registerP2ListEmployeeRoutes(
           actorId: actor.actorId,
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.employeeDetailRead,
-          dataScopeId: fingerprintP2ListValue(
-            normalizeP2ListDataScope(actor.dataScope),
-          ),
+          dataScopeId: fingerprintP2ListAuthorizationScope(actor),
           filterFingerprint: fingerprintP2ListValue(detail.appliedFilters),
           rowCount: 1,
           resourceType: "employee",
@@ -464,9 +458,7 @@ function safeDataScopeFingerprint(
   actor: P2ListActorContext | undefined,
 ): string | undefined {
   try {
-    return actor?.dataScope
-      ? fingerprintP2ListValue(normalizeP2ListDataScope(actor.dataScope))
-      : undefined;
+    return actor ? fingerprintP2ListAuthorizationScope(actor) : undefined;
   } catch {
     return undefined;
   }

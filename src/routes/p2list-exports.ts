@@ -35,8 +35,8 @@ import {
   type P2ListLifecycleFilters,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListAuthorizationScope,
   fingerprintP2ListValue,
-  normalizeP2ListDataScope,
   P2ListReadModelError,
   type P2ListActorContext,
   type P2ListVerifiedSyntheticDataset,
@@ -481,9 +481,7 @@ async function emitAllowedExportEvent(
     actorId: event.actor.actorId,
     actorRole: event.actor.actorRole,
     evaluatedPermission: event.permission,
-    dataScopeId: fingerprintP2ListValue(
-      normalizeP2ListDataScope(event.actor.dataScope),
-    ),
+    dataScopeId: fingerprintP2ListAuthorizationScope(event.actor),
     filterFingerprint: event.filterFingerprint,
     rowCount: event.rowCount,
     resourceType: event.resourceType,
@@ -621,9 +619,7 @@ function safeDataScopeFingerprint(
   actor: P2ListActorContext | undefined,
 ): string | undefined {
   try {
-    return actor
-      ? fingerprintP2ListValue(normalizeP2ListDataScope(actor.dataScope))
-      : undefined;
+    return actor ? fingerprintP2ListAuthorizationScope(actor) : undefined;
   } catch {
     return undefined;
   }
