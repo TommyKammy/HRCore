@@ -200,6 +200,7 @@ const requiredApiContractPaths = [
   "/employees/{employeeId}",
   "/lifecycle/transaction-requests",
   "/lifecycle/transaction-requests/{requestId}",
+  "/support/p2list/audit-evidence/{correlationId}",
 ] as const;
 const requiredApiContractPostPaths = [
   "/exports/employee-list",
@@ -461,15 +462,17 @@ export function createP2ListRequestInit(
       "hr-ops-support": import.meta.env.VITE_P2LIST_SUPPORT_TOKEN,
     };
   const token = tokenByPersona[personaId]?.trim();
+  const headers = new Headers();
+  headers.set(
+    "x-hrcore-correlation-id",
+    `p2list-ui-${globalThis.crypto.randomUUID()}`,
+  );
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
   return {
     signal,
-    ...(token
-      ? {
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
-        }
-      : {}),
+    headers,
   };
 }
 

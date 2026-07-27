@@ -23,6 +23,13 @@ import {
   isP2ListExportReasonCode,
 } from "../p2list-export.js";
 import {
+  elapsedP2ListDurationMs,
+  p2ListCorrelationHeader,
+  resolveP2ListCorrelationId,
+  safeP2ListActorRole,
+  startP2ListDuration,
+} from "../p2list-observability.js";
+import {
   P2ListReadModelRepository,
   type P2ListEmployeeFilters,
   type P2ListLifecycleFilters,
@@ -58,6 +65,7 @@ export interface P2ListExportAuditEvent {
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
+  actorRole?: string;
   evaluatedPermission: string;
   dataScopeId?: string;
   filterFingerprint?: string;
@@ -69,6 +77,7 @@ export interface P2ListExportAuditEvent {
   policyDecision: "allow" | "deny";
   reasonCode: P2ListExportReasonCode | P2ListErrorCode;
   exportSchemaVersion: typeof p2ListExportSchemaVersion;
+  durationMs: number;
 }
 
 export interface P2ListExportApiRuntime {
@@ -115,12 +124,15 @@ export function registerP2ListExportRoutes(
       ),
     },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListExportApi;
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = currentTimestamp(runtime);
       const permission = employeePolicy.permission;
-      reply.header("x-hrcore-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
       let actor: P2ListActorContext | undefined;
 
       try {
@@ -155,6 +167,7 @@ export function registerP2ListExportRoutes(
           reasonCode: input.reasonCode,
           filterFingerprint,
           rowCount: collection.items.length,
+          startedAt,
         };
         await emitAllowedExportEvent(
           activeRuntime,
@@ -178,6 +191,7 @@ export function registerP2ListExportRoutes(
           permission,
           resourceType: "employee",
           correlationId,
+          startedAt,
         });
       }
     },
@@ -193,12 +207,15 @@ export function registerP2ListExportRoutes(
       ),
     },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListExportApi;
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = currentTimestamp(runtime);
       const permission = lifecyclePolicy.permission;
-      reply.header("x-hrcore-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
       let actor: P2ListActorContext | undefined;
 
       try {
@@ -233,6 +250,7 @@ export function registerP2ListExportRoutes(
           reasonCode: input.reasonCode,
           filterFingerprint,
           rowCount: collection.items.length,
+          startedAt,
         };
         await emitAllowedExportEvent(
           activeRuntime,
@@ -256,6 +274,7 @@ export function registerP2ListExportRoutes(
           permission,
           resourceType: "lifecycleRequest",
           correlationId,
+          startedAt,
         });
       }
     },
@@ -278,11 +297,14 @@ function createExportRouteErrorHandler(
       throw error;
     }
 
-    const correlationId =
-      runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+    const startedAt = startP2ListDuration();
+    const correlationId = resolveP2ListCorrelationId(
+      request,
+      runtime?.createCorrelationId,
+    );
     const occurredAt = currentTimestamp(runtime);
     let actor: P2ListActorContext | undefined;
-    reply.header("x-hrcore-correlation-id", correlationId);
+    reply.header(p2ListCorrelationHeader, correlationId);
 
     try {
       const activeRuntime = requireRuntime(runtime);
@@ -295,6 +317,7 @@ function createExportRouteErrorHandler(
         permission: policy.permission,
         resourceType: policy.resourceType,
         correlationId,
+        startedAt,
       });
       return;
     }
@@ -309,6 +332,7 @@ function createExportRouteErrorHandler(
         permission: policy.permission,
         resourceType: policy.resourceType,
         correlationId,
+        startedAt,
       },
     );
   };
@@ -448,12 +472,14 @@ async function emitAllowedExportEvent(
     reasonCode: P2ListExportReasonCode;
     filterFingerprint: string;
     rowCount: number;
+    startedAt: number;
   },
 ): Promise<void> {
   const shared = {
     eventVersion: p2ListAuditEventVersion,
     occurredAt: event.occurredAt,
     actorId: event.actor.actorId,
+    actorRole: event.actor.actorRole,
     evaluatedPermission: event.permission,
     dataScopeId: fingerprintP2ListValue(
       normalizeP2ListDataScope(event.actor.dataScope),
@@ -465,6 +491,7 @@ async function emitAllowedExportEvent(
     policyDecision: "allow" as const,
     reasonCode: event.reasonCode,
     exportSchemaVersion: p2ListExportSchemaVersion,
+    durationMs: elapsedP2ListDurationMs(event.startedAt),
   };
   await runtime.emitAuditEvent({
     ...shared,
@@ -483,6 +510,7 @@ async function handleExportError(
     permission: string;
     resourceType: ExportResource;
     correlationId: string;
+    startedAt: number;
   },
 ) {
   if (!(error instanceof P2ListReadModelError)) {
@@ -495,6 +523,7 @@ async function handleExportError(
       eventVersion: p2ListAuditEventVersion,
       occurredAt: context.occurredAt,
       actorId: safeActorId(context.actor),
+      actorRole: safeP2ListActorRole(context.actor),
       evaluatedPermission: context.permission,
       dataScopeId: safeDataScopeFingerprint(context.actor),
       resourceType: context.resourceType,
@@ -502,6 +531,7 @@ async function handleExportError(
       policyDecision: "deny",
       reasonCode: error.code,
       exportSchemaVersion: p2ListExportSchemaVersion,
+      durationMs: elapsedP2ListDurationMs(context.startedAt),
     });
   }
   return reply.code(statusForError(error.code)).send({

@@ -22,6 +22,8 @@ const additiveWritebackMigrationByTable = new Map([
 ]);
 const p2ListExportMigrationFile =
   "0019_p2list_export_schema_version.sql" as const;
+const p2ListObservabilityMigrationFile =
+  "0020_p2list_audit_observability.sql" as const;
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
   close(): void;
@@ -110,6 +112,12 @@ async function ensureSyntheticWritebackSchema(
     !tableIncludesColumn(db, "p2list_audit_event", "export_schema_version")
   ) {
     additiveMigrationFiles.push(p2ListExportMigrationFile);
+  }
+  if (
+    missingTables.includes("p2list_audit_event") ||
+    !tableIncludesColumn(db, "p2list_audit_event", "duration_ms")
+  ) {
+    additiveMigrationFiles.push(p2ListObservabilityMigrationFile);
   }
   if (additiveMigrationFiles.length > 0) {
     db.exec(

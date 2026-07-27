@@ -23,6 +23,7 @@ import { registerP2ListExportRoutes } from "./routes/p2list-exports.js";
 const occurredAt = new Date("2026-07-27T00:00:00.000Z");
 const fullEmployeeActor: P2ListActorContext = {
   actorId: "actor-employee-export",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [
     p2ListPermissions.employeeListRead,
@@ -33,6 +34,7 @@ const fullEmployeeActor: P2ListActorContext = {
 };
 const fullLifecycleActor: P2ListActorContext = {
   actorId: "actor-lifecycle-export",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [
     p2ListPermissions.lifecycleRequestListRead,

@@ -8,6 +8,10 @@ import { registerMvpAOnboardingAuditRoutes } from "./routes/mvp-a-onboarding-aud
 import { registerMvpAOnboardingSupportReviewRoutes } from "./routes/mvp-a-onboarding-support-review.js";
 import { registerOnboardingRoutes } from "./routes/onboarding.js";
 import {
+  registerP2ListAuditEvidenceRoutes,
+  type P2ListAuditEvidenceRuntime,
+} from "./routes/p2list-audit-evidence.js";
+import {
   registerP2ListEmployeeRoutes,
   type P2ListEmployeeApiRuntime,
 } from "./routes/p2list-employees.js";
@@ -30,6 +34,7 @@ export interface BuildAppOptions {
   auditTraceDb?: MvpAOnboardingTraceabilityDatabase;
   writebackDb?: SyntheticWritebackDatabase;
   p2ListEmployeeApi?: P2ListEmployeeApiRuntime;
+  p2ListAuditEvidenceApi?: P2ListAuditEvidenceRuntime;
   p2ListExportApi?: P2ListExportApiRuntime;
   p2ListLifecycleApi?: P2ListLifecycleApiRuntime;
 }
@@ -56,6 +61,7 @@ export async function buildApp(
 
   registerMvpAOnboardingAuditRoutes(app, options);
   registerMvpAOnboardingSupportReviewRoutes(app, options);
+  registerP2ListAuditEvidenceRoutes(app, options);
   registerP2ListEmployeeRoutes(app, options);
   registerP2ListExportRoutes(app, options);
   registerP2ListLifecycleRoutes(app, options);

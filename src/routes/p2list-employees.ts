@@ -12,6 +12,13 @@ import {
   type P2ListErrorCode,
 } from "../p2list-contract.js";
 import {
+  elapsedP2ListDurationMs,
+  p2ListCorrelationHeader,
+  resolveP2ListCorrelationId,
+  safeP2ListActorRole,
+  startP2ListDuration,
+} from "../p2list-observability.js";
+import {
   P2ListReadModelRepository,
   type P2ListEmployeeFilters,
   type P2ListEmployeeQuery,
@@ -62,6 +69,7 @@ export interface P2ListEmployeeAuditEvent {
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
+  actorRole?: string;
   evaluatedPermission:
     | typeof p2ListPermissions.employeeListRead
     | typeof p2ListPermissions.employeeDetailRead;
@@ -74,6 +82,7 @@ export interface P2ListEmployeeAuditEvent {
   correlationId: string;
   policyDecision: "allow" | "deny";
   reasonCode?: P2ListErrorCode;
+  durationMs: number;
 }
 
 export interface P2ListEmployeeApiRuntime {
@@ -92,14 +101,18 @@ export function registerP2ListEmployeeRoutes(
   options: { p2ListEmployeeApi?: P2ListEmployeeApiRuntime },
 ): void {
   app.get("/employees", { logLevel: "silent" }, async (request, reply) => {
+    const startedAt = startP2ListDuration();
     const runtime = options.p2ListEmployeeApi;
     if (runtime && typeof runtime.emitAuditEvent !== "function") {
       throw new Error("The employee list audit sink is required.");
     }
-    const correlationId =
-      runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+    const correlationId = resolveP2ListCorrelationId(
+      request,
+      runtime?.createCorrelationId,
+    );
     const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
     reply.header("x-correlation-id", correlationId);
+    reply.header(p2ListCorrelationHeader, correlationId);
 
     let actor: P2ListActorContext | undefined;
     try {
@@ -144,6 +157,7 @@ export function registerP2ListEmployeeRoutes(
         eventVersion: p2ListAuditEventVersion,
         occurredAt,
         actorId: actor.actorId,
+        actorRole: actor.actorRole,
         evaluatedPermission: p2ListPermissions.employeeListRead,
         dataScopeId: fingerprintP2ListValue(
           normalizeP2ListDataScope(actor.dataScope),
@@ -155,6 +169,7 @@ export function registerP2ListEmployeeRoutes(
         resourceType: "employee",
         correlationId,
         policyDecision: "allow",
+        durationMs: elapsedP2ListDurationMs(startedAt),
       });
       return reply.send(response);
     } catch (error) {
@@ -169,12 +184,14 @@ export function registerP2ListEmployeeRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: safeActorId(actor),
+          actorRole: safeP2ListActorRole(actor),
           evaluatedPermission: p2ListPermissions.employeeListRead,
           dataScopeId: safeDataScopeFingerprint(actor),
           resourceType: "employee",
           correlationId,
           policyDecision: "deny",
           reasonCode: error.code,
+          durationMs: elapsedP2ListDurationMs(startedAt),
         });
       }
       return reply.code(statusForError(error.code)).send({
@@ -190,14 +207,18 @@ export function registerP2ListEmployeeRoutes(
     "/employees/:employeeId",
     { logLevel: "silent" },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListEmployeeApi;
       if (runtime && typeof runtime.emitAuditEvent !== "function") {
         throw new Error("The employee detail audit sink is required.");
       }
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
       reply.header("x-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
       try {
@@ -236,6 +257,7 @@ export function registerP2ListEmployeeRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: actor.actorId,
+            actorRole: actor.actorRole,
             evaluatedPermission: p2ListPermissions.employeeDetailRead,
             dataScopeId: fingerprintP2ListValue(
               normalizeP2ListDataScope(actor.dataScope),
@@ -244,6 +266,7 @@ export function registerP2ListEmployeeRoutes(
             correlationId,
             policyDecision: "deny",
             reasonCode: "data_scope_denied",
+            durationMs: elapsedP2ListDurationMs(startedAt),
           });
           return reply.code(404).send({
             code: "data_scope_denied",
@@ -259,6 +282,7 @@ export function registerP2ListEmployeeRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
+          actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.employeeDetailRead,
           dataScopeId: fingerprintP2ListValue(
             normalizeP2ListDataScope(actor.dataScope),
@@ -268,6 +292,7 @@ export function registerP2ListEmployeeRoutes(
           resourceType: "employee",
           correlationId,
           policyDecision: "allow",
+          durationMs: elapsedP2ListDurationMs(startedAt),
         });
         return reply.send({
           item,
@@ -290,12 +315,14 @@ export function registerP2ListEmployeeRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: safeActorId(actor),
+            actorRole: safeP2ListActorRole(actor),
             evaluatedPermission: p2ListPermissions.employeeDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
             resourceType: "employee",
             correlationId,
             policyDecision: "deny",
             reasonCode: error.code,
+            durationMs: elapsedP2ListDurationMs(startedAt),
           });
         }
         return reply.code(statusForError(error.code)).send({

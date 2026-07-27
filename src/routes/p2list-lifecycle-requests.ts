@@ -12,6 +12,13 @@ import {
   type P2ListErrorCode,
 } from "../p2list-contract.js";
 import {
+  elapsedP2ListDurationMs,
+  p2ListCorrelationHeader,
+  resolveP2ListCorrelationId,
+  safeP2ListActorRole,
+  startP2ListDuration,
+} from "../p2list-observability.js";
+import {
   P2ListReadModelRepository,
   type P2ListLifecycleFilters,
   type P2ListLifecycleQuery,
@@ -68,6 +75,7 @@ export interface P2ListLifecycleAuditEvent {
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
+  actorRole?: string;
   evaluatedPermission:
     | typeof p2ListPermissions.lifecycleRequestListRead
     | typeof p2ListPermissions.lifecycleRequestDetailRead;
@@ -80,6 +88,7 @@ export interface P2ListLifecycleAuditEvent {
   correlationId: string;
   policyDecision: "allow" | "deny";
   reasonCode?: P2ListErrorCode;
+  durationMs: number;
 }
 
 export interface P2ListLifecycleApiRuntime {
@@ -101,14 +110,18 @@ export function registerP2ListLifecycleRoutes(
     "/lifecycle/transaction-requests",
     { logLevel: "silent" },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListLifecycleApi;
       if (runtime && typeof runtime.emitAuditEvent !== "function") {
         throw new Error("The lifecycle request list audit sink is required.");
       }
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
       reply.header("x-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
       try {
@@ -152,6 +165,7 @@ export function registerP2ListLifecycleRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
+          actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
           dataScopeId: fingerprintP2ListValue(
             normalizeP2ListDataScope(actor.dataScope),
@@ -163,6 +177,7 @@ export function registerP2ListLifecycleRoutes(
           resourceType: "lifecycleRequest",
           correlationId,
           policyDecision: "allow",
+          durationMs: elapsedP2ListDurationMs(startedAt),
         });
         return reply.send(response);
       } catch (error) {
@@ -177,12 +192,14 @@ export function registerP2ListLifecycleRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: safeActorId(actor),
+            actorRole: safeP2ListActorRole(actor),
             evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
             dataScopeId: safeDataScopeFingerprint(actor),
             resourceType: "lifecycleRequest",
             correlationId,
             policyDecision: "deny",
             reasonCode: error.code,
+            durationMs: elapsedP2ListDurationMs(startedAt),
           });
         }
         return reply.code(statusForError(error.code)).send({
@@ -199,14 +216,18 @@ export function registerP2ListLifecycleRoutes(
     "/lifecycle/transaction-requests/:requestId",
     { logLevel: "silent" },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListLifecycleApi;
       if (runtime && typeof runtime.emitAuditEvent !== "function") {
         throw new Error("The lifecycle detail audit sink is required.");
       }
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
       reply.header("x-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
       try {
@@ -254,6 +275,7 @@ export function registerP2ListLifecycleRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: actor.actorId,
+            actorRole: actor.actorRole,
             evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: fingerprintP2ListValue(
               normalizeP2ListDataScope(actor.dataScope),
@@ -262,6 +284,7 @@ export function registerP2ListLifecycleRoutes(
             correlationId,
             policyDecision: "deny",
             reasonCode: "data_scope_denied",
+            durationMs: elapsedP2ListDurationMs(startedAt),
           });
           return reply.code(404).send({
             code: "data_scope_denied",
@@ -277,6 +300,7 @@ export function registerP2ListLifecycleRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
+          actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
           dataScopeId: fingerprintP2ListValue(
             normalizeP2ListDataScope(actor.dataScope),
@@ -288,6 +312,7 @@ export function registerP2ListLifecycleRoutes(
           resourceType: "lifecycleRequest",
           correlationId,
           policyDecision: "allow",
+          durationMs: elapsedP2ListDurationMs(startedAt),
         });
         return reply.send({
           item,
@@ -309,12 +334,14 @@ export function registerP2ListLifecycleRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: safeActorId(actor),
+            actorRole: safeP2ListActorRole(actor),
             evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
             resourceType: "lifecycleRequest",
             correlationId,
             policyDecision: "deny",
             reasonCode: error.code,
+            durationMs: elapsedP2ListDurationMs(startedAt),
           });
         }
         return reply.code(statusForError(error.code)).send({

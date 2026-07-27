@@ -1,10 +1,14 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
+import type {
+  OnboardingTransactionRequestDatabase,
+  SqlRunResult,
+} from "./onboarding-transaction-request-types.js";
 import { P2ListCursorManager } from "./p2list-cursor.js";
 import { P2ListReadModelRepository } from "./p2list-read-model-repository.js";
 import {
+  P2ListReadModelError,
   signP2ListSyntheticDatasetManifest,
   verifyP2ListSyntheticDatasetManifest,
   type P2ListActorContext,
@@ -23,8 +27,15 @@ import type {
   P2ListLifecycleApiRuntime,
   P2ListLifecycleAuditEvent,
 } from "./routes/p2list-lifecycle-requests.js";
+import type { P2ListAuditEvidenceRuntime } from "./routes/p2list-audit-evidence.js";
 
-const actorKeys = new Set(["actorId", "tenantId", "permissions", "dataScope"]);
+const actorKeys = new Set([
+  "actorId",
+  "actorRole",
+  "tenantId",
+  "permissions",
+  "dataScope",
+]);
 const scopeKeys = new Set([
   "organizationCodes",
   "personIds",
@@ -64,12 +75,17 @@ export async function createServerP2ListRuntimes(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<{
   employee: P2ListEmployeeApiRuntime;
+  auditEvidence: P2ListAuditEvidenceRuntime;
   export: P2ListExportApiRuntime;
   lifecycle: P2ListLifecycleApiRuntime;
 }> {
   const runtime = await createServerP2ListBaseRuntime(environment, db);
   return {
     employee: createEmployeeRuntime(db, runtime),
+    auditEvidence: {
+      database: db,
+      resolveActor: runtime.resolveActor,
+    },
     export: createExportRuntime(db, runtime),
     lifecycle: createLifecycleRuntime(db, runtime),
   };
@@ -147,14 +163,16 @@ function persistP2ListAuditEvent(
     | P2ListLifecycleAuditEvent
     | P2ListExportAuditEvent,
 ): void {
-  db.prepare(
-    `
+  const result = db
+    .prepare(
+      `
       INSERT INTO p2list_audit_event (
         event_id,
         event_type,
         event_version,
         occurred_at,
         actor_id,
+        actor_role,
         evaluated_permission,
         data_scope_id,
         filter_fingerprint,
@@ -166,29 +184,94 @@ function persistP2ListAuditEvent(
         policy_decision,
         reason_code,
         export_schema_version,
+        duration_ms,
         poc_marker
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(correlation_id, event_type) DO NOTHING
     `,
-  ).run(
-    event.eventId,
-    event.eventType,
-    event.eventVersion,
-    event.occurredAt,
-    event.actorId ?? null,
-    event.evaluatedPermission,
-    event.dataScopeId ?? null,
-    event.filterFingerprint ?? null,
-    event.sort ?? null,
-    event.pageSize ?? null,
-    event.rowCount ?? null,
-    event.resourceType,
-    event.correlationId,
-    event.policyDecision,
-    event.reasonCode ?? null,
-    "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
-    "synthetic_poc",
-  );
+    )
+    .run(
+      event.eventId,
+      event.eventType,
+      event.eventVersion,
+      event.occurredAt,
+      event.actorId ?? null,
+      event.actorRole ?? null,
+      event.evaluatedPermission,
+      event.dataScopeId ?? null,
+      event.filterFingerprint ?? null,
+      event.sort ?? null,
+      event.pageSize ?? null,
+      event.rowCount ?? null,
+      event.resourceType,
+      event.correlationId,
+      event.policyDecision,
+      event.reasonCode ?? null,
+      "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
+      event.durationMs,
+      "synthetic_poc",
+    );
+  if (Number((result as SqlRunResult | undefined)?.changes ?? 1) === 0) {
+    assertIdempotentP2ListAuditRetry(db, event);
+  }
+}
+
+function assertIdempotentP2ListAuditRetry(
+  db: OnboardingTransactionRequestDatabase,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
+  const existing = db
+    .prepare(
+      `
+        SELECT
+          event_version,
+          actor_id,
+          actor_role,
+          evaluated_permission,
+          data_scope_id,
+          filter_fingerprint,
+          sort,
+          page_size,
+          row_count,
+          resource_type,
+          policy_decision,
+          reason_code,
+          export_schema_version
+        FROM p2list_audit_event
+        WHERE correlation_id = ?
+          AND event_type = ?
+      `,
+    )
+    .get(event.correlationId, event.eventType);
+  const expected = {
+    event_version: event.eventVersion,
+    actor_id: event.actorId ?? null,
+    actor_role: event.actorRole ?? null,
+    evaluated_permission: event.evaluatedPermission,
+    data_scope_id: event.dataScopeId ?? null,
+    filter_fingerprint: event.filterFingerprint ?? null,
+    sort: event.sort ?? null,
+    page_size: event.pageSize ?? null,
+    row_count: event.rowCount ?? null,
+    resource_type: event.resourceType,
+    policy_decision: event.policyDecision,
+    reason_code: event.reasonCode ?? null,
+    export_schema_version:
+      "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
+  };
+  if (
+    !existing ||
+    Object.entries(expected).some(([key, value]) => existing[key] !== value)
+  ) {
+    throw new P2ListReadModelError(
+      "correlation_reuse_conflict",
+      "P2LIST audit correlation reuse conflicts with existing evidence.",
+    );
+  }
 }
 
 async function loadVerifiedProvenance(
@@ -300,6 +383,7 @@ function normalizeActor(value: unknown): P2ListActorContext {
   }
   return {
     actorId: requireBoundedString(actor.actorId),
+    actorRole: requireActorRole(actor.actorRole),
     tenantId: requireBoundedString(actor.tenantId),
     permissions: requireStringArray(actor.permissions),
     dataScope: normalizedScope,
@@ -330,6 +414,14 @@ function requireBoundedString(value: unknown): string {
     throw invalidActorRegistry();
   }
   return value;
+}
+
+function requireActorRole(value: unknown): string {
+  const role = requireBoundedString(value);
+  if (!/^[a-z][a-z0-9_]{0,63}$/u.test(role)) {
+    throw invalidActorRegistry();
+  }
+  return role;
 }
 
 function requireStringArray(value: unknown): string[] {

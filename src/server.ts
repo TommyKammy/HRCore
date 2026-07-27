@@ -34,6 +34,7 @@ export async function buildServerApp() {
       logger: true,
       onboardingDb: writebackDb,
       writebackDb,
+      p2ListAuditEvidenceApi: p2ListRuntimes.auditEvidence,
       p2ListEmployeeApi: p2ListRuntimes.employee,
       p2ListExportApi: p2ListRuntimes.export,
       p2ListLifecycleApi: p2ListRuntimes.lifecycle,

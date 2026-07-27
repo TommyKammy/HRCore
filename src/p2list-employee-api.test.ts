@@ -36,6 +36,7 @@ const cursorSecret = "p2list-api-cursor-fixture-secret-2026-at-least-32-bytes";
 const acceptedAt = new Date("2026-07-24T08:00:00.000Z");
 const authorizedActor: P2ListActorContext = {
   actorId: "actor-hr-operator",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [p2ListPermissions.employeeListRead],
   dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
@@ -384,6 +385,7 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
       token,
       actor: {
         actorId: "actor-person-scoped-operator",
+        actorRole: "hr_operator",
         tenantId: "tenant-repo-owned-synthetic",
         permissions: [
           p2ListPermissions.employeeListRead,

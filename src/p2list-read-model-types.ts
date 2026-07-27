@@ -30,6 +30,7 @@ export interface P2ListDataScope {
 
 export interface P2ListActorContext {
   actorId: string;
+  actorRole: string;
   tenantId: string;
   permissions: readonly string[];
   dataScope: P2ListDataScope;

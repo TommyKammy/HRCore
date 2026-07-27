@@ -36,6 +36,7 @@ const cursorSecret =
 const acceptedAt = new Date("2026-07-25T08:00:00.000Z");
 const authorizedActor: P2ListActorContext = {
   actorId: "actor-lifecycle-operator",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [p2ListPermissions.lifecycleRequestListRead],
   dataScope: { organizationCodes: ["ORG-LIFECYCLE-SYNTHETIC"] },

@@ -196,10 +196,11 @@ test("local SQLite bootstrap upgrades the P2LIST audit sink without losing rows"
 
     assert.equal(migratedTable?.name, "p2list_audit_event");
     assert.match(String(migratedTable?.sql), /export_schema_version/u);
+    assert.match(String(migratedTable?.sql), /duration_ms/u);
     const preservedAuditRow = migratedDb
       .prepare(
         `
-          SELECT event_id, export_schema_version
+          SELECT event_id, export_schema_version, duration_ms
           FROM p2list_audit_event
           WHERE event_id = ?
         `,
@@ -208,7 +209,20 @@ test("local SQLite bootstrap upgrades the P2LIST audit sink without losing rows"
     assert.deepEqual(preservedAuditRow ? { ...preservedAuditRow } : undefined, {
       event_id: "legacy-p2list-audit-event",
       export_schema_version: null,
+      duration_ms: 0,
     });
+    const observabilityIndexes = migratedDb
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM sqlite_master
+          WHERE type = 'index'
+            AND tbl_name = 'p2list_audit_event'
+            AND name LIKE 'p2list_audit_event_correlation_%'
+        `,
+      )
+      .get();
+    assert.equal(observabilityIndexes?.count, 2);
   } finally {
     migratedDb.close();
   }

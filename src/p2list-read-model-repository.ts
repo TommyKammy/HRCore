@@ -209,7 +209,13 @@ const lifecycleFilterKeys = [
   "effectiveTo",
   "correlationId",
 ] as const;
-const actorKeys = ["actorId", "tenantId", "permissions", "dataScope"] as const;
+const actorKeys = [
+  "actorId",
+  "actorRole",
+  "tenantId",
+  "permissions",
+  "dataScope",
+] as const;
 const queryPattern = new RegExp(p2ListQueryPattern, "u");
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/u;
 const persistedLifecycleTypes = [
