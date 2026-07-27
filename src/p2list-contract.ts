@@ -24,8 +24,10 @@ export const p2ListExportReasonCodes = [
 
 export const p2ListPermissions = {
   employeeListRead: "employee:list:read",
+  employeeDetailRead: "employee:detail:read",
   employeeListExport: "employee:list:export",
   lifecycleRequestListRead: "lifecycle-request:list:read",
+  lifecycleRequestDetailRead: "lifecycle-request:detail:read",
   lifecycleRequestListExport: "lifecycle-request:list:export",
   supportCorrelationRead: "support:correlation:read",
   csvDownload: "mvp_d.synthetic_csv_download",
@@ -656,6 +658,22 @@ export const p2ListRoleActionMatrix = {
       requiredPermission: p2ListPermissions.lifecycleRequestListRead,
       scope: "assigned_organization",
     },
+    employeeDetail: {
+      uiVisible: true,
+      requiredPermissions: [
+        p2ListPermissions.employeeListRead,
+        p2ListPermissions.employeeDetailRead,
+      ],
+      scope: "assigned_organization",
+    },
+    lifecycleRequestDetail: {
+      uiVisible: true,
+      requiredPermissions: [
+        p2ListPermissions.lifecycleRequestListRead,
+        p2ListPermissions.lifecycleRequestDetailRead,
+      ],
+      scope: "assigned_organization",
+    },
     employeeExport: {
       uiVisible: true,
       requiredPermissions: [
@@ -687,6 +705,16 @@ export const p2ListRoleActionMatrix = {
       scope: "none",
       deferredReason: "no_authoritative_current_approver_assignment_source",
     },
+    employeeDetail: {
+      uiVisible: false,
+      requiredPermissions: [] as const,
+      scope: "none",
+    },
+    lifecycleRequestDetail: {
+      uiVisible: false,
+      requiredPermissions: [] as const,
+      scope: "none",
+    },
     employeeExport: {
       uiVisible: false,
       requiredPermissions: [] as const,
@@ -708,6 +736,19 @@ export const p2ListRoleActionMatrix = {
       uiVisible: true,
       requiredPermission: p2ListPermissions.lifecycleRequestListRead,
       scope: "assigned_support_scope",
+    },
+    employeeDetail: {
+      uiVisible: true,
+      requiredPermissions: [
+        p2ListPermissions.employeeListRead,
+        p2ListPermissions.employeeDetailRead,
+      ],
+      scope: "assigned_support_scope",
+    },
+    lifecycleRequestDetail: {
+      uiVisible: false,
+      requiredPermissions: [] as const,
+      scope: "none",
     },
     employeeExport: {
       uiVisible: true,
@@ -737,6 +778,16 @@ export const p2ListRoleActionMatrix = {
     lifecycleRequestList: {
       uiVisible: false,
       requiredPermission: null,
+      scope: "none",
+    },
+    employeeDetail: {
+      uiVisible: false,
+      requiredPermissions: [] as const,
+      scope: "none",
+    },
+    lifecycleRequestDetail: {
+      uiVisible: false,
+      requiredPermissions: [] as const,
       scope: "none",
     },
     employeeExport: {

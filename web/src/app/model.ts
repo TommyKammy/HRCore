@@ -2,12 +2,14 @@ import {
   ArrowRightLeft,
   BadgeCheck,
   BriefcaseBusiness,
+  ClipboardList,
   FileSpreadsheet,
   Headphones,
   LayoutDashboard,
   Settings2,
   ShieldCheck,
   UserPlus,
+  UserRound,
   UserRoundX,
   Users,
   type LucideIcon,
@@ -16,7 +18,9 @@ import type { BoundedPersonaId } from "../persona";
 
 export type RouteId =
   | "queue"
+  | "employees"
   | "employee"
+  | "lifecycle"
   | "onboarding"
   | "transfer"
   | "termination"
@@ -35,6 +39,7 @@ export interface PlannedArea {
   status: "available" | "planned";
   summary: string;
   icon: LucideIcon;
+  navigation?: boolean;
 }
 
 export type OnboardingStatus =
@@ -260,13 +265,32 @@ export const plannedAreas: readonly PlannedArea[] = [
     icon: LayoutDashboard,
   },
   {
-    id: "employee",
+    id: "employees",
     label: "Employees",
+    title: "従業員一覧",
+    eyebrow: "Bounded employee collection",
+    status: "available",
+    summary: "許可された検索条件で従業員を確認し、詳細へ移動します。",
+    icon: Users,
+  },
+  {
+    id: "employee",
+    label: "Employee detail",
     title: "従業員詳細",
     eyebrow: "Bounded employee record",
     status: "available",
     summary: "状態、履歴、外部ID、次回予定を1画面で確認します。",
-    icon: Users,
+    icon: UserRound,
+    navigation: false,
+  },
+  {
+    id: "lifecycle",
+    label: "Procedures",
+    title: "手続き一覧",
+    eyebrow: "Bounded lifecycle collection",
+    status: "available",
+    summary: "入社・異動・退職の申請を横断して確認します。",
+    icon: ClipboardList,
   },
   {
     id: "onboarding",

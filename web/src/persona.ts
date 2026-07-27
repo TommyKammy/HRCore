@@ -29,7 +29,9 @@ export const boundedPersonas: readonly BoundedPersona[] = [
     tenantEnvironment: BOUNDED_TENANT_ENVIRONMENT,
     allowedRoutes: [
       "queue",
+      "employees",
       "employee",
+      "lifecycle",
       "onboarding",
       "transfer",
       "termination",
@@ -48,7 +50,16 @@ export const boundedPersonas: readonly BoundedPersona[] = [
     label: "HR Ops/support",
     role: "bounded_hr_ops_support",
     tenantEnvironment: BOUNDED_TENANT_ENVIRONMENT,
-    allowedRoutes: ["queue", "employee", "csv", "ops", "audit", "support"],
+    allowedRoutes: [
+      "queue",
+      "employees",
+      "employee",
+      "lifecycle",
+      "csv",
+      "ops",
+      "audit",
+      "support",
+    ],
   },
   {
     id: "bounded-admin",

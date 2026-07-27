@@ -63,11 +63,14 @@ export interface P2ListLifecycleAuditEvent {
     | "lifecycle_request_list.viewed"
     | "lifecycle_request_list.search_applied"
     | "lifecycle_request_list.page_requested"
+    | "lifecycle_request_detail.opened_from_list"
     | "authorization.denied";
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
-  evaluatedPermission: typeof p2ListPermissions.lifecycleRequestListRead;
+  evaluatedPermission:
+    | typeof p2ListPermissions.lifecycleRequestListRead
+    | typeof p2ListPermissions.lifecycleRequestDetailRead;
   dataScopeId?: string;
   filterFingerprint?: string;
   sort?: string;
@@ -175,6 +178,138 @@ export function registerP2ListLifecycleRoutes(
             occurredAt,
             actorId: safeActorId(actor),
             evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
+            dataScopeId: safeDataScopeFingerprint(actor),
+            resourceType: "lifecycleRequest",
+            correlationId,
+            policyDecision: "deny",
+            reasonCode: error.code,
+          });
+        }
+        return reply.code(statusForError(error.code)).send({
+          code: error.code,
+          message: publicErrorMessage(error.code),
+          correlationId,
+          readiness: p2ListReadiness,
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/lifecycle/transaction-requests/:requestId",
+    { logLevel: "silent" },
+    async (request, reply) => {
+      const runtime = options.p2ListLifecycleApi;
+      if (runtime && typeof runtime.emitAuditEvent !== "function") {
+        throw new Error("The lifecycle detail audit sink is required.");
+      }
+      const correlationId =
+        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      reply.header("x-correlation-id", correlationId);
+
+      let actor: P2ListActorContext | undefined;
+      try {
+        if (!runtime) {
+          throw new P2ListReadModelError(
+            "actor_context_required",
+            "Server actor context is required.",
+          );
+        }
+        actor = await runtime.resolveActor(request);
+        if (!actor) {
+          throw new P2ListReadModelError(
+            "actor_context_required",
+            "Server actor context is required.",
+          );
+        }
+        if (
+          !request.query ||
+          typeof request.query !== "object" ||
+          Array.isArray(request.query)
+        ) {
+          throw invalidFilter();
+        }
+        if (Object.keys(request.query).length > 0) {
+          throw new P2ListReadModelError(
+            "unsupported_filter",
+            "The lifecycle detail filter is not supported.",
+          );
+        }
+        const requestId = requireBoundedString(
+          (request.params as Record<string, unknown>).requestId,
+          1,
+          256,
+          "invalid_filter",
+        );
+        const item = runtime.repository.getLifecycleRequest({
+          actor,
+          provenance: runtime.provenance,
+          transactionRequestId: requestId,
+        });
+        if (!item) {
+          await runtime.emitAuditEvent({
+            eventId: randomUUID(),
+            eventType: "authorization.denied",
+            eventVersion: p2ListAuditEventVersion,
+            occurredAt,
+            actorId: actor.actorId,
+            evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
+            dataScopeId: fingerprintP2ListValue(
+              normalizeP2ListDataScope(actor.dataScope),
+            ),
+            resourceType: "lifecycleRequest",
+            correlationId,
+            policyDecision: "deny",
+            reasonCode: "data_scope_denied",
+          });
+          return reply.code(404).send({
+            code: "data_scope_denied",
+            message: "The requested lifecycle detail is unavailable.",
+            correlationId,
+            readiness: p2ListReadiness,
+          });
+        }
+
+        await runtime.emitAuditEvent({
+          eventId: randomUUID(),
+          eventType: "lifecycle_request_detail.opened_from_list",
+          eventVersion: p2ListAuditEventVersion,
+          occurredAt,
+          actorId: actor.actorId,
+          evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
+          dataScopeId: fingerprintP2ListValue(
+            normalizeP2ListDataScope(actor.dataScope),
+          ),
+          filterFingerprint: fingerprintP2ListValue({
+            transactionRequestId: requestId,
+          }),
+          rowCount: 1,
+          resourceType: "lifecycleRequest",
+          correlationId,
+          policyDecision: "allow",
+        });
+        return reply.send({
+          item,
+          authorization: {
+            dataScope: "bounded" as const,
+            maskedFields: [] as string[],
+            readiness: p2ListReadiness,
+          },
+          correlationId,
+        });
+      } catch (error) {
+        if (!(error instanceof P2ListReadModelError)) {
+          throw error;
+        }
+        if (runtime && authorizationAuditErrorCodes.has(error.code)) {
+          await runtime.emitAuditEvent({
+            eventId: randomUUID(),
+            eventType: "authorization.denied",
+            eventVersion: p2ListAuditEventVersion,
+            occurredAt,
+            actorId: safeActorId(actor),
+            evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
             resourceType: "lifecycleRequest",
             correlationId,

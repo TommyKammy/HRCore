@@ -18,11 +18,14 @@ import {
   type BoundedPersonaId,
 } from "../persona";
 import { ApprovalsWorkflow } from "./approvals-workflow";
+import { EmployeeDetailRoute } from "./employee-detail-route";
+import { LifecycleDetailRoute } from "./lifecycle-detail-route";
 import {
   OnboardingWorkflow,
   TerminationWorkflow,
   TransferWorkflow,
 } from "./lifecycle-workflows";
+import { EmployeeListView, LifecycleListView } from "./list-screens";
 import {
   type OnboardingDecision,
   type OnboardingRequest,
@@ -38,19 +41,63 @@ import {
   plannedAreas,
 } from "./model";
 import { CsvWorkflow, OpsDlqWorkflow } from "./operations-workflows";
-import {
-  AuditWorkflow,
-  DashboardView,
-  EmployeeDetailView,
-  SecondaryAreaView,
-} from "./screens";
+import { AuditWorkflow, DashboardView, SecondaryAreaView } from "./screens";
 import { ContractStatus, EmptyState, ProcedureFrame } from "./shared";
+
+interface RouteHistoryState {
+  lifecycleListOrigin?: true;
+}
+
+function readRouteFromLocation(): RouteId {
+  const candidate = new URLSearchParams(window.location.search).get("view");
+  return plannedAreas.some((area) => area.id === candidate)
+    ? (candidate as RouteId)
+    : "queue";
+}
+
+function writeRouteToLocation(
+  route: RouteId,
+  parameters: Record<string, string> = {},
+  mode: "push" | "replace" = "push",
+  state: RouteHistoryState | null = null,
+) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("view", route);
+  for (const [key, value] of Object.entries(parameters)) {
+    url.searchParams.set(key, value);
+  }
+  window.history[mode === "push" ? "pushState" : "replaceState"](
+    state,
+    "",
+    url,
+  );
+}
+
+function readRouteParameter(key: string): string | null {
+  return new URLSearchParams(window.location.search).get(key);
+}
+
+function InvalidLifecycleDetailRoute() {
+  return (
+    <section className="blocked-state" role="alert">
+      <span className="blocked-icon" aria-hidden="true">
+        <LockKeyhole size={24} />
+      </span>
+      <p className="context-label">Invalid lifecycle route</p>
+      <h2>手続き詳細URLが無効です</h2>
+      <p>Request IDが空です。手続き一覧から対象を選び直してください。</p>
+    </section>
+  );
+}
 
 export function AppShell() {
   const [selectedPersonaId, setSelectedPersonaId] = useState<
     BoundedPersonaId | ""
   >("");
-  const [activeRoute, setActiveRoute] = useState<RouteId>("queue");
+  const [activeRoute, setActiveRoute] = useState<RouteId>(
+    readRouteFromLocation,
+  );
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [directLookup, setDirectLookup] = useState("");
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
@@ -113,13 +160,21 @@ export function AppShell() {
     return loadContract();
   }, [loadContract, personaDecision.allowed]);
 
-  const visibleAreas = personaDecision.persona
-    ? plannedAreas.filter((area) =>
-        personaDecision.persona?.allowedRoutes.includes(area.id),
-      )
-    : [];
+  const authorizedAreas = useMemo(
+    () =>
+      personaDecision.persona
+        ? plannedAreas.filter((area) =>
+            personaDecision.persona?.allowedRoutes.includes(area.id),
+          )
+        : [],
+    [personaDecision.persona],
+  );
+  const visibleAreas = useMemo(
+    () => authorizedAreas.filter((area) => area.navigation !== false),
+    [authorizedAreas],
+  );
   const activeArea =
-    visibleAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
+    authorizedAreas.find((area) => area.id === activeRoute) ?? visibleAreas[0];
 
   const decideOnboardingRequest = useCallback(
     (decision: OnboardingDecision, comment: string) => {
@@ -214,20 +269,51 @@ export function AppShell() {
   useEffect(() => {
     if (
       visibleAreas.length > 0 &&
-      !visibleAreas.some((area) => area.id === activeRoute)
+      !authorizedAreas.some((area) => area.id === activeRoute)
     ) {
-      setActiveRoute(visibleAreas[0].id);
+      const fallbackRoute = visibleAreas[0].id;
+      setActiveRoute(fallbackRoute);
+      writeRouteToLocation(fallbackRoute, {}, "replace");
     }
-  }, [activeRoute, visibleAreas]);
+  }, [activeRoute, authorizedAreas, visibleAreas]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = readRouteFromLocation();
+      if (authorizedAreas.some((area) => area.id === route)) {
+        setActiveRoute(route);
+      } else if (visibleAreas[0]) {
+        setActiveRoute(visibleAreas[0].id);
+        writeRouteToLocation(visibleAreas[0].id, {}, "replace");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [authorizedAreas, visibleAreas]);
 
   const canNavigateTo = (route: RouteId) =>
-    visibleAreas.some((area) => area.id === route);
+    authorizedAreas.some((area) => area.id === route);
 
-  const navigateTo = (route: RouteId) => {
+  const navigateTo = (
+    route: RouteId,
+    parameters: Record<string, string> = {},
+    state: RouteHistoryState | null = null,
+  ) => {
     if (canNavigateTo(route)) {
       setActiveRoute(route);
       setMobileNavOpen(false);
+      writeRouteToLocation(route, parameters, "push", state);
+      window.dispatchEvent(new PopStateEvent("popstate"));
     }
+  };
+
+  const returnToLifecycleList = () => {
+    const state = window.history.state as RouteHistoryState | null;
+    if (state?.lifecycleListOrigin === true && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    navigateTo("lifecycle");
   };
 
   const submitDirectLookup = (event: FormEvent<HTMLFormElement>) => {
@@ -241,7 +327,7 @@ export function AppShell() {
     const normalized = directLookup.trim().toUpperCase();
 
     if (normalized === "EMP-000128") {
-      setActiveRoute("employee");
+      navigateTo("employee", { employeeId: normalized, source: "fixture" });
       setLookupMessage("EMP-000128 を bounded fixture から表示しました。");
       return;
     }
@@ -267,9 +353,39 @@ export function AppShell() {
       );
     }
 
-    if (activeArea?.id === "employee") {
+    if (activeArea?.id === "employees" && selectedPersonaId) {
       return (
-        <EmployeeDetailView
+        <EmployeeListView
+          key={selectedPersonaId}
+          personaId={selectedPersonaId}
+          onOpenEmployee={
+            canNavigateTo("employee")
+              ? (employee, asOf) => {
+                  navigateTo("employee", {
+                    employeeId: employee.employeeId,
+                    asOf,
+                  });
+                }
+              : null
+          }
+        />
+      );
+    }
+
+    if (activeArea?.id === "employee" && selectedPersonaId) {
+      const employeeId = readRouteParameter("employeeId");
+      const asOf = readRouteParameter("asOf");
+      return (
+        <EmployeeDetailRoute
+          key={`${selectedPersonaId}:${employeeId ?? "fixture"}:${asOf ?? ""}`}
+          personaId={selectedPersonaId}
+          employeeId={employeeId}
+          asOf={asOf}
+          useLegacyFixture={
+            employeeId === null ||
+            (employeeId === "EMP-000128" &&
+              readRouteParameter("source") === "fixture")
+          }
           onOpenTransfer={
             canNavigateTo("transfer") ? () => navigateTo("transfer") : null
           }
@@ -277,7 +393,57 @@ export function AppShell() {
       );
     }
 
+    if (activeArea?.id === "lifecycle" && selectedPersonaId) {
+      return (
+        <LifecycleListView
+          key={selectedPersonaId}
+          personaId={selectedPersonaId}
+          onOpenRequest={
+            canNavigateTo("onboarding") ||
+            canNavigateTo("transfer") ||
+            canNavigateTo("termination")
+              ? (request) => {
+                  const route: RouteId =
+                    request.requestType === "onboarding"
+                      ? "onboarding"
+                      : request.requestType;
+                  if (!canNavigateTo(route)) {
+                    return;
+                  }
+                  navigateTo(
+                    route,
+                    {
+                      requestId: request.transactionRequestId,
+                    },
+                    {
+                      lifecycleListOrigin: true,
+                    },
+                  );
+                }
+              : null
+          }
+        />
+      );
+    }
+
     if (activeArea?.id === "onboarding") {
+      const requestId = readRouteParameter("requestId");
+      if (requestId === "") {
+        return <InvalidLifecycleDetailRoute />;
+      }
+      if (requestId !== null) {
+        return selectedPersonaId ? (
+          <LifecycleDetailRoute
+            key={`${selectedPersonaId}:${requestId}`}
+            personaId={selectedPersonaId}
+            requestId={requestId}
+            expectedType="onboarding"
+            onBack={returnToLifecycleList}
+          />
+        ) : (
+          <EmptyState />
+        );
+      }
       return (
         <ProcedureFrame
           procedure="onboarding"
@@ -294,6 +460,23 @@ export function AppShell() {
     }
 
     if (activeArea?.id === "transfer") {
+      const requestId = readRouteParameter("requestId");
+      if (requestId === "") {
+        return <InvalidLifecycleDetailRoute />;
+      }
+      if (requestId !== null) {
+        return selectedPersonaId ? (
+          <LifecycleDetailRoute
+            key={`${selectedPersonaId}:${requestId}`}
+            personaId={selectedPersonaId}
+            requestId={requestId}
+            expectedType="transfer"
+            onBack={returnToLifecycleList}
+          />
+        ) : (
+          <EmptyState />
+        );
+      }
       return (
         <ProcedureFrame
           procedure="transfer"
@@ -310,6 +493,23 @@ export function AppShell() {
     }
 
     if (activeArea?.id === "termination") {
+      const requestId = readRouteParameter("requestId");
+      if (requestId === "") {
+        return <InvalidLifecycleDetailRoute />;
+      }
+      if (requestId !== null) {
+        return selectedPersonaId ? (
+          <LifecycleDetailRoute
+            key={`${selectedPersonaId}:${requestId}`}
+            personaId={selectedPersonaId}
+            requestId={requestId}
+            expectedType="termination"
+            onBack={returnToLifecycleList}
+          />
+        ) : (
+          <EmptyState />
+        );
+      }
       return (
         <ProcedureFrame
           procedure="termination"

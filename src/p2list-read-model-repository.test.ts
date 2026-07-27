@@ -39,6 +39,13 @@ const employeeActor: P2ListActorContext = {
   permissions: [p2ListPermissions.employeeListRead],
   dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
 };
+const employeeDetailActor: P2ListActorContext = {
+  ...employeeActor,
+  permissions: [
+    p2ListPermissions.employeeListRead,
+    p2ListPermissions.employeeDetailRead,
+  ],
+};
 const lifecycleActor: P2ListActorContext = {
   actorId: "actor-hr-support",
   tenantId: "tenant-repo-owned-synthetic",
@@ -55,6 +62,13 @@ const lifecycleActor: P2ListActorContext = {
       "ORG-LIFECYCLE-SYNTHETIC",
     ],
   },
+};
+const lifecycleDetailActor: P2ListActorContext = {
+  ...lifecycleActor,
+  permissions: [
+    ...lifecycleActor.permissions,
+    p2ListPermissions.lifecycleRequestDetailRead,
+  ],
 };
 type EmployeePage = P2ListPage<
   P2ListEmployeeItem,
@@ -400,6 +414,13 @@ test("P2LIST employee scope is query-layer, fail-closed, and provenance-bound", 
       }),
     "data_scope_denied",
   );
+  const detail = repository.getEmployee({
+    actor: employeeDetailActor,
+    provenance: ambiguousManifest,
+    acceptedAt,
+    employeeId: rows[0]!.employeeId,
+  });
+  assert.equal(detail.item?.employeeId, rows[0]!.employeeId);
 });
 
 test("P2LIST employee projection applies employment and assignment dates at the resolved asOf", async (t) => {
@@ -727,6 +748,47 @@ test("P2LIST lifecycle repository normalizes all persisted request types and dec
   );
 });
 
+test("P2LIST lifecycle detail resolves an exact request ID despite broad-search collisions", async (t) => {
+  const db = await openTestDatabase(t);
+  if (!db) {
+    return;
+  }
+  const rows = createP2ListLifecycleFixtureRows(2);
+  const targetId = rows[0]!.transactionRequestId;
+  rows[1] = {
+    ...rows[1]!,
+    displayName: `${targetId} unrelated subject`,
+    requestedAt: "2026-07-02T00:00:00.000Z",
+  };
+  seedLifecycleFixtureRows(db, rows);
+  const provenance = verifyP2ListSyntheticDatasetManifest(
+    createP2ListFixtureManifest(
+      {
+        datasetReference: "lifecycle-detail-exact-id",
+        lifecycleRequests: rows,
+      },
+      manifestSecret,
+    ),
+    manifestSecret,
+  );
+  const repository = new P2ListReadModelRepository(db, createCursorManager());
+
+  const broadPage = repository.listLifecycleRequests({
+    actor: lifecycleActor,
+    provenance,
+    filters: { q: targetId },
+    limit: 1,
+  });
+  assert.notEqual(broadPage.items[0]?.transactionRequestId, targetId);
+
+  const detail = repository.getLifecycleRequest({
+    actor: lifecycleDetailActor,
+    provenance,
+    transactionRequestId: targetId,
+  });
+  assert.equal(detail?.transactionRequestId, targetId);
+});
+
 test("P2LIST lifecycle keysets cover 0/1/25/26/100/101 with equal sort values", async (t) => {
   const db = await openTestDatabase(t);
   if (!db) {
@@ -806,7 +868,7 @@ test("P2LIST lifecycle keysets cover 0/1/25/26/100/101 with equal sort values", 
   assert.deepEqual(ids, rows.map((row) => row.transactionRequestId).reverse());
 });
 
-test("P2LIST lifecycle validation fails before scope for malformed payload and tied decisions", async (t) => {
+test("P2LIST lifecycle list validation fails before scope for malformed payload and tied decisions", async (t) => {
   const db = await openTestDatabase(t);
   if (!db) {
     return;
@@ -851,6 +913,12 @@ test("P2LIST lifecycle validation fails before scope for malformed payload and t
       }),
     "data_scope_denied",
   );
+  const detail = repository.getLifecycleRequest({
+    actor: lifecycleDetailActor,
+    provenance: malformedProvenance,
+    transactionRequestId: "tr-hire",
+  });
+  assert.equal(detail?.transactionRequestId, "tr-hire");
 
   db.exec("PRAGMA ignore_check_constraints = ON");
   db.prepare(
@@ -880,6 +948,14 @@ test("P2LIST lifecycle validation fails before scope for malformed payload and t
         provenance: baselineProvenance,
       }),
     "data_scope_denied",
+  );
+  assert.equal(
+    repository.getLifecycleRequest({
+      actor: lifecycleDetailActor,
+      provenance: baselineProvenance,
+      transactionRequestId: "tr-hire",
+    })?.transactionRequestId,
+    "tr-hire",
   );
   db.prepare(
     "DELETE FROM audit_event WHERE id = 'audit-change-malformed-time'",

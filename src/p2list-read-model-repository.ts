@@ -118,9 +118,23 @@ export interface P2ListEmployeeQuery extends P2ListQueryBase {
   acceptedAt: string;
 }
 
+export interface P2ListEmployeeDetailQuery {
+  actor: P2ListActorContext;
+  provenance: P2ListVerifiedSyntheticDataset;
+  employeeId: string;
+  asOf?: string;
+  acceptedAt: string;
+}
+
 export interface P2ListLifecycleQuery extends P2ListQueryBase {
   filters?: P2ListLifecycleFilters;
   sort?: LifecycleSort;
+}
+
+export interface P2ListLifecycleDetailQuery {
+  actor: P2ListActorContext;
+  provenance: P2ListVerifiedSyntheticDataset;
+  transactionRequestId: string;
 }
 
 interface NormalizedActorContext {
@@ -287,6 +301,60 @@ export class P2ListReadModelRepository {
     );
   }
 
+  getEmployee(input: P2ListEmployeeDetailQuery): {
+    item: P2ListEmployeeItem | null;
+    appliedFilters: P2ListEmployeeAppliedFilters;
+  } {
+    const provenance = requireVerifiedDataset(input?.provenance);
+    const actor = normalizeActorContext(
+      input?.actor,
+      [
+        p2ListPermissions.employeeListRead,
+        p2ListPermissions.employeeDetailRead,
+      ],
+      false,
+    );
+    const employeeId = requireBoundedString(
+      input?.employeeId,
+      1,
+      128,
+      "invalid_filter",
+    );
+    const suppliedFilters = normalizeEmployeeFilters({
+      employeeId,
+      ...(input?.asOf !== undefined ? { asOf: input.asOf } : {}),
+    });
+    const resolvedAsOf = resolveEmployeeAsOf(
+      suppliedFilters.asOf,
+      input?.acceptedAt,
+      undefined,
+    );
+    const appliedFilters: P2ListEmployeeAppliedFilters = {
+      ...suppliedFilters,
+      asOf: resolvedAsOf,
+    };
+    this.#assertEmployeeProjectionIntegrity(
+      provenance,
+      resolvedAsOf,
+      employeeId,
+    );
+    const rows = this.#queryEmployees({
+      actor,
+      provenance,
+      filters: appliedFilters,
+      sort: "employeeId",
+      direction: "asc",
+      limit: 1,
+    });
+    if (rows.length > 1) {
+      throw dataScopeDenied();
+    }
+    return {
+      item: rows[0] ? employeeItemFromRow(rows[0]) : null,
+      appliedFilters,
+    };
+  }
+
   listLifecycleRequests(
     input: P2ListLifecycleQuery,
   ): P2ListPage<P2ListLifecycleItem, P2ListLifecycleFilters> {
@@ -343,6 +411,45 @@ export class P2ListReadModelRepository {
     );
   }
 
+  getLifecycleRequest(
+    input: P2ListLifecycleDetailQuery,
+  ): P2ListLifecycleItem | null {
+    const provenance = requireVerifiedDataset(input?.provenance);
+    const actor = normalizeActorContext(
+      input?.actor,
+      [
+        p2ListPermissions.lifecycleRequestListRead,
+        p2ListPermissions.lifecycleRequestDetailRead,
+      ],
+      true,
+    );
+    const transactionRequestId = requireBoundedString(
+      input?.transactionRequestId,
+      1,
+      256,
+      "invalid_filter",
+    );
+    const validatedRows = provenance.has(
+      "transaction_request",
+      transactionRequestId,
+    )
+      ? this.#loadValidatedLifecycleRows(provenance, [transactionRequestId])
+      : [];
+    const rows = this.#queryLifecycleRows({
+      actor,
+      validatedRows,
+      filters: {},
+      sort: "requestedAt",
+      direction: "desc",
+      limit: 1,
+      exactTransactionRequestId: transactionRequestId,
+    });
+    if (rows.length > 1) {
+      throw dataScopeDenied();
+    }
+    return rows[0] ? lifecycleItemFromRow(rows[0]) : null;
+  }
+
   #readCursor(
     token: string,
     resource: "employee" | "lifecycleRequest",
@@ -372,6 +479,7 @@ export class P2ListReadModelRepository {
   #assertEmployeeProjectionIntegrity(
     provenance: P2ListVerifiedSyntheticDataset,
     asOf: string,
+    employeeId?: string,
   ): void {
     const personIds = provenance.values("person");
     const employmentIds = provenance.values("employment");
@@ -414,9 +522,18 @@ export class P2ListReadModelRepository {
           AND ${employmentPredicate}
           AND employment.start_date <= ?
           AND (employment.end_date IS NULL OR employment.end_date >= ?)
+          ${employeeId === undefined ? "" : "AND employment.employment_code = ?"}
         GROUP BY employment.id
       `,
-      [...assignmentParameters, asOf, asOf, ...sourceParameters, asOf, asOf],
+      [
+        ...assignmentParameters,
+        asOf,
+        asOf,
+        ...sourceParameters,
+        asOf,
+        asOf,
+        ...(employeeId === undefined ? [] : [employeeId]),
+      ],
     );
     for (const row of rows) {
       const assignmentCount = requireDatabaseNumber(row.assignment_count);
@@ -530,8 +647,11 @@ export class P2ListReadModelRepository {
 
   #loadValidatedLifecycleRows(
     provenance: P2ListVerifiedSyntheticDataset,
+    requestedTransactionRequestIds?: readonly string[],
   ): ValidatedLifecycleRow[] {
-    const transactionRequestIds = provenance.values("transaction_request");
+    const transactionRequestIds =
+      requestedTransactionRequestIds ??
+      provenance.values("transaction_request");
     if (transactionRequestIds.length === 0) {
       return [];
     }
@@ -822,6 +942,7 @@ export class P2ListReadModelRepository {
     direction: P2ListDirection;
     limit: number;
     cursorState?: Readonly<P2ListCursorState>;
+    exactTransactionRequestId?: string;
   }): ValidatedLifecycleRow[] {
     const {
       actor,
@@ -831,6 +952,7 @@ export class P2ListReadModelRepository {
       direction,
       limit,
       cursorState,
+      exactTransactionRequestId,
     } = options;
     if (validatedRows.length === 0) {
       return [];
@@ -870,6 +992,10 @@ export class P2ListReadModelRepository {
         parameters,
       ),
     ];
+    if (exactTransactionRequestId) {
+      clauses.push("transaction_request_id = ?");
+      parameters.push(exactTransactionRequestId);
+    }
     if (filters.requestType?.length) {
       clauses.push(
         inPredicate("request_type", filters.requestType, parameters),
@@ -1074,7 +1200,7 @@ function normalizeLifecycleFilters(
 
 function normalizeActorContext(
   input: P2ListActorContext,
-  requiredPermission: string,
+  requiredPermissions: string | readonly string[],
   allowCorrelationScope: boolean,
 ): NormalizedActorContext {
   const actor = requireRecord(
@@ -1101,10 +1227,17 @@ function normalizeActorContext(
     100,
     "actor_context_required",
   );
-  if (!permissions.includes(requiredPermission)) {
+  const permissionsRequired = Array.isArray(requiredPermissions)
+    ? requiredPermissions
+    : [requiredPermissions];
+  if (
+    permissionsRequired.some(
+      (requiredPermission) => !permissions.includes(requiredPermission),
+    )
+  ) {
     throw new P2ListReadModelError(
       "permission_denied",
-      "The list permission is required.",
+      "The required permission is missing.",
     );
   }
   const dataScope = normalizeP2ListDataScope(actor.dataScope);

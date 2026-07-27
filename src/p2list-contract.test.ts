@@ -597,6 +597,26 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
     p2ListRoleActionMatrix.hrOperator.employeeList.requiredPermission,
     p2ListPermissions.employeeListRead,
   );
+  assert.deepEqual(
+    p2ListRoleActionMatrix.hrOperator.employeeDetail.requiredPermissions,
+    [p2ListPermissions.employeeListRead, p2ListPermissions.employeeDetailRead],
+  );
+  assert.deepEqual(
+    p2ListRoleActionMatrix.hrOperator.lifecycleRequestDetail
+      .requiredPermissions,
+    [
+      p2ListPermissions.lifecycleRequestListRead,
+      p2ListPermissions.lifecycleRequestDetailRead,
+    ],
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.hrOpsSupport.employeeDetail.uiVisible,
+    true,
+  );
+  assert.equal(
+    p2ListRoleActionMatrix.hrOpsSupport.lifecycleRequestDetail.uiVisible,
+    false,
+  );
   assert.equal(p2ListRoleActionMatrix.approver.employeeList.uiVisible, false);
   assert.equal(
     p2ListRoleActionMatrix.approver.employeeList.requiredPermission,
@@ -739,14 +759,33 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   const employeeOperation = contract.paths["/employees"]?.get;
   const lifecycleOperation =
     contract.paths["/lifecycle/transaction-requests"]?.get;
+  const employeeDetail = contract.paths["/employees/{employeeId}"]?.get;
+  const lifecycleDetail =
+    contract.paths["/lifecycle/transaction-requests/{requestId}"]?.get;
   const employeeExport = contract.paths["/exports/employee-list"]?.post;
   const lifecycleExport =
     contract.paths["/exports/lifecycle-request-list"]?.post;
 
   assert.ok(employeeOperation);
   assert.ok(lifecycleOperation);
+  assert.ok(employeeDetail);
+  assert.ok(lifecycleDetail);
   assert.ok(employeeExport);
   assert.ok(lifecycleExport);
+  assert.deepEqual(employeeDetail["x-hrcore-required-permissions"], [
+    p2ListPermissions.employeeListRead,
+    p2ListPermissions.employeeDetailRead,
+  ]);
+  assert.deepEqual(lifecycleDetail["x-hrcore-required-permissions"], [
+    p2ListPermissions.lifecycleRequestListRead,
+    p2ListPermissions.lifecycleRequestDetailRead,
+  ]);
+  assert.equal(
+    lifecycleDetail.parameters?.find(
+      (parameter) => parameter.name === "requestId",
+    )?.schema.minLength,
+    1,
+  );
 
   assert.deepEqual(parameterNames(employeeOperation), [
     ...p2ListEmployeeFilters,

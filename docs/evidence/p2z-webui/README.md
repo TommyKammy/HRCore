@@ -12,7 +12,9 @@ P2Z visual UAT contract.
 ## Screen Set
 
 - Dashboard
+- Employee list
 - Employee detail
+- Lifecycle procedure list
 - Transfer procedure
 - Approval inbox
 - Job monitor

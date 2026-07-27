@@ -1,9 +1,20 @@
+import type { BoundedPersonaId } from "./persona";
+import { p2ListMaximumLimit } from "../../src/p2list-contract";
+
 export type ApiPath =
   | "/health"
   | "/openapi.json"
   | "/employees"
   | "/lifecycle/transaction-requests";
-type ApiRequestPath = ApiPath | `${ApiPath}?${string}`;
+type ApiOperationPath =
+  | ApiPath
+  | "/employees/{employeeId}"
+  | "/lifecycle/transaction-requests/{requestId}";
+type ApiRequestPath =
+  | ApiPath
+  | `${ApiPath}?${string}`
+  | `/employees/${string}`
+  | `/lifecycle/transaction-requests/${string}`;
 
 export interface ApiContract {
   openapi: "3.1.0";
@@ -60,6 +71,13 @@ export interface EmployeeListResponse {
     maskedFields: Array<keyof EmployeeListItem>;
     readiness: "bounded_synthetic_only_not_production_ready";
   };
+  correlationId: string;
+}
+
+export interface EmployeeDetailResponse {
+  item: EmployeeListItem;
+  asOf: string;
+  authorization: EmployeeListResponse["authorization"];
   correlationId: string;
 }
 
@@ -128,17 +146,311 @@ export interface LifecycleRequestListResponse {
   correlationId: string;
 }
 
+export interface LifecycleRequestDetailResponse {
+  item: LifecycleRequestListItem;
+  authorization: LifecycleRequestListResponse["authorization"];
+  correlationId: string;
+}
+
 export class ApiClientError extends Error {
-  constructor(message: string) {
+  declare readonly status?: number;
+  declare readonly correlationId?: string;
+
+  constructor(
+    message: string,
+    options?: { status?: number; correlationId?: string },
+  ) {
     super(message);
     this.name = "ApiClientError";
+    if (options?.status !== undefined) {
+      this.status = options.status;
+    }
+    if (options?.correlationId !== undefined) {
+      this.correlationId = options.correlationId;
+    }
   }
+}
+
+const requiredApiContractPaths = [
+  "/health",
+  "/employees",
+  "/employees/{employeeId}",
+  "/lifecycle/transaction-requests",
+  "/lifecycle/transaction-requests/{requestId}",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  allowedKeys: ReadonlySet<string>,
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    keys.length === allowedKeys.size &&
+    keys.every((key) => allowedKeys.has(key))
+  );
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return (
+    Number.isFinite(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const match =
+    /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})T(?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})\.\d{3}Z$/u.exec(
+      value,
+    );
+  const groups = match?.groups;
+  if (!groups) {
+    return false;
+  }
+  const calendarProbe = new Date(
+    Date.UTC(Number(groups.year), Number(groups.month) - 1, Number(groups.day)),
+  );
+  return (
+    calendarProbe.getUTCFullYear() === Number(groups.year) &&
+    calendarProbe.getUTCMonth() === Number(groups.month) - 1 &&
+    calendarProbe.getUTCDate() === Number(groups.day) &&
+    Number(groups.hour) <= 23 &&
+    Number(groups.minute) <= 59 &&
+    Number(groups.second) <= 59 &&
+    Number.isFinite(new Date(value).getTime())
+  );
+}
+
+function isPageInfo(value: unknown): value is EmployeeListResponse["pageInfo"] {
+  return (
+    isRecord(value) &&
+    typeof value.limit === "number" &&
+    Number.isInteger(value.limit) &&
+    value.limit >= 1 &&
+    value.limit <= 100 &&
+    typeof value.hasNextPage === "boolean" &&
+    isNullableString(value.nextCursor) &&
+    (value.hasNextPage
+      ? typeof value.nextCursor === "string" && value.nextCursor.length > 0
+      : value.nextCursor === null)
+  );
+}
+
+function isAuthorization(
+  value: unknown,
+  allowedMaskedFields: ReadonlySet<string>,
+): value is EmployeeListResponse["authorization"] {
+  return (
+    isRecord(value) &&
+    value.dataScope === "bounded" &&
+    value.readiness === "bounded_synthetic_only_not_production_ready" &&
+    Array.isArray(value.maskedFields) &&
+    value.maskedFields.every(
+      (field) => typeof field === "string" && allowedMaskedFields.has(field),
+    )
+  );
+}
+
+const employeeStatuses = new Set(["active", "inactive", "terminated"]);
+const employeeFields = new Set([
+  "personId",
+  "employeeId",
+  "displayName",
+  "employmentStatus",
+  "organizationCode",
+  "positionCode",
+  "hireDate",
+  "terminationDate",
+]);
+const employeeListResponseFields = new Set([
+  "items",
+  "pageInfo",
+  "appliedFilters",
+  "authorization",
+  "correlationId",
+]);
+const employeeDetailResponseFields = new Set([
+  "item",
+  "asOf",
+  "authorization",
+  "correlationId",
+]);
+
+function isEmployeeListItem(value: unknown): value is EmployeeListItem {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, employeeFields) &&
+    isNonEmptyString(value.personId) &&
+    isNonEmptyString(value.employeeId) &&
+    isNonEmptyString(value.displayName) &&
+    employeeStatuses.has(String(value.employmentStatus)) &&
+    isNullableString(value.organizationCode) &&
+    isNullableString(value.positionCode) &&
+    isIsoDate(value.hireDate) &&
+    (value.terminationDate === null || isIsoDate(value.terminationDate))
+  );
+}
+
+function isEmployeeListResponse(value: unknown): value is EmployeeListResponse {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, employeeListResponseFields) &&
+    Array.isArray(value.items) &&
+    value.items.length <= p2ListMaximumLimit &&
+    value.items.every(isEmployeeListItem) &&
+    isPageInfo(value.pageInfo) &&
+    isRecord(value.appliedFilters) &&
+    isIsoDate(value.appliedFilters.asOf) &&
+    isAuthorization(value.authorization, employeeFields) &&
+    isNonEmptyString(value.correlationId)
+  );
+}
+
+function isEmployeeDetailResponse(
+  value: unknown,
+): value is EmployeeDetailResponse {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, employeeDetailResponseFields) &&
+    isEmployeeListItem(value.item) &&
+    isIsoDate(value.asOf) &&
+    isAuthorization(value.authorization, employeeFields) &&
+    isNonEmptyString(value.correlationId)
+  );
+}
+
+const lifecycleRequestTypes = new Set([
+  "onboarding",
+  "transfer",
+  "termination",
+]);
+const lifecycleStatuses = new Set([
+  "draft",
+  "submitted",
+  "returned",
+  "rejected",
+  "cancelled",
+  "approved",
+  "completed",
+]);
+const lifecycleFields = new Set([
+  "transactionRequestId",
+  "requestType",
+  "status",
+  "subjectPersonId",
+  "subjectEmployeeId",
+  "subjectDisplayName",
+  "organizationCode",
+  "decidedBy",
+  "requestedAt",
+  "effectiveDate",
+]);
+const lifecycleListResponseFields = new Set([
+  "items",
+  "pageInfo",
+  "appliedFilters",
+  "authorization",
+  "correlationId",
+]);
+const lifecycleDetailResponseFields = new Set([
+  "item",
+  "authorization",
+  "correlationId",
+]);
+
+function isLifecycleRequestListItem(
+  value: unknown,
+): value is LifecycleRequestListItem {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, lifecycleFields) &&
+    isNonEmptyString(value.transactionRequestId) &&
+    lifecycleRequestTypes.has(String(value.requestType)) &&
+    lifecycleStatuses.has(String(value.status)) &&
+    isNonEmptyString(value.subjectPersonId) &&
+    isNullableString(value.subjectEmployeeId) &&
+    isNonEmptyString(value.subjectDisplayName) &&
+    isNonEmptyString(value.organizationCode) &&
+    isNullableString(value.decidedBy) &&
+    isIsoTimestamp(value.requestedAt) &&
+    isIsoDate(value.effectiveDate)
+  );
+}
+
+function isLifecycleRequestListResponse(
+  value: unknown,
+): value is LifecycleRequestListResponse {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, lifecycleListResponseFields) &&
+    Array.isArray(value.items) &&
+    value.items.length <= p2ListMaximumLimit &&
+    value.items.every(isLifecycleRequestListItem) &&
+    isPageInfo(value.pageInfo) &&
+    isRecord(value.appliedFilters) &&
+    isAuthorization(value.authorization, lifecycleFields) &&
+    isNonEmptyString(value.correlationId)
+  );
+}
+
+function isLifecycleRequestDetailResponse(
+  value: unknown,
+): value is LifecycleRequestDetailResponse {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, lifecycleDetailResponseFields) &&
+    isLifecycleRequestListItem(value.item) &&
+    isAuthorization(value.authorization, lifecycleFields) &&
+    isNonEmptyString(value.correlationId)
+  );
+}
+
+export function createP2ListRequestInit(
+  personaId: BoundedPersonaId,
+  signal?: AbortSignal,
+): RequestInit {
+  const tokenByPersona: Partial<Record<BoundedPersonaId, string | undefined>> =
+    {
+      "hr-operator": import.meta.env.VITE_P2LIST_HR_OPERATOR_TOKEN,
+      approver: import.meta.env.VITE_P2LIST_APPROVER_TOKEN,
+      "hr-ops-support": import.meta.env.VITE_P2LIST_SUPPORT_TOKEN,
+    };
+  const token = tokenByPersona[personaId]?.trim();
+  return {
+    signal,
+    ...(token
+      ? {
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
+        }
+      : {}),
+  };
 }
 
 async function readJson<T>(
   path: ApiRequestPath,
-  operation: ApiPath,
+  operation: ApiOperationPath,
   init?: RequestInit,
+  validate?: (value: unknown) => value is T,
 ): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!headers.has("accept")) {
@@ -150,12 +462,37 @@ async function readJson<T>(
   });
 
   if (!response.ok) {
+    const correlationId = await readErrorCorrelationId(response);
     throw new ApiClientError(
       `Request failed for ${operation}: ${response.status}`,
+      { status: response.status, correlationId },
     );
   }
 
-  return (await response.json()) as T;
+  const payload: unknown = await response.json();
+  if (validate && !validate(payload)) {
+    throw new ApiClientError(
+      `Response contract did not match the repository-owned shape for ${operation}.`,
+    );
+  }
+  return payload as T;
+}
+
+async function readErrorCorrelationId(
+  response: Response,
+): Promise<string | undefined> {
+  const headerValue = response.headers.get("x-correlation-id")?.trim();
+  if (headerValue) {
+    return headerValue;
+  }
+  try {
+    const payload: unknown = await response.json();
+    return isRecord(payload) && isNonEmptyString(payload.correlationId)
+      ? payload.correlationId
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
@@ -177,6 +514,27 @@ export async function fetchEmployees(
     queryString ? `/employees?${queryString}` : "/employees",
     "/employees",
     init,
+    isEmployeeListResponse,
+  );
+}
+
+export async function fetchEmployeeDetail(
+  employeeId: string,
+  query: Pick<EmployeeListQuery, "asOf"> = {},
+  init?: RequestInit,
+): Promise<EmployeeDetailResponse> {
+  const parameters = new URLSearchParams();
+  if (query.asOf !== undefined) {
+    parameters.set("asOf", query.asOf);
+  }
+  const queryString = parameters.toString();
+  const operation = "/employees/{employeeId}";
+  const path: `/employees/${string}` = `/employees/${encodeURIComponent(employeeId)}`;
+  return readJson<EmployeeDetailResponse>(
+    queryString ? `${path}?${queryString}` : path,
+    operation,
+    init,
+    isEmployeeDetailResponse,
   );
 }
 
@@ -199,6 +557,20 @@ export async function fetchLifecycleRequests(
     queryString ? `${path}?${queryString}` : path,
     path,
     init,
+    isLifecycleRequestListResponse,
+  );
+}
+
+export async function fetchLifecycleRequestDetail(
+  requestId: string,
+  init?: RequestInit,
+): Promise<LifecycleRequestDetailResponse> {
+  const operation = "/lifecycle/transaction-requests/{requestId}";
+  return readJson<LifecycleRequestDetailResponse>(
+    `/lifecycle/transaction-requests/${encodeURIComponent(requestId)}`,
+    operation,
+    init,
+    isLifecycleRequestDetailResponse,
   );
 }
 
@@ -211,7 +583,11 @@ export async function fetchOpenApiContract(): Promise<ApiContract> {
   if (
     contract.openapi !== "3.1.0" ||
     contract.info?.title !== "HRCore API" ||
-    !contract.paths?.["/health"]
+    !isRecord(contract.paths) ||
+    requiredApiContractPaths.some((path) => {
+      const pathItem = contract.paths[path];
+      return !isRecord(pathItem) || !isRecord(pathItem.get);
+    })
   ) {
     throw new ApiClientError(
       "OpenAPI contract did not match the repository-owned HRCore API shape.",

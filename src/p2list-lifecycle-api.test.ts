@@ -40,6 +40,13 @@ const authorizedActor: P2ListActorContext = {
   permissions: [p2ListPermissions.lifecycleRequestListRead],
   dataScope: { organizationCodes: ["ORG-LIFECYCLE-SYNTHETIC"] },
 };
+const authorizedDetailActor: P2ListActorContext = {
+  ...authorizedActor,
+  permissions: [
+    p2ListPermissions.lifecycleRequestListRead,
+    p2ListPermissions.lifecycleRequestDetailRead,
+  ],
+};
 
 test("GET /lifecycle/transaction-requests suppresses raw query values from logs", async (t) => {
   let logs = "";
@@ -474,12 +481,116 @@ test("GET /lifecycle/transaction-requests requires its audit sink", async (t) =>
   assert.equal(harness.auditEvents.length, 0);
 });
 
+test("GET /lifecycle/transaction-requests/:requestId authorizes detail and emits detail-open evidence", async (t) => {
+  const harness = await createHarness(t, 1, {
+    authorized: authorizedDetailActor,
+  });
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/p2list-transaction-001",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(
+    response.json().item.transactionRequestId,
+    "p2list-transaction-001",
+  );
+  assert.equal(
+    response.json().item.subjectDisplayName,
+    "Synthetic Lifecycle Subject 001",
+  );
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(
+    harness.auditEvents[0]?.eventType,
+    "lifecycle_request_detail.opened_from_list",
+  );
+  assert.equal(harness.auditEvents[0]?.rowCount, 1);
+  assert.equal(
+    harness.auditEvents[0]?.evaluatedPermission,
+    p2ListPermissions.lifecycleRequestDetailRead,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    /p2list-transaction-001/u,
+  );
+});
+
+test("GET /lifecycle/transaction-requests/:requestId accepts a one-character listed ID", async (t) => {
+  const harness = await createHarness(
+    t,
+    1,
+    { authorized: authorizedDetailActor },
+    (rows) => {
+      rows[0] = {
+        ...rows[0]!,
+        transactionRequestId: "x",
+      };
+    },
+  );
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/x",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().item.transactionRequestId, "x");
+});
+
+test("GET /lifecycle/transaction-requests/:requestId denies list-only actors", async (t) => {
+  const harness = await createHarness(t, 1);
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/p2list-transaction-001",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.json().code, "permission_denied");
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(
+    harness.auditEvents[0]?.evaluatedPermission,
+    p2ListPermissions.lifecycleRequestDetailRead,
+  );
+});
+
+test("GET /lifecycle/transaction-requests/:requestId does not expose out-of-scope records", async (t) => {
+  const harness = await createHarness(t, 1, {
+    restricted: {
+      ...authorizedDetailActor,
+      actorId: "actor-restricted",
+      dataScope: { organizationCodes: ["ORG-OTHER"] },
+    },
+  });
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/p2list-transaction-001",
+    headers: { authorization: "Bearer restricted" },
+  });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(harness.auditEvents[0]?.reasonCode, "data_scope_denied");
+});
+
 async function createHarness(
   t: TestContext,
   count: number,
   actors: Record<string, P2ListActorContext> = {
     authorized: authorizedActor,
   },
+  configureRows?: (rows: P2ListLifecycleFixtureRow[]) => void,
 ): Promise<
   | {
       app: Awaited<ReturnType<typeof buildApp>>;
@@ -501,6 +612,7 @@ async function createHarness(
     throw error;
   }
   const rows = createP2ListLifecycleFixtureRows(count);
+  configureRows?.(rows);
   seedLifecycleRows(db, rows);
   const provenance = verifyP2ListSyntheticDatasetManifest(
     createP2ListFixtureManifest(

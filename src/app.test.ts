@@ -99,6 +99,8 @@ test("GET /openapi.json serves the baseline OpenAPI contract", async (t) => {
   assert.ok(contract.paths["/terminations/transaction-requests"]);
   assert.ok(contract.paths["/terminations/transaction-requests/validate"]);
   assert.ok(contract.paths["/employees"]);
+  assert.ok(contract.paths["/employees/{employeeId}"]);
+  assert.ok(contract.paths["/lifecycle/transaction-requests/{requestId}"]);
   assert.ok(contract.paths["/lifecycle/transaction-requests"]);
   assert.ok(contract.paths["/exports/employee-list"]);
   assert.ok(contract.paths["/exports/lifecycle-request-list"]);

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { repositoryOwnedApiContract } from "./test-api-contract";
 
 describe("App shell", () => {
   it("fails closed until a bounded non-production persona is selected", () => {
@@ -26,11 +27,7 @@ describe("App shell", () => {
 
   it("loads the repository-owned API contract after persona selection", async () => {
     const fetchMock = vi.fn(async () =>
-      Response.json({
-        openapi: "3.1.0",
-        info: { title: "HRCore API", version: "0.0.0" },
-        paths: { "/health": {} },
-      }),
+      Response.json(repositoryOwnedApiContract),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -56,13 +53,7 @@ describe("App shell", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 503 }))
-      .mockResolvedValueOnce(
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      );
+      .mockResolvedValueOnce(Response.json(repositoryOwnedApiContract));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<App />);
@@ -88,13 +79,7 @@ describe("App shell", () => {
   it("marks the selected route button for assistive technologies", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -123,13 +108,88 @@ describe("App shell", () => {
   it("renders only shortcuts allowed for the active persona", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/employees/EMP-SUPPORT-001")) {
+          return Response.json({
+            item: {
+              personId: "person-support-001",
+              employeeId: "EMP-SUPPORT-001",
+              displayName: "Synthetic Support Subject",
+              employmentStatus: "active",
+              organizationCode: "ORG-SUPPORT",
+              positionCode: "POS-SUPPORT",
+              hireDate: "2026-01-01",
+              terminationDate: null,
+            },
+            asOf: "2026-07-26",
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "support-detail-correlation",
+          });
+        }
+        if (String(input).startsWith("/lifecycle/transaction-requests")) {
+          return Response.json({
+            items: [
+              {
+                transactionRequestId: "request-approver-001",
+                requestType: "onboarding",
+                status: "submitted",
+                subjectPersonId: "person-approver-001",
+                subjectEmployeeId: "EMP-APPROVER-001",
+                subjectDisplayName: "Synthetic Approver Subject",
+                organizationCode: "ORG-APPROVER",
+                decidedBy: null,
+                requestedAt: "2026-07-01T00:00:00.000Z",
+                effectiveDate: "2026-08-01",
+              },
+            ],
+            pageInfo: {
+              limit: 25,
+              hasNextPage: false,
+              nextCursor: null,
+            },
+            appliedFilters: {},
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "approver-list-correlation",
+          });
+        }
+        if (String(input).startsWith("/employees")) {
+          return Response.json({
+            items: [
+              {
+                personId: "person-support-001",
+                employeeId: "EMP-SUPPORT-001",
+                displayName: "Synthetic Support Subject",
+                employmentStatus: "active",
+                organizationCode: "ORG-SUPPORT",
+                positionCode: "POS-SUPPORT",
+                hireDate: "2026-01-01",
+                terminationDate: null,
+              },
+            ],
+            pageInfo: {
+              limit: 25,
+              hasNextPage: false,
+              nextCursor: null,
+            },
+            appliedFilters: { asOf: "2026-07-26" },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "support-list-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
     );
 
     render(<App />);
@@ -151,10 +211,15 @@ describe("App shell", () => {
       screen.queryByRole("button", { name: /異動手続き \/ 山田 太郎/ }),
     ).not.toBeInTheDocument();
 
+    expect(
+      screen.queryByRole("button", { name: /Procedures/ }),
+    ).not.toBeInTheDocument();
+
     await userEvent.selectOptions(
       screen.getByLabelText("Persona"),
       "hr-ops-support",
     );
+    await userEvent.click(screen.getByRole("button", { name: /Work queue/ }));
 
     expect(screen.getByLabelText("Bounded record ID")).toBeInTheDocument();
     expect(
@@ -168,21 +233,548 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Synthetic Support Subjectの詳細を開く",
+      }),
+    );
+    expect(window.location.search).toContain("asOf=2026-07-26");
     expect(
       screen.queryByRole("button", { name: "異動手続きを開く" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("rehydrates an employee detail URL without mixing legacy fixture fields", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employee&employeeId=EMP-000128",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/employees/EMP-000128")) {
+          return Response.json({
+            item: {
+              personId: "person-reload-001",
+              employeeId: "EMP-000128",
+              displayName: "Synthetic Reload Subject",
+              employmentStatus: "inactive",
+              organizationCode: "ORG-RELOAD",
+              positionCode: "POS-RELOAD",
+              hireDate: "2026-01-01",
+              terminationDate: null,
+            },
+            asOf: "2026-07-26",
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "employee-reload-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Synthetic Reload Subject" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("ORG-RELOAD")).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("従業員状態")).getByText("休止"),
+    ).toHaveClass("status-queued");
+    expect(screen.queryByText("ヤマダ タロウ")).not.toBeInTheDocument();
+    expect(screen.queryByText("taro.yamada@***")).not.toBeInTheDocument();
+    expect(screen.queryByText("外部ID / 連携状態")).not.toBeInTheDocument();
+  });
+
+  it("does not apply fixture mode to a different employee ID", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employee&employeeId=EMP-OTHER&source=fixture",
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith("/employees/EMP-OTHER")) {
+        return Response.json({
+          item: {
+            personId: "person-other-001",
+            employeeId: "EMP-OTHER",
+            displayName: "Authorized Other Employee",
+            employmentStatus: "active",
+            organizationCode: "ORG-OTHER",
+            positionCode: "POS-OTHER",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+          asOf: "2026-07-26",
+          authorization: {
+            dataScope: "bounded",
+            maskedFields: [],
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          correlationId: "employee-other-correlation",
+        });
+      }
+      return Response.json(repositoryOwnedApiContract);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Authorized Other Employee" }),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/employees/EMP-OTHER",
+      expect.any(Object),
+    );
+    expect(screen.queryByText("山田 太郎")).not.toBeInTheDocument();
+  });
+
+  it("remounts employee detail before loading a different persona scope", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employee&employeeId=EMP-SCOPED-001",
+    );
+    vi.stubEnv(
+      "VITE_P2LIST_HR_OPERATOR_TOKEN",
+      "bounded-local-hr-operator-token-000001",
+    );
+    vi.stubEnv(
+      "VITE_P2LIST_SUPPORT_TOKEN",
+      "bounded-local-support-token-000000000001",
+    );
+    let releaseSupport: ((response: Response) => void) | undefined;
+    const supportResponse = new Promise<Response>((resolve) => {
+      releaseSupport = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).startsWith("/employees/EMP-SCOPED-001")) {
+          const authorization = new Headers(init?.headers).get("authorization");
+          if (authorization?.includes("support-token")) {
+            return supportResponse;
+          }
+          return Response.json({
+            item: {
+              personId: "person-operator-detail",
+              employeeId: "EMP-SCOPED-001",
+              displayName: "Operator Scope Detail",
+              employmentStatus: "active",
+              organizationCode: "ORG-OPERATOR",
+              positionCode: "POS-OPERATOR",
+              hireDate: "2026-01-01",
+              terminationDate: null,
+            },
+            asOf: "2026-07-26",
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "operator-detail-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Operator Scope Detail" }),
+    ).toBeVisible();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Operator Scope Detail" }),
+    ).not.toBeInTheDocument();
+
+    releaseSupport?.(
+      Response.json({
+        item: {
+          personId: "person-support-detail",
+          employeeId: "EMP-SCOPED-001",
+          displayName: "Support Scope Detail",
+          employmentStatus: "active",
+          organizationCode: "ORG-SUPPORT",
+          positionCode: "POS-SUPPORT",
+          hireDate: "2026-01-01",
+          terminationDate: null,
+        },
+        asOf: "2026-07-26",
+        authorization: {
+          dataScope: "bounded",
+          maskedFields: [],
+          readiness: "bounded_synthetic_only_not_production_ready",
+        },
+        correlationId: "support-detail-correlation",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Support Scope Detail" }),
+    ).toBeVisible();
+  });
+
+  it("rehydrates a lifecycle detail URL through the authorized detail API", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=transfer&requestId=request-reload-001",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (
+          String(input).startsWith(
+            "/lifecycle/transaction-requests/request-reload-001",
+          )
+        ) {
+          return Response.json({
+            item: {
+              transactionRequestId: "request-reload-001",
+              requestType: "transfer",
+              status: "rejected",
+              subjectPersonId: "person-reload-001",
+              subjectEmployeeId: "EMP-RELOAD-001",
+              subjectDisplayName: "Synthetic Reload Request",
+              organizationCode: "ORG-RELOAD",
+              decidedBy: null,
+              requestedAt: "2026-07-01T00:00:00.000Z",
+              effectiveDate: "2026-08-01",
+            },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "lifecycle-reload-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Synthetic Reload Request" }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("手続き状態")).getByText("rejected"),
+    ).toHaveClass("status-failed");
+    expect(screen.getByText("手続きレコード情報")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create transfer request" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["onboarding", "Create onboarding request"],
+    ["transfer", "Create transfer request"],
+    ["termination", "Create termination request"],
+  ])(
+    "rejects an explicitly empty %s detail identifier",
+    async (view, workflowAction) => {
+      window.history.replaceState(null, "", `/?view=${view}&requestId=`);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => Response.json(repositoryOwnedApiContract)),
+      );
+
+      render(<App />);
+      await userEvent.selectOptions(
+        screen.getByLabelText("Persona"),
+        "hr-operator",
+      );
+
+      expect(
+        await screen.findByRole("heading", {
+          name: "手続き詳細URLが無効です",
+        }),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: workflowAction }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("opens lifecycle list records read-only instead of an unrelated workflow", async () => {
+    const listSearch =
+      "?view=lifecycle&status=submitted&q=Synthetic&sort=effectiveDate&direction=asc&limit=50&cursor=opaque-page";
+    window.history.replaceState(null, "", `/${listSearch}`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (
+          String(input).startsWith(
+            "/lifecycle/transaction-requests/request-selected-001",
+          )
+        ) {
+          return Response.json({
+            item: {
+              transactionRequestId: "request-selected-001",
+              requestType: "transfer",
+              status: "submitted",
+              subjectPersonId: "person-selected-001",
+              subjectEmployeeId: "EMP-SELECTED-001",
+              subjectDisplayName: "Synthetic Selected Subject",
+              organizationCode: "ORG-SELECTED",
+              decidedBy: null,
+              requestedAt: "2026-07-01T00:00:00.000Z",
+              effectiveDate: "2026-08-01",
+            },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "lifecycle-selected-detail-correlation",
+          });
+        }
+        if (String(input).startsWith("/lifecycle/transaction-requests")) {
+          return Response.json({
+            items: [
+              {
+                transactionRequestId: "request-selected-001",
+                requestType: "transfer",
+                status: "submitted",
+                subjectPersonId: "person-selected-001",
+                subjectEmployeeId: "EMP-SELECTED-001",
+                subjectDisplayName: "Synthetic Selected Subject",
+                organizationCode: "ORG-SELECTED",
+                decidedBy: null,
+                requestedAt: "2026-07-01T00:00:00.000Z",
+                effectiveDate: "2026-08-01",
+              },
+            ],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: {},
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: ["decidedBy"],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "lifecycle-selected-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Synthetic Selected Subjectの異動手続きを開く",
+      }),
+    );
+
+    expect(screen.getByText("手続きレコード情報")).toBeInTheDocument();
+    expect(screen.getByText("request-selected-001")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Create transfer request" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "手続き一覧へ戻る" }),
+    );
+    await waitFor(() => expect(window.location.search).toBe(listSearch));
+    expect(
+      await screen.findByRole("heading", { name: "手続きを横断検索" }),
+    ).toBeVisible();
+  });
+
+  it("clears stale filters when the active collection route is selected again", async () => {
+    window.history.replaceState(null, "", "/?view=queue");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith("/employees")) {
+          return Response.json({
+            items: [],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: { asOf: "2026-07-26" },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "employee-route-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    await screen.findByText("条件に一致する従業員はいません");
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "氏名・従業員ID" }),
+      "stale",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "検索" }));
+    await waitFor(() => expect(window.location.search).toContain("q=stale"));
+
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+
+    await waitFor(() => expect(window.location.search).toBe("?view=employees"));
+    expect(screen.getByRole("textbox", { name: "氏名・従業員ID" })).toHaveValue(
+      "",
+    );
+  });
+
+  it("remounts collection state before loading a different persona scope", async () => {
+    window.history.replaceState(null, "", "/?view=queue");
+    vi.stubEnv(
+      "VITE_P2LIST_HR_OPERATOR_TOKEN",
+      "bounded-local-hr-operator-token-000001",
+    );
+    vi.stubEnv(
+      "VITE_P2LIST_SUPPORT_TOKEN",
+      "bounded-local-support-token-000000000001",
+    );
+    let releaseSupport: ((response: Response) => void) | undefined;
+    const supportResponse = new Promise<Response>((resolve) => {
+      releaseSupport = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).startsWith("/employees")) {
+          const authorization = new Headers(init?.headers).get("authorization");
+          if (authorization?.includes("support-token")) {
+            return supportResponse;
+          }
+          return Response.json({
+            items: [
+              {
+                personId: "person-operator-001",
+                employeeId: "EMP-OPERATOR-001",
+                displayName: "Operator Scope Employee",
+                employmentStatus: "active",
+                organizationCode: "ORG-OPERATOR",
+                positionCode: "POS-OPERATOR",
+                hireDate: "2026-01-01",
+                terminationDate: null,
+              },
+            ],
+            pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+            appliedFilters: { asOf: "2026-07-26" },
+            authorization: {
+              dataScope: "bounded",
+              maskedFields: [],
+              readiness: "bounded_synthetic_only_not_production_ready",
+            },
+            correlationId: "operator-scope-correlation",
+          });
+        }
+        return Response.json(repositoryOwnedApiContract);
+      }),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-operator",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Employees/ }));
+    expect(await screen.findByText("Operator Scope Employee")).toBeVisible();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Persona"),
+      "hr-ops-support",
+    );
+    expect(
+      screen.queryByText("Operator Scope Employee"),
+    ).not.toBeInTheDocument();
+
+    releaseSupport?.(
+      Response.json({
+        items: [
+          {
+            personId: "person-support-002",
+            employeeId: "EMP-SUPPORT-002",
+            displayName: "Support Scope Employee",
+            employmentStatus: "active",
+            organizationCode: "ORG-SUPPORT",
+            positionCode: "POS-SUPPORT",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+        ],
+        pageInfo: { limit: 25, hasNextPage: false, nextCursor: null },
+        appliedFilters: { asOf: "2026-07-26" },
+        authorization: {
+          dataScope: "bounded",
+          maskedFields: [],
+          readiness: "bounded_synthetic_only_not_production_ready",
+        },
+        correlationId: "support-scope-correlation",
+      }),
+    );
+    expect(await screen.findByText("Support Scope Employee")).toBeVisible();
+  });
+
+  it("replaces a URL route that the selected persona cannot access", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?view=employees&q=must-not-survive",
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
+    );
+
+    render(<App />);
+    await userEvent.selectOptions(screen.getByLabelText("Persona"), "approver");
+
+    await waitFor(() => {
+      expect(window.location.search).toBe("?view=queue");
+    });
+    expect(
+      screen.queryByRole("button", { name: /Employees/ }),
     ).not.toBeInTheDocument();
   });
 
   it("reports an empty approval queue when no requests exist", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -196,13 +788,7 @@ describe("App shell", () => {
   it("supports bounded onboarding create, inspection, evidence, and approver decisions", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -376,13 +962,7 @@ describe("App shell", () => {
     async (decisionButton, terminalStatus) => {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () =>
-          Response.json({
-            openapi: "3.1.0",
-            info: { title: "HRCore API", version: "0.0.0" },
-            paths: { "/health": {} },
-          }),
-        ),
+        vi.fn(async () => Response.json(repositoryOwnedApiContract)),
       );
 
       render(<App />);
@@ -435,13 +1015,7 @@ describe("App shell", () => {
   it("validates required and malformed onboarding assignment and contact fields before submit", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -509,13 +1083,7 @@ describe("App shell", () => {
   it("supports bounded transfer and termination practical workflows with approval evidence", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -753,13 +1321,7 @@ describe("App shell", () => {
   it("uses the active CSV actor in audit evidence", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -782,13 +1344,7 @@ describe("App shell", () => {
   it("requires reason and confirmation before recording DLQ decisions", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     render(<App />);
@@ -856,13 +1412,7 @@ describe("App shell", () => {
   it("rejects terminal DLQ decisions and retry attempts beyond the bounded limit", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          openapi: "3.1.0",
-          info: { title: "HRCore API", version: "0.0.0" },
-          paths: { "/health": {} },
-        }),
-      ),
+      vi.fn(async () => Response.json(repositoryOwnedApiContract)),
     );
 
     let app = render(<App />);
