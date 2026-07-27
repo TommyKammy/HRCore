@@ -3,14 +3,21 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Download,
   RefreshCw,
   Search,
   Users,
   X,
 } from "lucide-react";
 
-import { p2ListMaximumDateRangeDays } from "../../../src/p2list-contract";
 import {
+  p2ListExportMaximumRows,
+  p2ListExportReasonCodes,
+  p2ListMaximumDateRangeDays,
+  type P2ListExportReasonCode,
+} from "../../../src/p2list-contract";
+import {
+  type BoundedExportArtifact,
   type EmployeeListItem,
   type EmployeeListQuery,
   type EmployeeListResponse,
@@ -19,7 +26,9 @@ import {
   type LifecycleRequestListResponse,
   ApiClientError,
   createP2ListRequestInit,
+  fetchEmployeeExport,
   fetchEmployees,
+  fetchLifecycleExport,
   fetchLifecycleRequests,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
@@ -386,6 +395,203 @@ function PaginationControls({
   );
 }
 
+const exportReasonLabels: Record<P2ListExportReasonCode, string> = {
+  uat_reconciliation: "UAT照合",
+  operational_reconciliation: "業務照合",
+  authorized_case_support: "許可済みケース支援",
+  data_quality_investigation: "データ品質調査",
+};
+
+function BoundedExportControl({
+  meaningfulFilter,
+  missingFilterMessage,
+  requestExport,
+}: {
+  meaningfulFilter: boolean;
+  missingFilterMessage: string;
+  requestExport: (
+    reasonCode: P2ListExportReasonCode,
+  ) => Promise<BoundedExportArtifact>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [reasonCode, setReasonCode] = useState<P2ListExportReasonCode | "">("");
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    kind: "error" | "success";
+    message: string;
+    correlationId?: string;
+  } | null>(null);
+
+  const confirmExport = async () => {
+    if (!meaningfulFilter) {
+      setFeedback({ kind: "error", message: missingFilterMessage });
+      return;
+    }
+    if (!reasonCode) {
+      setFeedback({
+        kind: "error",
+        message: "出力理由を選択してください。",
+      });
+      return;
+    }
+    setSubmitting(true);
+    setFeedback(null);
+    try {
+      const artifact = await requestExport(reasonCode);
+      downloadExportArtifact(artifact);
+      setConfirming(false);
+      setReasonCode("");
+      setFeedback({
+        kind: "success",
+        message: `${artifact.fileName} のダウンロードを開始しました。`,
+        correlationId: artifact.correlationId,
+      });
+    } catch (caught: unknown) {
+      setFeedback(classifyExportError(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="surface bounded-export" aria-label="CSV出力">
+      <div>
+        <strong>現在の絞り込み結果をCSV出力</strong>
+        <p>
+          repository-owned synthetic data のみ、最大 {p2ListExportMaximumRows}{" "}
+          件です。上限超過時は出力せず拒否します。
+        </p>
+      </div>
+      {!confirming ? (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setConfirming(true);
+            setFeedback(null);
+          }}
+        >
+          <Download size={16} aria-hidden="true" />
+          CSV出力
+        </button>
+      ) : (
+        <div className="bounded-export-confirmation">
+          <label>
+            <span>出力理由</span>
+            <select
+              value={reasonCode}
+              disabled={submitting}
+              onChange={(event) =>
+                setReasonCode(event.target.value as P2ListExportReasonCode | "")
+              }
+            >
+              <option value="">選択してください</option>
+              {p2ListExportReasonCodes.map((reason) => (
+                <option key={reason} value={reason}>
+                  {exportReasonLabels[reason]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p>
+            現在適用中の検索条件と権限をサーバーで再評価し、CSVを同期生成します。
+          </p>
+          <div>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                setConfirming(false);
+                setReasonCode("");
+                setFeedback(null);
+              }}
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => void confirmExport()}
+            >
+              <Download size={16} aria-hidden="true" />
+              {submitting ? "出力中" : "確認して出力"}
+            </button>
+          </div>
+        </div>
+      )}
+      {feedback ? (
+        <p
+          className={`bounded-export-feedback export-${feedback.kind}`}
+          role={feedback.kind === "error" ? "alert" : "status"}
+        >
+          {feedback.message}
+          {feedback.correlationId ? (
+            <>
+              {" "}
+              correlation <code>{feedback.correlationId}</code>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function classifyExportError(caught: unknown): {
+  kind: "error";
+  message: string;
+  correlationId?: string;
+} {
+  if (!(caught instanceof ApiClientError)) {
+    return {
+      kind: "error",
+      message:
+        "CSV出力APIに接続できません。ネットワークとAPIサーバーを確認してください。",
+    };
+  }
+  let message =
+    "CSV出力を完了できませんでした。APIサーバーの状態を確認してください。";
+  if (caught.status === 401 || caught.status === 403) {
+    message =
+      "一覧閲覧・CSV出力・ダウンロードのいずれかの権限、または bounded data scope が確認できません。";
+  } else if (caught.code === "export_row_limit_exceeded") {
+    message = `対象が ${p2ListExportMaximumRows} 件を超えています。条件をさらに絞り込んでください。`;
+  } else if (caught.code === "export_filter_required") {
+    message = "CSV出力には識別可能な絞り込み条件が必要です。";
+  } else if (
+    caught.code === "export_reason_code_required" ||
+    caught.code === "export_reason_code_unsupported"
+  ) {
+    message = "許可された出力理由を選択してください。";
+  } else if (caught.status === 400 || caught.status === 422) {
+    message =
+      "CSV出力条件が受理されませんでした。絞り込み条件と出力理由を確認してください。";
+  }
+  return {
+    kind: "error",
+    message,
+    ...(caught.correlationId ? { correlationId: caught.correlationId } : {}),
+  };
+}
+
+function downloadExportArtifact(artifact: BoundedExportArtifact): void {
+  const objectUrl = URL.createObjectURL(
+    new Blob([artifact.csv], { type: "text/csv;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = artifact.fileName;
+  link.hidden = true;
+  document.body.append(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function employeeStatusLabel(status: EmployeeListItem["employmentStatus"]) {
   return {
     active: "在籍",
@@ -454,6 +660,18 @@ function lifecycleEmployeeId(
     return request.subjectEmployeeId;
   }
   return maskedFields.includes("subjectEmployeeId") ? "masked" : "未採番";
+}
+
+function hasMeaningfulLifecycleExportFilter(
+  filters: LifecycleRequestListResponse["appliedFilters"],
+): boolean {
+  return Boolean(
+    filters.subjectEmployeeId ||
+    filters.organizationCode ||
+    filters.correlationId ||
+    (filters.requestedFrom && filters.requestedTo) ||
+    (filters.effectiveFrom && filters.effectiveTo),
+  );
 }
 
 function pageSizeOptions(limit: number) {
@@ -697,6 +915,24 @@ export function EmployeeListView({
           </p>
         ) : null}
       </form>
+
+      {!state.loading && !state.error && state.response ? (
+        <BoundedExportControl
+          key={`employee-export-${state.response.correlationId}`}
+          meaningfulFilter={Boolean(
+            state.response.appliedFilters.employeeId ||
+            state.response.appliedFilters.organizationCode,
+          )}
+          missingFilterMessage="従業員IDまたは組織コードで絞り込んでからCSV出力してください。"
+          requestExport={(reasonCode) =>
+            fetchEmployeeExport(
+              state.response!.appliedFilters,
+              reasonCode,
+              createP2ListRequestInit(personaId),
+            )
+          }
+        />
+      ) : null}
 
       {state.loading ? <LoadingState /> : null}
       {!state.loading && state.error ? (
@@ -1191,6 +1427,23 @@ export function LifecycleListView({
             ))}
           </div>
         </div>
+      ) : null}
+
+      {!state.loading && !state.error && state.response ? (
+        <BoundedExportControl
+          key={`lifecycle-export-${state.response.correlationId}`}
+          meaningfulFilter={hasMeaningfulLifecycleExportFilter(
+            state.response.appliedFilters,
+          )}
+          missingFilterMessage="従業員ID、組織コード、correlation、申請日時範囲、または適用日範囲で絞り込んでからCSV出力してください。"
+          requestExport={(reasonCode) =>
+            fetchLifecycleExport(
+              state.response!.appliedFilters,
+              reasonCode,
+              createP2ListRequestInit(personaId),
+            )
+          }
+        />
       ) : null}
 
       {state.loading ? <LoadingState /> : null}

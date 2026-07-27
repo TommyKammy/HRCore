@@ -321,6 +321,24 @@
     flex-direction: column;
   }
 
+  .bounded-export {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .bounded-export > button {
+    width: 100%;
+  }
+
+  .bounded-export-confirmation {
+    width: 100%;
+  }
+
+  .bounded-export-confirmation > div {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .collection-meta {
     align-items: flex-start;
     flex-direction: column;

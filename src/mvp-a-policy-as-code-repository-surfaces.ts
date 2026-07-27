@@ -85,6 +85,9 @@ function checkPiiExportSurface(
   subject: string,
   value: string,
 ): MvpAPolicyAsCodeFinding | undefined {
+  if (isP2ListExportSchemaAuditMetadata(subject, value)) {
+    return undefined;
+  }
   try {
     assertMvpAOnboardingPiiExportGate(gate, { fieldName: value });
   } catch (error) {
@@ -97,6 +100,17 @@ function checkPiiExportSurface(
   }
 
   return undefined;
+}
+
+function isP2ListExportSchemaAuditMetadata(
+  subject: string,
+  value: string,
+): boolean {
+  return (
+    value === "export_schema_version" &&
+    (subject === "p2list_audit_event.export_schema_version" ||
+      subject === "__new_p2list_audit_event.export_schema_version")
+  );
 }
 
 function checkNonProductionApiResponseField(

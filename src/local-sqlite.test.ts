@@ -124,7 +124,7 @@ test("local SQLite bootstrap applies additive work email conflict migrations", a
   }
 });
 
-test("local SQLite bootstrap adds the P2LIST audit sink to an existing database", async (t) => {
+test("local SQLite bootstrap upgrades the P2LIST audit sink without losing rows", async (t) => {
   let sqlite: typeof import("node:sqlite");
   try {
     sqlite = await import("node:sqlite");
@@ -147,7 +147,31 @@ test("local SQLite bootstrap adds the P2LIST audit sink to an existing database"
   const databasePath = join(tempDirectory, "hrcore.sqlite");
   const db = new sqlite.DatabaseSync(databasePath);
   try {
-    db.exec(await readMigrationSqlBefore("0018_p2list_audit_event.sql"));
+    db.exec(
+      await readMigrationSqlBefore("0019_p2list_export_schema_version.sql"),
+    );
+    db.exec(`
+      INSERT INTO p2list_audit_event (
+        event_id,
+        event_type,
+        event_version,
+        occurred_at,
+        evaluated_permission,
+        resource_type,
+        correlation_id,
+        policy_decision
+      )
+      VALUES (
+        'legacy-p2list-audit-event',
+        'employee_list.viewed',
+        'p2list_audit_v1',
+        '2026-07-26T00:00:00.000Z',
+        'employee:list:read',
+        'employee',
+        'legacy-p2list-correlation',
+        'allow'
+      )
+    `);
   } finally {
     db.close();
   }
@@ -159,7 +183,7 @@ test("local SQLite bootstrap adds the P2LIST audit sink to an existing database"
     const migratedTable = migratedDb
       .prepare(
         `
-          SELECT name
+          SELECT name, sql
           FROM sqlite_master
           WHERE type = 'table'
             AND name = 'p2list_audit_event'
@@ -168,6 +192,20 @@ test("local SQLite bootstrap adds the P2LIST audit sink to an existing database"
       .get();
 
     assert.equal(migratedTable?.name, "p2list_audit_event");
+    assert.match(String(migratedTable?.sql), /export_schema_version/u);
+    const preservedAuditRow = migratedDb
+      .prepare(
+        `
+          SELECT event_id, export_schema_version
+          FROM p2list_audit_event
+          WHERE event_id = ?
+        `,
+      )
+      .get("legacy-p2list-audit-event");
+    assert.deepEqual(preservedAuditRow ? { ...preservedAuditRow } : undefined, {
+      event_id: "legacy-p2list-audit-event",
+      export_schema_version: null,
+    });
   } finally {
     migratedDb.close();
   }

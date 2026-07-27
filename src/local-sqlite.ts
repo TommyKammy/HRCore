@@ -88,9 +88,6 @@ async function ensureSyntheticWritebackSchema(
   const missingTables = requiredWritebackTables.filter(
     (tableName) => !tableExists(db, tableName),
   );
-  if (missingTables.length === 0) {
-    return;
-  }
 
   if (countUserTables(db) === 0) {
     db.exec(await readCommittedMigrationSql());
@@ -99,16 +96,25 @@ async function ensureSyntheticWritebackSchema(
 
   const additiveMigrationFiles =
     getAdditiveWritebackMigrationFiles(missingTables);
-  if (additiveMigrationFiles) {
-    db.exec(await readCommittedMigrationSql(additiveMigrationFiles));
+  if (!additiveMigrationFiles) {
+    throw new Error(
+      `DATABASE_URL is missing required writeback tables: ${missingTables.join(
+        ", ",
+      )}`,
+    );
+  }
+  if (
+    missingTables.includes("p2list_audit_event") ||
+    !tableIncludesColumn(db, "p2list_audit_event", "export_schema_version")
+  ) {
+    additiveMigrationFiles.push("0019_p2list_export_schema_version.sql");
+  }
+  if (additiveMigrationFiles.length > 0) {
+    db.exec(
+      await readCommittedMigrationSql([...new Set(additiveMigrationFiles)]),
+    );
     return;
   }
-
-  throw new Error(
-    `DATABASE_URL is missing required writeback tables: ${missingTables.join(
-      ", ",
-    )}`,
-  );
 }
 
 function getAdditiveWritebackMigrationFiles(
@@ -141,6 +147,29 @@ function tableExists(
     .get(tableName);
 
   return !!row;
+}
+
+function tableIncludesColumn(
+  db: SyntheticWritebackDatabase,
+  tableName: string,
+  columnName: string,
+): boolean {
+  if (
+    !/^[a-z][a-z0-9_]*$/u.test(tableName) ||
+    !/^[a-z][a-z0-9_]*$/u.test(columnName)
+  ) {
+    return false;
+  }
+  const row = db
+    .prepare(
+      `
+        SELECT 1 AS present
+        FROM pragma_table_info(?)
+        WHERE name = ?
+      `,
+    )
+    .get(tableName, columnName);
+  return row?.present === 1;
 }
 
 function countUserTables(db: SyntheticWritebackDatabase): number {

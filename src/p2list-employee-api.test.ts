@@ -385,7 +385,11 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
       actor: {
         actorId: "actor-person-scoped-operator",
         tenantId: "tenant-repo-owned-synthetic",
-        permissions: [p2ListPermissions.employeeListRead],
+        permissions: [
+          p2ListPermissions.employeeListRead,
+          p2ListPermissions.employeeListExport,
+          p2ListPermissions.csvDownload,
+        ],
         dataScope: { personIds: [rows[0]!.personId] },
       },
     },
@@ -423,6 +427,23 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
   });
   assert.equal(deniedResponse.statusCode, 401);
 
+  const exportResponse = await app.inject({
+    method: "POST",
+    url: "/exports/employee-list",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      filters: { organizationCode: "ORG-SYNTHETIC" },
+      reasonCode: "operational_reconciliation",
+    },
+  });
+  assert.equal(exportResponse.statusCode, 200);
+  assert.equal(
+    exportResponse.headers["x-hrcore-export-schema-version"],
+    "p2list_export_v1",
+  );
+  assert.match(exportResponse.body, /^employee_id,display_name/u);
+  assert.doesNotMatch(exportResponse.body, /rawPayload|private_note/u);
+
   const auditDb: OnboardingTransactionRequestDatabase & { close(): void } =
     await openLocalSyntheticWritebackDatabase(`file:${databasePath}`);
   try {
@@ -443,13 +464,14 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
             correlation_id,
             policy_decision,
             reason_code,
+            export_schema_version,
             poc_marker
           FROM p2list_audit_event
           ORDER BY rowid
         `,
       )
       .all?.();
-    assert.equal(auditRows?.length, 2);
+    assert.equal(auditRows?.length, 4);
     assert.deepEqual(
       {
         event_type: auditRows?.[0]?.event_type,
@@ -494,6 +516,40 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
         policy_decision: "deny",
         reason_code: "actor_context_required",
       },
+    );
+    assert.deepEqual(
+      auditRows?.slice(2).map((row) => ({
+        event_type: row.event_type,
+        actor_id: row.actor_id,
+        evaluated_permission: row.evaluated_permission,
+        row_count: row.row_count,
+        resource_type: row.resource_type,
+        policy_decision: row.policy_decision,
+        reason_code: row.reason_code,
+        export_schema_version: row.export_schema_version,
+      })),
+      [
+        {
+          event_type: "bounded_export.requested",
+          actor_id: "actor-person-scoped-operator",
+          evaluated_permission: p2ListPermissions.employeeListExport,
+          row_count: 1,
+          resource_type: "employee",
+          policy_decision: "allow",
+          reason_code: "operational_reconciliation",
+          export_schema_version: "p2list_export_v1",
+        },
+        {
+          event_type: "bounded_export.completed",
+          actor_id: "actor-person-scoped-operator",
+          evaluated_permission: p2ListPermissions.employeeListExport,
+          row_count: 1,
+          resource_type: "employee",
+          policy_decision: "allow",
+          reason_code: "operational_reconciliation",
+          export_schema_version: "p2list_export_v1",
+        },
+      ],
     );
   } finally {
     auditDb.close();

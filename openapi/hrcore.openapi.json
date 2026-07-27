@@ -1676,15 +1676,24 @@
       "post": {
         "operationId": "exportBoundedEmployeeList",
         "summary": "Export a bounded filtered synthetic employee list",
-        "description": "Contract-only synchronous CSV export for a server-authorized, meaningfully filtered result of at most 100 synthetic rows. The server owns columns and rows, rejects rather than truncates, and does not provide broad, scheduled, long-lived, real-data, or production export.",
+        "description": "Bounded synchronous CSV export for a server-authorized, meaningfully filtered result of at most 100 synthetic rows. The server owns columns and rows, rejects rather than truncates, and does not provide broad, scheduled, long-lived, real-data, or production export.",
         "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
-        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-implementation-status": "bounded_runtime",
         "x-hrcore-required-permissions": [
           "employee:list:read",
           "employee:list:export",
           "mvp_d.synthetic_csv_download"
         ],
         "x-hrcore-export-schema-version": "p2list_export_v1",
+        "x-hrcore-export-column-allowlist": [
+          "employee_id",
+          "display_name",
+          "employment_status",
+          "organization_code",
+          "position_code",
+          "hire_date",
+          "termination_date"
+        ],
         "x-hrcore-maximum-rows": 100,
         "x-hrcore-csv-formula-protection": {
           "appliesTo": "every_exported_data_cell_before_csv_serialization",
@@ -1847,15 +1856,25 @@
       "post": {
         "operationId": "exportBoundedLifecycleRequestList",
         "summary": "Export a bounded filtered synthetic lifecycle request list",
-        "description": "Contract-only synchronous CSV export for a server-authorized, meaningfully filtered lifecycle result of at most 100 synthetic rows. The server owns columns and rows, rejects rather than truncates, and does not provide raw payload, broad history, scheduled, real-data, or production export.",
+        "description": "Bounded synchronous CSV export for a server-authorized, meaningfully filtered lifecycle result of at most 100 synthetic rows. The server owns columns and rows, rejects rather than truncates, and does not provide raw payload, broad history, scheduled, real-data, or production export.",
         "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
-        "x-hrcore-implementation-status": "contract_only",
+        "x-hrcore-implementation-status": "bounded_runtime",
         "x-hrcore-required-permissions": [
           "lifecycle-request:list:read",
           "lifecycle-request:list:export",
           "mvp_d.synthetic_csv_download"
         ],
         "x-hrcore-export-schema-version": "p2list_export_v1",
+        "x-hrcore-export-column-allowlist": [
+          "transaction_request_id",
+          "request_type",
+          "status",
+          "subject_employee_id",
+          "subject_display_name",
+          "organization_code",
+          "requested_at",
+          "effective_date"
+        ],
         "x-hrcore-maximum-rows": 100,
         "x-hrcore-csv-formula-protection": {
           "appliesTo": "every_exported_data_cell_before_csv_serialization",

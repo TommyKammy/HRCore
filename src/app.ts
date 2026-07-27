@@ -12,6 +12,10 @@ import {
   type P2ListEmployeeApiRuntime,
 } from "./routes/p2list-employees.js";
 import {
+  registerP2ListExportRoutes,
+  type P2ListExportApiRuntime,
+} from "./routes/p2list-exports.js";
+import {
   registerP2ListLifecycleRoutes,
   type P2ListLifecycleApiRuntime,
 } from "./routes/p2list-lifecycle-requests.js";
@@ -26,6 +30,7 @@ export interface BuildAppOptions {
   auditTraceDb?: MvpAOnboardingTraceabilityDatabase;
   writebackDb?: SyntheticWritebackDatabase;
   p2ListEmployeeApi?: P2ListEmployeeApiRuntime;
+  p2ListExportApi?: P2ListExportApiRuntime;
   p2ListLifecycleApi?: P2ListLifecycleApiRuntime;
 }
 
@@ -52,6 +57,7 @@ export async function buildApp(
   registerMvpAOnboardingAuditRoutes(app, options);
   registerMvpAOnboardingSupportReviewRoutes(app, options);
   registerP2ListEmployeeRoutes(app, options);
+  registerP2ListExportRoutes(app, options);
   registerP2ListLifecycleRoutes(app, options);
   registerOnboardingRoutes(app, options);
   registerTerminationRoutes(app, options);

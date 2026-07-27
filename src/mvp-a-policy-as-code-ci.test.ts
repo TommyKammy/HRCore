@@ -165,6 +165,7 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
       sqliteTable("fixture_onboarding", {
         id: text("id").primaryKey(),
         rawPayload: text("raw_payload"),
+        exportSchemaVersion: text("export_schema_version"),
       }),
     ],
     migrationSqlByPath: new Map([
@@ -173,6 +174,7 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
         [
           "CREATE TABLE `fixture_onboarding` (`id` text PRIMARY KEY, `csv_export` text);",
           "ALTER TABLE `fixture_onboarding` ADD `raw_payload` text;",
+          "ALTER TABLE `fixture_onboarding` ADD `export_schema_version` text;",
         ].join("\n"),
       ],
     ]),
@@ -200,6 +202,14 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
   assert.ok(
     findings.some(
       (finding) =>
+        finding.surface === "schema" &&
+        finding.subject === "fixture_onboarding.export_schema_version",
+    ),
+    "expected non-P2LIST export_schema_version column to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
         finding.surface === "migration" &&
         finding.subject === "fixture_onboarding.csv_export",
     ),
@@ -212,6 +222,14 @@ test("MVP-A policy-as-code gate fails closed for prohibited schema and migration
         finding.subject === "fixture_onboarding.raw_payload",
     ),
     "expected ALTER migration raw_payload column to fail the policy gate",
+  );
+  assert.ok(
+    findings.some(
+      (finding) =>
+        finding.surface === "migration" &&
+        finding.subject === "fixture_onboarding.export_schema_version",
+    ),
+    "expected non-P2LIST migration export_schema_version to fail the policy gate",
   );
 });
 

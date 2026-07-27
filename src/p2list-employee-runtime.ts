@@ -16,6 +16,10 @@ import type {
   P2ListEmployeeAuditEvent,
 } from "./routes/p2list-employees.js";
 import type {
+  P2ListExportApiRuntime,
+  P2ListExportAuditEvent,
+} from "./routes/p2list-exports.js";
+import type {
   P2ListLifecycleApiRuntime,
   P2ListLifecycleAuditEvent,
 } from "./routes/p2list-lifecycle-requests.js";
@@ -60,11 +64,13 @@ export async function createServerP2ListRuntimes(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<{
   employee: P2ListEmployeeApiRuntime;
+  export: P2ListExportApiRuntime;
   lifecycle: P2ListLifecycleApiRuntime;
 }> {
   const runtime = await createServerP2ListBaseRuntime(environment, db);
   return {
     employee: createEmployeeRuntime(db, runtime),
+    export: createExportRuntime(db, runtime),
     lifecycle: createLifecycleRuntime(db, runtime),
   };
 }
@@ -122,9 +128,24 @@ function createLifecycleRuntime(
   };
 }
 
+function createExportRuntime(
+  db: OnboardingTransactionRequestDatabase,
+  runtime: P2ListServerBaseRuntime,
+): P2ListExportApiRuntime {
+  return {
+    ...runtime,
+    emitAuditEvent(event) {
+      persistP2ListAuditEvent(db, event);
+    },
+  };
+}
+
 function persistP2ListAuditEvent(
   db: OnboardingTransactionRequestDatabase,
-  event: P2ListEmployeeAuditEvent | P2ListLifecycleAuditEvent,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
 ): void {
   db.prepare(
     `
@@ -144,9 +165,10 @@ function persistP2ListAuditEvent(
         correlation_id,
         policy_decision,
         reason_code,
+        export_schema_version,
         poc_marker
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     event.eventId,
@@ -164,6 +186,7 @@ function persistP2ListAuditEvent(
     event.correlationId,
     event.policyDecision,
     event.reasonCode ?? null,
+    "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
     "synthetic_poc",
   );
 }
