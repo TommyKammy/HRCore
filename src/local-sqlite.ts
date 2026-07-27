@@ -221,8 +221,7 @@ export function prepareLocalBootstrapMigrationSql(
     return migrationSql;
   }
 
-  const foreignKeysOff =
-    "PRAGMA foreign_keys=OFF;--> statement-breakpoint";
+  const foreignKeysOff = "PRAGMA foreign_keys=OFF;--> statement-breakpoint";
   const foreignKeysOn = "PRAGMA foreign_keys=ON;";
   if (
     !migrationSql.startsWith(foreignKeysOff) ||
