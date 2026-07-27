@@ -105,7 +105,7 @@ describe("employee list screen", () => {
               "content-type": "text/csv; charset=utf-8",
               "content-disposition":
                 'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
-              "x-correlation-id": "employee-export-correlation",
+              "x-hrcore-correlation-id": "employee-export-correlation",
               "x-hrcore-export-schema-version": "p2list_export_v1",
             },
           });

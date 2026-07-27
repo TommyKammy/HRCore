@@ -88,7 +88,7 @@ export function registerP2ListExportRoutes(
         runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
       const permission = p2ListPermissions.employeeListExport;
-      reply.header("x-correlation-id", correlationId);
+      reply.header("x-hrcore-correlation-id", correlationId);
       let actor: P2ListActorContext | undefined;
 
       try {
@@ -159,7 +159,7 @@ export function registerP2ListExportRoutes(
         runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
       const permission = p2ListPermissions.lifecycleRequestListExport;
-      reply.header("x-correlation-id", correlationId);
+      reply.header("x-hrcore-correlation-id", correlationId);
       let actor: P2ListActorContext | undefined;
 
       try {

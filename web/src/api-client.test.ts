@@ -132,7 +132,7 @@ describe("bounded export API client", () => {
             "content-type": "text/csv; charset=utf-8",
             "content-disposition":
               'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
-            "x-correlation-id": "employee-export-correlation",
+            "x-hrcore-correlation-id": "employee-export-correlation",
             "x-hrcore-export-schema-version": "p2list_export_v1",
           },
         }),
@@ -185,7 +185,7 @@ describe("bounded export API client", () => {
             "content-type": "text/csv; charset=utf-8",
             "content-disposition":
               'attachment; filename="hrcore-bounded-lifecycle-requests-p2list_export_v1.csv"',
-            "x-correlation-id": "lifecycle-export-correlation",
+            "x-hrcore-correlation-id": "lifecycle-export-correlation",
             "x-hrcore-export-schema-version": "p2list_export_v1",
           },
         }),
@@ -194,10 +194,15 @@ describe("bounded export API client", () => {
         Response.json(
           {
             code: "export_row_limit_exceeded",
-            correlationId: "denied-export-correlation",
+            correlationId: "payload-correlation-must-not-win",
             privateFilter: "must not reach the error",
           },
-          { status: 422 },
+          {
+            status: 422,
+            headers: {
+              "x-hrcore-correlation-id": "denied-export-correlation",
+            },
+          },
         ),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -241,7 +246,7 @@ describe("bounded export API client", () => {
               "content-type": "text/html",
               "content-disposition":
                 'attachment; filename="../../private.html"',
-              "x-correlation-id": "malformed-export-correlation",
+              "x-hrcore-correlation-id": "malformed-export-correlation",
               "x-hrcore-export-schema-version": "future_schema",
             },
           }),

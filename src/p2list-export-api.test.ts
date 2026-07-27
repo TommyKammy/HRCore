@@ -104,6 +104,10 @@ test("POST /exports/employee-list returns a server-owned bounded CSV and safe au
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers["content-type"], "text/csv; charset=utf-8");
   assert.equal(
+    response.headers["x-hrcore-correlation-id"],
+    "export-correlation-1",
+  );
+  assert.equal(
     response.headers["x-hrcore-export-schema-version"],
     "p2list_export_v1",
   );
@@ -176,6 +180,10 @@ test("POST /exports/lifecycle-request-list returns canonical lifecycle columns",
   });
 
   assert.equal(response.statusCode, 200);
+  assert.equal(
+    response.headers["x-hrcore-correlation-id"],
+    "export-correlation-1",
+  );
   assert.match(
     response.body,
     /transaction_request_id,request_type,status,subject_employee_id/u,
@@ -352,6 +360,10 @@ test("lifecycle export requires a contract-approved anchor filter", async (t) =>
   });
 
   assert.equal(response.statusCode, 422);
+  assert.equal(
+    response.headers["x-hrcore-correlation-id"],
+    "export-correlation-1",
+  );
   assert.equal(response.json().code, "export_filter_required");
 });
 

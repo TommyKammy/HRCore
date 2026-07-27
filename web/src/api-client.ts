@@ -508,7 +508,9 @@ async function readJson<T>(
 async function readErrorDetails(
   response: Response,
 ): Promise<{ correlationId?: string; code?: string }> {
-  const headerValue = response.headers.get("x-correlation-id")?.trim();
+  const headerValue =
+    response.headers.get("x-hrcore-correlation-id")?.trim() ||
+    response.headers.get("x-correlation-id")?.trim();
   try {
     const payload: unknown = await response.json();
     if (!isRecord(payload)) {
@@ -666,7 +668,7 @@ async function fetchBoundedExport(
     ?.toLowerCase()
     .replaceAll(" ", "");
   const schemaVersion = response.headers.get("x-hrcore-export-schema-version");
-  const correlationId = response.headers.get("x-correlation-id")?.trim();
+  const correlationId = response.headers.get("x-hrcore-correlation-id")?.trim();
   const fileName = parseExportFileName(
     response.headers.get("content-disposition"),
   );
