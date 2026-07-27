@@ -516,7 +516,7 @@ async function handleExportError(
   if (!(error instanceof P2ListReadModelError)) {
     throw error;
   }
-  if (runtime?.emitAuditEvent) {
+  if (runtime?.emitAuditEvent && error.code !== "correlation_reuse_conflict") {
     await runtime.emitAuditEvent({
       eventId: randomUUID(),
       eventType: "bounded_export.denied",

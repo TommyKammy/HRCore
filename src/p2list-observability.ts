@@ -156,7 +156,14 @@ export function readP2ListAuditEvidence(
             duration_ms
           FROM p2list_audit_event
           WHERE correlation_id = ?
-          ORDER BY occurred_at ASC, event_type ASC
+          ORDER BY
+            occurred_at ASC,
+            CASE event_type
+              WHEN 'bounded_export.requested' THEN 0
+              WHEN 'bounded_export.completed' THEN 1
+              ELSE 0
+            END ASC,
+            event_id ASC
           LIMIT ?
         `,
       )

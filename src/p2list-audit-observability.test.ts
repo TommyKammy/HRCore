@@ -16,6 +16,7 @@ import {
 const interactionCorrelationId =
   "p2list-ui-123e4567-e89b-42d3-a456-426614174000";
 const responseCorrelationId = "p2list-ui-223e4567-e89b-42d3-a456-426614174000";
+const exportCorrelationId = "p2list-ui-323e4567-e89b-42d3-a456-426614174000";
 const operatorToken = "p2list-observability-operator-token-0001";
 const supportToken = "p2list-observability-support-token-00001";
 
@@ -35,7 +36,11 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
           actorId: "actor-observability-operator",
           actorRole: "hr_operator",
           tenantId: "tenant-repo-owned-synthetic",
-          permissions: [p2ListPermissions.employeeListRead],
+          permissions: [
+            p2ListPermissions.employeeListRead,
+            p2ListPermissions.employeeListExport,
+            p2ListPermissions.csvDownload,
+          ],
           dataScope: { organizationCodes: ["ORG-NONE"] },
         },
       },
@@ -46,7 +51,9 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
           actorRole: "hr_ops_support",
           tenantId: "tenant-repo-owned-synthetic",
           permissions: [p2ListPermissions.supportCorrelationRead],
-          dataScope: { correlationIds: [interactionCorrelationId] },
+          dataScope: {
+            correlationIds: [interactionCorrelationId, exportCorrelationId],
+          },
         },
       },
     ]),
@@ -54,6 +61,7 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
   const app = await buildApp({
     p2ListAuditEvidenceApi: runtimes.auditEvidence,
     p2ListEmployeeApi: runtimes.employee,
+    p2ListExportApi: runtimes.export,
   });
   t.after(async () => {
     await app.close();
@@ -99,34 +107,36 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     conflictingEventTypeRetry.json().code,
     "correlation_reuse_conflict",
   );
-  const exportCorrelationId = "p2list-export-valid-pair-correlation";
-  const exportAuditEvent = {
-    eventVersion: p2ListAuditEventVersion,
-    occurredAt: "2026-07-28T00:00:00.000Z",
-    actorId: "actor-observability-operator",
-    actorRole: "hr_operator",
-    evaluatedPermission: p2ListPermissions.employeeListExport,
-    dataScopeId: "bounded-export-data-scope",
-    filterFingerprint: "bounded-export-filter",
-    rowCount: 0,
-    resourceType: "employee" as const,
-    correlationId: exportCorrelationId,
-    policyDecision: "allow" as const,
-    reasonCode: "uat_reconciliation" as const,
-    exportSchemaVersion: p2ListExportSchemaVersion,
-    durationMs: 1,
-  };
-  runtimes.export.emitAuditEvent({
-    ...exportAuditEvent,
-    eventId: "p2list-export-requested-event",
-    eventType: "bounded_export.requested",
+  const exportOccurredAt = "2026-07-28T00:00:00.000Z";
+  runtimes.export.now = () => new Date(exportOccurredAt);
+  const exportResponse = await app.inject({
+    method: "POST",
+    url: "/exports/employee-list",
+    headers: {
+      authorization: `Bearer ${operatorToken}`,
+      "x-hrcore-correlation-id": exportCorrelationId,
+    },
+    payload: {
+      filters: { organizationCode: "ORG-NONE" },
+      reasonCode: "uat_reconciliation",
+    },
   });
-  runtimes.export.emitAuditEvent({
-    ...exportAuditEvent,
-    eventId: "p2list-export-completed-event",
-    eventType: "bounded_export.completed",
-    durationMs: 2,
+  assert.equal(exportResponse.statusCode, 200);
+
+  const conflictingExport = await app.inject({
+    method: "POST",
+    url: "/exports/employee-list",
+    headers: {
+      authorization: `Bearer ${operatorToken}`,
+      "x-hrcore-correlation-id": exportCorrelationId,
+    },
+    payload: {
+      filters: { organizationCode: "ORG-NONE" },
+      reasonCode: "operational_reconciliation",
+    },
   });
+  assert.equal(conflictingExport.statusCode, 400);
+  assert.equal(conflictingExport.json().code, "correlation_reuse_conflict");
   assert.equal(
     database
       .prepare(
@@ -138,6 +148,35 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
       )
       .get(exportCorrelationId)?.count,
     2,
+  );
+  const exportEvidenceResponse = await app.inject({
+    method: "GET",
+    url: `/support/p2list/audit-evidence/${exportCorrelationId}`,
+    headers: {
+      authorization: `Bearer ${supportToken}`,
+      "x-hrcore-correlation-id": responseCorrelationId,
+    },
+  });
+  assert.equal(exportEvidenceResponse.statusCode, 200);
+  assert.deepEqual(
+    exportEvidenceResponse
+      .json()
+      .events.map((event: { eventType: string }) => event.eventType),
+    ["bounded_export.requested", "bounded_export.completed"],
+  );
+  assert.deepEqual(
+    exportEvidenceResponse
+      .json()
+      .events.map((event: { occurredAt: string }) => event.occurredAt),
+    [exportOccurredAt, exportOccurredAt],
+  );
+  assert.ok(
+    exportEvidenceResponse
+      .json()
+      .events.every(
+        (event: { exportSchemaVersion: string }) =>
+          event.exportSchemaVersion === p2ListExportSchemaVersion,
+      ),
   );
 
   const evidenceResponse = await app.inject({
