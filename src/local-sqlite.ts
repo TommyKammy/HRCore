@@ -20,6 +20,8 @@ const additiveWritebackMigrationByTable = new Map([
   ["writeback_work_email_conflict_resolution", "0009_conflict_resolution.sql"],
   ["p2list_audit_event", "0018_p2list_audit_event.sql"],
 ]);
+const p2ListExportMigrationFile =
+  "0019_p2list_export_schema_version.sql" as const;
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
   close(): void;
@@ -107,7 +109,7 @@ async function ensureSyntheticWritebackSchema(
     missingTables.includes("p2list_audit_event") ||
     !tableIncludesColumn(db, "p2list_audit_event", "export_schema_version")
   ) {
-    additiveMigrationFiles.push("0019_p2list_export_schema_version.sql");
+    additiveMigrationFiles.push(p2ListExportMigrationFile);
   }
   if (additiveMigrationFiles.length > 0) {
     db.exec(
@@ -200,10 +202,38 @@ async function readCommittedMigrationSql(
     .sort();
 
   const migrationSqlFiles = await Promise.all(
-    migrationFiles.map((file) =>
-      readFile(join(migrationDirectory, file), "utf8"),
+    migrationFiles.map(async (file) =>
+      prepareLocalBootstrapMigrationSql(
+        file,
+        await readFile(join(migrationDirectory, file), "utf8"),
+      ),
     ),
   );
 
   return migrationSqlFiles.join("\n");
+}
+
+export function prepareLocalBootstrapMigrationSql(
+  migrationFile: string,
+  migrationSql: string,
+): string {
+  if (migrationFile !== p2ListExportMigrationFile) {
+    return migrationSql;
+  }
+
+  const foreignKeysOff =
+    "PRAGMA foreign_keys=OFF;--> statement-breakpoint";
+  const foreignKeysOn = "PRAGMA foreign_keys=ON;";
+  if (
+    !migrationSql.startsWith(foreignKeysOff) ||
+    !migrationSql.trimEnd().endsWith(foreignKeysOn)
+  ) {
+    throw new Error(
+      `${p2ListExportMigrationFile} no longer matches the local atomic upgrade boundary.`,
+    );
+  }
+
+  return migrationSql
+    .replace(foreignKeysOff, `${foreignKeysOff}\nBEGIN IMMEDIATE;`)
+    .replace(foreignKeysOn, `COMMIT;\n${foreignKeysOn}`);
 }

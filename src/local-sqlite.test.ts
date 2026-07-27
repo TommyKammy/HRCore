@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
+import {
+  openLocalSyntheticWritebackDatabase,
+  prepareLocalBootstrapMigrationSql,
+} from "./local-sqlite.js";
 
 const readMigrationSqlBefore = async (
   excludedFile: string,
@@ -265,9 +268,12 @@ test("P2LIST audit sink rebuild rolls back a failed upgrade atomically", async (
     );
     const renameStatement =
       "ALTER TABLE `__new_p2list_audit_event` RENAME TO `p2list_audit_event`;";
-    const failingMigrationSql = migrationSql.replace(
-      renameStatement,
-      `SELECT * FROM __forced_p2list_migration_failure;\n${renameStatement}`,
+    const failingMigrationSql = prepareLocalBootstrapMigrationSql(
+      "0019_p2list_export_schema_version.sql",
+      migrationSql.replace(
+        renameStatement,
+        `SELECT * FROM __forced_p2list_migration_failure;\n${renameStatement}`,
+      ),
     );
     assert.notEqual(failingMigrationSql, migrationSql);
     assert.throws(
@@ -319,6 +325,51 @@ test("P2LIST audit sink rebuild rolls back a failed upgrade atomically", async (
     });
   } finally {
     migratedDb.close();
+  }
+});
+
+test("P2LIST migration leaves transaction ownership to the Drizzle runner", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
+  try {
+    db.exec(
+      await readMigrationSqlBefore("0019_p2list_export_schema_version.sql"),
+    );
+    const migrationSql = await readFile(
+      join(process.cwd(), "drizzle", "0019_p2list_export_schema_version.sql"),
+      "utf8",
+    );
+
+    db.exec("BEGIN");
+    assert.doesNotThrow(() => db.exec(migrationSql));
+    assert.equal(
+      db
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM pragma_table_info('p2list_audit_event')
+            WHERE name = 'export_schema_version'
+          `,
+        )
+        .get()?.count,
+      1,
+    );
+    db.exec("ROLLBACK");
+  } finally {
+    db.close();
   }
 });
 
