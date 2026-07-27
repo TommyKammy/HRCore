@@ -264,8 +264,18 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
       name: "missing reason",
       token: "employee",
       payload: { filters: { organizationCode: "ORG-SYNTHETIC" } },
-      status: 422,
+      status: 400,
       code: "export_reason_code_required",
+    },
+    {
+      name: "non-string reason",
+      token: "employee",
+      payload: {
+        filters: { organizationCode: "ORG-SYNTHETIC" },
+        reasonCode: 42,
+      },
+      status: 400,
+      code: "export_reason_code_unsupported",
     },
     {
       name: "unsupported reason",
@@ -274,7 +284,7 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
         filters: { organizationCode: "ORG-SYNTHETIC" },
         reasonCode: "free form private reason",
       },
-      status: 422,
+      status: 400,
       code: "export_reason_code_unsupported",
     },
     {
@@ -372,22 +382,26 @@ async function createHarness(
   options: {
     actors: Record<string, P2ListActorContext>;
     listEmployees?: (
-      input: Parameters<P2ListReadModelRepository["listEmployees"]>[0],
-    ) => ReturnType<P2ListReadModelRepository["listEmployees"]>;
+      input: Parameters<P2ListReadModelRepository["listEmployeesForExport"]>[0],
+    ) => ReturnType<P2ListReadModelRepository["listEmployeesForExport"]>;
     listLifecycleRequests?: (
-      input: Parameters<P2ListReadModelRepository["listLifecycleRequests"]>[0],
-    ) => ReturnType<P2ListReadModelRepository["listLifecycleRequests"]>;
+      input: Parameters<
+        P2ListReadModelRepository["listLifecycleRequestsForExport"]
+      >[0],
+    ) => ReturnType<
+      P2ListReadModelRepository["listLifecycleRequestsForExport"]
+    >;
   },
 ) {
   const auditEvents: P2ListExportAuditEvent[] = [];
   let correlationSequence = 0;
   const repository = {
-    listEmployees:
+    listEmployeesForExport:
       options.listEmployees ??
       (() => {
         throw new Error("Unexpected employee export.");
       }),
-    listLifecycleRequests:
+    listLifecycleRequestsForExport:
       options.listLifecycleRequests ??
       (() => {
         throw new Error("Unexpected lifecycle export.");
@@ -421,7 +435,7 @@ function exportPayload(
   };
 }
 
-function employeePage(hasNextPage: boolean) {
+function employeePage(hasMore: boolean) {
   return {
     items: [
       {
@@ -435,19 +449,15 @@ function employeePage(hasNextPage: boolean) {
         terminationDate: null,
       },
     ],
-    pageInfo: {
-      limit: 100,
-      hasNextPage,
-      nextCursor: hasNextPage ? "opaque-next-page" : null,
-    },
+    hasMore,
     appliedFilters: {
-      organizationCode: hasNextPage ? "ORG-TOO-MANY" : "ORG-SYNTHETIC",
+      organizationCode: hasMore ? "ORG-TOO-MANY" : "ORG-SYNTHETIC",
       asOf: "2026-07-27",
     },
   };
 }
 
-function lifecyclePage(hasNextPage: boolean) {
+function lifecyclePage(hasMore: boolean) {
   return {
     items: [
       {
@@ -463,11 +473,7 @@ function lifecyclePage(hasNextPage: boolean) {
         effectiveDate: "2026-08-01",
       },
     ],
-    pageInfo: {
-      limit: 100,
-      hasNextPage,
-      nextCursor: hasNextPage ? "opaque-next-page" : null,
-    },
+    hasMore,
     appliedFilters: {
       organizationCode: "ORG-LIFECYCLE",
     },

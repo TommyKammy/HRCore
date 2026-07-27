@@ -252,6 +252,43 @@ test("P2LIST employee repository covers 0/1/25/26/100/101 and equal-sort keysets
   );
 });
 
+test("P2LIST employee export scan reports overflow without issuing a cursor", async (t) => {
+  const db = await openTestDatabase(t);
+  if (!db) {
+    return;
+  }
+  const rows = createP2ListEmployeeFixtureRows(101);
+  seedEmployeeRows(db, rows);
+  let cursorAllocations = 0;
+  const repository = new P2ListReadModelRepository(
+    db,
+    createCursorManager(undefined, () => {
+      cursorAllocations += 1;
+    }),
+  );
+  const provenance = verifyP2ListSyntheticDatasetManifest(
+    createP2ListFixtureManifest(
+      {
+        datasetReference: "employee-bounded-export-scan",
+        employees: rows,
+      },
+      manifestSecret,
+    ),
+    manifestSecret,
+  );
+
+  const collection = repository.listEmployeesForExport({
+    actor: employeeActor,
+    provenance,
+    acceptedAt,
+    limit: 100,
+  });
+
+  assert.equal(collection.items.length, 100);
+  assert.equal(collection.hasMore, true);
+  assert.equal(cursorAllocations, 0);
+});
+
 test("P2LIST employee scope is query-layer, fail-closed, and provenance-bound", async (t) => {
   const db = await openTestDatabase(t);
   if (!db) {
@@ -868,6 +905,42 @@ test("P2LIST lifecycle keysets cover 0/1/25/26/100/101 with equal sort values", 
   assert.deepEqual(ids, rows.map((row) => row.transactionRequestId).reverse());
 });
 
+test("P2LIST lifecycle export scan reports overflow without issuing a cursor", async (t) => {
+  const db = await openTestDatabase(t);
+  if (!db) {
+    return;
+  }
+  const rows = createP2ListLifecycleFixtureRows(101);
+  seedLifecycleFixtureRows(db, rows);
+  let cursorAllocations = 0;
+  const repository = new P2ListReadModelRepository(
+    db,
+    createCursorManager(undefined, () => {
+      cursorAllocations += 1;
+    }),
+  );
+  const provenance = verifyP2ListSyntheticDatasetManifest(
+    createP2ListFixtureManifest(
+      {
+        datasetReference: "lifecycle-bounded-export-scan",
+        lifecycleRequests: rows,
+      },
+      manifestSecret,
+    ),
+    manifestSecret,
+  );
+
+  const collection = repository.listLifecycleRequestsForExport({
+    actor: lifecycleActor,
+    provenance,
+    limit: 100,
+  });
+
+  assert.equal(collection.items.length, 100);
+  assert.equal(collection.hasMore, true);
+  assert.equal(cursorAllocations, 0);
+});
+
 test("P2LIST lifecycle list validation fails before scope for malformed payload and tied decisions", async (t) => {
   const db = await openTestDatabase(t);
   if (!db) {
@@ -1108,12 +1181,16 @@ test("P2LIST query validation rejects unsupported search, sort, limits, and date
   );
 });
 
-function createCursorManager(now?: () => number): P2ListCursorManager {
+function createCursorManager(
+  now?: () => number,
+  onRandomBytes?: () => void,
+): P2ListCursorManager {
   let sequence = 0;
   return new P2ListCursorManager({
     secret: cursorSecret,
     now: now ? () => new Date(now()) : undefined,
     randomBytes: (size) => {
+      onRandomBytes?.();
       sequence += 1;
       return Buffer.alloc(size, sequence);
     },

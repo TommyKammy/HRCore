@@ -100,7 +100,7 @@ export function registerP2ListExportRoutes(
           p2ListPermissions.csvDownload,
         ]);
         const input = parseEmployeeExportRequest(request.body);
-        const page = activeRuntime.repository.listEmployees({
+        const collection = activeRuntime.repository.listEmployeesForExport({
           actor,
           provenance: activeRuntime.provenance,
           filters: input.filters,
@@ -109,13 +109,15 @@ export function registerP2ListExportRoutes(
           limit: p2ListExportMaximumRows,
           acceptedAt: occurredAt,
         });
-        if (page.pageInfo.hasNextPage) {
+        if (collection.hasMore) {
           throw exportError(
             "export_row_limit_exceeded",
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintP2ListValue(page.appliedFilters);
+        const filterFingerprint = fingerprintP2ListValue(
+          collection.appliedFilters,
+        );
         const auditContext = {
           occurredAt,
           actor,
@@ -124,14 +126,14 @@ export function registerP2ListExportRoutes(
           correlationId,
           reasonCode: input.reasonCode,
           filterFingerprint,
-          rowCount: page.items.length,
+          rowCount: collection.items.length,
         };
         await emitAllowedExportEvent(
           activeRuntime,
           "bounded_export.requested",
           auditContext,
         );
-        const artifact = buildEmployeeExportArtifact(page.items);
+        const artifact = buildEmployeeExportArtifact(collection.items);
         await emitAllowedExportEvent(
           activeRuntime,
           "bounded_export.completed",
@@ -171,21 +173,24 @@ export function registerP2ListExportRoutes(
           p2ListPermissions.csvDownload,
         ]);
         const input = parseLifecycleExportRequest(request.body);
-        const page = activeRuntime.repository.listLifecycleRequests({
-          actor,
-          provenance: activeRuntime.provenance,
-          filters: input.filters,
-          sort: "requestedAt",
-          direction: "desc",
-          limit: p2ListExportMaximumRows,
-        });
-        if (page.pageInfo.hasNextPage) {
+        const collection =
+          activeRuntime.repository.listLifecycleRequestsForExport({
+            actor,
+            provenance: activeRuntime.provenance,
+            filters: input.filters,
+            sort: "requestedAt",
+            direction: "desc",
+            limit: p2ListExportMaximumRows,
+          });
+        if (collection.hasMore) {
           throw exportError(
             "export_row_limit_exceeded",
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintP2ListValue(page.appliedFilters);
+        const filterFingerprint = fingerprintP2ListValue(
+          collection.appliedFilters,
+        );
         const auditContext = {
           occurredAt,
           actor,
@@ -194,14 +199,14 @@ export function registerP2ListExportRoutes(
           correlationId,
           reasonCode: input.reasonCode,
           filterFingerprint,
-          rowCount: page.items.length,
+          rowCount: collection.items.length,
         };
         await emitAllowedExportEvent(
           activeRuntime,
           "bounded_export.requested",
           auditContext,
         );
-        const artifact = buildLifecycleExportArtifact(page.items);
+        const artifact = buildLifecycleExportArtifact(collection.items);
         await emitAllowedExportEvent(
           activeRuntime,
           "bounded_export.completed",
@@ -432,6 +437,12 @@ function sendArtifact(
 function statusForError(code: P2ListErrorCode): 400 | 401 | 403 | 422 {
   if (code === "actor_context_required") return 401;
   if (code === "permission_denied" || code === "data_scope_denied") return 403;
+  if (
+    code === "export_reason_code_required" ||
+    code === "export_reason_code_unsupported"
+  ) {
+    return 400;
+  }
   if (code.startsWith("export_")) return 422;
   return 400;
 }
