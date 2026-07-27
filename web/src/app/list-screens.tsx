@@ -1,4 +1,10 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -411,6 +417,7 @@ function BoundedExportControl({
   missingFilterMessage: string;
   requestExport: (
     reasonCode: P2ListExportReasonCode,
+    signal: AbortSignal,
   ) => Promise<BoundedExportArtifact>;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -421,6 +428,14 @@ function BoundedExportControl({
     message: string;
     correlationId?: string;
   } | null>(null);
+  const exportController = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      exportController.current?.abort();
+    },
+    [],
+  );
 
   const confirmExport = async () => {
     if (!meaningfulFilter) {
@@ -434,10 +449,14 @@ function BoundedExportControl({
       });
       return;
     }
+    const controller = new AbortController();
+    exportController.current?.abort();
+    exportController.current = controller;
     setSubmitting(true);
     setFeedback(null);
     try {
-      const artifact = await requestExport(reasonCode);
+      const artifact = await requestExport(reasonCode, controller.signal);
+      if (controller.signal.aborted) return;
       downloadExportArtifact(artifact);
       setConfirming(false);
       setReasonCode("");
@@ -447,9 +466,15 @@ function BoundedExportControl({
         correlationId: artifact.correlationId,
       });
     } catch (caught: unknown) {
+      if (controller.signal.aborted) return;
       setFeedback(classifyExportError(caught));
     } finally {
-      setSubmitting(false);
+      if (exportController.current === controller) {
+        exportController.current = null;
+        if (!controller.signal.aborted) {
+          setSubmitting(false);
+        }
+      }
     }
   };
 
@@ -924,11 +949,11 @@ export function EmployeeListView({
             state.response.appliedFilters.organizationCode,
           )}
           missingFilterMessage="従業員IDまたは組織コードで絞り込んでからCSV出力してください。"
-          requestExport={(reasonCode) =>
+          requestExport={(reasonCode, signal) =>
             fetchEmployeeExport(
               state.response!.appliedFilters,
               reasonCode,
-              createP2ListRequestInit(personaId),
+              createP2ListRequestInit(personaId, signal),
             )
           }
         />
@@ -1436,11 +1461,11 @@ export function LifecycleListView({
             state.response.appliedFilters,
           )}
           missingFilterMessage="従業員ID、組織コード、correlation、申請日時範囲、または適用日範囲で絞り込んでからCSV出力してください。"
-          requestExport={(reasonCode) =>
+          requestExport={(reasonCode, signal) =>
             fetchLifecycleExport(
               state.response!.appliedFilters,
               reasonCode,
-              createP2ListRequestInit(personaId),
+              createP2ListRequestInit(personaId, signal),
             )
           }
         />

@@ -80,8 +80,11 @@ test("bounded export routes suppress request fields and CSV-adjacent values from
 
 test("POST /exports/employee-list returns a server-owned bounded CSV and safe audit handoff", async (t) => {
   let repositoryInput: unknown;
+  const completedAt = new Date("2026-07-27T00:00:01.000Z");
+  let nowCalls = 0;
   const harness = await createHarness(t, {
     actors: { employee: fullEmployeeActor },
+    now: () => (nowCalls++ === 0 ? occurredAt : completedAt),
     listEmployees(input) {
       repositoryInput = input;
       return employeePage(false);
@@ -143,6 +146,10 @@ test("POST /exports/employee-list returns a server-owned bounded CSV and safe au
     harness.auditEvents.map((event) => event.eventType),
     ["bounded_export.requested", "bounded_export.completed"],
   );
+  assert.deepEqual(
+    harness.auditEvents.map((event) => event.occurredAt),
+    [occurredAt.toISOString(), completedAt.toISOString()],
+  );
   assert.ok(
     harness.auditEvents.every(
       (event) =>
@@ -159,8 +166,11 @@ test("POST /exports/employee-list returns a server-owned bounded CSV and safe au
 });
 
 test("POST /exports/lifecycle-request-list returns canonical lifecycle columns", async (t) => {
+  const completedAt = new Date("2026-07-27T00:00:02.000Z");
+  let nowCalls = 0;
   const harness = await createHarness(t, {
     actors: { lifecycle: fullLifecycleActor },
+    now: () => (nowCalls++ === 0 ? occurredAt : completedAt),
     listLifecycleRequests() {
       return lifecyclePage(false);
     },
@@ -192,6 +202,69 @@ test("POST /exports/lifecycle-request-list returns canonical lifecycle columns",
   assert.deepEqual(
     harness.auditEvents.map((event) => event.resourceType),
     ["lifecycleRequest", "lifecycleRequest"],
+  );
+  assert.deepEqual(
+    harness.auditEvents.map((event) => event.occurredAt),
+    [occurredAt.toISOString(), completedAt.toISOString()],
+  );
+});
+
+test("malformed JSON exports use the bounded 400 contract and denial audit", async (t) => {
+  const harness = await createHarness(t, {
+    actors: {
+      employee: fullEmployeeActor,
+      lifecycle: fullLifecycleActor,
+    },
+  });
+  const cases = [
+    {
+      url: "/exports/employee-list",
+      token: "employee",
+      resourceType: "employee",
+    },
+    {
+      url: "/exports/lifecycle-request-list",
+      token: "lifecycle",
+      resourceType: "lifecycleRequest",
+    },
+  ] as const;
+
+  for (const [index, scenario] of cases.entries()) {
+    const response = await harness.app.inject({
+      method: "POST",
+      url: scenario.url,
+      headers: {
+        authorization: `Bearer ${scenario.token}`,
+        "content-type": "application/json",
+      },
+      payload: '{"filters":',
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().code, "invalid_filter");
+    assert.equal(
+      response.headers["x-hrcore-correlation-id"],
+      `export-correlation-${index + 1}`,
+    );
+    assert.equal(
+      response.json().correlationId,
+      `export-correlation-${index + 1}`,
+    );
+  }
+
+  assert.deepEqual(
+    harness.auditEvents.map((event) => ({
+      eventType: event.eventType,
+      resourceType: event.resourceType,
+      reasonCode: event.reasonCode,
+      correlationId: event.correlationId,
+    })),
+    cases.map((scenario, index) => ({
+      eventType: "bounded_export.denied",
+      resourceType: scenario.resourceType,
+      reasonCode: "invalid_filter",
+      correlationId: `export-correlation-${index + 1}`,
+    })),
   );
 });
 
@@ -381,6 +454,7 @@ async function createHarness(
   t: TestContext,
   options: {
     actors: Record<string, P2ListActorContext>;
+    now?: () => Date;
     listEmployees?: (
       input: Parameters<P2ListReadModelRepository["listEmployeesForExport"]>[0],
     ) => ReturnType<P2ListReadModelRepository["listEmployeesForExport"]>;
@@ -417,7 +491,7 @@ async function createHarness(
     emitAuditEvent(event) {
       auditEvents.push(event);
     },
-    now: () => occurredAt,
+    now: options.now ?? (() => occurredAt),
     createCorrelationId: () => `export-correlation-${++correlationSequence}`,
   };
   const app = await buildApp({ p2ListExportApi: runtime });

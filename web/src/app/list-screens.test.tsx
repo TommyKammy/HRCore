@@ -147,6 +147,61 @@ describe("employee list screen", () => {
     );
   });
 
+  it("cancels an in-flight export before an unmounted result can download", async () => {
+    const download = stubBrowserDownload();
+    const filteredResponse: EmployeeListResponse = {
+      ...employeeResponse,
+      appliedFilters: {
+        organizationCode: "ORG-SYNTHETIC",
+        asOf: "2026-07-26",
+      },
+    };
+    let resolveExport: ((response: Response) => void) | undefined;
+    let exportSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/exports/employee-list") {
+        exportSignal = init?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolveExport = resolve;
+        });
+      }
+      return Promise.resolve(Response.json(filteredResponse));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    const view = render(
+      <EmployeeListView personaId="hr-operator" onOpenEmployee={null} />,
+    );
+    await screen.findByText("Synthetic Employee 001");
+    await user.click(screen.getByRole("button", { name: "CSV出力" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "出力理由" }),
+      "operational_reconciliation",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+    await waitFor(() => expect(resolveExport).toBeTypeOf("function"));
+
+    view.unmount();
+    expect(exportSignal?.aborted).toBe(true);
+    resolveExport?.(
+      new Response("employee_id\nEMP-001\n", {
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition":
+            'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+          "x-hrcore-correlation-id": "stale-export-correlation",
+          "x-hrcore-export-schema-version": "p2list_export_v1",
+        },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(download.createObjectURL).not.toHaveBeenCalled();
+    expect(download.click).not.toHaveBeenCalled();
+  });
+
   it("loads the API, synchronizes filters and paging, and opens detail", async () => {
     window.history.replaceState(null, "", "/?view=employees&asOf=2026-01-01");
     vi.stubEnv(

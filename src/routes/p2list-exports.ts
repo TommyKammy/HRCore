@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type FastifyError,
   type FastifyInstance,
   type FastifyReply,
   type FastifyRequest,
@@ -42,6 +43,12 @@ interface ParsedExportRequest<Filters> {
   reasonCode: P2ListExportReasonCode;
 }
 
+interface ExportRoutePolicy {
+  permission: string;
+  requiredPermissions: readonly string[];
+  resourceType: ExportResource;
+}
+
 export interface P2ListExportAuditEvent {
   eventId: string;
   eventType:
@@ -79,26 +86,47 @@ export function registerP2ListExportRoutes(
   app: FastifyInstance,
   options: { p2ListExportApi?: P2ListExportApiRuntime },
 ): void {
+  const employeePolicy: ExportRoutePolicy = {
+    permission: p2ListPermissions.employeeListExport,
+    requiredPermissions: [
+      p2ListPermissions.employeeListRead,
+      p2ListPermissions.employeeListExport,
+      p2ListPermissions.csvDownload,
+    ],
+    resourceType: "employee",
+  };
+  const lifecyclePolicy: ExportRoutePolicy = {
+    permission: p2ListPermissions.lifecycleRequestListExport,
+    requiredPermissions: [
+      p2ListPermissions.lifecycleRequestListRead,
+      p2ListPermissions.lifecycleRequestListExport,
+      p2ListPermissions.csvDownload,
+    ],
+    resourceType: "lifecycleRequest",
+  };
+
   app.post(
     "/exports/employee-list",
-    { logLevel: "silent" },
+    {
+      logLevel: "silent",
+      errorHandler: createExportRouteErrorHandler(
+        options.p2ListExportApi,
+        employeePolicy,
+      ),
+    },
     async (request, reply) => {
       const runtime = options.p2ListExportApi;
       const correlationId =
         runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
-      const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
-      const permission = p2ListPermissions.employeeListExport;
+      const occurredAt = currentTimestamp(runtime);
+      const permission = employeePolicy.permission;
       reply.header("x-hrcore-correlation-id", correlationId);
       let actor: P2ListActorContext | undefined;
 
       try {
         const activeRuntime = requireRuntime(runtime);
         actor = await requireActor(activeRuntime, request);
-        requirePermissions(actor, [
-          p2ListPermissions.employeeListRead,
-          permission,
-          p2ListPermissions.csvDownload,
-        ]);
+        requirePermissions(actor, employeePolicy.requiredPermissions);
         const input = parseEmployeeExportRequest(request.body);
         const collection = activeRuntime.repository.listEmployeesForExport({
           actor,
@@ -137,7 +165,10 @@ export function registerP2ListExportRoutes(
         await emitAllowedExportEvent(
           activeRuntime,
           "bounded_export.completed",
-          auditContext,
+          {
+            ...auditContext,
+            occurredAt: currentTimestamp(activeRuntime),
+          },
         );
         return sendArtifact(reply, artifact);
       } catch (error) {
@@ -154,24 +185,26 @@ export function registerP2ListExportRoutes(
 
   app.post(
     "/exports/lifecycle-request-list",
-    { logLevel: "silent" },
+    {
+      logLevel: "silent",
+      errorHandler: createExportRouteErrorHandler(
+        options.p2ListExportApi,
+        lifecyclePolicy,
+      ),
+    },
     async (request, reply) => {
       const runtime = options.p2ListExportApi;
       const correlationId =
         runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
-      const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
-      const permission = p2ListPermissions.lifecycleRequestListExport;
+      const occurredAt = currentTimestamp(runtime);
+      const permission = lifecyclePolicy.permission;
       reply.header("x-hrcore-correlation-id", correlationId);
       let actor: P2ListActorContext | undefined;
 
       try {
         const activeRuntime = requireRuntime(runtime);
         actor = await requireActor(activeRuntime, request);
-        requirePermissions(actor, [
-          p2ListPermissions.lifecycleRequestListRead,
-          permission,
-          p2ListPermissions.csvDownload,
-        ]);
+        requirePermissions(actor, lifecyclePolicy.requiredPermissions);
         const input = parseLifecycleExportRequest(request.body);
         const collection =
           activeRuntime.repository.listLifecycleRequestsForExport({
@@ -210,7 +243,10 @@ export function registerP2ListExportRoutes(
         await emitAllowedExportEvent(
           activeRuntime,
           "bounded_export.completed",
-          auditContext,
+          {
+            ...auditContext,
+            occurredAt: currentTimestamp(activeRuntime),
+          },
         );
         return sendArtifact(reply, artifact);
       } catch (error) {
@@ -224,6 +260,62 @@ export function registerP2ListExportRoutes(
       }
     },
   );
+}
+
+function createExportRouteErrorHandler(
+  runtime: P2ListExportApiRuntime | undefined,
+  policy: ExportRoutePolicy,
+) {
+  return async (
+    error: FastifyError,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> => {
+    if (
+      error.code !== "FST_ERR_CTP_INVALID_JSON_BODY" &&
+      error.code !== "FST_ERR_CTP_EMPTY_JSON_BODY"
+    ) {
+      throw error;
+    }
+
+    const correlationId =
+      runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+    const occurredAt = currentTimestamp(runtime);
+    let actor: P2ListActorContext | undefined;
+    reply.header("x-hrcore-correlation-id", correlationId);
+
+    try {
+      const activeRuntime = requireRuntime(runtime);
+      actor = await requireActor(activeRuntime, request);
+      requirePermissions(actor, policy.requiredPermissions);
+    } catch (authorizationError) {
+      await handleExportError(reply, authorizationError, runtime, {
+        occurredAt,
+        actor,
+        permission: policy.permission,
+        resourceType: policy.resourceType,
+        correlationId,
+      });
+      return;
+    }
+
+    await handleExportError(
+      reply,
+      exportError("invalid_filter", "The export request is invalid."),
+      runtime,
+      {
+        occurredAt,
+        actor,
+        permission: policy.permission,
+        resourceType: policy.resourceType,
+        correlationId,
+      },
+    );
+  };
+}
+
+function currentTimestamp(runtime: P2ListExportApiRuntime | undefined): string {
+  return (runtime?.now?.() ?? new Date()).toISOString();
 }
 
 function requireRuntime(
