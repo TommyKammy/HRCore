@@ -31,6 +31,7 @@ import {
   type LifecycleRequestListQuery,
   type LifecycleRequestListResponse,
   ApiClientError,
+  createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchEmployeeExport,
   fetchEmployees,
@@ -128,7 +129,11 @@ function useBoundedCollection<Query, Response>({
 }: {
   view: ListView;
   parse: () => ParsedListQuery<Query>;
-  load: (query: Query, signal: AbortSignal) => Promise<Response>;
+  load: (
+    query: Query,
+    signal: AbortSignal,
+    correlationId: string,
+  ) => Promise<Response>;
 }) {
   const [location, setLocation] = useState<ParsedListQuery<Query>>(parse);
   const [response, setResponse] = useState<Response | null>(null);
@@ -138,6 +143,15 @@ function useBoundedCollection<Query, Response>({
   const [previousLocations, setPreviousLocations] = useState<string[]>(() =>
     readPreviousLocations(view),
   );
+  const actionRef = useRef<{
+    load: typeof load;
+    location: ParsedListQuery<Query>;
+    correlationId: string;
+  }>({
+    load,
+    location,
+    correlationId: createP2ListCorrelationId(),
+  });
 
   useEffect(() => {
     const handlePopState = () => {
@@ -161,10 +175,24 @@ function useBoundedCollection<Query, Response>({
     }
 
     const controller = new AbortController();
+    if (
+      actionRef.current.load !== load ||
+      actionRef.current.location !== location
+    ) {
+      actionRef.current = {
+        load,
+        location,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     setLoading(true);
     setError(null);
 
-    void load(location.query, controller.signal)
+    void load(
+      location.query,
+      controller.signal,
+      actionRef.current.correlationId,
+    )
       .then((nextResponse) => {
         setResponse(nextResponse);
       })
@@ -735,8 +763,11 @@ export function EmployeeListView({
   onOpenEmployee: ((employee: EmployeeListItem, asOf: string) => void) | null;
 }) {
   const load = useCallback(
-    (query: EmployeeListQuery, signal: AbortSignal) =>
-      fetchEmployees(query, createP2ListRequestInit(personaId, signal)),
+    (query: EmployeeListQuery, signal: AbortSignal, correlationId: string) =>
+      fetchEmployees(
+        query,
+        createP2ListRequestInit(personaId, signal, correlationId),
+      ),
     [personaId],
   );
   const {
@@ -1119,8 +1150,15 @@ export function LifecycleListView({
   onOpenRequest: ((request: LifecycleRequestListItem) => void) | null;
 }) {
   const load = useCallback(
-    (query: LifecycleRequestListQuery, signal: AbortSignal) =>
-      fetchLifecycleRequests(query, createP2ListRequestInit(personaId, signal)),
+    (
+      query: LifecycleRequestListQuery,
+      signal: AbortSignal,
+      correlationId: string,
+    ) =>
+      fetchLifecycleRequests(
+        query,
+        createP2ListRequestInit(personaId, signal, correlationId),
+      ),
     [personaId],
   );
   const {

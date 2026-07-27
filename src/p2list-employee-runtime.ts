@@ -163,6 +163,7 @@ function persistP2ListAuditEvent(
     | P2ListLifecycleAuditEvent
     | P2ListExportAuditEvent,
 ): void {
+  assertP2ListAuditCorrelationAvailable(db, event);
   const result = db
     .prepare(
       `
@@ -217,6 +218,81 @@ function persistP2ListAuditEvent(
   }
 }
 
+type PersistedP2ListAuditEvent = Record<string, unknown> & {
+  event_type: unknown;
+};
+
+const p2ListAuditEvidenceSelect = `
+  SELECT
+    event_type,
+    event_version,
+    actor_id,
+    actor_role,
+    evaluated_permission,
+    data_scope_id,
+    filter_fingerprint,
+    sort,
+    page_size,
+    row_count,
+    resource_type,
+    policy_decision,
+    reason_code,
+    export_schema_version
+  FROM p2list_audit_event
+`;
+
+function assertP2ListAuditCorrelationAvailable(
+  db: OnboardingTransactionRequestDatabase,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
+  const matchingEvent = db
+    .prepare(
+      `
+        ${p2ListAuditEvidenceSelect}
+        WHERE correlation_id = ?
+          AND event_type = ?
+      `,
+    )
+    .get(event.correlationId, event.eventType) as
+    | PersistedP2ListAuditEvent
+    | undefined;
+  if (matchingEvent) {
+    assertMatchingP2ListAuditEvidence(matchingEvent, event);
+  }
+  const existing = db
+    .prepare(
+      `
+        ${p2ListAuditEvidenceSelect}
+        WHERE correlation_id = ?
+          AND event_type <> ?
+        ORDER BY event_type
+        LIMIT 1
+      `,
+    )
+    .get(event.correlationId, event.eventType) as
+    | PersistedP2ListAuditEvent
+    | undefined;
+  if (!existing) {
+    if (event.eventType === "bounded_export.completed") {
+      throwP2ListAuditCorrelationConflict();
+    }
+    return;
+  }
+  const eventTypes = new Set([existing.event_type, event.eventType]);
+  const isAllowedExportSequence =
+    eventTypes.size === 2 &&
+    eventTypes.has("bounded_export.requested") &&
+    eventTypes.has("bounded_export.completed") &&
+    (event.eventType === "bounded_export.completed" || !!matchingEvent);
+  if (!isAllowedExportSequence) {
+    throwP2ListAuditCorrelationConflict();
+  }
+  assertMatchingP2ListAuditEvidence(existing, event);
+}
+
 function assertIdempotentP2ListAuditRetry(
   db: OnboardingTransactionRequestDatabase,
   event:
@@ -227,26 +303,24 @@ function assertIdempotentP2ListAuditRetry(
   const existing = db
     .prepare(
       `
-        SELECT
-          event_version,
-          actor_id,
-          actor_role,
-          evaluated_permission,
-          data_scope_id,
-          filter_fingerprint,
-          sort,
-          page_size,
-          row_count,
-          resource_type,
-          policy_decision,
-          reason_code,
-          export_schema_version
-        FROM p2list_audit_event
+        ${p2ListAuditEvidenceSelect}
         WHERE correlation_id = ?
           AND event_type = ?
       `,
     )
-    .get(event.correlationId, event.eventType);
+    .get(event.correlationId, event.eventType) as
+    | PersistedP2ListAuditEvent
+    | undefined;
+  assertMatchingP2ListAuditEvidence(existing, event);
+}
+
+function assertMatchingP2ListAuditEvidence(
+  existing: PersistedP2ListAuditEvent | undefined,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
   const expected = {
     event_version: event.eventVersion,
     actor_id: event.actorId ?? null,
@@ -267,11 +341,15 @@ function assertIdempotentP2ListAuditRetry(
     !existing ||
     Object.entries(expected).some(([key, value]) => existing[key] !== value)
   ) {
-    throw new P2ListReadModelError(
-      "correlation_reuse_conflict",
-      "P2LIST audit correlation reuse conflicts with existing evidence.",
-    );
+    throwP2ListAuditCorrelationConflict();
   }
+}
+
+function throwP2ListAuditCorrelationConflict(): never {
+  throw new P2ListReadModelError(
+    "correlation_reuse_conflict",
+    "P2LIST audit correlation reuse conflicts with existing evidence.",
+  );
 }
 
 async function loadVerifiedProvenance(

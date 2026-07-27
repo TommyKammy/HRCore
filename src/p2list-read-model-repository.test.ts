@@ -617,6 +617,22 @@ test("P2LIST employee cursor rejects filter and actor drift and avoids duplicate
       }),
     "permission_denied",
   );
+  assertP2ListError(
+    () =>
+      repository.listEmployees({
+        actor: {
+          ...employeeActor,
+          actorRole: "hr_ops_support",
+        },
+        provenance,
+        acceptedAt,
+        filters: { q: "Synthetic" },
+        sort: "employeeId",
+        limit: 25,
+        cursor: first.pageInfo.nextCursor!,
+      }),
+    "permission_denied",
+  );
 
   seedEmployeeRows(db, [
     { ...allRows[26]!, employeeId: "EMP-000" },

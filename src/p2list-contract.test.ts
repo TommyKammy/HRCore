@@ -709,7 +709,26 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
 
   assert.ok(p2ListAuditEventTypes.includes("bounded_export.denied"));
   assert.ok(p2ListAuditEventTypes.includes("authorization.denied"));
-  assert.ok(p2ListAuditFields.includes("filterFingerprint"));
+  assert.deepEqual(p2ListAuditFields, [
+    "eventId",
+    "eventType",
+    "eventVersion",
+    "occurredAt",
+    "actorId",
+    "actorRole",
+    "evaluatedPermission",
+    "dataScopeId",
+    "filterFingerprint",
+    "sort",
+    "pageSize",
+    "rowCount",
+    "resourceType",
+    "correlationId",
+    "policyDecision",
+    "reasonCode",
+    "exportSchemaVersion",
+    "durationMs",
+  ]);
   assert.ok(p2ListAuditDeniedFields.includes("rawSearchTerm"));
   assert.ok(p2ListAuditDeniedFields.includes("cursorState"));
   assert.ok(p2ListAuditDeniedFields.includes("lastSortValue"));

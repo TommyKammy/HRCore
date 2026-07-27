@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EmployeeDetailRoute } from "./employee-detail-route";
@@ -139,6 +140,36 @@ describe("EmployeeDetailRoute", () => {
     expect(alert).toHaveTextContent("サーバー応答または契約");
     expect(alert).toHaveTextContent("employee-detail-service-failure");
     expect(alert).not.toHaveTextContent("権限または検索条件");
+  });
+
+  it("keeps the action correlation ID when retrying the same detail", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("network down"))
+      .mockRejectedValueOnce(new TypeError("network still down"));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <EmployeeDetailRoute
+        personaId="hr-operator"
+        employeeId="EMP-RETRY"
+        asOf="2026-07-26"
+        useLegacyFixture={false}
+        onOpenTransfer={null}
+      />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "従業員詳細APIに接続できません",
+    );
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const correlations = fetchMock.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get("x-hrcore-correlation-id"),
+    );
+    expect(correlations[0]).toMatch(/^p2list-ui-/u);
+    expect(correlations[1]).toBe(correlations[0]);
   });
 
   it.each([

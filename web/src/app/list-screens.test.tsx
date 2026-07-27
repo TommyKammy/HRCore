@@ -474,6 +474,11 @@ describe("employee list screen", () => {
       await screen.findByText("Synthetic Employee 001"),
     ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    const correlations = fetchMock.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get("x-hrcore-correlation-id"),
+    );
+    expect(correlations[0]).toMatch(/^p2list-ui-/u);
+    expect(new Set(correlations).size).toBe(1);
   });
 
   it("distinguishes service and contract failures from network failures", async () => {

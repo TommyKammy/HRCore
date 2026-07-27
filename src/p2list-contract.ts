@@ -578,6 +578,7 @@ export const p2ListAuditFields = [
   "policyDecision",
   "reasonCode",
   "exportSchemaVersion",
+  "durationMs",
 ] as const;
 
 export const p2ListAuditDeniedFields = [

@@ -454,6 +454,7 @@ function isLifecycleRequestDetailResponse(
 export function createP2ListRequestInit(
   personaId: BoundedPersonaId,
   signal?: AbortSignal,
+  correlationId = createP2ListCorrelationId(),
 ): RequestInit {
   const tokenByPersona: Partial<Record<BoundedPersonaId, string | undefined>> =
     {
@@ -463,10 +464,7 @@ export function createP2ListRequestInit(
     };
   const token = tokenByPersona[personaId]?.trim();
   const headers = new Headers();
-  headers.set(
-    "x-hrcore-correlation-id",
-    `p2list-ui-${globalThis.crypto.randomUUID()}`,
-  );
+  headers.set("x-hrcore-correlation-id", correlationId);
   if (token) {
     headers.set("authorization", `Bearer ${token}`);
   }
@@ -474,6 +472,10 @@ export function createP2ListRequestInit(
     signal,
     headers,
   };
+}
+
+export function createP2ListCorrelationId(): string {
+  return `p2list-ui-${globalThis.crypto.randomUUID()}`;
 }
 
 async function readJson<T>(

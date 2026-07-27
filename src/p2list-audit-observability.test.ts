@@ -9,6 +9,7 @@ import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
 import { createServerP2ListRuntimes } from "./p2list-employee-runtime.js";
 import {
   p2ListAuditEventVersion,
+  p2ListExportSchemaVersion,
   p2ListPermissions,
 } from "./p2list-contract.js";
 
@@ -85,6 +86,59 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
   });
   assert.equal(conflictingRetry.statusCode, 400);
   assert.equal(conflictingRetry.json().code, "correlation_reuse_conflict");
+  const conflictingEventTypeRetry = await app.inject({
+    method: "GET",
+    url: "/employees?q=Synthetic",
+    headers: {
+      authorization: `Bearer ${operatorToken}`,
+      "x-hrcore-correlation-id": interactionCorrelationId,
+    },
+  });
+  assert.equal(conflictingEventTypeRetry.statusCode, 400);
+  assert.equal(
+    conflictingEventTypeRetry.json().code,
+    "correlation_reuse_conflict",
+  );
+  const exportCorrelationId = "p2list-export-valid-pair-correlation";
+  const exportAuditEvent = {
+    eventVersion: p2ListAuditEventVersion,
+    occurredAt: "2026-07-28T00:00:00.000Z",
+    actorId: "actor-observability-operator",
+    actorRole: "hr_operator",
+    evaluatedPermission: p2ListPermissions.employeeListExport,
+    dataScopeId: "bounded-export-data-scope",
+    filterFingerprint: "bounded-export-filter",
+    rowCount: 0,
+    resourceType: "employee" as const,
+    correlationId: exportCorrelationId,
+    policyDecision: "allow" as const,
+    reasonCode: "uat_reconciliation" as const,
+    exportSchemaVersion: p2ListExportSchemaVersion,
+    durationMs: 1,
+  };
+  runtimes.export.emitAuditEvent({
+    ...exportAuditEvent,
+    eventId: "p2list-export-requested-event",
+    eventType: "bounded_export.requested",
+  });
+  runtimes.export.emitAuditEvent({
+    ...exportAuditEvent,
+    eventId: "p2list-export-completed-event",
+    eventType: "bounded_export.completed",
+    durationMs: 2,
+  });
+  assert.equal(
+    database
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM p2list_audit_event
+          WHERE correlation_id = ?
+        `,
+      )
+      .get(exportCorrelationId)?.count,
+    2,
+  );
 
   const evidenceResponse = await app.inject({
     method: "GET",

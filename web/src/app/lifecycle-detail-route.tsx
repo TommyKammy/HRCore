@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   type LifecycleRequestListItem,
   ApiClientError,
+  createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchLifecycleRequestDetail,
 } from "../api-client";
@@ -38,9 +39,20 @@ export function LifecycleDetailRoute({
     error: null,
     correlationId: null,
   });
+  const actionRef = useRef({
+    key: "",
+    correlationId: createP2ListCorrelationId(),
+  });
 
   useEffect(() => {
     const controller = new AbortController();
+    const actionKey = JSON.stringify([personaId, requestId, expectedType]);
+    if (actionRef.current.key !== actionKey) {
+      actionRef.current = {
+        key: actionKey,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     setState({
       request: null,
       maskedFields: [],
@@ -50,7 +62,11 @@ export function LifecycleDetailRoute({
     });
     void fetchLifecycleRequestDetail(
       requestId,
-      createP2ListRequestInit(personaId, controller.signal),
+      createP2ListRequestInit(
+        personaId,
+        controller.signal,
+        actionRef.current.correlationId,
+      ),
     )
       .then((response) => {
         if (controller.signal.aborted) {
