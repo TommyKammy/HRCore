@@ -16,6 +16,7 @@ export default defineConfig({
       "/health": "http://127.0.0.1:3000",
       "/employees": "http://127.0.0.1:3000",
       "/lifecycle": "http://127.0.0.1:3000",
+      "/exports": "http://127.0.0.1:3000",
     },
   },
   test: {

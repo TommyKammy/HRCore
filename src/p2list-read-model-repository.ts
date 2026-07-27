@@ -78,6 +78,12 @@ export interface P2ListPage<TItem, TFilters> {
   appliedFilters: TFilters;
 }
 
+export interface P2ListBoundedCollection<TItem, TFilters> {
+  items: TItem[];
+  hasMore: boolean;
+  appliedFilters: TFilters;
+}
+
 export interface P2ListEmployeeFilters {
   q?: string;
   employeeId?: string;
@@ -241,6 +247,34 @@ export class P2ListReadModelRepository {
   listEmployees(
     input: P2ListEmployeeQuery,
   ): P2ListPage<P2ListEmployeeItem, P2ListEmployeeAppliedFilters> {
+    const result = this.#queryEmployeeCollection(input);
+    return buildEmployeePage(
+      result.rows,
+      result.limit,
+      result.appliedFilters,
+      result.sort,
+      result.direction,
+      result.actor,
+      result.provenance,
+      result.filterFingerprint,
+      result.resolvedAsOf,
+      this.#cursors,
+    );
+  }
+
+  listEmployeesForExport(
+    input: Omit<P2ListEmployeeQuery, "cursor">,
+  ): P2ListBoundedCollection<P2ListEmployeeItem, P2ListEmployeeAppliedFilters> {
+    const result = this.#queryEmployeeCollection(input);
+    return buildBoundedCollection(
+      result.rows,
+      result.limit,
+      result.appliedFilters,
+      employeeItemFromRow,
+    );
+  }
+
+  #queryEmployeeCollection(input: P2ListEmployeeQuery) {
     const provenance = requireVerifiedDataset(input?.provenance);
     const actor = normalizeActorContext(
       input?.actor,
@@ -287,7 +321,7 @@ export class P2ListReadModelRepository {
       limit,
       cursorState,
     });
-    return buildEmployeePage(
+    return {
       rows,
       limit,
       appliedFilters,
@@ -297,8 +331,7 @@ export class P2ListReadModelRepository {
       provenance,
       filterFingerprint,
       resolvedAsOf,
-      this.#cursors,
-    );
+    };
   }
 
   getEmployee(input: P2ListEmployeeDetailQuery): {
@@ -358,6 +391,33 @@ export class P2ListReadModelRepository {
   listLifecycleRequests(
     input: P2ListLifecycleQuery,
   ): P2ListPage<P2ListLifecycleItem, P2ListLifecycleFilters> {
+    const result = this.#queryLifecycleCollection(input);
+    return buildLifecyclePage(
+      result.rows,
+      result.limit,
+      result.appliedFilters,
+      result.sort,
+      result.direction,
+      result.actor,
+      result.provenance,
+      result.filterFingerprint,
+      this.#cursors,
+    );
+  }
+
+  listLifecycleRequestsForExport(
+    input: Omit<P2ListLifecycleQuery, "cursor">,
+  ): P2ListBoundedCollection<P2ListLifecycleItem, P2ListLifecycleFilters> {
+    const result = this.#queryLifecycleCollection(input);
+    return buildBoundedCollection(
+      result.rows,
+      result.limit,
+      result.appliedFilters,
+      lifecycleItemFromRow,
+    );
+  }
+
+  #queryLifecycleCollection(input: P2ListLifecycleQuery) {
     const provenance = requireVerifiedDataset(input?.provenance);
     const actor = normalizeActorContext(
       input?.actor,
@@ -398,7 +458,7 @@ export class P2ListReadModelRepository {
       limit,
       cursorState,
     });
-    return buildLifecyclePage(
+    return {
       rows,
       limit,
       appliedFilters,
@@ -407,8 +467,7 @@ export class P2ListReadModelRepository {
       actor,
       provenance,
       filterFingerprint,
-      this.#cursors,
-    );
+    };
   }
 
   getLifecycleRequest(
@@ -1344,6 +1403,19 @@ function validateCursorFilter(
       "The cursor filters do not match this request.",
     );
   }
+}
+
+function buildBoundedCollection<TRow, TItem, TFilters>(
+  rows: TRow[],
+  limit: number,
+  appliedFilters: TFilters,
+  toItem: (row: TRow) => TItem,
+): P2ListBoundedCollection<TItem, TFilters> {
+  return {
+    items: rows.slice(0, limit).map(toItem),
+    hasMore: rows.length > limit,
+    appliedFilters,
+  };
 }
 
 function buildEmployeePage(

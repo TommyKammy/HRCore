@@ -65,12 +65,143 @@ const lifecycleResponse: LifecycleRequestListResponse = {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   window.history.replaceState(null, "", "/");
 });
 
+function stubBrowserDownload() {
+  const createObjectURL = vi.fn(() => "blob:bounded-export");
+  const revokeObjectURL = vi.fn();
+  const NativeUrl = URL;
+  class DownloadUrl extends NativeUrl {
+    static createObjectURL = createObjectURL;
+    static revokeObjectURL = revokeObjectURL;
+  }
+  vi.stubGlobal("URL", DownloadUrl);
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => undefined);
+  return { createObjectURL, revokeObjectURL, click };
+}
+
 describe("employee list screen", () => {
+  it("confirms a reason and downloads the server-owned bounded CSV", async () => {
+    const download = stubBrowserDownload();
+    const filteredResponse: EmployeeListResponse = {
+      ...employeeResponse,
+      appliedFilters: {
+        organizationCode: "ORG-SYNTHETIC",
+        employmentStatus: "active",
+        asOf: "2026-07-26",
+      },
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        if (String(input) === "/exports/employee-list") {
+          return new Response("employee_id\nEMP-001\n", {
+            headers: {
+              "content-type": "text/csv; charset=utf-8",
+              "content-disposition":
+                'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+              "x-hrcore-correlation-id": "employee-export-correlation",
+              "x-hrcore-export-schema-version": "p2list_export_v1",
+            },
+          });
+        }
+        return Response.json(filteredResponse);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<EmployeeListView personaId="hr-operator" onOpenEmployee={null} />);
+    await screen.findByText("Synthetic Employee 001");
+    await user.click(screen.getByRole("button", { name: "CSV出力" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "出力理由" }),
+      "operational_reconciliation",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+
+    expect(
+      await screen.findByText(/ダウンロードを開始しました/u),
+    ).toBeVisible();
+    const exportCall = fetchMock.mock.calls.find(
+      ([input]) => String(input) === "/exports/employee-list",
+    );
+    expect(exportCall?.[1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          filters: filteredResponse.appliedFilters,
+          reasonCode: "operational_reconciliation",
+        }),
+      }),
+    );
+    expect(download.createObjectURL).toHaveBeenCalledOnce();
+    expect(download.click).toHaveBeenCalledOnce();
+    expect(download.revokeObjectURL).toHaveBeenCalledWith(
+      "blob:bounded-export",
+    );
+  });
+
+  it("cancels an in-flight export before an unmounted result can download", async () => {
+    const download = stubBrowserDownload();
+    const filteredResponse: EmployeeListResponse = {
+      ...employeeResponse,
+      appliedFilters: {
+        organizationCode: "ORG-SYNTHETIC",
+        asOf: "2026-07-26",
+      },
+    };
+    let resolveExport: ((response: Response) => void) | undefined;
+    let exportSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/exports/employee-list") {
+        exportSignal = init?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolveExport = resolve;
+        });
+      }
+      return Promise.resolve(Response.json(filteredResponse));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    const view = render(
+      <EmployeeListView personaId="hr-operator" onOpenEmployee={null} />,
+    );
+    await screen.findByText("Synthetic Employee 001");
+    await user.click(screen.getByRole("button", { name: "CSV出力" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "出力理由" }),
+      "operational_reconciliation",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+    await waitFor(() => expect(resolveExport).toBeTypeOf("function"));
+
+    view.unmount();
+    expect(exportSignal?.aborted).toBe(true);
+    resolveExport?.(
+      new Response("employee_id\nEMP-001\n", {
+        headers: {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition":
+            'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+          "x-hrcore-correlation-id": "stale-export-correlation",
+          "x-hrcore-export-schema-version": "p2list_export_v1",
+        },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(download.createObjectURL).not.toHaveBeenCalled();
+    expect(download.click).not.toHaveBeenCalled();
+  });
+
   it("loads the API, synchronizes filters and paging, and opens detail", async () => {
     window.history.replaceState(null, "", "/?view=employees&asOf=2026-01-01");
     vi.stubEnv(
@@ -407,6 +538,50 @@ describe("employee list screen", () => {
 });
 
 describe("lifecycle list screen", () => {
+  it("shows the bounded denial reason and correlation without downloading", async () => {
+    const download = stubBrowserDownload();
+    const filteredResponse: LifecycleRequestListResponse = {
+      ...lifecycleResponse,
+      appliedFilters: {
+        organizationCode: "ORG-LIFECYCLE",
+        status: ["submitted"],
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/exports/lifecycle-request-list") {
+        return Response.json(
+          {
+            code: "export_row_limit_exceeded",
+            message: "private server text",
+            correlationId: "lifecycle-export-denied",
+          },
+          { status: 422 },
+        );
+      }
+      return Response.json(filteredResponse);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <LifecycleListView personaId="hr-operator" onOpenRequest={vi.fn()} />,
+    );
+    await screen.findByText("Synthetic Lifecycle Subject");
+    await user.click(screen.getByRole("button", { name: "CSV出力" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "出力理由" }),
+      "uat_reconciliation",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+
+    expect(
+      await screen.findByText(/対象が 100 件を超えています/u),
+    ).toBeVisible();
+    expect(screen.getByText(/lifecycle-export-denied/u)).toBeVisible();
+    expect(screen.queryByText(/private server text/u)).not.toBeInTheDocument();
+    expect(download.createObjectURL).not.toHaveBeenCalled();
+  });
+
   it("filters by type, status, and date then opens the existing workflow", async () => {
     vi.stubGlobal(
       "fetch",

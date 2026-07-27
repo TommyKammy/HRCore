@@ -81,6 +81,7 @@ const requiredColumnsByTable = {
     "resource_type",
     "correlation_id",
     "policy_decision",
+    "export_schema_version",
     "poc_marker",
   ],
   writeback_event: [

@@ -55,6 +55,10 @@ import {
   p2ListSyntheticProvenanceContract,
   p2ListUnknownQueryParameterPolicy,
 } from "./p2list-contract.js";
+import {
+  p2ListEmployeeExportColumns,
+  p2ListLifecycleExportColumns,
+} from "./p2list-export.js";
 
 interface OpenApiSchema {
   type?: string | string[];
@@ -158,6 +162,7 @@ interface OpenApiOperation {
   "x-hrcore-required-permission"?: string;
   "x-hrcore-required-permissions"?: string[];
   "x-hrcore-export-schema-version"?: string;
+  "x-hrcore-export-column-allowlist"?: string[];
   "x-hrcore-maximum-rows"?: number;
   "x-hrcore-meaningful-filter-any-of"?: string[];
 }
@@ -943,7 +948,10 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
       p2ListSyntheticProvenanceContract,
     );
     assert.equal(operation["x-hrcore-readiness"], p2ListReadiness);
-    assert.equal(operation["x-hrcore-implementation-status"], "contract_only");
+    assert.equal(
+      operation["x-hrcore-implementation-status"],
+      "bounded_runtime",
+    );
     assert.match(operation.description, /server-authorized|server-authorized/);
   }
 
@@ -996,6 +1004,14 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
     p2ListPermissions.lifecycleRequestListExport,
     p2ListPermissions.csvDownload,
   ]);
+  assert.deepEqual(
+    employeeExport["x-hrcore-export-column-allowlist"],
+    p2ListEmployeeExportColumns,
+  );
+  assert.deepEqual(
+    lifecycleExport["x-hrcore-export-column-allowlist"],
+    p2ListLifecycleExportColumns,
+  );
   assert.deepEqual(employeeExport["x-hrcore-meaningful-filter-any-of"], [
     "employeeId",
     "organizationCode",
@@ -1526,6 +1542,7 @@ test("P2LIST runtime exposes bounded employee and lifecycle collection APIs", as
     { method: "POST" as const, url: "/exports/lifecycle-request-list" },
   ]) {
     const response = await app.inject(request);
-    assert.equal(response.statusCode, 404);
+    assert.equal(response.statusCode, 401);
+    assert.equal(response.json().code, "actor_context_required");
   }
 });

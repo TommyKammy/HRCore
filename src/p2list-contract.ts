@@ -21,6 +21,7 @@ export const p2ListExportReasonCodes = [
   "authorized_case_support",
   "data_quality_investigation",
 ] as const;
+export type P2ListExportReasonCode = (typeof p2ListExportReasonCodes)[number];
 
 export const p2ListPermissions = {
   employeeListRead: "employee:list:read",

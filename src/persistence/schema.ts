@@ -648,6 +648,9 @@ export const p2list_audit_event = sqliteTable(
       enum: ["allow", "deny"],
     }).notNull(),
     reasonCode: text("reason_code"),
+    exportSchemaVersion: text("export_schema_version", {
+      enum: ["p2list_export_v1"],
+    }),
     pocMarker: text("poc_marker", { enum: ["synthetic_poc"] })
       .notNull()
       .default("synthetic_poc"),
@@ -713,6 +716,10 @@ export const p2list_audit_event = sqliteTable(
     check(
       "p2list_audit_event_reason_code_non_empty",
       sql`${table.reasonCode} is null or length(${table.reasonCode}) > 0`,
+    ),
+    check(
+      "p2list_audit_event_export_schema_version_allowed",
+      sql`${table.exportSchemaVersion} is null or ${table.exportSchemaVersion} = 'p2list_export_v1'`,
     ),
     check(
       "p2list_audit_event_poc_marker_allowed",

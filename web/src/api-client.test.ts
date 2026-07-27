@@ -4,7 +4,9 @@ import {
   ApiClientError,
   createP2ListRequestInit,
   fetchEmployeeDetail,
+  fetchEmployeeExport,
   fetchEmployees,
+  fetchLifecycleExport,
   fetchLifecycleRequestDetail,
   fetchLifecycleRequests,
   fetchOpenApiContract,
@@ -81,6 +83,8 @@ describe("OpenAPI contract API client", () => {
     "/employees/{employeeId}",
     "/lifecycle/transaction-requests",
     "/lifecycle/transaction-requests/{requestId}",
+    "/exports/employee-list",
+    "/exports/lifecycle-request-list",
   ])("rejects a contract missing %s", async (missingPath) => {
     const paths: Record<string, unknown> = {
       ...repositoryOwnedApiContract.paths,
@@ -115,6 +119,150 @@ describe("OpenAPI contract API client", () => {
     );
 
     await expect(fetchOpenApiContract()).rejects.toBeInstanceOf(ApiClientError);
+  });
+});
+
+describe("bounded export API client", () => {
+  it("posts only canonical filters and a reason then validates the CSV artifact", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("employee_id,display_name\nEMP-001,Synthetic Employee\n", {
+          status: 200,
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition":
+              'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+            "x-hrcore-correlation-id": "employee-export-correlation",
+            "x-hrcore-export-schema-version": "p2list_export_v1",
+          },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchEmployeeExport(
+        {
+          organizationCode: "ORG-001",
+          employmentStatus: "active",
+          asOf: "2026-07-26",
+        },
+        "operational_reconciliation",
+        { headers: { authorization: "Bearer export-token" } },
+      ),
+    ).resolves.toEqual({
+      csv: "employee_id,display_name\nEMP-001,Synthetic Employee\n",
+      fileName: "hrcore-bounded-employees-p2list_export_v1.csv",
+      schemaVersion: "p2list_export_v1",
+      correlationId: "employee-export-correlation",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/exports/employee-list",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          filters: {
+            organizationCode: "ORG-001",
+            employmentStatus: "active",
+            asOf: "2026-07-26",
+          },
+          reasonCode: "operational_reconciliation",
+        }),
+      }),
+    );
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("authorization")).toBe("Bearer export-token");
+    expect(headers.get("accept")).toBe("text/csv");
+    expect(headers.get("content-type")).toBe("application/json");
+  });
+
+  it("supports lifecycle export and preserves safe denial details", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("transaction_request_id\nrequest-001\n", {
+          status: 200,
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition":
+              'attachment; filename="hrcore-bounded-lifecycle-requests-p2list_export_v1.csv"',
+            "x-hrcore-correlation-id": "lifecycle-export-correlation",
+            "x-hrcore-export-schema-version": "p2list_export_v1",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            code: "export_row_limit_exceeded",
+            correlationId: "payload-correlation-must-not-win",
+            privateFilter: "must not reach the error",
+          },
+          {
+            status: 422,
+            headers: {
+              "x-hrcore-correlation-id": "denied-export-correlation",
+            },
+          },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchLifecycleExport(
+        {
+          organizationCode: "ORG-001",
+          status: ["submitted"],
+        },
+        "uat_reconciliation",
+      ),
+    ).resolves.toMatchObject({
+      fileName: "hrcore-bounded-lifecycle-requests-p2list_export_v1.csv",
+      correlationId: "lifecycle-export-correlation",
+    });
+
+    const denied = fetchEmployeeExport(
+      { organizationCode: "ORG-TOO-MANY", asOf: "2026-07-26" },
+      "data_quality_investigation",
+    );
+    await expect(denied).rejects.toMatchObject({
+      status: 422,
+      code: "export_row_limit_exceeded",
+      correlationId: "denied-export-correlation",
+      message: "Request failed for /exports/employee-list: 422",
+    });
+    await expect(denied).rejects.not.toHaveProperty(
+      "message",
+      expect.stringMatching(/ORG-TOO-MANY|privateFilter/u),
+    );
+  });
+
+  it("rejects a successful response with untrusted artifact headers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("<html>not csv</html>", {
+            headers: {
+              "content-type": "text/html",
+              "content-disposition":
+                'attachment; filename="../../private.html"',
+              "x-hrcore-correlation-id": "malformed-export-correlation",
+              "x-hrcore-export-schema-version": "future_schema",
+            },
+          }),
+      ),
+    );
+
+    await expect(
+      fetchEmployeeExport(
+        { employeeId: "EMP-001", asOf: "2026-07-26" },
+        "authorized_case_support",
+      ),
+    ).rejects.toEqual(
+      new ApiClientError(
+        "Response contract did not match the repository-owned shape for /exports/employee-list.",
+      ),
+    );
   });
 });
 

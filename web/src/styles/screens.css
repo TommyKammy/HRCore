@@ -772,6 +772,105 @@ td code {
   font-weight: 700;
 }
 
+.bounded-export {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 20px;
+  border-left: 3px solid var(--accent);
+}
+
+.bounded-export > div:first-child p,
+.bounded-export-confirmation > p {
+  max-width: 72ch;
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.bounded-export > button,
+.bounded-export-confirmation button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0 13px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.bounded-export > .secondary-button,
+.bounded-export-confirmation .secondary-button {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.bounded-export-confirmation {
+  display: grid;
+  width: min(420px, 46vw);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.bounded-export-confirmation label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.bounded-export-confirmation select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.76rem;
+}
+
+.bounded-export-confirmation > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bounded-export button:disabled,
+.bounded-export select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.bounded-export-feedback {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.bounded-export-feedback code {
+  overflow-wrap: anywhere;
+}
+
+.bounded-export-feedback.export-error {
+  color: var(--danger);
+}
+
+.bounded-export-feedback.export-success {
+  color: var(--success);
+}
+
 .collection-feedback {
   display: flex;
   min-height: 86px;

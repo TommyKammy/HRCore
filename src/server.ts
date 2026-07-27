@@ -35,6 +35,7 @@ export async function buildServerApp() {
       onboardingDb: writebackDb,
       writebackDb,
       p2ListEmployeeApi: p2ListRuntimes.employee,
+      p2ListExportApi: p2ListRuntimes.export,
       p2ListLifecycleApi: p2ListRuntimes.lifecycle,
     });
     app.addHook("onClose", async () => {

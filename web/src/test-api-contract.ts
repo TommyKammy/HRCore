@@ -9,5 +9,7 @@ export const repositoryOwnedApiContract = {
     "/employees/{employeeId}": { get: {} },
     "/lifecycle/transaction-requests": { get: {} },
     "/lifecycle/transaction-requests/{requestId}": { get: {} },
+    "/exports/employee-list": { post: {} },
+    "/exports/lifecycle-request-list": { post: {} },
   },
 } satisfies ApiContract;

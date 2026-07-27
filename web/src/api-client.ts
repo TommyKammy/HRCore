@@ -1,5 +1,9 @@
 import type { BoundedPersonaId } from "./persona";
-import { p2ListMaximumLimit } from "../../src/p2list-contract";
+import {
+  p2ListExportSchemaVersion,
+  p2ListMaximumLimit,
+  type P2ListExportReasonCode,
+} from "../../src/p2list-contract";
 
 export type ApiPath =
   | "/health"
@@ -8,10 +12,14 @@ export type ApiPath =
   | "/lifecycle/transaction-requests";
 type ApiOperationPath =
   | ApiPath
+  | "/exports/employee-list"
+  | "/exports/lifecycle-request-list"
   | "/employees/{employeeId}"
   | "/lifecycle/transaction-requests/{requestId}";
 type ApiRequestPath =
   | ApiPath
+  | "/exports/employee-list"
+  | "/exports/lifecycle-request-list"
   | `${ApiPath}?${string}`
   | `/employees/${string}`
   | `/lifecycle/transaction-requests/${string}`;
@@ -152,13 +160,25 @@ export interface LifecycleRequestDetailResponse {
   correlationId: string;
 }
 
+export type EmployeeExportFilters = EmployeeListResponse["appliedFilters"];
+export type LifecycleExportFilters =
+  LifecycleRequestListResponse["appliedFilters"];
+
+export interface BoundedExportArtifact {
+  csv: string;
+  fileName: string;
+  schemaVersion: typeof p2ListExportSchemaVersion;
+  correlationId: string;
+}
+
 export class ApiClientError extends Error {
   declare readonly status?: number;
   declare readonly correlationId?: string;
+  declare readonly code?: string;
 
   constructor(
     message: string,
-    options?: { status?: number; correlationId?: string },
+    options?: { status?: number; correlationId?: string; code?: string },
   ) {
     super(message);
     this.name = "ApiClientError";
@@ -167,6 +187,9 @@ export class ApiClientError extends Error {
     }
     if (options?.correlationId !== undefined) {
       this.correlationId = options.correlationId;
+    }
+    if (options?.code !== undefined) {
+      this.code = options.code;
     }
   }
 }
@@ -177,6 +200,10 @@ const requiredApiContractPaths = [
   "/employees/{employeeId}",
   "/lifecycle/transaction-requests",
   "/lifecycle/transaction-requests/{requestId}",
+] as const;
+const requiredApiContractPostPaths = [
+  "/exports/employee-list",
+  "/exports/lifecycle-request-list",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -462,10 +489,10 @@ async function readJson<T>(
   });
 
   if (!response.ok) {
-    const correlationId = await readErrorCorrelationId(response);
+    const errorDetails = await readErrorDetails(response);
     throw new ApiClientError(
       `Request failed for ${operation}: ${response.status}`,
-      { status: response.status, correlationId },
+      { status: response.status, ...errorDetails },
     );
   }
 
@@ -478,20 +505,33 @@ async function readJson<T>(
   return payload as T;
 }
 
-async function readErrorCorrelationId(
+async function readErrorDetails(
   response: Response,
-): Promise<string | undefined> {
-  const headerValue = response.headers.get("x-correlation-id")?.trim();
-  if (headerValue) {
-    return headerValue;
-  }
+): Promise<{ correlationId?: string; code?: string }> {
+  const headerValue =
+    response.headers.get("x-hrcore-correlation-id")?.trim() ||
+    response.headers.get("x-correlation-id")?.trim();
   try {
     const payload: unknown = await response.json();
-    return isRecord(payload) && isNonEmptyString(payload.correlationId)
-      ? payload.correlationId
-      : undefined;
+    if (!isRecord(payload)) {
+      return headerValue ? { correlationId: headerValue } : {};
+    }
+    const correlationId = headerValue
+      ? headerValue
+      : isNonEmptyString(payload.correlationId)
+        ? payload.correlationId
+        : undefined;
+    const code =
+      typeof payload.code === "string" &&
+      /^[a-z][a-z0-9_]{0,63}$/u.test(payload.code)
+        ? payload.code
+        : undefined;
+    return {
+      ...(correlationId ? { correlationId } : {}),
+      ...(code ? { code } : {}),
+    };
   } catch {
-    return undefined;
+    return headerValue ? { correlationId: headerValue } : {};
   }
 }
 
@@ -574,6 +614,89 @@ export async function fetchLifecycleRequestDetail(
   );
 }
 
+export async function fetchEmployeeExport(
+  filters: EmployeeExportFilters,
+  reasonCode: P2ListExportReasonCode,
+  init?: RequestInit,
+): Promise<BoundedExportArtifact> {
+  return fetchBoundedExport(
+    "/exports/employee-list",
+    filters,
+    reasonCode,
+    init,
+  );
+}
+
+export async function fetchLifecycleExport(
+  filters: LifecycleExportFilters,
+  reasonCode: P2ListExportReasonCode,
+  init?: RequestInit,
+): Promise<BoundedExportArtifact> {
+  return fetchBoundedExport(
+    "/exports/lifecycle-request-list",
+    filters,
+    reasonCode,
+    init,
+  );
+}
+
+async function fetchBoundedExport(
+  path: "/exports/employee-list" | "/exports/lifecycle-request-list",
+  filters: EmployeeExportFilters | LifecycleExportFilters,
+  reasonCode: P2ListExportReasonCode,
+  init?: RequestInit,
+): Promise<BoundedExportArtifact> {
+  const headers = new Headers(init?.headers);
+  headers.set("accept", "text/csv");
+  headers.set("content-type", "application/json");
+  const response = await fetch(path, {
+    ...init,
+    method: "POST",
+    headers,
+    body: JSON.stringify({ filters, reasonCode }),
+  });
+  if (!response.ok) {
+    const errorDetails = await readErrorDetails(response);
+    throw new ApiClientError(`Request failed for ${path}: ${response.status}`, {
+      status: response.status,
+      ...errorDetails,
+    });
+  }
+
+  const contentType = response.headers
+    .get("content-type")
+    ?.toLowerCase()
+    .replaceAll(" ", "");
+  const schemaVersion = response.headers.get("x-hrcore-export-schema-version");
+  const correlationId = response.headers.get("x-hrcore-correlation-id")?.trim();
+  const fileName = parseExportFileName(
+    response.headers.get("content-disposition"),
+  );
+  if (
+    contentType !== "text/csv;charset=utf-8" ||
+    schemaVersion !== p2ListExportSchemaVersion ||
+    !correlationId ||
+    !fileName
+  ) {
+    throw new ApiClientError(
+      `Response contract did not match the repository-owned shape for ${path}.`,
+    );
+  }
+  return {
+    csv: await response.text(),
+    fileName,
+    schemaVersion,
+    correlationId,
+  };
+}
+
+function parseExportFileName(value: string | null): string | undefined {
+  const match = /^attachment; filename="(?<fileName>[a-z0-9._-]+\.csv)"$/u.exec(
+    value ?? "",
+  );
+  return match?.groups?.fileName;
+}
+
 export async function fetchOpenApiContract(): Promise<ApiContract> {
   const contract = await readJson<ApiContract>(
     "/openapi.json",
@@ -587,6 +710,10 @@ export async function fetchOpenApiContract(): Promise<ApiContract> {
     requiredApiContractPaths.some((path) => {
       const pathItem = contract.paths[path];
       return !isRecord(pathItem) || !isRecord(pathItem.get);
+    }) ||
+    requiredApiContractPostPaths.some((path) => {
+      const pathItem = contract.paths[path];
+      return !isRecord(pathItem) || !isRecord(pathItem.post);
     })
   ) {
     throw new ApiClientError(
