@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   fingerprintP2ListCollectionRequest,
   fingerprintP2ListRequestInput,
+  fingerprintP2ListRequestResult,
   resolveP2ListCorrelationAcceptedAt,
 } from "./p2list-request-identity.js";
 
@@ -46,6 +47,32 @@ test("P2LIST collection identity binds opaque pagination without retaining raw c
   assert.equal(firstPage, retry);
   assert.notEqual(firstPage, nextPage);
   assert.doesNotMatch(firstPage, /opaque-cursor/u);
+});
+
+test("P2LIST result identity distinguishes changed same-size responses", () => {
+  const requestFingerprint = fingerprintP2ListCollectionRequest(
+    "employee.list",
+    { organizationCode: "ORG-001" },
+  );
+  const first = fingerprintP2ListRequestResult(
+    "employee.list",
+    requestFingerprint,
+    [{ employeeId: "EMP-001", displayName: "First Name" }],
+  );
+  const retry = fingerprintP2ListRequestResult(
+    "employee.list",
+    requestFingerprint,
+    [{ displayName: "First Name", employeeId: "EMP-001" }],
+  );
+  const changed = fingerprintP2ListRequestResult(
+    "employee.list",
+    requestFingerprint,
+    [{ employeeId: "EMP-001", displayName: "Changed Name" }],
+  );
+
+  assert.equal(first, retry);
+  assert.notEqual(first, changed);
+  assert.doesNotMatch(first, /First Name|EMP-001/u);
 });
 
 test("P2LIST correlation clock reuses the first server acceptance time", async () => {

@@ -39,6 +39,17 @@ export function fingerprintP2ListCollectionRequest(
   });
 }
 
+export function fingerprintP2ListRequestResult(
+  operation: P2ListRequestOperation,
+  requestFingerprint: string,
+  result: unknown,
+): string {
+  return fingerprintP2ListRequestInput(operation, {
+    requestFingerprint,
+    resultFingerprint: fingerprintP2ListValue(result),
+  });
+}
+
 export async function resolveP2ListCorrelationAcceptedAt(
   runtime: P2ListCorrelationClock | undefined,
   correlationId: string,

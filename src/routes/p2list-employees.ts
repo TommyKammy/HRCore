@@ -26,6 +26,7 @@ import {
 import {
   fingerprintP2ListCollectionRequest,
   fingerprintP2ListRequestInput,
+  fingerprintP2ListRequestResult,
   resolveP2ListCorrelationAcceptedAt,
 } from "../p2list-request-identity.js";
 import {
@@ -179,10 +180,17 @@ export function registerP2ListEmployeeRoutes(
         actorRole: actor.actorRole,
         evaluatedPermission: p2ListPermissions.employeeListRead,
         dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-        filterFingerprint: fingerprintP2ListCollectionRequest(
+        filterFingerprint: fingerprintP2ListRequestResult(
           "employee.list",
-          page.appliedFilters,
-          query.cursor,
+          fingerprintP2ListCollectionRequest(
+            "employee.list",
+            page.appliedFilters,
+            query.cursor,
+          ),
+          {
+            items: page.items,
+            pageInfo: page.pageInfo,
+          },
         ),
         sort: `${query.sort ?? "employeeId"}:${query.direction ?? "asc"}`,
         pageSize: page.pageInfo.limit,
@@ -343,9 +351,13 @@ export function registerP2ListEmployeeRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.employeeDetailRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintP2ListRequestInput(
+          filterFingerprint: fingerprintP2ListRequestResult(
             "employee.detail",
-            detail.appliedFilters,
+            fingerprintP2ListRequestInput(
+              "employee.detail",
+              detail.appliedFilters,
+            ),
+            item,
           ),
           rowCount: 1,
           resourceType: "employee",

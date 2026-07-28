@@ -37,6 +37,7 @@ import {
 } from "../p2list-read-model-repository.js";
 import {
   fingerprintP2ListRequestInput,
+  fingerprintP2ListRequestResult,
   resolveP2ListCorrelationAcceptedAt,
   type P2ListCorrelationClock,
   type P2ListRequestOperation,
@@ -179,12 +180,13 @@ export function registerP2ListExportRoutes(
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintP2ListRequestInput(
+        const filterFingerprint = fingerprintP2ListRequestResult(
           "employee.export",
-          {
+          fingerprintP2ListRequestInput("employee.export", {
             filters: collection.appliedFilters,
             reasonCode: input.reasonCode,
-          },
+          }),
+          collection.items,
         );
         const auditContext = {
           occurredAt,
@@ -277,12 +279,13 @@ export function registerP2ListExportRoutes(
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintP2ListRequestInput(
+        const filterFingerprint = fingerprintP2ListRequestResult(
           "lifecycleRequest.export",
-          {
+          fingerprintP2ListRequestInput("lifecycleRequest.export", {
             filters: collection.appliedFilters,
             reasonCode: input.reasonCode,
-          },
+          }),
+          collection.items,
         );
         const auditContext = {
           occurredAt,

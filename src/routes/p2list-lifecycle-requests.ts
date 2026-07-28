@@ -26,6 +26,7 @@ import {
 import {
   fingerprintP2ListCollectionRequest,
   fingerprintP2ListRequestInput,
+  fingerprintP2ListRequestResult,
 } from "../p2list-request-identity.js";
 import {
   fingerprintP2ListAuthorizationScope,
@@ -177,10 +178,17 @@ export function registerP2ListLifecycleRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintP2ListCollectionRequest(
+          filterFingerprint: fingerprintP2ListRequestResult(
             "lifecycleRequest.list",
-            page.appliedFilters,
-            query.cursor,
+            fingerprintP2ListCollectionRequest(
+              "lifecycleRequest.list",
+              page.appliedFilters,
+              query.cursor,
+            ),
+            {
+              items: page.items,
+              pageInfo: page.pageInfo,
+            },
           ),
           sort: `${query.sort ?? "requestedAt"}:${query.direction ?? "desc"}`,
           pageSize: page.pageInfo.limit,
@@ -343,9 +351,12 @@ export function registerP2ListLifecycleRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintP2ListRequestInput(
+          filterFingerprint: fingerprintP2ListRequestResult(
             "lifecycleRequest.detail",
-            { transactionRequestId: requestId },
+            fingerprintP2ListRequestInput("lifecycleRequest.detail", {
+              transactionRequestId: requestId,
+            }),
+            item,
           ),
           rowCount: 1,
           resourceType: "lifecycleRequest",
