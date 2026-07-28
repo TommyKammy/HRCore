@@ -6,6 +6,7 @@ import {
   createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchLifecycleRequestDetail,
+  isCompletedP2ListDenial,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import { detailRouteErrorMessage } from "./detail-route-error";
@@ -96,6 +97,12 @@ export function LifecycleDetailRoute({
       .catch((caught: unknown) => {
         if (controller.signal.aborted) {
           return;
+        }
+        if (isCompletedP2ListDenial(caught)) {
+          actionRef.current = {
+            ...actionRef.current,
+            correlationId: createP2ListCorrelationId(),
+          };
         }
         setState({
           request: null,
