@@ -70,6 +70,7 @@ const auditedExportParserErrorCodes = new Set([
   "FST_ERR_CTP_EMPTY_JSON_BODY",
   "FST_ERR_CTP_INVALID_JSON_BODY",
 ]);
+const p2ListExportBodyFingerprintMaximumBytes = 1_048_577;
 
 export interface P2ListExportAuditEvent {
   eventId: string;
@@ -405,6 +406,7 @@ function createExportBodyIdentityCapture(
   >,
 ) {
   const fingerprints = new WeakMap<FastifyRequest, string>();
+  const incrementalFingerprints = new WeakMap<FastifyRequest, () => string>();
   const fallbackFingerprint = fingerprintP2ListRequestInput(
     operation,
     undefined,
@@ -418,19 +420,28 @@ function createExportBodyIdentityCapture(
     ): Promise<Readable> {
       const hash = createHash("sha256");
       let receivedEncodedLength = 0;
+      let fingerprintedLength = 0;
+      const snapshotFingerprint = () =>
+        fingerprintP2ListRequestInput(operation, {
+          rawBodyFingerprint: hash.copy().digest("base64url"),
+        });
+      incrementalFingerprints.set(request, snapshotFingerprint);
       const transformedPayload = new Transform({
         transform(chunk, _encoding, callback) {
-          hash.update(chunk);
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          const remaining =
+            p2ListExportBodyFingerprintMaximumBytes - fingerprintedLength;
+          if (remaining > 0) {
+            const boundedChunk = bytes.subarray(0, remaining);
+            hash.update(boundedChunk);
+            fingerprintedLength += boundedChunk.length;
+          }
           receivedEncodedLength += chunk.length;
           callback(null, chunk);
         },
         flush(callback) {
-          fingerprints.set(
-            request,
-            fingerprintP2ListRequestInput(operation, {
-              rawBodyFingerprint: hash.digest("base64url"),
-            }),
-          );
+          fingerprints.set(request, snapshotFingerprint());
+          incrementalFingerprints.delete(request);
           callback();
         },
       });
@@ -441,7 +452,14 @@ function createExportBodyIdentityCapture(
       return transformedPayload;
     },
     read(request: FastifyRequest): string {
-      return fingerprints.get(request) ?? fallbackFingerprint;
+      const fingerprint = fingerprints.get(request);
+      if (fingerprint) return fingerprint;
+      const snapshotFingerprint = incrementalFingerprints.get(request);
+      if (!snapshotFingerprint) return fallbackFingerprint;
+      const snapshot = snapshotFingerprint();
+      fingerprints.set(request, snapshot);
+      incrementalFingerprints.delete(request);
+      return snapshot;
     },
   };
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Writable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import test, { type TestContext } from "node:test";
 
 import Fastify from "fastify";
@@ -245,7 +245,18 @@ test("parser-rejected exports use the bounded 400 contract and denial audit", as
       token: "lifecycle",
       resourceType: "lifecycleRequest",
       contentType: "application/json",
-      payload: `{"padding":"${"x".repeat(1_048_576)}"}`,
+      payload: Readable.from([
+        Buffer.from(`{"padding":"${"x".repeat(1_048_576)}"}`),
+      ]),
+    },
+    {
+      url: "/exports/lifecycle-request-list",
+      token: "lifecycle",
+      resourceType: "lifecycleRequest",
+      contentType: "application/json",
+      payload: Readable.from([
+        Buffer.from(`{"padding":"${"y".repeat(1_048_576)}"}`),
+      ]),
     },
   ] as const;
 
@@ -285,6 +296,10 @@ test("parser-rejected exports use the bounded 400 contract and denial audit", as
       reasonCode: "invalid_filter",
       correlationId: `export-correlation-${index + 1}`,
     })),
+  );
+  assert.notEqual(
+    harness.auditEvents.at(-2)?.filterFingerprint,
+    harness.auditEvents.at(-1)?.filterFingerprint,
   );
 });
 
