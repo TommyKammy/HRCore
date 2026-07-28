@@ -174,6 +174,14 @@ test("GET /lifecycle/transaction-requests binds cursor to filters and actor cont
     harness.auditEvents.at(-1)?.eventType,
     "lifecycle_request_list.page_requested",
   );
+  assert.notEqual(
+    harness.auditEvents[0]?.filterFingerprint,
+    harness.auditEvents.at(-1)?.filterFingerprint,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    new RegExp(cursor, "u"),
+  );
 
   for (const fixture of [
     {
@@ -294,6 +302,15 @@ test("GET /lifecycle/transaction-requests fails closed across actor, scope, and 
       (event) => event.eventType === "authorization.denied",
     ).length,
     5,
+  );
+  const permissionDenial = harness.auditEvents.find(
+    (event) => event.actorId === "actor-without-list-permission",
+  );
+  assert.equal(permissionDenial?.sort, "requestedAt:desc");
+  assert.equal(permissionDenial?.pageSize, 25);
+  assert.match(
+    permissionDenial?.filterFingerprint ?? "",
+    /^[A-Za-z0-9_-]{43}$/u,
   );
 });
 

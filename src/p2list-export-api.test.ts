@@ -426,6 +426,41 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
   );
 });
 
+test("bounded export denials fingerprint parsed filters and requested reasons", async (t) => {
+  const harness = await createHarness(t, {
+    actors: { employee: fullEmployeeActor },
+    listEmployees() {
+      return employeePage(true);
+    },
+  });
+
+  for (const payload of [
+    exportPayload("ORG-TOO-MANY", "uat_reconciliation"),
+    exportPayload("ORG-OTHER", "operational_reconciliation"),
+    exportPayload("ORG-TOO-MANY", "uat_reconciliation"),
+  ]) {
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/exports/employee-list",
+      headers: { authorization: "Bearer employee" },
+      payload,
+    });
+    assert.equal(response.statusCode, 422);
+    assert.equal(response.json().code, "export_row_limit_exceeded");
+  }
+
+  const fingerprints = harness.auditEvents.map(
+    (event) => event.filterFingerprint,
+  );
+  assert.match(fingerprints[0] ?? "", /^[A-Za-z0-9_-]{43}$/u);
+  assert.notEqual(fingerprints[0], fingerprints[1]);
+  assert.equal(fingerprints[0], fingerprints[2]);
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    /ORG-TOO-MANY|ORG-OTHER|uat_reconciliation|operational_reconciliation/u,
+  );
+});
+
 test("lifecycle export requires a contract-approved anchor filter", async (t) => {
   const harness = await createHarness(t, {
     actors: { lifecycle: fullLifecycleActor },

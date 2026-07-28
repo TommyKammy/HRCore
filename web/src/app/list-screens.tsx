@@ -454,6 +454,7 @@ function BoundedExportControl({
   requestExport: (
     reasonCode: P2ListExportReasonCode,
     signal: AbortSignal,
+    correlationId: string,
   ) => Promise<BoundedExportArtifact>;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -465,6 +466,10 @@ function BoundedExportControl({
     correlationId?: string;
   } | null>(null);
   const exportController = useRef<AbortController | null>(null);
+  const exportAction = useRef<{
+    reasonCode: P2ListExportReasonCode;
+    correlationId: string;
+  } | null>(null);
 
   useEffect(
     () => () => {
@@ -490,9 +495,20 @@ function BoundedExportControl({
     exportController.current = controller;
     setSubmitting(true);
     setFeedback(null);
+    if (exportAction.current?.reasonCode !== reasonCode) {
+      exportAction.current = {
+        reasonCode,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     try {
-      const artifact = await requestExport(reasonCode, controller.signal);
+      const artifact = await requestExport(
+        reasonCode,
+        controller.signal,
+        exportAction.current.correlationId,
+      );
       if (controller.signal.aborted) return;
+      exportAction.current = null;
       downloadExportArtifact(artifact);
       setConfirming(false);
       setReasonCode("");
@@ -503,6 +519,9 @@ function BoundedExportControl({
       });
     } catch (caught: unknown) {
       if (controller.signal.aborted) return;
+      if (caught instanceof ApiClientError) {
+        exportAction.current = null;
+      }
       setFeedback(classifyExportError(caught));
     } finally {
       if (exportController.current === controller) {
@@ -528,6 +547,7 @@ function BoundedExportControl({
           className="secondary-button"
           type="button"
           onClick={() => {
+            exportAction.current = null;
             setConfirming(true);
             setFeedback(null);
           }}
@@ -563,6 +583,7 @@ function BoundedExportControl({
               type="button"
               disabled={submitting}
               onClick={() => {
+                exportAction.current = null;
                 setConfirming(false);
                 setReasonCode("");
                 setFeedback(null);
@@ -988,11 +1009,11 @@ export function EmployeeListView({
             state.response.appliedFilters.organizationCode,
           )}
           missingFilterMessage="従業員IDまたは組織コードで絞り込んでからCSV出力してください。"
-          requestExport={(reasonCode, signal) =>
+          requestExport={(reasonCode, signal, correlationId) =>
             fetchEmployeeExport(
               state.response!.appliedFilters,
               reasonCode,
-              createP2ListRequestInit(personaId, signal),
+              createP2ListRequestInit(personaId, signal, correlationId),
             )
           }
         />
@@ -1507,11 +1528,11 @@ export function LifecycleListView({
             state.response.appliedFilters,
           )}
           missingFilterMessage="従業員ID、組織コード、correlation、申請日時範囲、または適用日範囲で絞り込んでからCSV出力してください。"
-          requestExport={(reasonCode, signal) =>
+          requestExport={(reasonCode, signal, correlationId) =>
             fetchLifecycleExport(
               state.response!.appliedFilters,
               reasonCode,
-              createP2ListRequestInit(personaId, signal),
+              createP2ListRequestInit(personaId, signal, correlationId),
             )
           }
         />

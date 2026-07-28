@@ -23,9 +23,14 @@ const lifecycleDetailCorrelationId =
   "p2list-ui-523e4567-e89b-42d3-a456-426614174000";
 const employeeDetailAsOfCorrelationId =
   "p2list-ui-623e4567-e89b-42d3-a456-426614174000";
+const employeeListDenialCorrelationId =
+  "p2list-ui-723e4567-e89b-42d3-a456-426614174000";
+const lifecycleListDenialCorrelationId =
+  "p2list-ui-823e4567-e89b-42d3-a456-426614174000";
 const operatorToken = "p2list-observability-operator-token-0001";
 const otherTenantOperatorToken =
   "p2list-observability-other-tenant-operator-token-0001";
+const deniedOperatorToken = "p2list-observability-denied-token-00001";
 const supportToken = "p2list-observability-support-token-00001";
 
 test("P2LIST WebUI correlation is idempotently traceable through policy and bounded support evidence", async (t) => {
@@ -89,6 +94,16 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
             p2ListPermissions.lifecycleRequestDetailRead,
             p2ListPermissions.csvDownload,
           ],
+          dataScope: { organizationCodes: ["ORG-NONE"] },
+        },
+      },
+      {
+        token: deniedOperatorToken,
+        actor: {
+          actorId: "actor-observability-denied",
+          actorRole: "hr_operator",
+          tenantId: "tenant-repo-owned-synthetic",
+          permissions: [],
           dataScope: { organizationCodes: ["ORG-NONE"] },
         },
       },
@@ -167,6 +182,54 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
   assert.equal(conflictingEventTypeRetry.statusCode, 400);
   assert.equal(
     conflictingEventTypeRetry.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const deniedEmployeeList = await app.inject({
+      method: "GET",
+      url: "/employees?q=Alpha&sort=displayName&limit=50",
+      headers: {
+        authorization: `Bearer ${deniedOperatorToken}`,
+        "x-hrcore-correlation-id": employeeListDenialCorrelationId,
+      },
+    });
+    assert.equal(deniedEmployeeList.statusCode, 403);
+  }
+  const conflictingEmployeeListDenial = await app.inject({
+    method: "GET",
+    url: "/employees?q=Beta&sort=displayName&limit=50",
+    headers: {
+      authorization: `Bearer ${deniedOperatorToken}`,
+      "x-hrcore-correlation-id": employeeListDenialCorrelationId,
+    },
+  });
+  assert.equal(conflictingEmployeeListDenial.statusCode, 400);
+  assert.equal(
+    conflictingEmployeeListDenial.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const deniedLifecycleList = await app.inject({
+      method: "GET",
+      url: "/lifecycle/transaction-requests?q=Alpha&sort=effectiveDate&limit=50",
+      headers: {
+        authorization: `Bearer ${deniedOperatorToken}`,
+        "x-hrcore-correlation-id": lifecycleListDenialCorrelationId,
+      },
+    });
+    assert.equal(deniedLifecycleList.statusCode, 403);
+  }
+  const conflictingLifecycleListDenial = await app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests?q=Beta&sort=effectiveDate&limit=50",
+    headers: {
+      authorization: `Bearer ${deniedOperatorToken}`,
+      "x-hrcore-correlation-id": lifecycleListDenialCorrelationId,
+    },
+  });
+  assert.equal(conflictingLifecycleListDenial.statusCode, 400);
+  assert.equal(
+    conflictingLifecycleListDenial.json().code,
     "correlation_reuse_conflict",
   );
   const deniedEmployeeDetail = await app.inject({

@@ -10,6 +10,7 @@ import {
   fetchLifecycleRequestDetail,
   fetchLifecycleRequests,
   fetchOpenApiContract,
+  isCompletedP2ListDenial,
   type EmployeeListResponse,
   type LifecycleRequestListResponse,
 } from "./api-client";
@@ -392,6 +393,17 @@ describe("lifecycle request API client", () => {
 });
 
 describe("employee API client", () => {
+  it("treats a correlation reuse conflict as a completed denial", () => {
+    expect(
+      isCompletedP2ListDenial(
+        new ApiClientError("conflict", {
+          status: 400,
+          code: "correlation_reuse_conflict",
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("uses only the configured opaque actor token for the selected persona", () => {
     vi.stubEnv(
       "VITE_P2LIST_HR_OPERATOR_TOKEN",

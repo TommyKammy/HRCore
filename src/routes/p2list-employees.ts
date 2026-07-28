@@ -115,6 +115,7 @@ export function registerP2ListEmployeeRoutes(
     reply.header(p2ListCorrelationHeader, correlationId);
 
     let actor: P2ListActorContext | undefined;
+    let parsedQuery: ParsedEmployeeQuery | undefined;
     try {
       if (!runtime) {
         throw new P2ListReadModelError(
@@ -131,6 +132,7 @@ export function registerP2ListEmployeeRoutes(
       }
 
       const query = parseEmployeeQuery(request.query);
+      parsedQuery = query;
       const page = runtime.repository.listEmployees({
         ...query,
         actor,
@@ -160,7 +162,10 @@ export function registerP2ListEmployeeRoutes(
         actorRole: actor.actorRole,
         evaluatedPermission: p2ListPermissions.employeeListRead,
         dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-        filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
+        filterFingerprint: fingerprintEmployeeListRequest(
+          query,
+          page.appliedFilters,
+        ),
         sort: `${query.sort ?? "employeeId"}:${query.direction ?? "asc"}`,
         pageSize: page.pageInfo.limit,
         rowCount: page.items.length,
@@ -175,26 +180,41 @@ export function registerP2ListEmployeeRoutes(
         throw error;
       }
 
+      let responseError = error;
       if (runtime && authorizationAuditErrorCodes.has(error.code)) {
-        await emitAuditEvent(runtime, {
-          eventId: randomUUID(),
-          eventType: "authorization.denied",
-          eventVersion: p2ListAuditEventVersion,
-          occurredAt,
-          actorId: safeActorId(actor),
-          actorRole: safeP2ListActorRole(actor),
-          evaluatedPermission: p2ListPermissions.employeeListRead,
-          dataScopeId: safeDataScopeFingerprint(actor),
-          resourceType: "employee",
-          correlationId,
-          policyDecision: "deny",
-          reasonCode: error.code,
-          durationMs: elapsedP2ListDurationMs(startedAt),
-        });
+        responseError = await emitDenialAuditEvent(
+          runtime,
+          {
+            eventId: randomUUID(),
+            eventType: "authorization.denied",
+            eventVersion: p2ListAuditEventVersion,
+            occurredAt,
+            actorId: safeActorId(actor),
+            actorRole: safeP2ListActorRole(actor),
+            evaluatedPermission: p2ListPermissions.employeeListRead,
+            dataScopeId: safeDataScopeFingerprint(actor),
+            ...(parsedQuery
+              ? {
+                  filterFingerprint: fingerprintEmployeeListRequest(
+                    parsedQuery,
+                    parsedQuery.filters,
+                  ),
+                  sort: `${parsedQuery.sort ?? "employeeId"}:${parsedQuery.direction ?? "asc"}`,
+                  pageSize: parsedQuery.limit,
+                }
+              : {}),
+            resourceType: "employee",
+            correlationId,
+            policyDecision: "deny",
+            reasonCode: error.code,
+            durationMs: elapsedP2ListDurationMs(startedAt),
+          },
+          error,
+        );
       }
-      return reply.code(statusForError(error.code)).send({
-        code: error.code,
-        message: publicErrorMessage(error.code),
+      return reply.code(statusForError(responseError.code)).send({
+        code: responseError.code,
+        message: publicErrorMessage(responseError.code),
         correlationId,
         readiness: p2ListReadiness,
       });
@@ -308,27 +328,32 @@ export function registerP2ListEmployeeRoutes(
         if (!(error instanceof P2ListReadModelError)) {
           throw error;
         }
+        let responseError = error;
         if (runtime && authorizationAuditErrorCodes.has(error.code)) {
-          await emitAuditEvent(runtime, {
-            eventId: randomUUID(),
-            eventType: "authorization.denied",
-            eventVersion: p2ListAuditEventVersion,
-            occurredAt,
-            actorId: safeActorId(actor),
-            actorRole: safeP2ListActorRole(actor),
-            evaluatedPermission: p2ListPermissions.employeeDetailRead,
-            dataScopeId: safeDataScopeFingerprint(actor),
-            filterFingerprint: detailFilterFingerprint,
-            resourceType: "employee",
-            correlationId,
-            policyDecision: "deny",
-            reasonCode: error.code,
-            durationMs: elapsedP2ListDurationMs(startedAt),
-          });
+          responseError = await emitDenialAuditEvent(
+            runtime,
+            {
+              eventId: randomUUID(),
+              eventType: "authorization.denied",
+              eventVersion: p2ListAuditEventVersion,
+              occurredAt,
+              actorId: safeActorId(actor),
+              actorRole: safeP2ListActorRole(actor),
+              evaluatedPermission: p2ListPermissions.employeeDetailRead,
+              dataScopeId: safeDataScopeFingerprint(actor),
+              filterFingerprint: detailFilterFingerprint,
+              resourceType: "employee",
+              correlationId,
+              policyDecision: "deny",
+              reasonCode: error.code,
+              durationMs: elapsedP2ListDurationMs(startedAt),
+            },
+            error,
+          );
         }
-        return reply.code(statusForError(error.code)).send({
-          code: error.code,
-          message: publicErrorMessage(error.code),
+        return reply.code(statusForError(responseError.code)).send({
+          code: responseError.code,
+          message: publicErrorMessage(responseError.code),
           correlationId,
           readiness: p2ListReadiness,
         });
@@ -423,6 +448,19 @@ function parseEmployeeQuery(value: unknown): ParsedEmployeeQuery {
   };
 }
 
+function fingerprintEmployeeListRequest(
+  query: ParsedEmployeeQuery,
+  filters: P2ListEmployeeFilters,
+): string {
+  if (!query.cursor) {
+    return fingerprintP2ListValue(filters);
+  }
+  return fingerprintP2ListValue({
+    filters,
+    cursorFingerprint: fingerprintP2ListValue(query.cursor),
+  });
+}
+
 function readOptionalString(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -480,6 +518,25 @@ async function emitAuditEvent(
   event: P2ListEmployeeAuditEvent,
 ): Promise<void> {
   await runtime.emitAuditEvent(event);
+}
+
+async function emitDenialAuditEvent(
+  runtime: P2ListEmployeeApiRuntime,
+  event: P2ListEmployeeAuditEvent,
+  originalError: P2ListReadModelError,
+): Promise<P2ListReadModelError> {
+  try {
+    await emitAuditEvent(runtime, event);
+    return originalError;
+  } catch (auditError) {
+    if (
+      auditError instanceof P2ListReadModelError &&
+      auditError.code === "correlation_reuse_conflict"
+    ) {
+      return auditError;
+    }
+    throw auditError;
+  }
 }
 
 function invalidFilter(): P2ListReadModelError {

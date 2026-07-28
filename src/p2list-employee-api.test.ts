@@ -148,6 +148,14 @@ test("GET /employees binds pagination to filters and rejects tampered cursors", 
     harness.auditEvents.at(-1)?.eventType,
     "employee_list.page_requested",
   );
+  assert.notEqual(
+    harness.auditEvents[0]?.filterFingerprint,
+    harness.auditEvents.at(-1)?.filterFingerprint,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    new RegExp(cursor, "u"),
+  );
 
   const mismatched = await harness.app.inject({
     method: "GET",
@@ -270,6 +278,15 @@ test("GET /employees fails closed across actor, permission, and organization sco
         (event.actorId !== undefined && event.actorId.trim() !== event.actorId),
     ),
     false,
+  );
+  const permissionDenial = harness.auditEvents.find(
+    (event) => event.actorId === "actor-without-permission",
+  );
+  assert.equal(permissionDenial?.sort, "employeeId:asc");
+  assert.equal(permissionDenial?.pageSize, 25);
+  assert.match(
+    permissionDenial?.filterFingerprint ?? "",
+    /^[A-Za-z0-9_-]{43}$/u,
   );
 
   for (const token of ["person-scoped", "employee-scoped"]) {

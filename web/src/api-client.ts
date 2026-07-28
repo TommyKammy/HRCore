@@ -198,6 +198,7 @@ const completedP2ListDenialCodes = new Set([
   "actor_context_required",
   "permission_denied",
   "data_scope_denied",
+  "correlation_reuse_conflict",
 ]);
 
 export function isCompletedP2ListDenial(caught: unknown): boolean {

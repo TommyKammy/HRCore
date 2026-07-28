@@ -134,12 +134,14 @@ export function registerP2ListExportRoutes(
       const permission = employeePolicy.permission;
       reply.header(p2ListCorrelationHeader, correlationId);
       let actor: P2ListActorContext | undefined;
+      let parsedInput: ParsedExportRequest<P2ListEmployeeFilters> | undefined;
 
       try {
         const activeRuntime = requireRuntime(runtime);
         actor = await requireActor(activeRuntime, request);
         requirePermissions(actor, employeePolicy.requiredPermissions);
         const input = parseEmployeeExportRequest(request.body);
+        parsedInput = input;
         const collection = activeRuntime.repository.listEmployeesForExport({
           actor,
           provenance: activeRuntime.provenance,
@@ -155,9 +157,10 @@ export function registerP2ListExportRoutes(
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintP2ListValue(
-          collection.appliedFilters,
-        );
+        const filterFingerprint = fingerprintExportRequest({
+          filters: collection.appliedFilters,
+          reasonCode: input.reasonCode,
+        });
         const auditContext = {
           occurredAt,
           actor,
@@ -192,6 +195,9 @@ export function registerP2ListExportRoutes(
           resourceType: "employee",
           correlationId,
           startedAt,
+          requestFingerprint: parsedInput
+            ? fingerprintExportRequest(parsedInput)
+            : undefined,
         });
       }
     },
@@ -217,12 +223,14 @@ export function registerP2ListExportRoutes(
       const permission = lifecyclePolicy.permission;
       reply.header(p2ListCorrelationHeader, correlationId);
       let actor: P2ListActorContext | undefined;
+      let parsedInput: ParsedExportRequest<P2ListLifecycleFilters> | undefined;
 
       try {
         const activeRuntime = requireRuntime(runtime);
         actor = await requireActor(activeRuntime, request);
         requirePermissions(actor, lifecyclePolicy.requiredPermissions);
         const input = parseLifecycleExportRequest(request.body);
+        parsedInput = input;
         const collection =
           activeRuntime.repository.listLifecycleRequestsForExport({
             actor,
@@ -238,9 +246,10 @@ export function registerP2ListExportRoutes(
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintP2ListValue(
-          collection.appliedFilters,
-        );
+        const filterFingerprint = fingerprintExportRequest({
+          filters: collection.appliedFilters,
+          reasonCode: input.reasonCode,
+        });
         const auditContext = {
           occurredAt,
           actor,
@@ -275,6 +284,9 @@ export function registerP2ListExportRoutes(
           resourceType: "lifecycleRequest",
           correlationId,
           startedAt,
+          requestFingerprint: parsedInput
+            ? fingerprintExportRequest(parsedInput)
+            : undefined,
         });
       }
     },
@@ -509,6 +521,7 @@ async function handleExportError(
     resourceType: ExportResource;
     correlationId: string;
     startedAt: number;
+    requestFingerprint?: string;
   },
 ) {
   if (!(error instanceof P2ListReadModelError)) {
@@ -524,6 +537,7 @@ async function handleExportError(
       actorRole: safeP2ListActorRole(context.actor),
       evaluatedPermission: context.permission,
       dataScopeId: safeDataScopeFingerprint(context.actor),
+      filterFingerprint: context.requestFingerprint,
       resourceType: context.resourceType,
       correlationId: context.correlationId,
       policyDecision: "deny",
@@ -537,6 +551,15 @@ async function handleExportError(
     message: publicErrorMessage(error.code),
     correlationId: context.correlationId,
     readiness: p2ListReadiness,
+  });
+}
+
+function fingerprintExportRequest<Filters>(
+  input: ParsedExportRequest<Filters>,
+): string {
+  return fingerprintP2ListValue({
+    filters: input.filters,
+    reasonCode: input.reasonCode,
   });
 }
 
