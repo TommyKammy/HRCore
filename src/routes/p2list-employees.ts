@@ -24,6 +24,7 @@ import {
   type P2ListEmployeeQuery,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListCollectionResult,
   fingerprintP2ListCollectionRequest,
   fingerprintP2ListRequestInput,
   fingerprintP2ListRequestResult,
@@ -180,17 +181,14 @@ export function registerP2ListEmployeeRoutes(
         actorRole: actor.actorRole,
         evaluatedPermission: p2ListPermissions.employeeListRead,
         dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-        filterFingerprint: fingerprintP2ListRequestResult(
+        filterFingerprint: fingerprintP2ListCollectionResult(
           "employee.list",
           fingerprintP2ListCollectionRequest(
             "employee.list",
             page.appliedFilters,
             query.cursor,
           ),
-          {
-            items: page.items,
-            pageInfo: page.pageInfo,
-          },
+          page,
         ),
         sort: `${query.sort ?? "employeeId"}:${query.direction ?? "asc"}`,
         pageSize: page.pageInfo.limit,

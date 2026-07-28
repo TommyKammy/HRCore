@@ -63,6 +63,14 @@ interface ExportRoutePolicy {
   resourceType: ExportResource;
 }
 
+const auditedExportParserErrorCodes = new Set([
+  "FST_ERR_CTP_BODY_TOO_LARGE",
+  "FST_ERR_CTP_INVALID_MEDIA_TYPE",
+  "FST_ERR_CTP_INVALID_CONTENT_LENGTH",
+  "FST_ERR_CTP_EMPTY_JSON_BODY",
+  "FST_ERR_CTP_INVALID_JSON_BODY",
+]);
+
 export interface P2ListExportAuditEvent {
   eventId: string;
   eventType:
@@ -343,10 +351,7 @@ function createExportRouteErrorHandler(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> => {
-    if (
-      error.code !== "FST_ERR_CTP_INVALID_JSON_BODY" &&
-      error.code !== "FST_ERR_CTP_EMPTY_JSON_BODY"
-    ) {
+    if (!auditedExportParserErrorCodes.has(error.code)) {
       throw error;
     }
 

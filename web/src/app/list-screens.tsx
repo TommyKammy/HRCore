@@ -546,7 +546,7 @@ function BoundedExportControl({
       });
     } catch (caught: unknown) {
       if (controller.signal.aborted) return;
-      if (caught instanceof ApiClientError) {
+      if (isCompletedExportDenial(caught)) {
         exportAction.current = null;
       }
       setFeedback(classifyExportError(caught));
@@ -644,6 +644,31 @@ function BoundedExportControl({
         </p>
       ) : null}
     </section>
+  );
+}
+
+const completedExportDenialCodes = new Set([
+  "invalid_filter",
+  "unsupported_filter",
+  "export_filter_required",
+  "export_row_limit_exceeded",
+  "export_reason_code_required",
+  "export_reason_code_unsupported",
+  "export_field_denied",
+]);
+
+function isCompletedExportDenial(caught: unknown): boolean {
+  if (
+    !(caught instanceof ApiClientError) ||
+    caught.status === undefined ||
+    caught.status < 400 ||
+    caught.status >= 500
+  ) {
+    return false;
+  }
+  return (
+    isCompletedP2ListDenial(caught) ||
+    completedExportDenialCodes.has(caught.code ?? "")
   );
 }
 

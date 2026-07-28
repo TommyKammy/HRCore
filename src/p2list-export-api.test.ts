@@ -211,7 +211,7 @@ test("POST /exports/lifecycle-request-list returns canonical lifecycle columns",
   );
 });
 
-test("malformed JSON exports use the bounded 400 contract and denial audit", async (t) => {
+test("parser-rejected exports use the bounded 400 contract and denial audit", async (t) => {
   const harness = await createHarness(t, {
     actors: {
       employee: fullEmployeeActor,
@@ -223,11 +223,29 @@ test("malformed JSON exports use the bounded 400 contract and denial audit", asy
       url: "/exports/employee-list",
       token: "employee",
       resourceType: "employee",
+      contentType: "application/json",
+      payload: '{"filters":',
     },
     {
       url: "/exports/lifecycle-request-list",
       token: "lifecycle",
       resourceType: "lifecycleRequest",
+      contentType: "application/json",
+      payload: '{"filters":',
+    },
+    {
+      url: "/exports/employee-list",
+      token: "employee",
+      resourceType: "employee",
+      contentType: "text/plain",
+      payload: "unsupported export body",
+    },
+    {
+      url: "/exports/lifecycle-request-list",
+      token: "lifecycle",
+      resourceType: "lifecycleRequest",
+      contentType: "application/json",
+      payload: `{"padding":"${"x".repeat(1_048_576)}"}`,
     },
   ] as const;
 
@@ -237,9 +255,9 @@ test("malformed JSON exports use the bounded 400 contract and denial audit", asy
       url: scenario.url,
       headers: {
         authorization: `Bearer ${scenario.token}`,
-        "content-type": "application/json",
+        "content-type": scenario.contentType,
       },
-      payload: '{"filters":',
+      payload: scenario.payload,
     });
 
     assert.equal(response.statusCode, 400);

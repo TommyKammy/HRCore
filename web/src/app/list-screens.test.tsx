@@ -147,7 +147,7 @@ describe("employee list screen", () => {
     );
   });
 
-  it("reuses export correlations for network retries and rotates after a server conflict", async () => {
+  it("reuses export correlations for uncertain retries and rotates after a server conflict", async () => {
     const download = stubBrowserDownload();
     const filteredResponse: EmployeeListResponse = {
       ...employeeResponse,
@@ -167,6 +167,16 @@ describe("employee list screen", () => {
           throw new TypeError("response lost");
         }
         if (exportAttempt === 2) {
+          return Response.json(
+            {
+              code: "permission_denied",
+              message: "private server text",
+              correlationId: "pending-export-correlation",
+            },
+            { status: 500 },
+          );
+        }
+        if (exportAttempt === 3) {
           return Response.json(
             {
               code: "correlation_reuse_conflict",
@@ -204,6 +214,10 @@ describe("employee list screen", () => {
     );
     await user.click(screen.getByRole("button", { name: "確認して出力" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
+      "APIサーバーの状態を確認してください",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "CSV出力条件が受理されませんでした",
     );
     await user.click(screen.getByRole("button", { name: "確認して出力" }));
@@ -218,7 +232,8 @@ describe("employee list screen", () => {
       );
     expect(correlations[0]).toMatch(/^p2list-ui-/u);
     expect(correlations[1]).toBe(correlations[0]);
-    expect(correlations[2]).not.toBe(correlations[1]);
+    expect(correlations[2]).toBe(correlations[1]);
+    expect(correlations[3]).not.toBe(correlations[2]);
     expect(download.click).toHaveBeenCalledOnce();
   });
 

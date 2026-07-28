@@ -50,6 +50,27 @@ export function fingerprintP2ListRequestResult(
   });
 }
 
+export function fingerprintP2ListCollectionResult(
+  operation: "employee.list" | "lifecycleRequest.list",
+  requestFingerprint: string,
+  result: {
+    items: unknown;
+    pageInfo: {
+      limit: number;
+      hasNextPage: boolean;
+      nextCursor?: unknown;
+    };
+  },
+): string {
+  return fingerprintP2ListRequestResult(operation, requestFingerprint, {
+    items: result.items,
+    pageInfo: {
+      limit: result.pageInfo.limit,
+      hasNextPage: result.pageInfo.hasNextPage,
+    },
+  });
+}
+
 export async function resolveP2ListCorrelationAcceptedAt(
   runtime: P2ListCorrelationClock | undefined,
   correlationId: string,

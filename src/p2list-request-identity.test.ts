@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  fingerprintP2ListCollectionResult,
   fingerprintP2ListCollectionRequest,
   fingerprintP2ListRequestInput,
   fingerprintP2ListRequestResult,
@@ -73,6 +74,52 @@ test("P2LIST result identity distinguishes changed same-size responses", () => {
   assert.equal(first, retry);
   assert.notEqual(first, changed);
   assert.doesNotMatch(first, /First Name|EMP-001/u);
+});
+
+test("P2LIST collection result identity excludes generated cursors", () => {
+  const requestFingerprint = fingerprintP2ListCollectionRequest(
+    "employee.list",
+    { organizationCode: "ORG-001" },
+  );
+  const first = fingerprintP2ListCollectionResult(
+    "employee.list",
+    requestFingerprint,
+    {
+      items: [{ employeeId: "EMP-001" }],
+      pageInfo: {
+        limit: 25,
+        hasNextPage: true,
+        nextCursor: "random-cursor-1",
+      },
+    },
+  );
+  const retry = fingerprintP2ListCollectionResult(
+    "employee.list",
+    requestFingerprint,
+    {
+      items: [{ employeeId: "EMP-001" }],
+      pageInfo: {
+        limit: 25,
+        hasNextPage: true,
+        nextCursor: "random-cursor-2",
+      },
+    },
+  );
+  const changed = fingerprintP2ListCollectionResult(
+    "employee.list",
+    requestFingerprint,
+    {
+      items: [{ employeeId: "EMP-002" }],
+      pageInfo: {
+        limit: 25,
+        hasNextPage: true,
+        nextCursor: "random-cursor-3",
+      },
+    },
+  );
+
+  assert.equal(first, retry);
+  assert.notEqual(first, changed);
 });
 
 test("P2LIST correlation clock reuses the first server acceptance time", async () => {

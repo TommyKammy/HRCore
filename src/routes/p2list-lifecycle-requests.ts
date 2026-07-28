@@ -24,6 +24,7 @@ import {
   type P2ListLifecycleQuery,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListCollectionResult,
   fingerprintP2ListCollectionRequest,
   fingerprintP2ListRequestInput,
   fingerprintP2ListRequestResult,
@@ -178,17 +179,14 @@ export function registerP2ListLifecycleRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintP2ListRequestResult(
+          filterFingerprint: fingerprintP2ListCollectionResult(
             "lifecycleRequest.list",
             fingerprintP2ListCollectionRequest(
               "lifecycleRequest.list",
               page.appliedFilters,
               query.cursor,
             ),
-            {
-              items: page.items,
-              pageInfo: page.pageInfo,
-            },
+            page,
           ),
           sort: `${query.sort ?? "requestedAt"}:${query.direction ?? "desc"}`,
           pageSize: page.pageInfo.limit,
