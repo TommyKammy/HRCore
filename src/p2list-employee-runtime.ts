@@ -52,6 +52,10 @@ interface P2ListServerBaseRuntime {
   repository: P2ListReadModelRepository;
   provenance: P2ListEmployeeApiRuntime["provenance"];
   resolveActor: P2ListEmployeeApiRuntime["resolveActor"];
+  resolveCorrelationAcceptedAt(
+    correlationId: string,
+    observedAt: string,
+  ): string;
 }
 
 export async function createServerP2ListEmployeeRuntime(
@@ -117,7 +121,28 @@ async function createServerP2ListBaseRuntime(
       return actors.find((entry) => timingSafeEqual(entry.tokenDigest, digest))
         ?.actor;
     },
+    resolveCorrelationAcceptedAt(correlationId, observedAt) {
+      return readP2ListCorrelationAcceptedAt(db, correlationId) ?? observedAt;
+    },
   };
+}
+
+function readP2ListCorrelationAcceptedAt(
+  db: OnboardingTransactionRequestDatabase,
+  correlationId: string,
+): string | undefined {
+  const row = db
+    .prepare(
+      `
+        SELECT occurred_at
+        FROM p2list_audit_event
+        WHERE correlation_id = ?
+        ORDER BY occurred_at ASC, event_id ASC
+        LIMIT 1
+      `,
+    )
+    .get(correlationId) as { occurred_at?: unknown } | undefined;
+  return typeof row?.occurred_at === "string" ? row.occurred_at : undefined;
 }
 
 function createEmployeeRuntime(

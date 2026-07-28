@@ -31,6 +31,16 @@ const employeeExportDenialCorrelationId =
   "p2list-ui-923e4567-e89b-42d3-a456-426614174000";
 const lifecycleExportDenialCorrelationId =
   "p2list-ui-a23e4567-e89b-42d3-a456-426614174000";
+const employeeListUnauthenticatedCorrelationId =
+  "p2list-ui-b23e4567-e89b-42d3-a456-426614174000";
+const lifecycleListUnauthenticatedCorrelationId =
+  "p2list-ui-c23e4567-e89b-42d3-a456-426614174000";
+const employeeDetailUnauthenticatedCorrelationId =
+  "p2list-ui-d23e4567-e89b-42d3-a456-426614174000";
+const lifecycleDetailUnauthenticatedCorrelationId =
+  "p2list-ui-e23e4567-e89b-42d3-a456-426614174000";
+const malformedEmployeeExportCorrelationId =
+  "p2list-ui-f23e4567-e89b-42d3-a456-426614174000";
 const operatorToken = "p2list-observability-operator-token-0001";
 const otherTenantOperatorToken =
   "p2list-observability-other-tenant-operator-token-0001";
@@ -136,6 +146,8 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     database.close();
   });
 
+  let employeeObservedAt = "2026-07-28T23:59:59.000Z";
+  runtimes.employee.now = () => new Date(employeeObservedAt);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const response = await app.inject({
       method: "GET",
@@ -151,6 +163,7 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
       interactionCorrelationId,
     );
     assert.equal(response.json().correlationId, interactionCorrelationId);
+    employeeObservedAt = "2026-07-29T00:00:01.000Z";
   }
   const conflictingTenantRetry = await app.inject({
     method: "GET",
@@ -186,6 +199,94 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
   assert.equal(conflictingEventTypeRetry.statusCode, 400);
   assert.equal(
     conflictingEventTypeRetry.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const unauthenticatedEmployeeList = await app.inject({
+      method: "GET",
+      url: "/employees?q=Unauthenticated-One",
+      headers: {
+        "x-hrcore-correlation-id": employeeListUnauthenticatedCorrelationId,
+      },
+    });
+    assert.equal(unauthenticatedEmployeeList.statusCode, 401);
+  }
+  const conflictingUnauthenticatedEmployeeList = await app.inject({
+    method: "GET",
+    url: "/employees?q=Unauthenticated-Two",
+    headers: {
+      "x-hrcore-correlation-id": employeeListUnauthenticatedCorrelationId,
+    },
+  });
+  assert.equal(conflictingUnauthenticatedEmployeeList.statusCode, 400);
+  assert.equal(
+    conflictingUnauthenticatedEmployeeList.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const unauthenticatedLifecycleList = await app.inject({
+      method: "GET",
+      url: "/lifecycle/transaction-requests?q=Unauthenticated-One",
+      headers: {
+        "x-hrcore-correlation-id": lifecycleListUnauthenticatedCorrelationId,
+      },
+    });
+    assert.equal(unauthenticatedLifecycleList.statusCode, 401);
+  }
+  const conflictingUnauthenticatedLifecycleList = await app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests?q=Unauthenticated-Two",
+    headers: {
+      "x-hrcore-correlation-id": lifecycleListUnauthenticatedCorrelationId,
+    },
+  });
+  assert.equal(conflictingUnauthenticatedLifecycleList.statusCode, 400);
+  assert.equal(
+    conflictingUnauthenticatedLifecycleList.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const unauthenticatedEmployeeDetail = await app.inject({
+      method: "GET",
+      url: "/employees/EMP-UNAUTHENTICATED-ONE",
+      headers: {
+        "x-hrcore-correlation-id": employeeDetailUnauthenticatedCorrelationId,
+      },
+    });
+    assert.equal(unauthenticatedEmployeeDetail.statusCode, 401);
+  }
+  const conflictingUnauthenticatedEmployeeDetail = await app.inject({
+    method: "GET",
+    url: "/employees/EMP-UNAUTHENTICATED-TWO",
+    headers: {
+      "x-hrcore-correlation-id": employeeDetailUnauthenticatedCorrelationId,
+    },
+  });
+  assert.equal(conflictingUnauthenticatedEmployeeDetail.statusCode, 400);
+  assert.equal(
+    conflictingUnauthenticatedEmployeeDetail.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const unauthenticatedLifecycleDetail = await app.inject({
+      method: "GET",
+      url: "/lifecycle/transaction-requests/request-unauthenticated-one",
+      headers: {
+        "x-hrcore-correlation-id": lifecycleDetailUnauthenticatedCorrelationId,
+      },
+    });
+    assert.equal(unauthenticatedLifecycleDetail.statusCode, 401);
+  }
+  const conflictingUnauthenticatedLifecycleDetail = await app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/request-unauthenticated-two",
+    headers: {
+      "x-hrcore-correlation-id": lifecycleDetailUnauthenticatedCorrelationId,
+    },
+  });
+  assert.equal(conflictingUnauthenticatedLifecycleDetail.statusCode, 400);
+  assert.equal(
+    conflictingUnauthenticatedLifecycleDetail.json().code,
     "correlation_reuse_conflict",
   );
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -300,6 +401,36 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     conflictingLifecycleExportDenial.json().code,
     "correlation_reuse_conflict",
   );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const malformedEmployeeExport = await app.inject({
+      method: "POST",
+      url: "/exports/employee-list",
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+        "content-type": "application/json",
+        "x-hrcore-correlation-id": malformedEmployeeExportCorrelationId,
+      },
+      payload: '{"filters":',
+    });
+    assert.equal(malformedEmployeeExport.statusCode, 400);
+    assert.equal(malformedEmployeeExport.json().code, "invalid_filter");
+  }
+  const conflictingMalformedEmployeeExport = await app.inject({
+    method: "POST",
+    url: "/exports/employee-list",
+    headers: {
+      authorization: `Bearer ${operatorToken}`,
+      "content-type": "application/json",
+      "x-hrcore-correlation-id": malformedEmployeeExportCorrelationId,
+    },
+    payload: '{"reasonCode":',
+  });
+  assert.equal(conflictingMalformedEmployeeExport.statusCode, 400);
+  assert.equal(
+    conflictingMalformedEmployeeExport.json().code,
+    "correlation_reuse_conflict",
+  );
+  employeeObservedAt = "2026-07-29T23:59:59.000Z";
   const deniedEmployeeDetail = await app.inject({
     method: "GET",
     url: "/employees/EMP-MISSING-ONE",
@@ -309,6 +440,7 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     },
   });
   assert.equal(deniedEmployeeDetail.statusCode, 404);
+  employeeObservedAt = "2026-07-30T00:00:01.000Z";
   const deniedEmployeeDetailRetry = await app.inject({
     method: "GET",
     url: "/employees/EMP-MISSING-ONE",

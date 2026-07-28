@@ -24,8 +24,12 @@ import {
   type P2ListEmployeeQuery,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListCollectionRequest,
+  fingerprintP2ListRequestInput,
+  resolveP2ListCorrelationAcceptedAt,
+} from "../p2list-request-identity.js";
+import {
   fingerprintP2ListAuthorizationScope,
-  fingerprintP2ListValue,
   P2ListReadModelError,
   requireBoundedString,
   type P2ListActorContext,
@@ -92,6 +96,10 @@ export interface P2ListEmployeeApiRuntime {
     request: FastifyRequest,
   ): MaybePromise<P2ListActorContext | undefined>;
   emitAuditEvent(event: P2ListEmployeeAuditEvent): MaybePromise<void>;
+  resolveCorrelationAcceptedAt?(
+    correlationId: string,
+    observedAt: string,
+  ): MaybePromise<string>;
   now?: () => Date;
   createCorrelationId?: () => string;
 }
@@ -111,6 +119,15 @@ export function registerP2ListEmployeeRoutes(
       runtime?.createCorrelationId,
     );
     const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+    const acceptedAt = await resolveP2ListCorrelationAcceptedAt(
+      runtime,
+      correlationId,
+      occurredAt,
+    );
+    const ingressRequestFingerprint = fingerprintP2ListRequestInput(
+      "employee.list",
+      request.query,
+    );
     reply.header("x-correlation-id", correlationId);
     reply.header(p2ListCorrelationHeader, correlationId);
 
@@ -137,7 +154,7 @@ export function registerP2ListEmployeeRoutes(
         ...query,
         actor,
         provenance: runtime.provenance,
-        acceptedAt: occurredAt,
+        acceptedAt,
       });
       const response = {
         ...page,
@@ -162,9 +179,10 @@ export function registerP2ListEmployeeRoutes(
         actorRole: actor.actorRole,
         evaluatedPermission: p2ListPermissions.employeeListRead,
         dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-        filterFingerprint: fingerprintEmployeeListRequest(
-          query,
+        filterFingerprint: fingerprintP2ListCollectionRequest(
+          "employee.list",
           page.appliedFilters,
+          query.cursor,
         ),
         sort: `${query.sort ?? "employeeId"}:${query.direction ?? "asc"}`,
         pageSize: page.pageInfo.limit,
@@ -193,12 +211,15 @@ export function registerP2ListEmployeeRoutes(
             actorRole: safeP2ListActorRole(actor),
             evaluatedPermission: p2ListPermissions.employeeListRead,
             dataScopeId: safeDataScopeFingerprint(actor),
+            filterFingerprint: parsedQuery
+              ? fingerprintP2ListCollectionRequest(
+                  "employee.list",
+                  parsedQuery.filters,
+                  parsedQuery.cursor,
+                )
+              : ingressRequestFingerprint,
             ...(parsedQuery
               ? {
-                  filterFingerprint: fingerprintEmployeeListRequest(
-                    parsedQuery,
-                    parsedQuery.filters,
-                  ),
                   sort: `${parsedQuery.sort ?? "employeeId"}:${parsedQuery.direction ?? "asc"}`,
                   pageSize: parsedQuery.limit,
                 }
@@ -235,11 +256,23 @@ export function registerP2ListEmployeeRoutes(
         runtime?.createCorrelationId,
       );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      const acceptedAt = await resolveP2ListCorrelationAcceptedAt(
+        runtime,
+        correlationId,
+        occurredAt,
+      );
+      const ingressRequestFingerprint = fingerprintP2ListRequestInput(
+        "employee.detail",
+        {
+          params: request.params,
+          query: request.query,
+        },
+      );
       reply.header("x-correlation-id", correlationId);
       reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
-      let detailFilterFingerprint: string | undefined;
+      let detailFilterFingerprint = ingressRequestFingerprint;
       try {
         if (!runtime) {
           throw new P2ListReadModelError(
@@ -261,14 +294,17 @@ export function registerP2ListEmployeeRoutes(
           "invalid_filter",
         );
         const detailQuery = parseEmployeeDetailQuery(request.query);
-        detailFilterFingerprint = fingerprintP2ListValue({
-          employeeId,
-          asOf: detailQuery.asOf ?? occurredAt.slice(0, 10),
-        });
+        detailFilterFingerprint = fingerprintP2ListRequestInput(
+          "employee.detail",
+          {
+            employeeId,
+            asOf: detailQuery.asOf ?? acceptedAt.slice(0, 10),
+          },
+        );
         const detail = runtime.repository.getEmployee({
           actor,
           provenance: runtime.provenance,
-          acceptedAt: occurredAt,
+          acceptedAt,
           employeeId,
           ...(detailQuery.asOf !== undefined ? { asOf: detailQuery.asOf } : {}),
         });
@@ -307,7 +343,10 @@ export function registerP2ListEmployeeRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.employeeDetailRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintP2ListValue(detail.appliedFilters),
+          filterFingerprint: fingerprintP2ListRequestInput(
+            "employee.detail",
+            detail.appliedFilters,
+          ),
           rowCount: 1,
           resourceType: "employee",
           correlationId,
@@ -446,19 +485,6 @@ function parseEmployeeQuery(value: unknown): ParsedEmployeeQuery {
     limit,
     cursor,
   };
-}
-
-function fingerprintEmployeeListRequest(
-  query: ParsedEmployeeQuery,
-  filters: P2ListEmployeeFilters,
-): string {
-  if (!query.cursor) {
-    return fingerprintP2ListValue(filters);
-  }
-  return fingerprintP2ListValue({
-    filters,
-    cursorFingerprint: fingerprintP2ListValue(query.cursor),
-  });
 }
 
 function readOptionalString(value: unknown): string | undefined {

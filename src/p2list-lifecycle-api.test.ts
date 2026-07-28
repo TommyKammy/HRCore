@@ -474,7 +474,7 @@ test("server lifecycle runtime persists bounded allow and deny audit events", as
         resource_type: "lifecycleRequest",
         policy_decision: "deny",
         reason_code: "actor_context_required",
-        filter_fingerprint_type: "object",
+        filter_fingerprint_type: "string",
       },
     ],
   );

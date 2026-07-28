@@ -444,13 +444,29 @@ const exportReasonLabels: Record<P2ListExportReasonCode, string> = {
   data_quality_investigation: "データ品質調査",
 };
 
+function createExportRequestContextKey(
+  resource: "employee" | "lifecycleRequest",
+  personaId: BoundedPersonaId,
+  filters: Record<string, unknown>,
+): string {
+  return JSON.stringify([
+    resource,
+    personaId,
+    Object.entries(filters).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  ]);
+}
+
 function BoundedExportControl({
   meaningfulFilter,
   missingFilterMessage,
+  requestContextKey,
   requestExport,
 }: {
   meaningfulFilter: boolean;
   missingFilterMessage: string;
+  requestContextKey: string;
   requestExport: (
     reasonCode: P2ListExportReasonCode,
     signal: AbortSignal,
@@ -467,9 +483,19 @@ function BoundedExportControl({
   } | null>(null);
   const exportController = useRef<AbortController | null>(null);
   const exportAction = useRef<{
-    reasonCode: P2ListExportReasonCode;
+    key: string;
     correlationId: string;
   } | null>(null);
+
+  useEffect(() => {
+    exportController.current?.abort();
+    exportController.current = null;
+    exportAction.current = null;
+    setConfirming(false);
+    setReasonCode("");
+    setSubmitting(false);
+    setFeedback(null);
+  }, [requestContextKey]);
 
   useEffect(
     () => () => {
@@ -495,9 +521,10 @@ function BoundedExportControl({
     exportController.current = controller;
     setSubmitting(true);
     setFeedback(null);
-    if (exportAction.current?.reasonCode !== reasonCode) {
+    const actionKey = JSON.stringify([requestContextKey, reasonCode]);
+    if (exportAction.current?.key !== actionKey) {
       exportAction.current = {
-        reasonCode,
+        key: actionKey,
         correlationId: createP2ListCorrelationId(),
       };
     }
@@ -1009,6 +1036,11 @@ export function EmployeeListView({
             state.response.appliedFilters.organizationCode,
           )}
           missingFilterMessage="従業員IDまたは組織コードで絞り込んでからCSV出力してください。"
+          requestContextKey={createExportRequestContextKey(
+            "employee",
+            personaId,
+            state.response.appliedFilters,
+          )}
           requestExport={(reasonCode, signal, correlationId) =>
             fetchEmployeeExport(
               state.response!.appliedFilters,
@@ -1528,6 +1560,11 @@ export function LifecycleListView({
             state.response.appliedFilters,
           )}
           missingFilterMessage="従業員ID、組織コード、correlation、申請日時範囲、または適用日範囲で絞り込んでからCSV出力してください。"
+          requestContextKey={createExportRequestContextKey(
+            "lifecycleRequest",
+            personaId,
+            state.response.appliedFilters,
+          )}
           requestExport={(reasonCode, signal, correlationId) =>
             fetchLifecycleExport(
               state.response!.appliedFilters,

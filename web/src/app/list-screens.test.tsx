@@ -222,6 +222,85 @@ describe("employee list screen", () => {
     expect(download.click).toHaveBeenCalledOnce();
   });
 
+  it("rotates export correlations when the authorized request context changes", async () => {
+    const download = stubBrowserDownload();
+    const filteredResponse: EmployeeListResponse = {
+      ...employeeResponse,
+      appliedFilters: {
+        organizationCode: "ORG-SYNTHETIC",
+        asOf: "2026-07-26",
+      },
+    };
+    let exportAttempt = 0;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        if (String(input) !== "/exports/employee-list") {
+          return Response.json(filteredResponse);
+        }
+        exportAttempt += 1;
+        if (exportAttempt === 1) {
+          throw new TypeError("response lost");
+        }
+        return new Response("employee_id\nEMP-001\n", {
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition":
+              'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+            "x-hrcore-correlation-id": "employee-export-context-success",
+            "x-hrcore-export-schema-version": "p2list_export_v1",
+          },
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    const view = render(
+      <EmployeeListView personaId="hr-operator" onOpenEmployee={null} />,
+    );
+    await screen.findByText("Synthetic Employee 001");
+    await user.click(screen.getByRole("button", { name: "CSV出力" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "出力理由" }),
+      "operational_reconciliation",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "CSV出力APIに接続できません",
+    );
+
+    view.rerender(
+      <EmployeeListView personaId="approver" onOpenEmployee={null} />,
+    );
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).startsWith("/employees"),
+        ),
+      ).toHaveLength(2);
+    });
+    await screen.findByText("Synthetic Employee 001");
+    await user.click(screen.getByRole("button", { name: "CSV出力" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "出力理由" }),
+      "operational_reconciliation",
+    );
+    await user.click(screen.getByRole("button", { name: "確認して出力" }));
+    expect(
+      await screen.findByText(/ダウンロードを開始しました/u),
+    ).toBeVisible();
+
+    const correlations = fetchMock.mock.calls
+      .filter(([input]) => String(input) === "/exports/employee-list")
+      .map(([, init]) =>
+        new Headers(init?.headers).get("x-hrcore-correlation-id"),
+      );
+    expect(correlations).toHaveLength(2);
+    expect(correlations[0]).toMatch(/^p2list-ui-/u);
+    expect(correlations[1]).not.toBe(correlations[0]);
+    expect(download.click).toHaveBeenCalledOnce();
+  });
+
   it("cancels an in-flight export before an unmounted result can download", async () => {
     const download = stubBrowserDownload();
     const filteredResponse: EmployeeListResponse = {

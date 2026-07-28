@@ -24,8 +24,11 @@ import {
   type P2ListLifecycleQuery,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListCollectionRequest,
+  fingerprintP2ListRequestInput,
+} from "../p2list-request-identity.js";
+import {
   fingerprintP2ListAuthorizationScope,
-  fingerprintP2ListValue,
   P2ListReadModelError,
   requireBoundedString,
   type P2ListActorContext,
@@ -120,6 +123,10 @@ export function registerP2ListLifecycleRoutes(
         runtime?.createCorrelationId,
       );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      const ingressRequestFingerprint = fingerprintP2ListRequestInput(
+        "lifecycleRequest.list",
+        request.query,
+      );
       reply.header("x-correlation-id", correlationId);
       reply.header(p2ListCorrelationHeader, correlationId);
 
@@ -170,9 +177,10 @@ export function registerP2ListLifecycleRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintLifecycleListRequest(
-            query,
+          filterFingerprint: fingerprintP2ListCollectionRequest(
+            "lifecycleRequest.list",
             page.appliedFilters,
+            query.cursor,
           ),
           sort: `${query.sort ?? "requestedAt"}:${query.direction ?? "desc"}`,
           pageSize: page.pageInfo.limit,
@@ -201,12 +209,15 @@ export function registerP2ListLifecycleRoutes(
               actorRole: safeP2ListActorRole(actor),
               evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
               dataScopeId: safeDataScopeFingerprint(actor),
+              filterFingerprint: parsedQuery
+                ? fingerprintP2ListCollectionRequest(
+                    "lifecycleRequest.list",
+                    parsedQuery.filters,
+                    parsedQuery.cursor,
+                  )
+                : ingressRequestFingerprint,
               ...(parsedQuery
                 ? {
-                    filterFingerprint: fingerprintLifecycleListRequest(
-                      parsedQuery,
-                      parsedQuery.filters,
-                    ),
                     sort: `${parsedQuery.sort ?? "requestedAt"}:${parsedQuery.direction ?? "desc"}`,
                     pageSize: parsedQuery.limit,
                   }
@@ -244,11 +255,18 @@ export function registerP2ListLifecycleRoutes(
         runtime?.createCorrelationId,
       );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      const ingressRequestFingerprint = fingerprintP2ListRequestInput(
+        "lifecycleRequest.detail",
+        {
+          params: request.params,
+          query: request.query,
+        },
+      );
       reply.header("x-correlation-id", correlationId);
       reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
-      let detailFilterFingerprint: string | undefined;
+      let detailFilterFingerprint = ingressRequestFingerprint;
       try {
         if (!runtime) {
           throw new P2ListReadModelError(
@@ -282,9 +300,10 @@ export function registerP2ListLifecycleRoutes(
           256,
           "invalid_filter",
         );
-        detailFilterFingerprint = fingerprintP2ListValue({
-          transactionRequestId: requestId,
-        });
+        detailFilterFingerprint = fingerprintP2ListRequestInput(
+          "lifecycleRequest.detail",
+          { transactionRequestId: requestId },
+        );
         const item = runtime.repository.getLifecycleRequest({
           actor,
           provenance: runtime.provenance,
@@ -324,9 +343,10 @@ export function registerP2ListLifecycleRoutes(
           actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
           dataScopeId: fingerprintP2ListAuthorizationScope(actor),
-          filterFingerprint: fingerprintP2ListValue({
-            transactionRequestId: requestId,
-          }),
+          filterFingerprint: fingerprintP2ListRequestInput(
+            "lifecycleRequest.detail",
+            { transactionRequestId: requestId },
+          ),
           rowCount: 1,
           resourceType: "lifecycleRequest",
           correlationId,
@@ -462,19 +482,6 @@ function parseLifecycleQuery(value: unknown): ParsedLifecycleQuery {
     limit,
     cursor: readOptionalCursor(query.cursor),
   };
-}
-
-function fingerprintLifecycleListRequest(
-  query: ParsedLifecycleQuery,
-  filters: P2ListLifecycleFilters,
-): string {
-  if (!query.cursor) {
-    return fingerprintP2ListValue(filters);
-  }
-  return fingerprintP2ListValue({
-    filters,
-    cursorFingerprint: fingerprintP2ListValue(query.cursor),
-  });
 }
 
 function readOptionalString(value: unknown): string | undefined {

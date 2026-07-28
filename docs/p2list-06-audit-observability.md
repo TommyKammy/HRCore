@@ -13,6 +13,12 @@ for a retry preserves that ID. Employee-list, lifecycle-list, detail-open, and
 bounded-export routes echo the accepted ID in both the response body or export
 headers and the persisted `p2list_audit_event`.
 
+The export action identity contains the resource type, active persona, complete
+server-applied filter set, and reason code. A transport failure retains the
+correlation ID for an exact retry. A completed denial, a successful download,
+closing the confirmation, unmounting the control, or changing any action
+identity field retires that ID.
+
 Malformed or non-canonical client values are not echoed or persisted. The API
 replaces them with a server-generated `p2list-<uuid>` value.
 
@@ -25,6 +31,17 @@ ID is therefore idempotent; multi-stage exports retain one requested event and
 one completed or denied event. A new user action must use a new correlation ID.
 Reusing an ID for a different actor, scope, filter fingerprint, sort, result,
 decision, or reason fails with `correlation_reuse_conflict`.
+
+Request fingerprints are operation-scoped. Every list, detail, and export route
+creates an ingress fingerprint before actor resolution or bounded input parsing,
+so pre-authorization and malformed-input denials still distinguish an exact
+retry from a changed request. Successfully parsed collection requests use the
+same shared canonical fingerprint helper; an opaque cursor contributes only its
+own fingerprint and is never retained in audit evidence.
+
+Employee requests with an omitted `asOf` derive that default from the first
+persisted event for the correlation ID. A response-lost retry therefore reuses
+the original server date even if the retry crosses a UTC date boundary.
 
 The recorded duration is a bounded, non-negative integer from the process
 monotonic clock. It is operational evidence only, not an SLA measurement.
@@ -75,5 +92,7 @@ npm run verify:pre-pr
 ```
 
 The observability tests cover event schema, WebUI/API correlation propagation,
-permission and exact-scope behavior, retry idempotency, metric aggregation,
-absence/out-of-scope indistinguishability, and forbidden-marker redaction.
+permission and exact-scope behavior, operation-scoped request identity,
+pre-authorization retry conflicts, UTC-boundary retries, export action-context
+rotation, metric aggregation, absence/out-of-scope indistinguishability, and
+forbidden-marker redaction.

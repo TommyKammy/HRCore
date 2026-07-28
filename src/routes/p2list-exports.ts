@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { type Readable, Transform } from "node:stream";
 
 import {
   type FastifyError,
@@ -35,8 +36,11 @@ import {
   type P2ListLifecycleFilters,
 } from "../p2list-read-model-repository.js";
 import {
+  fingerprintP2ListRequestInput,
+  type P2ListRequestOperation,
+} from "../p2list-request-identity.js";
+import {
   fingerprintP2ListAuthorizationScope,
-  fingerprintP2ListValue,
   P2ListReadModelError,
   type P2ListActorContext,
   type P2ListVerifiedSyntheticDataset,
@@ -113,14 +117,21 @@ export function registerP2ListExportRoutes(
     ],
     resourceType: "lifecycleRequest",
   };
+  const employeeBodyIdentity =
+    createExportBodyIdentityCapture("employee.export");
+  const lifecycleBodyIdentity = createExportBodyIdentityCapture(
+    "lifecycleRequest.export",
+  );
 
   app.post(
     "/exports/employee-list",
     {
       logLevel: "silent",
+      preParsing: employeeBodyIdentity.capture,
       errorHandler: createExportRouteErrorHandler(
         options.p2ListExportApi,
         employeePolicy,
+        employeeBodyIdentity.read,
       ),
     },
     async (request, reply) => {
@@ -132,7 +143,8 @@ export function registerP2ListExportRoutes(
       );
       const occurredAt = currentTimestamp(runtime);
       const permission = employeePolicy.permission;
-      const preAuthorizationRequestFingerprint = fingerprintExportRequestBody(
+      const preAuthorizationRequestFingerprint = fingerprintP2ListRequestInput(
+        "employee.export",
         request.body,
       );
       reply.header(p2ListCorrelationHeader, correlationId);
@@ -160,10 +172,13 @@ export function registerP2ListExportRoutes(
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintExportRequest({
-          filters: collection.appliedFilters,
-          reasonCode: input.reasonCode,
-        });
+        const filterFingerprint = fingerprintP2ListRequestInput(
+          "employee.export",
+          {
+            filters: collection.appliedFilters,
+            reasonCode: input.reasonCode,
+          },
+        );
         const auditContext = {
           occurredAt,
           actor,
@@ -199,7 +214,7 @@ export function registerP2ListExportRoutes(
           correlationId,
           startedAt,
           requestFingerprint: parsedInput
-            ? fingerprintExportRequest(parsedInput)
+            ? fingerprintP2ListRequestInput("employee.export", parsedInput)
             : preAuthorizationRequestFingerprint,
         });
       }
@@ -210,9 +225,11 @@ export function registerP2ListExportRoutes(
     "/exports/lifecycle-request-list",
     {
       logLevel: "silent",
+      preParsing: lifecycleBodyIdentity.capture,
       errorHandler: createExportRouteErrorHandler(
         options.p2ListExportApi,
         lifecyclePolicy,
+        lifecycleBodyIdentity.read,
       ),
     },
     async (request, reply) => {
@@ -224,7 +241,8 @@ export function registerP2ListExportRoutes(
       );
       const occurredAt = currentTimestamp(runtime);
       const permission = lifecyclePolicy.permission;
-      const preAuthorizationRequestFingerprint = fingerprintExportRequestBody(
+      const preAuthorizationRequestFingerprint = fingerprintP2ListRequestInput(
+        "lifecycleRequest.export",
         request.body,
       );
       reply.header(p2ListCorrelationHeader, correlationId);
@@ -252,10 +270,13 @@ export function registerP2ListExportRoutes(
             "The bounded export row limit was exceeded.",
           );
         }
-        const filterFingerprint = fingerprintExportRequest({
-          filters: collection.appliedFilters,
-          reasonCode: input.reasonCode,
-        });
+        const filterFingerprint = fingerprintP2ListRequestInput(
+          "lifecycleRequest.export",
+          {
+            filters: collection.appliedFilters,
+            reasonCode: input.reasonCode,
+          },
+        );
         const auditContext = {
           occurredAt,
           actor,
@@ -291,7 +312,10 @@ export function registerP2ListExportRoutes(
           correlationId,
           startedAt,
           requestFingerprint: parsedInput
-            ? fingerprintExportRequest(parsedInput)
+            ? fingerprintP2ListRequestInput(
+                "lifecycleRequest.export",
+                parsedInput,
+              )
             : preAuthorizationRequestFingerprint,
         });
       }
@@ -302,6 +326,7 @@ export function registerP2ListExportRoutes(
 function createExportRouteErrorHandler(
   runtime: P2ListExportApiRuntime | undefined,
   policy: ExportRoutePolicy,
+  readRequestFingerprint: (request: FastifyRequest) => string,
 ) {
   return async (
     error: FastifyError,
@@ -336,6 +361,7 @@ function createExportRouteErrorHandler(
         resourceType: policy.resourceType,
         correlationId,
         startedAt,
+        requestFingerprint: readRequestFingerprint(request),
       });
       return;
     }
@@ -351,8 +377,57 @@ function createExportRouteErrorHandler(
         resourceType: policy.resourceType,
         correlationId,
         startedAt,
+        requestFingerprint: readRequestFingerprint(request),
       },
     );
+  };
+}
+
+function createExportBodyIdentityCapture(
+  operation: Extract<
+    P2ListRequestOperation,
+    "employee.export" | "lifecycleRequest.export"
+  >,
+) {
+  const fingerprints = new WeakMap<FastifyRequest, string>();
+  const fallbackFingerprint = fingerprintP2ListRequestInput(
+    operation,
+    undefined,
+  );
+
+  return {
+    async capture(
+      request: FastifyRequest,
+      _reply: FastifyReply,
+      payload: Readable,
+    ): Promise<Readable> {
+      const hash = createHash("sha256");
+      let receivedEncodedLength = 0;
+      const transformedPayload = new Transform({
+        transform(chunk, _encoding, callback) {
+          hash.update(chunk);
+          receivedEncodedLength += chunk.length;
+          callback(null, chunk);
+        },
+        flush(callback) {
+          fingerprints.set(
+            request,
+            fingerprintP2ListRequestInput(operation, {
+              rawBodyFingerprint: hash.digest("base64url"),
+            }),
+          );
+          callback();
+        },
+      });
+      Object.defineProperty(transformedPayload, "receivedEncodedLength", {
+        get: () => receivedEncodedLength,
+      });
+      payload.pipe(transformedPayload);
+      return transformedPayload;
+    },
+    read(request: FastifyRequest): string {
+      return fingerprints.get(request) ?? fallbackFingerprint;
+    },
   };
 }
 
@@ -569,22 +644,6 @@ async function handleExportError(
     message: publicErrorMessage(responseError.code),
     correlationId: context.correlationId,
     readiness: p2ListReadiness,
-  });
-}
-
-function fingerprintExportRequest<Filters>(
-  input: ParsedExportRequest<Filters>,
-): string {
-  return fingerprintP2ListValue({
-    filters: input.filters,
-    reasonCode: input.reasonCode,
-  });
-}
-
-function fingerprintExportRequestBody(value: unknown): string {
-  return fingerprintP2ListValue({
-    requestBodyPresent: value !== undefined,
-    requestBody: value ?? null,
   });
 }
 
