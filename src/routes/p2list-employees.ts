@@ -219,6 +219,7 @@ export function registerP2ListEmployeeRoutes(
       reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
+      let detailFilterFingerprint: string | undefined;
       try {
         if (!runtime) {
           throw new P2ListReadModelError(
@@ -240,6 +241,10 @@ export function registerP2ListEmployeeRoutes(
           "invalid_filter",
         );
         const detailQuery = parseEmployeeDetailQuery(request.query);
+        detailFilterFingerprint = fingerprintP2ListValue({
+          employeeId,
+          asOf: detailQuery.asOf ?? occurredAt.slice(0, 10),
+        });
         const detail = runtime.repository.getEmployee({
           actor,
           provenance: runtime.provenance,
@@ -258,6 +263,7 @@ export function registerP2ListEmployeeRoutes(
             actorRole: actor.actorRole,
             evaluatedPermission: p2ListPermissions.employeeDetailRead,
             dataScopeId: fingerprintP2ListAuthorizationScope(actor),
+            filterFingerprint: detailFilterFingerprint,
             resourceType: "employee",
             correlationId,
             policyDecision: "deny",
@@ -312,6 +318,7 @@ export function registerP2ListEmployeeRoutes(
             actorRole: safeP2ListActorRole(actor),
             evaluatedPermission: p2ListPermissions.employeeDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
+            filterFingerprint: detailFilterFingerprint,
             resourceType: "employee",
             correlationId,
             policyDecision: "deny",

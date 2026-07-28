@@ -228,6 +228,7 @@ export function registerP2ListLifecycleRoutes(
       reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
+      let detailFilterFingerprint: string | undefined;
       try {
         if (!runtime) {
           throw new P2ListReadModelError(
@@ -261,6 +262,9 @@ export function registerP2ListLifecycleRoutes(
           256,
           "invalid_filter",
         );
+        detailFilterFingerprint = fingerprintP2ListValue({
+          transactionRequestId: requestId,
+        });
         const item = runtime.repository.getLifecycleRequest({
           actor,
           provenance: runtime.provenance,
@@ -276,6 +280,7 @@ export function registerP2ListLifecycleRoutes(
             actorRole: actor.actorRole,
             evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: fingerprintP2ListAuthorizationScope(actor),
+            filterFingerprint: detailFilterFingerprint,
             resourceType: "lifecycleRequest",
             correlationId,
             policyDecision: "deny",
@@ -331,6 +336,7 @@ export function registerP2ListLifecycleRoutes(
             actorRole: safeP2ListActorRole(actor),
             evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
             dataScopeId: safeDataScopeFingerprint(actor),
+            filterFingerprint: detailFilterFingerprint,
             resourceType: "lifecycleRequest",
             correlationId,
             policyDecision: "deny",
