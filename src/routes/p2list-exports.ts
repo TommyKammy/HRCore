@@ -37,6 +37,8 @@ import {
 } from "../p2list-read-model-repository.js";
 import {
   fingerprintP2ListRequestInput,
+  resolveP2ListCorrelationAcceptedAt,
+  type P2ListCorrelationClock,
   type P2ListRequestOperation,
 } from "../p2list-request-identity.js";
 import {
@@ -84,7 +86,7 @@ export interface P2ListExportAuditEvent {
   durationMs: number;
 }
 
-export interface P2ListExportApiRuntime {
+export interface P2ListExportApiRuntime extends P2ListCorrelationClock {
   repository: P2ListReadModelRepository;
   provenance: P2ListVerifiedSyntheticDataset;
   resolveActor(
@@ -142,6 +144,11 @@ export function registerP2ListExportRoutes(
         runtime?.createCorrelationId,
       );
       const occurredAt = currentTimestamp(runtime);
+      const acceptedAt = await resolveP2ListCorrelationAcceptedAt(
+        runtime,
+        correlationId,
+        occurredAt,
+      );
       const permission = employeePolicy.permission;
       const preAuthorizationRequestFingerprint = fingerprintP2ListRequestInput(
         "employee.export",
@@ -164,7 +171,7 @@ export function registerP2ListExportRoutes(
           sort: "employeeId",
           direction: "asc",
           limit: p2ListExportMaximumRows,
-          acceptedAt: occurredAt,
+          acceptedAt,
         });
         if (collection.hasMore) {
           throw exportError(

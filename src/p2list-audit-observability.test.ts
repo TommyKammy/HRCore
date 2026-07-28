@@ -516,8 +516,9 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     conflictingLifecycleDetail.json().code,
     "correlation_reuse_conflict",
   );
-  const exportOccurredAt = "2026-07-28T00:00:00.000Z";
-  runtimes.export.now = () => new Date(exportOccurredAt);
+  const exportAcceptedAt = "2026-07-28T23:59:59.000Z";
+  let exportObservedAt = exportAcceptedAt;
+  runtimes.export.now = () => new Date(exportObservedAt);
   const exportResponse = await app.inject({
     method: "POST",
     url: "/exports/employee-list",
@@ -531,6 +532,21 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     },
   });
   assert.equal(exportResponse.statusCode, 200);
+  exportObservedAt = "2026-07-29T00:00:01.000Z";
+  const exportRetry = await app.inject({
+    method: "POST",
+    url: "/exports/employee-list",
+    headers: {
+      authorization: `Bearer ${operatorToken}`,
+      "x-hrcore-correlation-id": exportCorrelationId,
+    },
+    payload: {
+      filters: { organizationCode: "ORG-NONE" },
+      reasonCode: "uat_reconciliation",
+    },
+  });
+  assert.equal(exportRetry.statusCode, 200);
+  assert.equal(exportRetry.body, exportResponse.body);
 
   const conflictingExport = await app.inject({
     method: "POST",
@@ -577,7 +593,7 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     exportEvidenceResponse
       .json()
       .events.map((event: { occurredAt: string }) => event.occurredAt),
-    [exportOccurredAt, exportOccurredAt],
+    [exportAcceptedAt, exportAcceptedAt],
   );
   assert.ok(
     exportEvidenceResponse
