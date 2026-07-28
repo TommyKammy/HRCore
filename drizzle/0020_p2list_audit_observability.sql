@@ -1,4 +1,5 @@
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
+CREATE UNIQUE INDEX `__p2list_audit_event_correlation_type_guard` ON `p2list_audit_event` (`correlation_id`,`event_type`);--> statement-breakpoint
 CREATE TABLE `__new_p2list_audit_event` (
 	`event_id` text PRIMARY KEY NOT NULL,
 	`event_type` text NOT NULL,
@@ -40,7 +41,7 @@ CREATE TABLE `__new_p2list_audit_event` (
 	CONSTRAINT "p2list_audit_event_poc_marker_allowed" CHECK("__new_p2list_audit_event"."poc_marker" = 'synthetic_poc')
 );
 --> statement-breakpoint
-INSERT INTO `__new_p2list_audit_event`("event_id", "event_type", "event_version", "occurred_at", "actor_id", "actor_role", "evaluated_permission", "data_scope_id", "filter_fingerprint", "sort", "page_size", "row_count", "resource_type", "correlation_id", "policy_decision", "reason_code", "export_schema_version", "duration_ms", "poc_marker") SELECT "event_id", "event_type", "event_version", "occurred_at", "actor_id", "actor_role", "evaluated_permission", "data_scope_id", "filter_fingerprint", "sort", "page_size", "row_count", "resource_type", "correlation_id", "policy_decision", "reason_code", "export_schema_version", 0, "poc_marker" FROM `p2list_audit_event` WHERE rowid IN (SELECT MIN(rowid) FROM `p2list_audit_event` GROUP BY "correlation_id", "event_type");--> statement-breakpoint
+INSERT INTO `__new_p2list_audit_event`("event_id", "event_type", "event_version", "occurred_at", "actor_id", "actor_role", "evaluated_permission", "data_scope_id", "filter_fingerprint", "sort", "page_size", "row_count", "resource_type", "correlation_id", "policy_decision", "reason_code", "export_schema_version", "duration_ms", "poc_marker") SELECT "event_id", "event_type", "event_version", "occurred_at", "actor_id", "actor_role", "evaluated_permission", "data_scope_id", "filter_fingerprint", "sort", "page_size", "row_count", "resource_type", "correlation_id", "policy_decision", "reason_code", "export_schema_version", 0, "poc_marker" FROM `p2list_audit_event`;--> statement-breakpoint
 DROP TABLE `p2list_audit_event`;--> statement-breakpoint
 ALTER TABLE `__new_p2list_audit_event` RENAME TO `p2list_audit_event`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

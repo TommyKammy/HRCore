@@ -383,6 +383,120 @@ test("P2LIST audit sink rebuild rolls back a failed upgrade atomically", async (
   }
 });
 
+test("P2LIST observability upgrade rejects duplicate evidence without deleting rows", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const tempDirectory = await mkdtemp(join(tmpdir(), "hrcore-local-db-"));
+  t.after(async () => {
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const databasePath = join(tempDirectory, "hrcore.sqlite");
+  const db = new sqlite.DatabaseSync(databasePath);
+  try {
+    db.exec(
+      await readMigrationSqlBefore("0020_p2list_audit_observability.sql"),
+    );
+    db.exec(`
+      INSERT INTO p2list_audit_event (
+        event_id,
+        event_type,
+        event_version,
+        occurred_at,
+        evaluated_permission,
+        resource_type,
+        correlation_id,
+        policy_decision
+      )
+      VALUES
+        (
+          'duplicate-p2list-audit-event-1',
+          'employee_list.viewed',
+          'p2list_audit_v1',
+          '2026-07-26T00:00:00.000Z',
+          'employee:list:read',
+          'employee',
+          'duplicate-p2list-correlation',
+          'allow'
+        ),
+        (
+          'duplicate-p2list-audit-event-2',
+          'employee_list.viewed',
+          'p2list_audit_v1',
+          '2026-07-26T00:00:01.000Z',
+          'employee:list:read',
+          'employee',
+          'duplicate-p2list-correlation',
+          'allow'
+        )
+    `);
+  } finally {
+    db.close();
+  }
+
+  await assert.rejects(
+    () => openLocalSyntheticWritebackDatabase(`file:${databasePath}`),
+    /UNIQUE constraint failed/u,
+  );
+
+  const preservedDb = new sqlite.DatabaseSync(databasePath);
+  try {
+    assert.equal(
+      preservedDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM p2list_audit_event
+            WHERE correlation_id = 'duplicate-p2list-correlation'
+          `,
+        )
+        .get()?.count,
+      2,
+    );
+    assert.equal(
+      preservedDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM pragma_table_info('p2list_audit_event')
+            WHERE name = 'duration_ms'
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+    assert.equal(
+      preservedDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM sqlite_master
+            WHERE name IN (
+              '__new_p2list_audit_event',
+              '__p2list_audit_event_correlation_type_guard'
+            )
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+  } finally {
+    preservedDb.close();
+  }
+});
+
 test("P2LIST observability rebuild includes required indexes in its atomic boundary", async (t) => {
   let sqlite: typeof import("node:sqlite");
   try {

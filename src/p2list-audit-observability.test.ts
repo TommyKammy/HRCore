@@ -41,6 +41,14 @@ const lifecycleDetailUnauthenticatedCorrelationId =
   "p2list-ui-e23e4567-e89b-42d3-a456-426614174000";
 const malformedEmployeeExportCorrelationId =
   "p2list-ui-f23e4567-e89b-42d3-a456-426614174000";
+const malformedEmployeeListCorrelationId =
+  "p2list-ui-013e4567-e89b-42d3-a456-426614174000";
+const malformedLifecycleListCorrelationId =
+  "p2list-ui-023e4567-e89b-42d3-a456-426614174000";
+const malformedEmployeeDetailCorrelationId =
+  "p2list-ui-033e4567-e89b-42d3-a456-426614174000";
+const malformedLifecycleDetailCorrelationId =
+  "p2list-ui-043e4567-e89b-42d3-a456-426614174000";
 const operatorToken = "p2list-observability-operator-token-0001";
 const otherTenantOperatorToken =
   "p2list-observability-other-tenant-operator-token-0001";
@@ -201,6 +209,60 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     conflictingEventTypeRetry.json().code,
     "correlation_reuse_conflict",
   );
+  for (const fixture of [
+    {
+      correlationId: malformedEmployeeListCorrelationId,
+      initialUrl: "/employees?limit=0",
+      conflictingUrl: "/employees?sort=privateSalary",
+      code: "limit_out_of_range",
+    },
+    {
+      correlationId: malformedLifecycleListCorrelationId,
+      initialUrl: "/lifecycle/transaction-requests?limit=0",
+      conflictingUrl: "/lifecycle/transaction-requests?sort=privateSalary",
+      code: "limit_out_of_range",
+    },
+    {
+      correlationId: malformedEmployeeDetailCorrelationId,
+      initialUrl: "/employees/EMP-INVALID?asOf=",
+      conflictingUrl: "/employees/EMP-INVALID?unsupported=value",
+      code: "invalid_filter",
+    },
+    {
+      correlationId: malformedLifecycleDetailCorrelationId,
+      initialUrl:
+        "/lifecycle/transaction-requests/request-invalid?unsupported=value",
+      conflictingUrl:
+        "/lifecycle/transaction-requests/request-invalid?different=value",
+      code: "unsupported_filter",
+    },
+  ]) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const malformedRequest = await app.inject({
+        method: "GET",
+        url: fixture.initialUrl,
+        headers: {
+          authorization: `Bearer ${operatorToken}`,
+          "x-hrcore-correlation-id": fixture.correlationId,
+        },
+      });
+      assert.equal(malformedRequest.statusCode, 400);
+      assert.equal(malformedRequest.json().code, fixture.code);
+    }
+    const conflictingMalformedRequest = await app.inject({
+      method: "GET",
+      url: fixture.conflictingUrl,
+      headers: {
+        authorization: `Bearer ${operatorToken}`,
+        "x-hrcore-correlation-id": fixture.correlationId,
+      },
+    });
+    assert.equal(conflictingMalformedRequest.statusCode, 400);
+    assert.equal(
+      conflictingMalformedRequest.json().code,
+      "correlation_reuse_conflict",
+    );
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const unauthenticatedEmployeeList = await app.inject({
       method: "GET",

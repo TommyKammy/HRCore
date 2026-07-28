@@ -54,7 +54,16 @@ const lifecycleQueryKeys = new Set([
   "limit",
   "cursor",
 ]);
-const authorizationAuditErrorCodes = new Set<P2ListErrorCode>([
+const denialAuditErrorCodes = new Set<P2ListErrorCode>([
+  "invalid_filter",
+  "unsupported_filter",
+  "invalid_sort",
+  "unsupported_sort",
+  "limit_out_of_range",
+  "date_range_too_wide",
+  "cursor_invalid",
+  "cursor_version_unsupported",
+  "cursor_filter_mismatch",
   "actor_context_required",
   "permission_denied",
   "data_scope_denied",
@@ -203,7 +212,7 @@ export function registerP2ListLifecycleRoutes(
         }
 
         let responseError = error;
-        if (runtime && authorizationAuditErrorCodes.has(error.code)) {
+        if (runtime && denialAuditErrorCodes.has(error.code)) {
           responseError = await emitDenialAuditEvent(
             runtime,
             {
@@ -376,7 +385,7 @@ export function registerP2ListLifecycleRoutes(
           throw error;
         }
         let responseError = error;
-        if (runtime && authorizationAuditErrorCodes.has(error.code)) {
+        if (runtime && denialAuditErrorCodes.has(error.code)) {
           responseError = await emitDenialAuditEvent(
             runtime,
             {
