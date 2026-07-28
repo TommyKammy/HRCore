@@ -230,7 +230,21 @@
   .decision-bar button {
     width: 100%;
   }
+}
 
+@media (max-width: 1180px) {
+  .collection-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .collection-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
   .collection-table-scroll table,
   .collection-table-scroll tbody,
   .collection-table-scroll tr,
@@ -283,21 +297,7 @@
   .collection-table-scroll .row-action {
     justify-self: start;
   }
-}
 
-@media (max-width: 1180px) {
-  .collection-filters {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 900px) {
-  .collection-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
   .collection-filters {
     grid-template-columns: minmax(0, 1fr);
   }

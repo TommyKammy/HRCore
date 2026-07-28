@@ -53,17 +53,39 @@ closeout.
 2. Confirm `git status --short` contains no unexpected tracked changes.
 3. Use only repository-owned synthetic/non-production data.
 4. Do not configure live provider credentials or production tokens.
-5. Start the API and WebUI from the same checkout:
+5. Generate the repository-owned synthetic database, signed manifest, and
+   persona environments. This replaces only `.local/p2list-uat/`:
 
    ```sh
+   npm run setup:p2list:uat
+   ```
+
+   The generated dataset contains 100 equal-display-name employees, including
+   exact 25-row and 26-row organization scopes, plus one submitted onboarding,
+   transfer, and termination request. It also contains one bounded support
+   evidence record for correlation `p2list-uat-support-correlation`.
+
+6. Start the API and WebUI in separate shells from the repository root:
+
+   ```sh
+   source .local/p2list-uat/api-environment.sh
    npm run dev
+   ```
+
+   ```sh
+   source .local/p2list-uat/web-environment.sh
    npm run dev:web
    ```
 
-6. Configure only explicitly approved local synthetic actor tokens as described
-   in the README. Browser persona state is not authorization.
-7. Record the tested commit with `git rev-parse HEAD`.
-8. Run the focused verifier before manual execution:
+   The generated actor registry gives the HR operator only the explicit list,
+   detail, bounded export, and download permissions; gives the approver no list
+   or detail permissions; and gives HR Ops/support only exact lookup of the
+   named support correlation. Browser persona state is not authorization.
+
+7. Do not edit or reuse generated tokens outside this repository-owned local
+   synthetic run. Re-run `npm run setup:p2list:uat` to reset the dataset.
+8. Record the tested commit with `git rev-parse HEAD`.
+9. Run the focused verifier before manual execution:
 
    ```sh
    npm run verify:p2list:uat
@@ -134,6 +156,8 @@ acceptance.
 | Lifecycle type/list/detail/denial behavior                               | `src/p2list-lifecycle-api.test.ts`                           |
 | Export allowlist, row cap, reason, and formula safety                    | `src/p2list-export.test.ts`, `src/p2list-export-api.test.ts` |
 | Correlation, retry, denial, exact support lookup, and redaction          | `src/p2list-audit-observability.test.ts`                     |
+| Canonical request/result identity and accepted-at reuse                  | `src/p2list-request-identity.test.ts`                        |
+| Reproducible 100-row, lifecycle, persona, manifest, and support fixture  | `src/p2list-uat-fixture-setup.test.ts`                       |
 | Browser request identity and error states                                | `web/src/api-client.test.ts`                                 |
 | Browser list, detail navigation, export, denied, empty, and retry states | `web/src/app/list-screens.test.tsx`                          |
 | Desktop/tablet/mobile visual and overflow checks                         | `web/e2e/visual-alignment.spec.ts`                           |
@@ -142,18 +166,20 @@ acceptance.
 
 1. Record the current commit, operator, date, viewport, persona, and
    tenant/environment.
-2. Run `npm run verify:p2list:uat`. Stop if any focused check fails.
-3. Regenerate screenshots with `npm run capture:web:evidence`.
-4. Execute P2LIST-UAT-01 through P2LIST-UAT-11 in order.
-5. For every action, record the route and displayed/returned correlation ID.
-6. For export scenarios, record the filter summary, reason code, selected
+2. Run `npm run setup:p2list:uat`, then start the API and WebUI with their
+   generated environment files exactly as described in Preconditions.
+3. Run `npm run verify:p2list:uat`. Stop if any focused check fails.
+4. Regenerate screenshots with `npm run capture:web:evidence`.
+5. Execute P2LIST-UAT-01 through P2LIST-UAT-11 in order.
+6. For every action, record the route and displayed/returned correlation ID.
+7. For export scenarios, record the filter summary, reason code, selected
    schema, response row count, and denial code where applicable. Never attach
    raw CSV content containing non-synthetic data.
-7. For support lookup, use only the exact correlation authorized by the
-   server-owned actor scope.
-8. Classify every deviation as `blocker`, `must-fix`, or `post-UAT`.
-9. Record one formal verdict: `Accepted`, `Conditional`, or `Blocked`.
-10. Update #418 and #410 only after the human verdict and all blocker/must-fix
+8. For support lookup, use only `p2list-uat-support-correlation`, the exact
+   correlation authorized by the generated server-owned support actor scope.
+9. Classify every deviation as `blocker`, `must-fix`, or `post-UAT`.
+10. Record one formal verdict: `Accepted`, `Conditional`, or `Blocked`.
+11. Update #418 and #410 only after the human verdict and all blocker/must-fix
     findings are linked.
 
 ## Finding Record

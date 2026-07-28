@@ -41,8 +41,12 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     "Operator Runbook",
     "Finding Record",
     "Exit Rule",
+    "npm run setup:p2list:uat",
     "npm run verify:p2list:uat",
     "npm run capture:web:evidence",
+    "source .local/p2list-uat/api-environment.sh",
+    "source .local/p2list-uat/web-environment.sh",
+    "p2list-uat-support-correlation",
   ] as const) {
     assert.ok(
       normalized.includes(requiredText.replace(/\s+/gu, " ").trim()),
@@ -105,6 +109,21 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     packageJson,
     /"verify:p2list:uat"\s*:/u,
     "package.json must expose the focused P2LIST UAT verifier",
+  );
+  assert.match(
+    packageJson,
+    /"setup:p2list:uat"\s*:\s*"tsx src\/p2list-uat-fixture-setup\.ts"/u,
+    "package.json must expose the reproducible P2LIST UAT setup",
+  );
+  assert.match(
+    packageJson,
+    /"verify:p2list:uat"[^]*dist\/p2list-request-identity\.test\.js/u,
+    "the focused P2LIST UAT verifier must run request-identity coverage",
+  );
+  assert.match(
+    packageJson,
+    /"verify:p2list:uat"[^]*dist\/p2list-uat-fixture-setup\.test\.js/u,
+    "the focused P2LIST UAT verifier must validate its generated fixture",
   );
   assert.doesNotMatch(
     closeout,
