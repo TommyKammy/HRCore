@@ -35,6 +35,8 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     "Epic #410 bounded closeout | Blocked pending #418",
     "Production-like readiness | Blocked",
     "Current-Head Evidence Protocol",
+    "Executable Dataset Handles",
+    "Executable Authorization Checks",
     "Persona Matrix",
     "Formal Scenario Matrix",
     "Evidence Matrix",
@@ -47,6 +49,11 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     "source .local/p2list-uat/api-environment.sh",
     "source .local/p2list-uat/web-environment.sh",
     "p2list-uat-support-correlation",
+    "P2LIST_UAT_APPROVER_TOKEN",
+    "P2LIST_UAT_SUPPORT_TOKEN",
+    "ORG-UAT-OVER-CAP",
+    "101 rows; export denied over cap",
+    "403 permission_denied",
   ] as const) {
     assert.ok(
       normalized.includes(requiredText.replace(/\s+/gu, " ").trim()),

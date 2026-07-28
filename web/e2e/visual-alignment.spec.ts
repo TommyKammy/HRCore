@@ -121,31 +121,31 @@ async function assertNoHorizontalOverflow(page: Page) {
 async function assertRowActionsWithinViewport(page: Page) {
   const viewportWidth = page.viewportSize()?.width;
   expect(viewportWidth).toBeDefined();
-  await expect(
-    page.locator(".collection-results .row-action").first(),
-  ).toBeVisible();
-  const actions = await page.evaluate(() =>
-    Array.from(
-      document.querySelectorAll<HTMLElement>(".collection-results .row-action"),
-      (action) => {
-        const bounds = action.getBoundingClientRect();
-        return {
-          left: bounds.left,
-          right: bounds.right,
-          visible: bounds.width > 0 && bounds.height > 0,
-        };
-      },
-    ),
-  );
-  expect(actions.length).toBeGreaterThan(0);
-  for (const [index, action] of actions.entries()) {
-    expect(action.visible, `row action ${index} must be visible`).toBe(true);
-    expect(action.left).toBeGreaterThanOrEqual(0);
-    expect(
-      action.right,
-      `row action ${index} must be fully visible`,
-    ).toBeLessThanOrEqual(viewportWidth ?? 0);
-  }
+  await expect
+    .poll(
+      () =>
+        page.evaluate((expectedViewportWidth) => {
+          const actions = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              ".collection-results .row-action",
+            ),
+          );
+          return (
+            actions.length > 0 &&
+            actions.every((action) => {
+              const bounds = action.getBoundingClientRect();
+              return (
+                bounds.width > 0 &&
+                bounds.height > 0 &&
+                bounds.left >= 0 &&
+                bounds.right <= expectedViewportWidth
+              );
+            })
+          );
+        }, viewportWidth ?? 0),
+      { message: "row actions must be visible within the viewport" },
+    )
+    .toBe(true);
 }
 
 async function capture(page: Page, testInfo: TestInfo, name: string) {

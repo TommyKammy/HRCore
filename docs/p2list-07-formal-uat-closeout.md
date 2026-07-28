@@ -60,10 +60,11 @@ closeout.
    npm run setup:p2list:uat
    ```
 
-   The generated dataset contains 100 equal-display-name employees, including
-   exact 25-row and 26-row organization scopes, plus one submitted onboarding,
-   transfer, and termination request. It also contains one bounded support
-   evidence record for correlation `p2list-uat-support-correlation`.
+   The generated dataset contains 101 employees in one meaningfully filterable
+   organization scope, nested search-prefix groups of 25, 26, and 100 rows,
+   plus one submitted onboarding, transfer, and termination request. It also
+   contains one bounded support evidence record for correlation
+   `p2list-uat-support-correlation`.
 
 6. Start the API and WebUI in separate shells from the repository root:
 
@@ -90,6 +91,63 @@ closeout.
    ```sh
    npm run verify:p2list:uat
    ```
+
+## Executable Dataset Handles
+
+Use these exact repository-owned synthetic handles during formal UAT:
+
+| Purpose                         | Input                                        | Expected rows/result              |
+| ------------------------------- | -------------------------------------------- | --------------------------------- |
+| Equal-sort 25-row traversal     | `q=UAT-G100-G26-G25`, sort by `hireDate`     | 25 employees                      |
+| Equal-sort 26-row traversal     | `q=UAT-G100-G26`, sort by `hireDate`         | 26 employees                      |
+| Equal-sort 100-row traversal    | `q=UAT-G100`, sort by `hireDate`             | 100 employees                     |
+| Over-cap bounded export         | `organizationCode=ORG-UAT-OVER-CAP`          | 101 rows; export denied over cap  |
+| Empty collection                | `employeeId=EMP-NOT-PRESENT`                 | 0 employees                       |
+| One-row collection/detail       | `employeeId=EMP-001`                         | 1 employee                        |
+| Three normalized lifecycle rows | unfiltered lifecycle list                    | onboarding, transfer, termination |
+| Exact support evidence          | correlation `p2list-uat-support-correlation` | 1 bounded audit event             |
+
+The 25/26/100 groups share the same hire date, so sorting by `hireDate`
+exercises deterministic tie-breaking. For P2LIST-UAT-08, apply the organization
+filter before requesting CSV output with reason `uat_reconciliation`; the
+collection is meaningfully filtered but exceeds the hard 100-row cap.
+
+## Executable Authorization Checks
+
+The WebUI intentionally hides employee and lifecycle routes from the approver
+persona before an API request is made. In a third shell, source the generated
+API environment and execute the server-authoritative denial checks directly:
+
+```sh
+source .local/p2list-uat/api-environment.sh
+curl --silent --show-error --include \
+  --header "Authorization: Bearer ${P2LIST_UAT_APPROVER_TOKEN}" \
+  "http://127.0.0.1:3000/employees?limit=25"
+curl --silent --show-error --include \
+  --header "Authorization: Bearer ${P2LIST_UAT_APPROVER_TOKEN}" \
+  "http://127.0.0.1:3000/employees/EMP-001?asOf=2026-07-01"
+curl --silent --show-error --include \
+  --header "Authorization: Bearer ${P2LIST_UAT_APPROVER_TOKEN}" \
+  "http://127.0.0.1:3000/lifecycle/transaction-requests?limit=25"
+curl --silent --show-error --include \
+  --header "Authorization: Bearer ${P2LIST_UAT_APPROVER_TOKEN}" \
+  "http://127.0.0.1:3000/lifecycle/transaction-requests/p2list-transaction-001"
+```
+
+Each response must be `403 permission_denied` and must not contain `items`,
+`item`, employee identifiers, or lifecycle identifiers.
+
+The current WebUI audit workflow is static and does not call the bounded support
+endpoint. Execute P2LIST-UAT-09 against the same running API:
+
+```sh
+curl --silent --show-error --include \
+  --header "Authorization: Bearer ${P2LIST_UAT_SUPPORT_TOKEN}" \
+  "http://127.0.0.1:3000/support/p2list/audit-evidence/p2list-uat-support-correlation"
+```
+
+The response must be `200`, contain exactly the requested correlation and one
+bounded event, and contain no broad-search result or raw employee row.
 
 ## Current-Head Evidence Protocol
 

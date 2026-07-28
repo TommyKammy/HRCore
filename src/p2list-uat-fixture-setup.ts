@@ -24,11 +24,7 @@ export const p2ListUatTokens = {
   support: "p2list-uat-support-token-2026-local-only",
 } as const;
 
-const employeeOrganizations = [
-  "ORG-UAT-25",
-  "ORG-UAT-26",
-  "ORG-UAT-49",
-] as const;
+const employeeOrganization = "ORG-UAT-OVER-CAP";
 const lifecycleOrganization = "ORG-LIFECYCLE-SYNTHETIC";
 const tenantId = "tenant-repo-owned-synthetic";
 
@@ -100,6 +96,9 @@ export async function prepareP2ListUatFixture(
       `export P2LIST_EMPLOYEE_MANIFEST_SECRET=${shellQuote(p2ListUatManifestSecret)}`,
       `export P2LIST_EMPLOYEE_CURSOR_SECRET=${shellQuote(p2ListUatCursorSecret)}`,
       `export P2LIST_EMPLOYEE_ACTORS_JSON=${shellQuote(JSON.stringify(actorRegistry))}`,
+      `export P2LIST_UAT_HR_OPERATOR_TOKEN=${shellQuote(p2ListUatTokens.hrOperator)}`,
+      `export P2LIST_UAT_APPROVER_TOKEN=${shellQuote(p2ListUatTokens.approver)}`,
+      `export P2LIST_UAT_SUPPORT_TOKEN=${shellQuote(p2ListUatTokens.support)}`,
       "",
     ].join("\n"),
     { encoding: "utf8", mode: 0o600 },
@@ -129,16 +128,17 @@ export async function prepareP2ListUatFixture(
 }
 
 function createUatEmployees(): P2ListEmployeeFixtureRow[] {
-  return createP2ListEmployeeFixtureRows(100, {
-    displayName: "Synthetic Equal Sort Employee",
-  }).map((row, index) => ({
+  return createP2ListEmployeeFixtureRows(101).map((row, index) => ({
     ...row,
-    organizationCode:
+    displayName:
       index < 25
-        ? employeeOrganizations[0]
-        : index < 51
-          ? employeeOrganizations[1]
-          : employeeOrganizations[2],
+        ? "UAT-G100-G26-G25 Equal Sort Employee"
+        : index === 25
+          ? "UAT-G100-G26 Equal Sort Employee"
+          : index < 100
+            ? "UAT-G100 Equal Sort Employee"
+            : "UAT-G101 Over Cap Employee",
+    organizationCode: employeeOrganization,
   }));
 }
 
@@ -318,7 +318,7 @@ function seedSupportAuditEvidence(
         VALUES (
           ?, 'employee_list.viewed', 'p2list_audit_v1',
           '2026-07-01T00:00:00.000Z', 'actor-hr-operator', 'hr_operator',
-          'employee:list:read', 'organization:ORG-UAT-25', NULL,
+          'employee:list:read', 'organization:ORG-UAT-OVER-CAP', NULL,
           'employeeId:asc', 25, 25, 'employee', ?, 'allow', NULL, NULL, 7,
           'synthetic_poc'
         )
@@ -328,7 +328,7 @@ function seedSupportAuditEvidence(
 }
 
 function createActorRegistry() {
-  const organizationCodes = [...employeeOrganizations, lifecycleOrganization];
+  const organizationCodes = [employeeOrganization, lifecycleOrganization];
   return [
     {
       token: p2ListUatTokens.hrOperator,

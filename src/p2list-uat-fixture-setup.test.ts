@@ -29,13 +29,15 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
       p2ListUatManifestSecret,
     );
 
-    assert.equal(result.employeeCount, 100);
+    assert.equal(result.employeeCount, 101);
     assert.equal(result.lifecycleRequestCount, 3);
-    assert.equal(provenance.values("employment").length, 100);
+    assert.equal(provenance.values("employment").length, 101);
     assert.equal(provenance.values("transaction_request").length, 3);
     assert.equal(provenance.values("audit_event").length, 1);
     assert.match(apiEnvironment, /P2LIST_EMPLOYEE_ACTORS_JSON/u);
     assert.match(apiEnvironment, /P2LIST_EMPLOYEE_MANIFEST_PATH/u);
+    assert.match(apiEnvironment, /P2LIST_UAT_APPROVER_TOKEN/u);
+    assert.match(apiEnvironment, /P2LIST_UAT_SUPPORT_TOKEN/u);
     assert.match(webEnvironment, /VITE_P2LIST_HR_OPERATOR_TOKEN/u);
     for (const token of Object.values(p2ListUatTokens)) {
       assert.ok(
@@ -63,6 +65,26 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
           all(): Array<{ organization_code: string; count: number }>;
         }
       ).all();
+      const employeeGroupCounts = (
+        database.prepare(
+          `
+            SELECT
+              SUM(CASE WHEN display_name LIKE 'UAT-G100-G26-G25%' THEN 1 ELSE 0 END) AS rows_25,
+              SUM(CASE WHEN display_name LIKE 'UAT-G100-G26%' THEN 1 ELSE 0 END) AS rows_26,
+              SUM(CASE WHEN display_name LIKE 'UAT-G100%' THEN 1 ELSE 0 END) AS rows_100,
+              SUM(CASE WHEN display_name LIKE 'UAT-G%' THEN 1 ELSE 0 END) AS rows_101
+            FROM person
+            JOIN employment ON employment.person_id = person.id
+          `,
+        ) as unknown as {
+          get(): {
+            rows_25: number;
+            rows_26: number;
+            rows_100: number;
+            rows_101: number;
+          };
+        }
+      ).get();
       const lifecycleTypes = (
         database.prepare(
           "SELECT request_type FROM transaction_request ORDER BY request_type",
@@ -76,14 +98,19 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
         )
         .get(p2ListUatSupportCorrelationId) as { count: number };
 
-      assert.equal(employeeCount.count, 100);
+      assert.equal(employeeCount.count, 101);
       assert.deepEqual(
         organizationCounts.map((row) => ({ ...row })),
-        [
-          { organization_code: "ORG-UAT-25", count: 25 },
-          { organization_code: "ORG-UAT-26", count: 26 },
-          { organization_code: "ORG-UAT-49", count: 49 },
-        ],
+        [{ organization_code: "ORG-UAT-OVER-CAP", count: 101 }],
+      );
+      assert.deepEqual(
+        { ...employeeGroupCounts },
+        {
+          rows_25: 25,
+          rows_26: 26,
+          rows_100: 100,
+          rows_101: 101,
+        },
       );
       assert.deepEqual(
         lifecycleTypes.map((row) => row.request_type),
