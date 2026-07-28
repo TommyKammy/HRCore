@@ -6,6 +6,7 @@ import {
   createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchEmployeeDetail,
+  isCompletedP2ListDenial,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import { detailRouteErrorMessage } from "./detail-route-error";
@@ -108,6 +109,12 @@ export function EmployeeDetailRoute({
       .catch((caught: unknown) => {
         if (controller.signal.aborted) {
           return;
+        }
+        if (isCompletedP2ListDenial(caught)) {
+          actionRef.current = {
+            ...actionRef.current,
+            correlationId: createP2ListCorrelationId(),
+          };
         }
         setState({
           employee: null,

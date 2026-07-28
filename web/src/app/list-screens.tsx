@@ -37,6 +37,7 @@ import {
   fetchEmployees,
   fetchLifecycleExport,
   fetchLifecycleRequests,
+  isCompletedP2ListDenial,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import {
@@ -200,8 +201,15 @@ function useBoundedCollection<Query, Response>({
         if (controller.signal.aborted) {
           return;
         }
+        const nextError = classifyCollectionError(caught);
+        if (isCompletedP2ListDenial(caught)) {
+          actionRef.current = {
+            ...actionRef.current,
+            correlationId: createP2ListCorrelationId(),
+          };
+        }
         setResponse(null);
-        setError(classifyCollectionError(caught));
+        setError(nextError);
       })
       .finally(() => {
         if (!controller.signal.aborted) {

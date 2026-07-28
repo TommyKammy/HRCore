@@ -30,7 +30,27 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
   const database = await openLocalSyntheticWritebackDatabase(
     `file:${join(directory, "hrcore.sqlite")}`,
   );
-  const runtimes = await createServerP2ListRuntimes(database, {
+  const auditTransactionStatements: string[] = [];
+  const runtimeDatabase = new Proxy(database, {
+    get(target, property) {
+      if (property === "exec") {
+        return (sql: string) => {
+          const statement = sql.trim();
+          if (
+            statement === "BEGIN IMMEDIATE" ||
+            statement === "COMMIT" ||
+            statement === "ROLLBACK"
+          ) {
+            auditTransactionStatements.push(statement);
+          }
+          return target.exec(sql);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const runtimes = await createServerP2ListRuntimes(runtimeDatabase, {
     P2LIST_EMPLOYEE_ACTORS_JSON: JSON.stringify([
       {
         token: operatorToken,
@@ -272,6 +292,19 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
     )
     .get(interactionCorrelationId);
   assert.equal(persistedCount?.count, 1);
+  let transactionOpen = false;
+  for (const statement of auditTransactionStatements) {
+    if (statement === "BEGIN IMMEDIATE") {
+      assert.equal(transactionOpen, false);
+      transactionOpen = true;
+    } else {
+      assert.equal(transactionOpen, true);
+      transactionOpen = false;
+    }
+  }
+  assert.equal(transactionOpen, false);
+  assert.ok(auditTransactionStatements.includes("COMMIT"));
+  assert.ok(auditTransactionStatements.includes("ROLLBACK"));
 });
 
 test("P2LIST support evidence hides absent and out-of-scope correlations identically", async (t) => {

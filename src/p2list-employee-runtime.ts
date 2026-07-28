@@ -163,6 +163,27 @@ function persistP2ListAuditEvent(
     | P2ListLifecycleAuditEvent
     | P2ListExportAuditEvent,
 ): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    persistP2ListAuditEventInTransaction(db, event);
+    db.exec("COMMIT");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // Preserve the audit failure that caused the rollback.
+    }
+    throw error;
+  }
+}
+
+function persistP2ListAuditEventInTransaction(
+  db: OnboardingTransactionRequestDatabase,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
   assertP2ListAuditCorrelationAvailable(db, event);
   const result = db
     .prepare(

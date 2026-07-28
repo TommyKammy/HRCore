@@ -478,7 +478,8 @@ describe("employee list screen", () => {
       new Headers(init?.headers).get("x-hrcore-correlation-id"),
     );
     expect(correlations[0]).toMatch(/^p2list-ui-/u);
-    expect(new Set(correlations).size).toBe(1);
+    expect(correlations[1]).not.toBe(correlations[0]);
+    expect(correlations[2]).toBe(correlations[1]);
   });
 
   it("distinguishes service and contract failures from network failures", async () => {

@@ -194,6 +194,21 @@ export class ApiClientError extends Error {
   }
 }
 
+const completedP2ListDenialCodes = new Set([
+  "actor_context_required",
+  "permission_denied",
+  "data_scope_denied",
+]);
+
+export function isCompletedP2ListDenial(caught: unknown): boolean {
+  return (
+    caught instanceof ApiClientError &&
+    (caught.status === 401 ||
+      caught.status === 403 ||
+      completedP2ListDenialCodes.has(caught.code ?? ""))
+  );
+}
+
 const requiredApiContractPaths = [
   "/health",
   "/employees",

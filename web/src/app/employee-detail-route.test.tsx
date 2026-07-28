@@ -172,6 +172,64 @@ describe("EmployeeDetailRoute", () => {
     expect(correlations[1]).toBe(correlations[0]);
   });
 
+  it("rotates the action correlation ID after a completed denial", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            code: "permission_denied",
+            message: "The bounded operation was denied.",
+            correlationId: "employee-detail-denied-retry",
+            readiness: "bounded_synthetic_only_not_production_ready",
+          },
+          { status: 403 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          item: {
+            personId: "person-retry",
+            employeeId: "EMP-DENIED-RETRY",
+            displayName: "Retry Employee",
+            employmentStatus: "active",
+            organizationCode: "ORG-001",
+            positionCode: "POS-001",
+            hireDate: "2026-01-01",
+            terminationDate: null,
+          },
+          asOf: "2026-07-26",
+          authorization,
+          correlationId: "employee-detail-retry-success",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <EmployeeDetailRoute
+        personaId="hr-operator"
+        employeeId="EMP-DENIED-RETRY"
+        asOf={null}
+        useLegacyFixture={false}
+        onOpenTransfer={null}
+      />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "employee-detail-denied-retry",
+    );
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    expect(
+      await screen.findByRole("heading", { name: "Retry Employee" }),
+    ).toBeInTheDocument();
+    const correlations = fetchMock.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get("x-hrcore-correlation-id"),
+    );
+    expect(correlations[0]).toMatch(/^p2list-ui-/u);
+    expect(correlations[1]).not.toBe(correlations[0]);
+  });
+
   it.each([
     {
       name: "employee ID",
