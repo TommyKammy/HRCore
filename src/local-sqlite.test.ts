@@ -196,10 +196,11 @@ test("local SQLite bootstrap upgrades the P2LIST audit sink without losing rows"
 
     assert.equal(migratedTable?.name, "p2list_audit_event");
     assert.match(String(migratedTable?.sql), /export_schema_version/u);
+    assert.match(String(migratedTable?.sql), /duration_ms/u);
     const preservedAuditRow = migratedDb
       .prepare(
         `
-          SELECT event_id, export_schema_version
+          SELECT event_id, export_schema_version, duration_ms
           FROM p2list_audit_event
           WHERE event_id = ?
         `,
@@ -208,9 +209,63 @@ test("local SQLite bootstrap upgrades the P2LIST audit sink without losing rows"
     assert.deepEqual(preservedAuditRow ? { ...preservedAuditRow } : undefined, {
       event_id: "legacy-p2list-audit-event",
       export_schema_version: null,
+      duration_ms: 0,
     });
+    const observabilityIndexes = migratedDb
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM sqlite_master
+          WHERE type = 'index'
+            AND tbl_name = 'p2list_audit_event'
+            AND name LIKE 'p2list_audit_event_correlation_%'
+        `,
+      )
+      .get();
+    assert.equal(observabilityIndexes?.count, 2);
+    migratedDb.exec(`
+      UPDATE p2list_audit_event
+      SET duration_ms = 37
+      WHERE event_id = 'legacy-p2list-audit-event';
+      DROP INDEX p2list_audit_event_correlation_occurred_idx;
+    `);
   } finally {
     migratedDb.close();
+  }
+
+  const repairedDb = await openLocalSyntheticWritebackDatabase(
+    `file:${databasePath}`,
+  );
+  try {
+    const repairedIndex = repairedDb
+      .prepare(
+        `
+          SELECT name
+          FROM sqlite_master
+          WHERE type = 'index'
+            AND name = 'p2list_audit_event_correlation_occurred_idx'
+        `,
+      )
+      .get();
+    assert.equal(
+      repairedIndex?.name,
+      "p2list_audit_event_correlation_occurred_idx",
+    );
+    assert.equal(
+      repairedDb
+        .prepare(
+          `
+            SELECT duration_ms
+            FROM p2list_audit_event
+            WHERE event_id = 'legacy-p2list-audit-event'
+          `,
+        )
+        .get()?.duration_ms,
+      37,
+      "index repair must not rebuild the table or reset timing evidence",
+    );
+  } finally {
+    repairedDb.close();
   }
 });
 
@@ -325,6 +380,213 @@ test("P2LIST audit sink rebuild rolls back a failed upgrade atomically", async (
     });
   } finally {
     migratedDb.close();
+  }
+});
+
+test("P2LIST observability upgrade rejects duplicate evidence without deleting rows", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const tempDirectory = await mkdtemp(join(tmpdir(), "hrcore-local-db-"));
+  t.after(async () => {
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const databasePath = join(tempDirectory, "hrcore.sqlite");
+  const db = new sqlite.DatabaseSync(databasePath);
+  try {
+    db.exec(
+      await readMigrationSqlBefore("0020_p2list_audit_observability.sql"),
+    );
+    db.exec(`
+      INSERT INTO p2list_audit_event (
+        event_id,
+        event_type,
+        event_version,
+        occurred_at,
+        evaluated_permission,
+        resource_type,
+        correlation_id,
+        policy_decision
+      )
+      VALUES
+        (
+          'duplicate-p2list-audit-event-1',
+          'employee_list.viewed',
+          'p2list_audit_v1',
+          '2026-07-26T00:00:00.000Z',
+          'employee:list:read',
+          'employee',
+          'duplicate-p2list-correlation',
+          'allow'
+        ),
+        (
+          'duplicate-p2list-audit-event-2',
+          'employee_list.viewed',
+          'p2list_audit_v1',
+          '2026-07-26T00:00:01.000Z',
+          'employee:list:read',
+          'employee',
+          'duplicate-p2list-correlation',
+          'allow'
+        )
+    `);
+  } finally {
+    db.close();
+  }
+
+  await assert.rejects(
+    () => openLocalSyntheticWritebackDatabase(`file:${databasePath}`),
+    /UNIQUE constraint failed/u,
+  );
+
+  const preservedDb = new sqlite.DatabaseSync(databasePath);
+  try {
+    assert.equal(
+      preservedDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM p2list_audit_event
+            WHERE correlation_id = 'duplicate-p2list-correlation'
+          `,
+        )
+        .get()?.count,
+      2,
+    );
+    assert.equal(
+      preservedDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM pragma_table_info('p2list_audit_event')
+            WHERE name = 'duration_ms'
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+    assert.equal(
+      preservedDb
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM sqlite_master
+            WHERE name IN (
+              '__new_p2list_audit_event',
+              '__p2list_audit_event_correlation_type_guard'
+            )
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+  } finally {
+    preservedDb.close();
+  }
+});
+
+test("P2LIST observability rebuild includes required indexes in its atomic boundary", async (t) => {
+  let sqlite: typeof import("node:sqlite");
+  try {
+    sqlite = await import("node:sqlite");
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code === "ERR_UNKNOWN_BUILTIN_MODULE"
+    ) {
+      t.skip("node:sqlite is unavailable in this Node runtime");
+      return;
+    }
+
+    throw error;
+  }
+
+  const db = new sqlite.DatabaseSync(":memory:");
+  try {
+    db.exec(
+      await readMigrationSqlBefore("0020_p2list_audit_observability.sql"),
+    );
+    const migrationSql = await readFile(
+      join(process.cwd(), "drizzle", "0020_p2list_audit_observability.sql"),
+      "utf8",
+    );
+    const finalIndexStatement =
+      "CREATE INDEX `p2list_audit_event_correlation_occurred_idx`";
+    const failingMigrationSql = prepareLocalBootstrapMigrationSql(
+      "0020_p2list_audit_observability.sql",
+      migrationSql.replace(
+        finalIndexStatement,
+        `SELECT * FROM __forced_p2list_observability_failure;\n${finalIndexStatement}`,
+      ),
+    );
+
+    assert.throws(
+      () => db.exec(failingMigrationSql),
+      /__forced_p2list_observability_failure/u,
+    );
+    db.exec("ROLLBACK");
+    assert.equal(
+      db
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM pragma_table_info('p2list_audit_event')
+            WHERE name = 'duration_ms'
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+    assert.equal(
+      db
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM sqlite_master
+            WHERE type = 'index'
+              AND name IN (
+                'p2list_audit_event_correlation_type_unique',
+                'p2list_audit_event_correlation_occurred_idx'
+              )
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+    assert.equal(
+      db
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = '__new_p2list_audit_event'
+          `,
+        )
+        .get()?.count,
+      0,
+    );
+    assert.doesNotThrow(() =>
+      db.exec(
+        prepareLocalBootstrapMigrationSql(
+          "0020_p2list_audit_observability.sql",
+          migrationSql,
+        ),
+      ),
+    );
+  } finally {
+    db.close();
   }
 });
 

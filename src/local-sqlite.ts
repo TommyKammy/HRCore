@@ -22,6 +22,20 @@ const additiveWritebackMigrationByTable = new Map([
 ]);
 const p2ListExportMigrationFile =
   "0019_p2list_export_schema_version.sql" as const;
+const p2ListObservabilityMigrationFile =
+  "0020_p2list_audit_observability.sql" as const;
+const p2ListAuditIndexSpecifications = [
+  {
+    name: "p2list_audit_event_correlation_type_unique",
+    unique: true,
+    columns: ["correlation_id", "event_type"],
+  },
+  {
+    name: "p2list_audit_event_correlation_occurred_idx",
+    unique: false,
+    columns: ["correlation_id", "occurred_at"],
+  },
+] as const;
 
 export interface LocalSyntheticWritebackDatabase extends SyntheticWritebackDatabase {
   close(): void;
@@ -111,11 +125,22 @@ async function ensureSyntheticWritebackSchema(
   ) {
     additiveMigrationFiles.push(p2ListExportMigrationFile);
   }
+  if (
+    missingTables.includes("p2list_audit_event") ||
+    !tableIncludesColumn(db, "p2list_audit_event", "duration_ms")
+  ) {
+    additiveMigrationFiles.push(p2ListObservabilityMigrationFile);
+  }
   if (additiveMigrationFiles.length > 0) {
     db.exec(
       await readCommittedMigrationSql([...new Set(additiveMigrationFiles)]),
     );
-    return;
+  }
+  if (
+    tableExists(db, "p2list_audit_event") &&
+    tableIncludesColumn(db, "p2list_audit_event", "duration_ms")
+  ) {
+    ensureP2ListAuditIndexes(db);
   }
 }
 
@@ -174,6 +199,55 @@ function tableIncludesColumn(
   return row?.present === 1;
 }
 
+function ensureP2ListAuditIndexes(db: SyntheticWritebackDatabase): void {
+  const invalidIndexes = p2ListAuditIndexSpecifications.filter(
+    (specification) => !indexMatchesSpecification(db, specification),
+  );
+  if (invalidIndexes.length === 0) {
+    return;
+  }
+  const statements = invalidIndexes.flatMap((specification) => [
+    `DROP INDEX IF EXISTS \`${specification.name}\`;`,
+    `CREATE ${specification.unique ? "UNIQUE " : ""}INDEX \`${
+      specification.name
+    }\` ON \`p2list_audit_event\` (${specification.columns
+      .map((column) => `\`${column}\``)
+      .join(",")});`,
+  ]);
+  db.exec(["BEGIN IMMEDIATE;", ...statements, "COMMIT;"].join("\n"));
+}
+
+function indexMatchesSpecification(
+  db: SyntheticWritebackDatabase,
+  specification: (typeof p2ListAuditIndexSpecifications)[number],
+): boolean {
+  const index = db
+    .prepare(
+      `
+        SELECT [unique] AS is_unique
+        FROM pragma_index_list(?)
+        WHERE name = ?
+      `,
+    )
+    .get("p2list_audit_event", specification.name);
+  if (!index || index.is_unique !== (specification.unique ? 1 : 0)) {
+    return false;
+  }
+  const columns = db
+    .prepare(
+      `
+        SELECT group_concat(name, ',') AS columns
+        FROM (
+          SELECT name
+          FROM pragma_index_info(?)
+          ORDER BY seqno
+        )
+      `,
+    )
+    .get(specification.name);
+  return columns?.columns === specification.columns.join(",");
+}
+
 function countUserTables(db: SyntheticWritebackDatabase): number {
   const row = db
     .prepare(
@@ -217,22 +291,36 @@ export function prepareLocalBootstrapMigrationSql(
   migrationFile: string,
   migrationSql: string,
 ): string {
-  if (migrationFile !== p2ListExportMigrationFile) {
+  if (
+    migrationFile !== p2ListExportMigrationFile &&
+    migrationFile !== p2ListObservabilityMigrationFile
+  ) {
     return migrationSql;
   }
 
   const foreignKeysOff = "PRAGMA foreign_keys=OFF;--> statement-breakpoint";
   const foreignKeysOn = "PRAGMA foreign_keys=ON;";
+  const foreignKeysOnPattern =
+    /PRAGMA foreign_keys=ON;(?:--> statement-breakpoint)?/gu;
+  const foreignKeysOnMatches = migrationSql.match(foreignKeysOnPattern);
   if (
     !migrationSql.startsWith(foreignKeysOff) ||
-    !migrationSql.trimEnd().endsWith(foreignKeysOn)
+    foreignKeysOnMatches?.length !== 1
   ) {
     throw new Error(
-      `${p2ListExportMigrationFile} no longer matches the local atomic upgrade boundary.`,
+      `${migrationFile} no longer matches the local atomic upgrade boundary.`,
     );
   }
 
-  return migrationSql
-    .replace(foreignKeysOff, `${foreignKeysOff}\nBEGIN IMMEDIATE;`)
-    .replace(foreignKeysOn, `COMMIT;\n${foreignKeysOn}`);
+  const migrationBody = migrationSql
+    .slice(foreignKeysOff.length)
+    .replace(foreignKeysOnPattern, "")
+    .trim();
+  return [
+    foreignKeysOff,
+    "BEGIN IMMEDIATE;",
+    migrationBody,
+    "COMMIT;",
+    foreignKeysOn,
+  ].join("\n");
 }

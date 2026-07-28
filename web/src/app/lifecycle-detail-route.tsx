@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   type LifecycleRequestListItem,
   ApiClientError,
+  createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchLifecycleRequestDetail,
+  isCompletedP2ListDenial,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import { detailRouteErrorMessage } from "./detail-route-error";
@@ -38,9 +40,20 @@ export function LifecycleDetailRoute({
     error: null,
     correlationId: null,
   });
+  const actionRef = useRef({
+    key: "",
+    correlationId: createP2ListCorrelationId(),
+  });
 
   useEffect(() => {
     const controller = new AbortController();
+    const actionKey = JSON.stringify([personaId, requestId, expectedType]);
+    if (actionRef.current.key !== actionKey) {
+      actionRef.current = {
+        key: actionKey,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     setState({
       request: null,
       maskedFields: [],
@@ -50,7 +63,11 @@ export function LifecycleDetailRoute({
     });
     void fetchLifecycleRequestDetail(
       requestId,
-      createP2ListRequestInit(personaId, controller.signal),
+      createP2ListRequestInit(
+        personaId,
+        controller.signal,
+        actionRef.current.correlationId,
+      ),
     )
       .then((response) => {
         if (controller.signal.aborted) {
@@ -80,6 +97,12 @@ export function LifecycleDetailRoute({
       .catch((caught: unknown) => {
         if (controller.signal.aborted) {
           return;
+        }
+        if (isCompletedP2ListDenial(caught)) {
+          actionRef.current = {
+            ...actionRef.current,
+            correlationId: createP2ListCorrelationId(),
+          };
         }
         setState({
           request: null,

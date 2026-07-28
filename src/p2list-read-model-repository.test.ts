@@ -35,6 +35,7 @@ const cursorSecret =
 const acceptedAt = "2026-07-24T02:30:00.000Z";
 const employeeActor: P2ListActorContext = {
   actorId: "actor-hr-operator",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [p2ListPermissions.employeeListRead],
   dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
@@ -48,6 +49,7 @@ const employeeDetailActor: P2ListActorContext = {
 };
 const lifecycleActor: P2ListActorContext = {
   actorId: "actor-hr-support",
+  actorRole: "hr_ops_support",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [
     p2ListPermissions.lifecycleRequestListRead,
@@ -605,6 +607,22 @@ test("P2LIST employee cursor rejects filter and actor drift and avoids duplicate
         actor: {
           ...employeeActor,
           actorId: "different-actor",
+        },
+        provenance,
+        acceptedAt,
+        filters: { q: "Synthetic" },
+        sort: "employeeId",
+        limit: 25,
+        cursor: first.pageInfo.nextCursor!,
+      }),
+    "permission_denied",
+  );
+  assertP2ListError(
+    () =>
+      repository.listEmployees({
+        actor: {
+          ...employeeActor,
+          actorRole: "hr_ops_support",
         },
         provenance,
         acceptedAt,

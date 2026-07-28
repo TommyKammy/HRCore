@@ -357,7 +357,7 @@ export const p2ListCursorContract = {
   serverSideStateCleanup: "delete_after_expiry",
   authorizationContextFingerprint: {
     algorithm: "sha256_canonical_json",
-    inputs: ["actorId", "tenantId", "permissions", "dataScope"],
+    inputs: ["actorId", "actorRole", "tenantId", "permissions", "dataScope"],
   },
   serverSideStateRequiredFields: [
     "resource",
@@ -578,6 +578,7 @@ export const p2ListAuditFields = [
   "policyDecision",
   "reasonCode",
   "exportSchemaVersion",
+  "durationMs",
 ] as const;
 
 export const p2ListAuditDeniedFields = [
@@ -617,6 +618,7 @@ export const p2ListErrorCodes = [
   "cursor_invalid",
   "cursor_version_unsupported",
   "cursor_filter_mismatch",
+  "correlation_reuse_conflict",
   "actor_context_required",
   "permission_denied",
   "data_scope_denied",

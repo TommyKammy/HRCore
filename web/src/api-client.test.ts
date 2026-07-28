@@ -10,6 +10,7 @@ import {
   fetchLifecycleRequestDetail,
   fetchLifecycleRequests,
   fetchOpenApiContract,
+  isCompletedP2ListDenial,
   type EmployeeListResponse,
   type LifecycleRequestListResponse,
 } from "./api-client";
@@ -85,6 +86,7 @@ describe("OpenAPI contract API client", () => {
     "/lifecycle/transaction-requests/{requestId}",
     "/exports/employee-list",
     "/exports/lifecycle-request-list",
+    "/support/p2list/audit-evidence/{correlationId}",
   ])("rejects a contract missing %s", async (missingPath) => {
     const paths: Record<string, unknown> = {
       ...repositoryOwnedApiContract.paths,
@@ -391,6 +393,17 @@ describe("lifecycle request API client", () => {
 });
 
 describe("employee API client", () => {
+  it("treats a correlation reuse conflict as a completed denial", () => {
+    expect(
+      isCompletedP2ListDenial(
+        new ApiClientError("conflict", {
+          status: 400,
+          code: "correlation_reuse_conflict",
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("uses only the configured opaque actor token for the selected persona", () => {
     vi.stubEnv(
       "VITE_P2LIST_HR_OPERATOR_TOKEN",
@@ -407,6 +420,35 @@ describe("employee API client", () => {
         "authorization",
       ),
     ).toBe(false);
+    expect(
+      new Headers(createP2ListRequestInit("hr-operator").headers).get(
+        "x-hrcore-correlation-id",
+      ),
+    ).toMatch(
+      /^p2list-ui-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    );
+  });
+
+  it("keeps one WebUI correlation ID when a request init is reused for retry", async () => {
+    vi.stubEnv(
+      "VITE_P2LIST_HR_OPERATOR_TOKEN",
+      "bounded-local-hr-operator-token-000001",
+    );
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json(employeeListResponse),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const init = createP2ListRequestInit("hr-operator");
+
+    await fetchEmployees({}, init);
+    await fetchEmployees({}, init);
+
+    const correlations = fetchMock.mock.calls.map(([_, requestInit]) =>
+      new Headers(requestInit?.headers).get("x-hrcore-correlation-id"),
+    );
+    expect(correlations[0]).toMatch(/^p2list-ui-/u);
+    expect(correlations[1]).toBe(correlations[0]);
   });
 
   it("preserves every RequestInit headers form", async () => {

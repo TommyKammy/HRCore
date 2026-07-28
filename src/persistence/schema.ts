@@ -651,6 +651,7 @@ export const p2list_audit_event = sqliteTable(
     exportSchemaVersion: text("export_schema_version", {
       enum: ["p2list_export_v1"],
     }),
+    durationMs: integer("duration_ms").notNull().default(0),
     pocMarker: text("poc_marker", { enum: ["synthetic_poc"] })
       .notNull()
       .default("synthetic_poc"),
@@ -722,8 +723,20 @@ export const p2list_audit_event = sqliteTable(
       sql`${table.exportSchemaVersion} is null or ${table.exportSchemaVersion} = 'p2list_export_v1'`,
     ),
     check(
+      "p2list_audit_event_duration_ms_bounded",
+      sql`${table.durationMs} between 0 and 600000`,
+    ),
+    check(
       "p2list_audit_event_poc_marker_allowed",
       sql`${table.pocMarker} = 'synthetic_poc'`,
+    ),
+    uniqueIndex("p2list_audit_event_correlation_type_unique").on(
+      table.correlationId,
+      table.eventType,
+    ),
+    index("p2list_audit_event_correlation_occurred_idx").on(
+      table.correlationId,
+      table.occurredAt,
     ),
   ],
 );

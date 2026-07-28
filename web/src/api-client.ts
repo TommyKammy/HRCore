@@ -194,12 +194,29 @@ export class ApiClientError extends Error {
   }
 }
 
+const completedP2ListDenialCodes = new Set([
+  "actor_context_required",
+  "permission_denied",
+  "data_scope_denied",
+  "correlation_reuse_conflict",
+]);
+
+export function isCompletedP2ListDenial(caught: unknown): boolean {
+  return (
+    caught instanceof ApiClientError &&
+    (caught.status === 401 ||
+      caught.status === 403 ||
+      completedP2ListDenialCodes.has(caught.code ?? ""))
+  );
+}
+
 const requiredApiContractPaths = [
   "/health",
   "/employees",
   "/employees/{employeeId}",
   "/lifecycle/transaction-requests",
   "/lifecycle/transaction-requests/{requestId}",
+  "/support/p2list/audit-evidence/{correlationId}",
 ] as const;
 const requiredApiContractPostPaths = [
   "/exports/employee-list",
@@ -453,6 +470,7 @@ function isLifecycleRequestDetailResponse(
 export function createP2ListRequestInit(
   personaId: BoundedPersonaId,
   signal?: AbortSignal,
+  correlationId = createP2ListCorrelationId(),
 ): RequestInit {
   const tokenByPersona: Partial<Record<BoundedPersonaId, string | undefined>> =
     {
@@ -461,16 +479,19 @@ export function createP2ListRequestInit(
       "hr-ops-support": import.meta.env.VITE_P2LIST_SUPPORT_TOKEN,
     };
   const token = tokenByPersona[personaId]?.trim();
+  const headers = new Headers();
+  headers.set("x-hrcore-correlation-id", correlationId);
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
   return {
     signal,
-    ...(token
-      ? {
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
-        }
-      : {}),
+    headers,
   };
+}
+
+export function createP2ListCorrelationId(): string {
+  return `p2list-ui-${globalThis.crypto.randomUUID()}`;
 }
 
 async function readJson<T>(

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Writable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import test, { type TestContext } from "node:test";
 
 import Fastify from "fastify";
@@ -23,6 +23,7 @@ import { registerP2ListExportRoutes } from "./routes/p2list-exports.js";
 const occurredAt = new Date("2026-07-27T00:00:00.000Z");
 const fullEmployeeActor: P2ListActorContext = {
   actorId: "actor-employee-export",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [
     p2ListPermissions.employeeListRead,
@@ -33,6 +34,7 @@ const fullEmployeeActor: P2ListActorContext = {
 };
 const fullLifecycleActor: P2ListActorContext = {
   actorId: "actor-lifecycle-export",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [
     p2ListPermissions.lifecycleRequestListRead,
@@ -209,7 +211,7 @@ test("POST /exports/lifecycle-request-list returns canonical lifecycle columns",
   );
 });
 
-test("malformed JSON exports use the bounded 400 contract and denial audit", async (t) => {
+test("parser-rejected exports use the bounded 400 contract and denial audit", async (t) => {
   const harness = await createHarness(t, {
     actors: {
       employee: fullEmployeeActor,
@@ -221,11 +223,40 @@ test("malformed JSON exports use the bounded 400 contract and denial audit", asy
       url: "/exports/employee-list",
       token: "employee",
       resourceType: "employee",
+      contentType: "application/json",
+      payload: '{"filters":',
     },
     {
       url: "/exports/lifecycle-request-list",
       token: "lifecycle",
       resourceType: "lifecycleRequest",
+      contentType: "application/json",
+      payload: '{"filters":',
+    },
+    {
+      url: "/exports/employee-list",
+      token: "employee",
+      resourceType: "employee",
+      contentType: "text/plain",
+      payload: "unsupported export body",
+    },
+    {
+      url: "/exports/lifecycle-request-list",
+      token: "lifecycle",
+      resourceType: "lifecycleRequest",
+      contentType: "application/json",
+      payload: Readable.from([
+        Buffer.from(`{"padding":"${"x".repeat(1_048_576)}"}`),
+      ]),
+    },
+    {
+      url: "/exports/lifecycle-request-list",
+      token: "lifecycle",
+      resourceType: "lifecycleRequest",
+      contentType: "application/json",
+      payload: Readable.from([
+        Buffer.from(`{"padding":"${"y".repeat(1_048_576)}"}`),
+      ]),
     },
   ] as const;
 
@@ -235,9 +266,9 @@ test("malformed JSON exports use the bounded 400 contract and denial audit", asy
       url: scenario.url,
       headers: {
         authorization: `Bearer ${scenario.token}`,
-        "content-type": "application/json",
+        "content-type": scenario.contentType,
       },
-      payload: '{"filters":',
+      payload: scenario.payload,
     });
 
     assert.equal(response.statusCode, 400);
@@ -265,6 +296,10 @@ test("malformed JSON exports use the bounded 400 contract and denial audit", asy
       reasonCode: "invalid_filter",
       correlationId: `export-correlation-${index + 1}`,
     })),
+  );
+  assert.notEqual(
+    harness.auditEvents.at(-2)?.filterFingerprint,
+    harness.auditEvents.at(-1)?.filterFingerprint,
   );
 });
 
@@ -312,7 +347,11 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
     {
       name: "missing export permission",
       token: "no-export",
-      payload: exportPayload("ORG-SYNTHETIC"),
+      payload: {
+        filters: { organizationCode: "ORG-PREAUTH-PRIVATE" },
+        reasonCode: "free form private reason",
+        fields: ["rawPayload"],
+      },
       status: 403,
       code: "permission_denied",
     },
@@ -402,7 +441,7 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
     assert.equal(response.json().code, scenario.code, scenario.name);
     assert.doesNotMatch(
       response.body,
-      /ORG-SYNTHETIC|ORG-TOO-MANY|free form private reason|rawPayload/u,
+      /ORG-SYNTHETIC|ORG-TOO-MANY|ORG-PREAUTH-PRIVATE|free form private reason|rawPayload/u,
       scenario.name,
     );
   }
@@ -420,7 +459,42 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
   );
   assert.doesNotMatch(
     JSON.stringify(deniedEvents),
-    /ORG-SYNTHETIC|ORG-TOO-MANY|free form private reason|rawPayload/u,
+    /ORG-SYNTHETIC|ORG-TOO-MANY|ORG-PREAUTH-PRIVATE|free form private reason|rawPayload/u,
+  );
+});
+
+test("bounded export denials fingerprint parsed filters and requested reasons", async (t) => {
+  const harness = await createHarness(t, {
+    actors: { employee: fullEmployeeActor },
+    listEmployees() {
+      return employeePage(true);
+    },
+  });
+
+  for (const payload of [
+    exportPayload("ORG-TOO-MANY", "uat_reconciliation"),
+    exportPayload("ORG-OTHER", "operational_reconciliation"),
+    exportPayload("ORG-TOO-MANY", "uat_reconciliation"),
+  ]) {
+    const response = await harness.app.inject({
+      method: "POST",
+      url: "/exports/employee-list",
+      headers: { authorization: "Bearer employee" },
+      payload,
+    });
+    assert.equal(response.statusCode, 422);
+    assert.equal(response.json().code, "export_row_limit_exceeded");
+  }
+
+  const fingerprints = harness.auditEvents.map(
+    (event) => event.filterFingerprint,
+  );
+  assert.match(fingerprints[0] ?? "", /^[A-Za-z0-9_-]{43}$/u);
+  assert.notEqual(fingerprints[0], fingerprints[1]);
+  assert.equal(fingerprints[0], fingerprints[2]);
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    /ORG-TOO-MANY|ORG-OTHER|uat_reconciliation|operational_reconciliation/u,
   );
 });
 

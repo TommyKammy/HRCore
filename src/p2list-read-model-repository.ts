@@ -145,6 +145,7 @@ export interface P2ListLifecycleDetailQuery {
 
 interface NormalizedActorContext {
   actorId: string;
+  actorRole: string;
   tenantId: string;
   permissions: string[];
   dataScope: Required<P2ListDataScope>;
@@ -209,7 +210,13 @@ const lifecycleFilterKeys = [
   "effectiveTo",
   "correlationId",
 ] as const;
-const actorKeys = ["actorId", "tenantId", "permissions", "dataScope"] as const;
+const actorKeys = [
+  "actorId",
+  "actorRole",
+  "tenantId",
+  "permissions",
+  "dataScope",
+] as const;
 const queryPattern = new RegExp(p2ListQueryPattern, "u");
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/u;
 const persistedLifecycleTypes = [
@@ -1274,6 +1281,12 @@ function normalizeActorContext(
     256,
     "actor_context_required",
   );
+  const actorRole = requireBoundedString(
+    actor.actorRole,
+    1,
+    256,
+    "actor_context_required",
+  );
   const tenantId = requireBoundedString(
     actor.tenantId,
     1,
@@ -1313,11 +1326,13 @@ function normalizeActorContext(
   }
   return {
     actorId,
+    actorRole,
     tenantId,
     permissions,
     dataScope,
     fingerprint: fingerprintP2ListValue({
       actorId,
+      actorRole,
       tenantId,
       permissions,
       dataScope,

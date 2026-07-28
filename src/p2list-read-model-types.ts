@@ -30,6 +30,7 @@ export interface P2ListDataScope {
 
 export interface P2ListActorContext {
   actorId: string;
+  actorRole: string;
   tenantId: string;
   permissions: readonly string[];
   dataScope: P2ListDataScope;
@@ -247,6 +248,15 @@ export function fingerprintP2ListValue(value: unknown): string {
   return createHash("sha256")
     .update(canonicalizeP2ListValue(value))
     .digest("base64url");
+}
+
+export function fingerprintP2ListAuthorizationScope(
+  actor: Pick<P2ListActorContext, "tenantId" | "dataScope">,
+): string {
+  return fingerprintP2ListValue({
+    tenantId: actor.tenantId,
+    dataScope: normalizeP2ListDataScope(actor.dataScope),
+  });
 }
 
 export function canonicalizeP2ListValue(value: unknown): string {

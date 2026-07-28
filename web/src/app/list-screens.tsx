@@ -31,11 +31,13 @@ import {
   type LifecycleRequestListQuery,
   type LifecycleRequestListResponse,
   ApiClientError,
+  createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchEmployeeExport,
   fetchEmployees,
   fetchLifecycleExport,
   fetchLifecycleRequests,
+  isCompletedP2ListDenial,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import {
@@ -128,7 +130,11 @@ function useBoundedCollection<Query, Response>({
 }: {
   view: ListView;
   parse: () => ParsedListQuery<Query>;
-  load: (query: Query, signal: AbortSignal) => Promise<Response>;
+  load: (
+    query: Query,
+    signal: AbortSignal,
+    correlationId: string,
+  ) => Promise<Response>;
 }) {
   const [location, setLocation] = useState<ParsedListQuery<Query>>(parse);
   const [response, setResponse] = useState<Response | null>(null);
@@ -138,6 +144,15 @@ function useBoundedCollection<Query, Response>({
   const [previousLocations, setPreviousLocations] = useState<string[]>(() =>
     readPreviousLocations(view),
   );
+  const actionRef = useRef<{
+    load: typeof load;
+    location: ParsedListQuery<Query>;
+    correlationId: string;
+  }>({
+    load,
+    location,
+    correlationId: createP2ListCorrelationId(),
+  });
 
   useEffect(() => {
     const handlePopState = () => {
@@ -161,10 +176,24 @@ function useBoundedCollection<Query, Response>({
     }
 
     const controller = new AbortController();
+    if (
+      actionRef.current.load !== load ||
+      actionRef.current.location !== location
+    ) {
+      actionRef.current = {
+        load,
+        location,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     setLoading(true);
     setError(null);
 
-    void load(location.query, controller.signal)
+    void load(
+      location.query,
+      controller.signal,
+      actionRef.current.correlationId,
+    )
       .then((nextResponse) => {
         setResponse(nextResponse);
       })
@@ -172,8 +201,15 @@ function useBoundedCollection<Query, Response>({
         if (controller.signal.aborted) {
           return;
         }
+        const nextError = classifyCollectionError(caught);
+        if (isCompletedP2ListDenial(caught)) {
+          actionRef.current = {
+            ...actionRef.current,
+            correlationId: createP2ListCorrelationId(),
+          };
+        }
         setResponse(null);
-        setError(classifyCollectionError(caught));
+        setError(nextError);
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -408,16 +444,33 @@ const exportReasonLabels: Record<P2ListExportReasonCode, string> = {
   data_quality_investigation: "データ品質調査",
 };
 
+function createExportRequestContextKey(
+  resource: "employee" | "lifecycleRequest",
+  personaId: BoundedPersonaId,
+  filters: Record<string, unknown>,
+): string {
+  return JSON.stringify([
+    resource,
+    personaId,
+    Object.entries(filters).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  ]);
+}
+
 function BoundedExportControl({
   meaningfulFilter,
   missingFilterMessage,
+  requestContextKey,
   requestExport,
 }: {
   meaningfulFilter: boolean;
   missingFilterMessage: string;
+  requestContextKey: string;
   requestExport: (
     reasonCode: P2ListExportReasonCode,
     signal: AbortSignal,
+    correlationId: string,
   ) => Promise<BoundedExportArtifact>;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -429,6 +482,20 @@ function BoundedExportControl({
     correlationId?: string;
   } | null>(null);
   const exportController = useRef<AbortController | null>(null);
+  const exportAction = useRef<{
+    key: string;
+    correlationId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    exportController.current?.abort();
+    exportController.current = null;
+    exportAction.current = null;
+    setConfirming(false);
+    setReasonCode("");
+    setSubmitting(false);
+    setFeedback(null);
+  }, [requestContextKey]);
 
   useEffect(
     () => () => {
@@ -454,9 +521,21 @@ function BoundedExportControl({
     exportController.current = controller;
     setSubmitting(true);
     setFeedback(null);
+    const actionKey = JSON.stringify([requestContextKey, reasonCode]);
+    if (exportAction.current?.key !== actionKey) {
+      exportAction.current = {
+        key: actionKey,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     try {
-      const artifact = await requestExport(reasonCode, controller.signal);
+      const artifact = await requestExport(
+        reasonCode,
+        controller.signal,
+        exportAction.current.correlationId,
+      );
       if (controller.signal.aborted) return;
+      exportAction.current = null;
       downloadExportArtifact(artifact);
       setConfirming(false);
       setReasonCode("");
@@ -467,6 +546,9 @@ function BoundedExportControl({
       });
     } catch (caught: unknown) {
       if (controller.signal.aborted) return;
+      if (isCompletedExportDenial(caught)) {
+        exportAction.current = null;
+      }
       setFeedback(classifyExportError(caught));
     } finally {
       if (exportController.current === controller) {
@@ -492,6 +574,7 @@ function BoundedExportControl({
           className="secondary-button"
           type="button"
           onClick={() => {
+            exportAction.current = null;
             setConfirming(true);
             setFeedback(null);
           }}
@@ -527,6 +610,7 @@ function BoundedExportControl({
               type="button"
               disabled={submitting}
               onClick={() => {
+                exportAction.current = null;
                 setConfirming(false);
                 setReasonCode("");
                 setFeedback(null);
@@ -560,6 +644,31 @@ function BoundedExportControl({
         </p>
       ) : null}
     </section>
+  );
+}
+
+const completedExportDenialCodes = new Set([
+  "invalid_filter",
+  "unsupported_filter",
+  "export_filter_required",
+  "export_row_limit_exceeded",
+  "export_reason_code_required",
+  "export_reason_code_unsupported",
+  "export_field_denied",
+]);
+
+function isCompletedExportDenial(caught: unknown): boolean {
+  if (
+    !(caught instanceof ApiClientError) ||
+    caught.status === undefined ||
+    caught.status < 400 ||
+    caught.status >= 500
+  ) {
+    return false;
+  }
+  return (
+    isCompletedP2ListDenial(caught) ||
+    completedExportDenialCodes.has(caught.code ?? "")
   );
 }
 
@@ -735,8 +844,11 @@ export function EmployeeListView({
   onOpenEmployee: ((employee: EmployeeListItem, asOf: string) => void) | null;
 }) {
   const load = useCallback(
-    (query: EmployeeListQuery, signal: AbortSignal) =>
-      fetchEmployees(query, createP2ListRequestInit(personaId, signal)),
+    (query: EmployeeListQuery, signal: AbortSignal, correlationId: string) =>
+      fetchEmployees(
+        query,
+        createP2ListRequestInit(personaId, signal, correlationId),
+      ),
     [personaId],
   );
   const {
@@ -949,11 +1061,16 @@ export function EmployeeListView({
             state.response.appliedFilters.organizationCode,
           )}
           missingFilterMessage="従業員IDまたは組織コードで絞り込んでからCSV出力してください。"
-          requestExport={(reasonCode, signal) =>
+          requestContextKey={createExportRequestContextKey(
+            "employee",
+            personaId,
+            state.response.appliedFilters,
+          )}
+          requestExport={(reasonCode, signal, correlationId) =>
             fetchEmployeeExport(
               state.response!.appliedFilters,
               reasonCode,
-              createP2ListRequestInit(personaId, signal),
+              createP2ListRequestInit(personaId, signal, correlationId),
             )
           }
         />
@@ -1119,8 +1236,15 @@ export function LifecycleListView({
   onOpenRequest: ((request: LifecycleRequestListItem) => void) | null;
 }) {
   const load = useCallback(
-    (query: LifecycleRequestListQuery, signal: AbortSignal) =>
-      fetchLifecycleRequests(query, createP2ListRequestInit(personaId, signal)),
+    (
+      query: LifecycleRequestListQuery,
+      signal: AbortSignal,
+      correlationId: string,
+    ) =>
+      fetchLifecycleRequests(
+        query,
+        createP2ListRequestInit(personaId, signal, correlationId),
+      ),
     [personaId],
   );
   const {
@@ -1461,11 +1585,16 @@ export function LifecycleListView({
             state.response.appliedFilters,
           )}
           missingFilterMessage="従業員ID、組織コード、correlation、申請日時範囲、または適用日範囲で絞り込んでからCSV出力してください。"
-          requestExport={(reasonCode, signal) =>
+          requestContextKey={createExportRequestContextKey(
+            "lifecycleRequest",
+            personaId,
+            state.response.appliedFilters,
+          )}
+          requestExport={(reasonCode, signal, correlationId) =>
             fetchLifecycleExport(
               state.response!.appliedFilters,
               reasonCode,
-              createP2ListRequestInit(personaId, signal),
+              createP2ListRequestInit(personaId, signal, correlationId),
             )
           }
         />

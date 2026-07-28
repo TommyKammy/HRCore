@@ -165,6 +165,8 @@ interface OpenApiOperation {
   "x-hrcore-export-column-allowlist"?: string[];
   "x-hrcore-maximum-rows"?: number;
   "x-hrcore-meaningful-filter-any-of"?: string[];
+  "x-hrcore-data-scope"?: string;
+  "x-hrcore-maximum-events"?: number;
 }
 
 interface P2ListOpenApiContract {
@@ -173,6 +175,7 @@ interface P2ListOpenApiContract {
     {
       get?: OpenApiOperation;
       post?: OpenApiOperation;
+      parameters?: OpenApiSchema[];
     }
   >;
   components: {
@@ -510,7 +513,7 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
   );
   assert.deepEqual(p2ListCursorContract.authorizationContextFingerprint, {
     algorithm: "sha256_canonical_json",
-    inputs: ["actorId", "tenantId", "permissions", "dataScope"],
+    inputs: ["actorId", "actorRole", "tenantId", "permissions", "dataScope"],
   });
   assert.deepEqual(p2ListCursorContract.serverSideStateRequiredFields, [
     "resource",
@@ -706,7 +709,26 @@ test("P2LIST-00 shared contract freezes bounded query, cursor, authorization, ex
 
   assert.ok(p2ListAuditEventTypes.includes("bounded_export.denied"));
   assert.ok(p2ListAuditEventTypes.includes("authorization.denied"));
-  assert.ok(p2ListAuditFields.includes("filterFingerprint"));
+  assert.deepEqual(p2ListAuditFields, [
+    "eventId",
+    "eventType",
+    "eventVersion",
+    "occurredAt",
+    "actorId",
+    "actorRole",
+    "evaluatedPermission",
+    "dataScopeId",
+    "filterFingerprint",
+    "sort",
+    "pageSize",
+    "rowCount",
+    "resourceType",
+    "correlationId",
+    "policyDecision",
+    "reasonCode",
+    "exportSchemaVersion",
+    "durationMs",
+  ]);
   assert.ok(p2ListAuditDeniedFields.includes("rawSearchTerm"));
   assert.ok(p2ListAuditDeniedFields.includes("cursorState"));
   assert.ok(p2ListAuditDeniedFields.includes("lastSortValue"));
@@ -770,6 +792,8 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   const employeeExport = contract.paths["/exports/employee-list"]?.post;
   const lifecycleExport =
     contract.paths["/exports/lifecycle-request-list"]?.post;
+  const auditEvidence =
+    contract.paths["/support/p2list/audit-evidence/{correlationId}"]?.get;
 
   assert.ok(employeeOperation);
   assert.ok(lifecycleOperation);
@@ -777,6 +801,29 @@ test("P2LIST-00 OpenAPI freezes list and bounded export paths with fail-closed e
   assert.ok(lifecycleDetail);
   assert.ok(employeeExport);
   assert.ok(lifecycleExport);
+  assert.ok(auditEvidence);
+  for (const path of [
+    "/employees",
+    "/employees/{employeeId}",
+    "/lifecycle/transaction-requests",
+    "/lifecycle/transaction-requests/{requestId}",
+    "/exports/employee-list",
+    "/exports/lifecycle-request-list",
+  ]) {
+    assert.deepEqual(contract.paths[path]?.parameters, [
+      { $ref: "#/components/parameters/P2ListClientCorrelationId" },
+    ]);
+  }
+  assert.equal(
+    auditEvidence["x-hrcore-required-permission"],
+    p2ListPermissions.supportCorrelationRead,
+  );
+  assert.equal(
+    auditEvidence["x-hrcore-data-scope"],
+    "correlationIds exact membership",
+  );
+  assert.equal(auditEvidence["x-hrcore-maximum-events"], 20);
+  assert.equal(auditEvidence["x-hrcore-readiness"], p2ListReadiness);
   assert.deepEqual(employeeDetail["x-hrcore-required-permissions"], [
     p2ListPermissions.employeeListRead,
     p2ListPermissions.employeeDetailRead,

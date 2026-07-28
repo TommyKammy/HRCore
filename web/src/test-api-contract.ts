@@ -11,5 +11,6 @@ export const repositoryOwnedApiContract = {
     "/lifecycle/transaction-requests/{requestId}": { get: {} },
     "/exports/employee-list": { post: {} },
     "/exports/lifecycle-request-list": { post: {} },
+    "/support/p2list/audit-evidence/{correlationId}": { get: {} },
   },
 } satisfies ApiContract;

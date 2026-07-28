@@ -12,13 +12,25 @@ import {
   type P2ListErrorCode,
 } from "../p2list-contract.js";
 import {
+  elapsedP2ListDurationMs,
+  p2ListCorrelationHeader,
+  resolveP2ListCorrelationId,
+  safeP2ListActorRole,
+  startP2ListDuration,
+} from "../p2list-observability.js";
+import {
   P2ListReadModelRepository,
   type P2ListLifecycleFilters,
   type P2ListLifecycleQuery,
 } from "../p2list-read-model-repository.js";
 import {
-  fingerprintP2ListValue,
-  normalizeP2ListDataScope,
+  fingerprintP2ListCollectionResult,
+  fingerprintP2ListCollectionRequest,
+  fingerprintP2ListRequestInput,
+  fingerprintP2ListRequestResult,
+} from "../p2list-request-identity.js";
+import {
+  fingerprintP2ListAuthorizationScope,
   P2ListReadModelError,
   requireBoundedString,
   type P2ListActorContext,
@@ -42,7 +54,16 @@ const lifecycleQueryKeys = new Set([
   "limit",
   "cursor",
 ]);
-const authorizationAuditErrorCodes = new Set<P2ListErrorCode>([
+const denialAuditErrorCodes = new Set<P2ListErrorCode>([
+  "invalid_filter",
+  "unsupported_filter",
+  "invalid_sort",
+  "unsupported_sort",
+  "limit_out_of_range",
+  "date_range_too_wide",
+  "cursor_invalid",
+  "cursor_version_unsupported",
+  "cursor_filter_mismatch",
   "actor_context_required",
   "permission_denied",
   "data_scope_denied",
@@ -68,6 +89,7 @@ export interface P2ListLifecycleAuditEvent {
   eventVersion: typeof p2ListAuditEventVersion;
   occurredAt: string;
   actorId?: string;
+  actorRole?: string;
   evaluatedPermission:
     | typeof p2ListPermissions.lifecycleRequestListRead
     | typeof p2ListPermissions.lifecycleRequestDetailRead;
@@ -80,6 +102,7 @@ export interface P2ListLifecycleAuditEvent {
   correlationId: string;
   policyDecision: "allow" | "deny";
   reasonCode?: P2ListErrorCode;
+  durationMs: number;
 }
 
 export interface P2ListLifecycleApiRuntime {
@@ -101,16 +124,25 @@ export function registerP2ListLifecycleRoutes(
     "/lifecycle/transaction-requests",
     { logLevel: "silent" },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListLifecycleApi;
       if (runtime && typeof runtime.emitAuditEvent !== "function") {
         throw new Error("The lifecycle request list audit sink is required.");
       }
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      const ingressRequestFingerprint = fingerprintP2ListRequestInput(
+        "lifecycleRequest.list",
+        request.query,
+      );
       reply.header("x-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
+      let parsedQuery: ParsedLifecycleQuery | undefined;
       try {
         if (!runtime) {
           throw new P2ListReadModelError(
@@ -127,6 +159,7 @@ export function registerP2ListLifecycleRoutes(
         }
 
         const query = parseLifecycleQuery(request.query);
+        parsedQuery = query;
         const page = runtime.repository.listLifecycleRequests({
           ...query,
           actor,
@@ -152,17 +185,25 @@ export function registerP2ListLifecycleRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
+          actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
-          dataScopeId: fingerprintP2ListValue(
-            normalizeP2ListDataScope(actor.dataScope),
+          dataScopeId: fingerprintP2ListAuthorizationScope(actor),
+          filterFingerprint: fingerprintP2ListCollectionResult(
+            "lifecycleRequest.list",
+            fingerprintP2ListCollectionRequest(
+              "lifecycleRequest.list",
+              page.appliedFilters,
+              query.cursor,
+            ),
+            page,
           ),
-          filterFingerprint: fingerprintP2ListValue(page.appliedFilters),
           sort: `${query.sort ?? "requestedAt"}:${query.direction ?? "desc"}`,
           pageSize: page.pageInfo.limit,
           rowCount: page.items.length,
           resourceType: "lifecycleRequest",
           correlationId,
           policyDecision: "allow",
+          durationMs: elapsedP2ListDurationMs(startedAt),
         });
         return reply.send(response);
       } catch (error) {
@@ -170,24 +211,44 @@ export function registerP2ListLifecycleRoutes(
           throw error;
         }
 
-        if (runtime && authorizationAuditErrorCodes.has(error.code)) {
-          await runtime.emitAuditEvent({
-            eventId: randomUUID(),
-            eventType: "authorization.denied",
-            eventVersion: p2ListAuditEventVersion,
-            occurredAt,
-            actorId: safeActorId(actor),
-            evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
-            dataScopeId: safeDataScopeFingerprint(actor),
-            resourceType: "lifecycleRequest",
-            correlationId,
-            policyDecision: "deny",
-            reasonCode: error.code,
-          });
+        let responseError = error;
+        if (runtime && denialAuditErrorCodes.has(error.code)) {
+          responseError = await emitDenialAuditEvent(
+            runtime,
+            {
+              eventId: randomUUID(),
+              eventType: "authorization.denied",
+              eventVersion: p2ListAuditEventVersion,
+              occurredAt,
+              actorId: safeActorId(actor),
+              actorRole: safeP2ListActorRole(actor),
+              evaluatedPermission: p2ListPermissions.lifecycleRequestListRead,
+              dataScopeId: safeDataScopeFingerprint(actor),
+              filterFingerprint: parsedQuery
+                ? fingerprintP2ListCollectionRequest(
+                    "lifecycleRequest.list",
+                    parsedQuery.filters,
+                    parsedQuery.cursor,
+                  )
+                : ingressRequestFingerprint,
+              ...(parsedQuery
+                ? {
+                    sort: `${parsedQuery.sort ?? "requestedAt"}:${parsedQuery.direction ?? "desc"}`,
+                    pageSize: parsedQuery.limit,
+                  }
+                : {}),
+              resourceType: "lifecycleRequest",
+              correlationId,
+              policyDecision: "deny",
+              reasonCode: error.code,
+              durationMs: elapsedP2ListDurationMs(startedAt),
+            },
+            error,
+          );
         }
-        return reply.code(statusForError(error.code)).send({
-          code: error.code,
-          message: publicErrorMessage(error.code),
+        return reply.code(statusForError(responseError.code)).send({
+          code: responseError.code,
+          message: publicErrorMessage(responseError.code),
           correlationId,
           readiness: p2ListReadiness,
         });
@@ -199,16 +260,28 @@ export function registerP2ListLifecycleRoutes(
     "/lifecycle/transaction-requests/:requestId",
     { logLevel: "silent" },
     async (request, reply) => {
+      const startedAt = startP2ListDuration();
       const runtime = options.p2ListLifecycleApi;
       if (runtime && typeof runtime.emitAuditEvent !== "function") {
         throw new Error("The lifecycle detail audit sink is required.");
       }
-      const correlationId =
-        runtime?.createCorrelationId?.() ?? `p2list-${randomUUID()}`;
+      const correlationId = resolveP2ListCorrelationId(
+        request,
+        runtime?.createCorrelationId,
+      );
       const occurredAt = (runtime?.now?.() ?? new Date()).toISOString();
+      const ingressRequestFingerprint = fingerprintP2ListRequestInput(
+        "lifecycleRequest.detail",
+        {
+          params: request.params,
+          query: request.query,
+        },
+      );
       reply.header("x-correlation-id", correlationId);
+      reply.header(p2ListCorrelationHeader, correlationId);
 
       let actor: P2ListActorContext | undefined;
+      let detailFilterFingerprint = ingressRequestFingerprint;
       try {
         if (!runtime) {
           throw new P2ListReadModelError(
@@ -242,6 +315,10 @@ export function registerP2ListLifecycleRoutes(
           256,
           "invalid_filter",
         );
+        detailFilterFingerprint = fingerprintP2ListRequestInput(
+          "lifecycleRequest.detail",
+          { transactionRequestId: requestId },
+        );
         const item = runtime.repository.getLifecycleRequest({
           actor,
           provenance: runtime.provenance,
@@ -254,14 +331,15 @@ export function registerP2ListLifecycleRoutes(
             eventVersion: p2ListAuditEventVersion,
             occurredAt,
             actorId: actor.actorId,
+            actorRole: actor.actorRole,
             evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
-            dataScopeId: fingerprintP2ListValue(
-              normalizeP2ListDataScope(actor.dataScope),
-            ),
+            dataScopeId: fingerprintP2ListAuthorizationScope(actor),
+            filterFingerprint: detailFilterFingerprint,
             resourceType: "lifecycleRequest",
             correlationId,
             policyDecision: "deny",
             reasonCode: "data_scope_denied",
+            durationMs: elapsedP2ListDurationMs(startedAt),
           });
           return reply.code(404).send({
             code: "data_scope_denied",
@@ -277,17 +355,21 @@ export function registerP2ListLifecycleRoutes(
           eventVersion: p2ListAuditEventVersion,
           occurredAt,
           actorId: actor.actorId,
+          actorRole: actor.actorRole,
           evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
-          dataScopeId: fingerprintP2ListValue(
-            normalizeP2ListDataScope(actor.dataScope),
+          dataScopeId: fingerprintP2ListAuthorizationScope(actor),
+          filterFingerprint: fingerprintP2ListRequestResult(
+            "lifecycleRequest.detail",
+            fingerprintP2ListRequestInput("lifecycleRequest.detail", {
+              transactionRequestId: requestId,
+            }),
+            item,
           ),
-          filterFingerprint: fingerprintP2ListValue({
-            transactionRequestId: requestId,
-          }),
           rowCount: 1,
           resourceType: "lifecycleRequest",
           correlationId,
           policyDecision: "allow",
+          durationMs: elapsedP2ListDurationMs(startedAt),
         });
         return reply.send({
           item,
@@ -302,24 +384,32 @@ export function registerP2ListLifecycleRoutes(
         if (!(error instanceof P2ListReadModelError)) {
           throw error;
         }
-        if (runtime && authorizationAuditErrorCodes.has(error.code)) {
-          await runtime.emitAuditEvent({
-            eventId: randomUUID(),
-            eventType: "authorization.denied",
-            eventVersion: p2ListAuditEventVersion,
-            occurredAt,
-            actorId: safeActorId(actor),
-            evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
-            dataScopeId: safeDataScopeFingerprint(actor),
-            resourceType: "lifecycleRequest",
-            correlationId,
-            policyDecision: "deny",
-            reasonCode: error.code,
-          });
+        let responseError = error;
+        if (runtime && denialAuditErrorCodes.has(error.code)) {
+          responseError = await emitDenialAuditEvent(
+            runtime,
+            {
+              eventId: randomUUID(),
+              eventType: "authorization.denied",
+              eventVersion: p2ListAuditEventVersion,
+              occurredAt,
+              actorId: safeActorId(actor),
+              actorRole: safeP2ListActorRole(actor),
+              evaluatedPermission: p2ListPermissions.lifecycleRequestDetailRead,
+              dataScopeId: safeDataScopeFingerprint(actor),
+              filterFingerprint: detailFilterFingerprint,
+              resourceType: "lifecycleRequest",
+              correlationId,
+              policyDecision: "deny",
+              reasonCode: error.code,
+              durationMs: elapsedP2ListDurationMs(startedAt),
+            },
+            error,
+          );
         }
-        return reply.code(statusForError(error.code)).send({
-          code: error.code,
-          message: publicErrorMessage(error.code),
+        return reply.code(statusForError(responseError.code)).send({
+          code: responseError.code,
+          message: publicErrorMessage(responseError.code),
           correlationId,
           readiness: p2ListReadiness,
         });
@@ -455,13 +545,30 @@ function safeActorId(
   }
 }
 
+async function emitDenialAuditEvent(
+  runtime: P2ListLifecycleApiRuntime,
+  event: P2ListLifecycleAuditEvent,
+  originalError: P2ListReadModelError,
+): Promise<P2ListReadModelError> {
+  try {
+    await runtime.emitAuditEvent(event);
+    return originalError;
+  } catch (auditError) {
+    if (
+      auditError instanceof P2ListReadModelError &&
+      auditError.code === "correlation_reuse_conflict"
+    ) {
+      return auditError;
+    }
+    throw auditError;
+  }
+}
+
 function safeDataScopeFingerprint(
   actor: P2ListActorContext | undefined,
 ): string | undefined {
   try {
-    return actor?.dataScope
-      ? fingerprintP2ListValue(normalizeP2ListDataScope(actor.dataScope))
-      : undefined;
+    return actor ? fingerprintP2ListAuthorizationScope(actor) : undefined;
   } catch {
     return undefined;
   }

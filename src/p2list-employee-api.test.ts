@@ -36,6 +36,7 @@ const cursorSecret = "p2list-api-cursor-fixture-secret-2026-at-least-32-bytes";
 const acceptedAt = new Date("2026-07-24T08:00:00.000Z");
 const authorizedActor: P2ListActorContext = {
   actorId: "actor-hr-operator",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [p2ListPermissions.employeeListRead],
   dataScope: { organizationCodes: ["ORG-SYNTHETIC"] },
@@ -147,6 +148,14 @@ test("GET /employees binds pagination to filters and rejects tampered cursors", 
     harness.auditEvents.at(-1)?.eventType,
     "employee_list.page_requested",
   );
+  assert.notEqual(
+    harness.auditEvents[0]?.filterFingerprint,
+    harness.auditEvents.at(-1)?.filterFingerprint,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    new RegExp(cursor, "u"),
+  );
 
   const mismatched = await harness.app.inject({
     method: "GET",
@@ -182,7 +191,23 @@ test("GET /employees binds pagination to filters and rejects tampered cursors", 
   assert.equal(repeated.json().code, "cursor_invalid");
   assert.deepEqual(
     harness.auditEvents.map((event) => event.eventType),
-    ["employee_list.viewed", "employee_list.page_requested"],
+    [
+      "employee_list.viewed",
+      "employee_list.page_requested",
+      "authorization.denied",
+      "authorization.denied",
+      "authorization.denied",
+      "authorization.denied",
+    ],
+  );
+  assert.deepEqual(
+    harness.auditEvents.slice(2).map((event) => event.reasonCode),
+    [
+      "cursor_filter_mismatch",
+      "cursor_invalid",
+      "cursor_invalid",
+      "cursor_invalid",
+    ],
   );
 });
 
@@ -269,6 +294,15 @@ test("GET /employees fails closed across actor, permission, and organization sco
         (event.actorId !== undefined && event.actorId.trim() !== event.actorId),
     ),
     false,
+  );
+  const permissionDenial = harness.auditEvents.find(
+    (event) => event.actorId === "actor-without-permission",
+  );
+  assert.equal(permissionDenial?.sort, "employeeId:asc");
+  assert.equal(permissionDenial?.pageSize, 25);
+  assert.match(
+    permissionDenial?.filterFingerprint ?? "",
+    /^[A-Za-z0-9_-]{43}$/u,
   );
 
   for (const token of ["person-scoped", "employee-scoped"]) {
@@ -384,6 +418,7 @@ test("buildServerApp wires verified provenance and server-owned person scope", a
       token,
       actor: {
         actorId: "actor-person-scoped-operator",
+        actorRole: "hr_operator",
         tenantId: "tenant-repo-owned-synthetic",
         permissions: [
           p2ListPermissions.employeeListRead,
@@ -634,14 +669,15 @@ test("GET /employees rejects unsupported and unbounded query inputs", async (t) 
   const harness = await createHarness(t, 1);
   if (!harness) return;
 
-  for (const fixture of [
+  const fixtures = [
     { query: "department=People", code: "unsupported_filter" },
     { query: "employmentType=full-time", code: "unsupported_filter" },
     { query: "sort=privateSalary", code: "unsupported_sort" },
     { query: "direction=sideways", code: "invalid_sort" },
     { query: "limit=0", code: "limit_out_of_range" },
     { query: "limit=101", code: "limit_out_of_range" },
-  ]) {
+  ] as const;
+  for (const fixture of fixtures) {
     const response: {
       statusCode: number;
       json(): Record<string, unknown>;
@@ -665,11 +701,18 @@ test("GET /employees rejects unsupported and unbounded query inputs", async (t) 
   });
   assert.equal(maximum.statusCode, 200);
   assert.equal(maximum.json().pageInfo.limit, 100);
-  assert.equal(
-    harness.auditEvents.some(
-      (event) => event.eventType === "authorization.denied",
-    ),
-    false,
+  assert.deepEqual(
+    harness.auditEvents
+      .filter((event) => event.eventType === "authorization.denied")
+      .map((event) => event.reasonCode),
+    fixtures.map((fixture) => fixture.code),
+  );
+  assert.ok(
+    harness.auditEvents
+      .filter((event) => event.eventType === "authorization.denied")
+      .every((event) =>
+        /^[A-Za-z0-9_-]{43}$/u.test(event.filterFingerprint ?? ""),
+      ),
   );
 });
 
@@ -715,7 +758,14 @@ test("GET /employees/:employeeId rejects an explicitly empty asOf", async (t) =>
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.json().code, "invalid_filter");
-  assert.equal(harness.auditEvents.length, 0);
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(harness.auditEvents[0]?.reasonCode, "invalid_filter");
+  assert.match(
+    harness.auditEvents[0]?.filterFingerprint ?? "",
+    /^[A-Za-z0-9_-]{43}$/u,
+  );
+  assert.doesNotMatch(JSON.stringify(harness.auditEvents), /EMP-001/u);
 });
 
 test("GET /employees/:employeeId denies list-only actors", async (t) => {

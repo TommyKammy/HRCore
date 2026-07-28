@@ -1,10 +1,14 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
+import type {
+  OnboardingTransactionRequestDatabase,
+  SqlRunResult,
+} from "./onboarding-transaction-request-types.js";
 import { P2ListCursorManager } from "./p2list-cursor.js";
 import { P2ListReadModelRepository } from "./p2list-read-model-repository.js";
 import {
+  P2ListReadModelError,
   signP2ListSyntheticDatasetManifest,
   verifyP2ListSyntheticDatasetManifest,
   type P2ListActorContext,
@@ -23,8 +27,15 @@ import type {
   P2ListLifecycleApiRuntime,
   P2ListLifecycleAuditEvent,
 } from "./routes/p2list-lifecycle-requests.js";
+import type { P2ListAuditEvidenceRuntime } from "./routes/p2list-audit-evidence.js";
 
-const actorKeys = new Set(["actorId", "tenantId", "permissions", "dataScope"]);
+const actorKeys = new Set([
+  "actorId",
+  "actorRole",
+  "tenantId",
+  "permissions",
+  "dataScope",
+]);
 const scopeKeys = new Set([
   "organizationCodes",
   "personIds",
@@ -41,6 +52,10 @@ interface P2ListServerBaseRuntime {
   repository: P2ListReadModelRepository;
   provenance: P2ListEmployeeApiRuntime["provenance"];
   resolveActor: P2ListEmployeeApiRuntime["resolveActor"];
+  resolveCorrelationAcceptedAt(
+    correlationId: string,
+    observedAt: string,
+  ): string;
 }
 
 export async function createServerP2ListEmployeeRuntime(
@@ -64,12 +79,17 @@ export async function createServerP2ListRuntimes(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<{
   employee: P2ListEmployeeApiRuntime;
+  auditEvidence: P2ListAuditEvidenceRuntime;
   export: P2ListExportApiRuntime;
   lifecycle: P2ListLifecycleApiRuntime;
 }> {
   const runtime = await createServerP2ListBaseRuntime(environment, db);
   return {
     employee: createEmployeeRuntime(db, runtime),
+    auditEvidence: {
+      database: db,
+      resolveActor: runtime.resolveActor,
+    },
     export: createExportRuntime(db, runtime),
     lifecycle: createLifecycleRuntime(db, runtime),
   };
@@ -101,7 +121,28 @@ async function createServerP2ListBaseRuntime(
       return actors.find((entry) => timingSafeEqual(entry.tokenDigest, digest))
         ?.actor;
     },
+    resolveCorrelationAcceptedAt(correlationId, observedAt) {
+      return readP2ListCorrelationAcceptedAt(db, correlationId) ?? observedAt;
+    },
   };
+}
+
+function readP2ListCorrelationAcceptedAt(
+  db: OnboardingTransactionRequestDatabase,
+  correlationId: string,
+): string | undefined {
+  const row = db
+    .prepare(
+      `
+        SELECT occurred_at
+        FROM p2list_audit_event
+        WHERE correlation_id = ?
+        ORDER BY occurred_at ASC, event_id ASC
+        LIMIT 1
+      `,
+    )
+    .get(correlationId) as { occurred_at?: unknown } | undefined;
+  return typeof row?.occurred_at === "string" ? row.occurred_at : undefined;
 }
 
 function createEmployeeRuntime(
@@ -147,14 +188,38 @@ function persistP2ListAuditEvent(
     | P2ListLifecycleAuditEvent
     | P2ListExportAuditEvent,
 ): void {
-  db.prepare(
-    `
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    persistP2ListAuditEventInTransaction(db, event);
+    db.exec("COMMIT");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // Preserve the audit failure that caused the rollback.
+    }
+    throw error;
+  }
+}
+
+function persistP2ListAuditEventInTransaction(
+  db: OnboardingTransactionRequestDatabase,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
+  assertP2ListAuditCorrelationAvailable(db, event);
+  const result = db
+    .prepare(
+      `
       INSERT INTO p2list_audit_event (
         event_id,
         event_type,
         event_version,
         occurred_at,
         actor_id,
+        actor_role,
         evaluated_permission,
         data_scope_id,
         filter_fingerprint,
@@ -166,28 +231,170 @@ function persistP2ListAuditEvent(
         policy_decision,
         reason_code,
         export_schema_version,
+        duration_ms,
         poc_marker
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(correlation_id, event_type) DO NOTHING
     `,
-  ).run(
-    event.eventId,
-    event.eventType,
-    event.eventVersion,
-    event.occurredAt,
-    event.actorId ?? null,
-    event.evaluatedPermission,
-    event.dataScopeId ?? null,
-    event.filterFingerprint ?? null,
-    event.sort ?? null,
-    event.pageSize ?? null,
-    event.rowCount ?? null,
-    event.resourceType,
-    event.correlationId,
-    event.policyDecision,
-    event.reasonCode ?? null,
-    "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
-    "synthetic_poc",
+    )
+    .run(
+      event.eventId,
+      event.eventType,
+      event.eventVersion,
+      event.occurredAt,
+      event.actorId ?? null,
+      event.actorRole ?? null,
+      event.evaluatedPermission,
+      event.dataScopeId ?? null,
+      event.filterFingerprint ?? null,
+      event.sort ?? null,
+      event.pageSize ?? null,
+      event.rowCount ?? null,
+      event.resourceType,
+      event.correlationId,
+      event.policyDecision,
+      event.reasonCode ?? null,
+      "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
+      event.durationMs,
+      "synthetic_poc",
+    );
+  if (Number((result as SqlRunResult | undefined)?.changes ?? 1) === 0) {
+    assertIdempotentP2ListAuditRetry(db, event);
+  }
+}
+
+type PersistedP2ListAuditEvent = Record<string, unknown> & {
+  event_type: unknown;
+};
+
+const p2ListAuditEvidenceSelect = `
+  SELECT
+    event_type,
+    event_version,
+    actor_id,
+    actor_role,
+    evaluated_permission,
+    data_scope_id,
+    filter_fingerprint,
+    sort,
+    page_size,
+    row_count,
+    resource_type,
+    policy_decision,
+    reason_code,
+    export_schema_version
+  FROM p2list_audit_event
+`;
+
+function assertP2ListAuditCorrelationAvailable(
+  db: OnboardingTransactionRequestDatabase,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
+  const matchingEvent = db
+    .prepare(
+      `
+        ${p2ListAuditEvidenceSelect}
+        WHERE correlation_id = ?
+          AND event_type = ?
+      `,
+    )
+    .get(event.correlationId, event.eventType) as
+    | PersistedP2ListAuditEvent
+    | undefined;
+  if (matchingEvent) {
+    assertMatchingP2ListAuditEvidence(matchingEvent, event);
+  }
+  const existing = db
+    .prepare(
+      `
+        ${p2ListAuditEvidenceSelect}
+        WHERE correlation_id = ?
+          AND event_type <> ?
+        ORDER BY event_type
+        LIMIT 1
+      `,
+    )
+    .get(event.correlationId, event.eventType) as
+    | PersistedP2ListAuditEvent
+    | undefined;
+  if (!existing) {
+    if (event.eventType === "bounded_export.completed") {
+      throwP2ListAuditCorrelationConflict();
+    }
+    return;
+  }
+  const eventTypes = new Set([existing.event_type, event.eventType]);
+  const isAllowedExportSequence =
+    eventTypes.size === 2 &&
+    eventTypes.has("bounded_export.requested") &&
+    eventTypes.has("bounded_export.completed") &&
+    (event.eventType === "bounded_export.completed" || !!matchingEvent);
+  if (!isAllowedExportSequence) {
+    throwP2ListAuditCorrelationConflict();
+  }
+  assertMatchingP2ListAuditEvidence(existing, event);
+}
+
+function assertIdempotentP2ListAuditRetry(
+  db: OnboardingTransactionRequestDatabase,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
+  const existing = db
+    .prepare(
+      `
+        ${p2ListAuditEvidenceSelect}
+        WHERE correlation_id = ?
+          AND event_type = ?
+      `,
+    )
+    .get(event.correlationId, event.eventType) as
+    | PersistedP2ListAuditEvent
+    | undefined;
+  assertMatchingP2ListAuditEvidence(existing, event);
+}
+
+function assertMatchingP2ListAuditEvidence(
+  existing: PersistedP2ListAuditEvent | undefined,
+  event:
+    | P2ListEmployeeAuditEvent
+    | P2ListLifecycleAuditEvent
+    | P2ListExportAuditEvent,
+): void {
+  const expected = {
+    event_version: event.eventVersion,
+    actor_id: event.actorId ?? null,
+    actor_role: event.actorRole ?? null,
+    evaluated_permission: event.evaluatedPermission,
+    data_scope_id: event.dataScopeId ?? null,
+    filter_fingerprint: event.filterFingerprint ?? null,
+    sort: event.sort ?? null,
+    page_size: event.pageSize ?? null,
+    row_count: event.rowCount ?? null,
+    resource_type: event.resourceType,
+    policy_decision: event.policyDecision,
+    reason_code: event.reasonCode ?? null,
+    export_schema_version:
+      "exportSchemaVersion" in event ? event.exportSchemaVersion : null,
+  };
+  if (
+    !existing ||
+    Object.entries(expected).some(([key, value]) => existing[key] !== value)
+  ) {
+    throwP2ListAuditCorrelationConflict();
+  }
+}
+
+function throwP2ListAuditCorrelationConflict(): never {
+  throw new P2ListReadModelError(
+    "correlation_reuse_conflict",
+    "P2LIST audit correlation reuse conflicts with existing evidence.",
   );
 }
 
@@ -300,6 +507,7 @@ function normalizeActor(value: unknown): P2ListActorContext {
   }
   return {
     actorId: requireBoundedString(actor.actorId),
+    actorRole: requireActorRole(actor.actorRole),
     tenantId: requireBoundedString(actor.tenantId),
     permissions: requireStringArray(actor.permissions),
     dataScope: normalizedScope,
@@ -330,6 +538,14 @@ function requireBoundedString(value: unknown): string {
     throw invalidActorRegistry();
   }
   return value;
+}
+
+function requireActorRole(value: unknown): string {
+  const role = requireBoundedString(value);
+  if (!/^[a-z][a-z0-9_]{0,63}$/u.test(role)) {
+    throw invalidActorRegistry();
+  }
+  return role;
 }
 
 function requireStringArray(value: unknown): string[] {

@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   type EmployeeListItem,
   ApiClientError,
+  createP2ListCorrelationId,
   createP2ListRequestInit,
   fetchEmployeeDetail,
+  isCompletedP2ListDenial,
 } from "../api-client";
 import type { BoundedPersonaId } from "../persona";
 import { detailRouteErrorMessage } from "./detail-route-error";
@@ -40,6 +42,10 @@ export function EmployeeDetailRoute({
     error: null,
     correlationId: null,
   });
+  const actionRef = useRef({
+    key: "",
+    correlationId: createP2ListCorrelationId(),
+  });
   const isLegacyFixture = useLegacyFixture || employeeId === null;
   const hasInvalidEmployeeId = employeeId === "";
 
@@ -56,6 +62,13 @@ export function EmployeeDetailRoute({
     }
 
     const controller = new AbortController();
+    const actionKey = JSON.stringify([personaId, employeeId, asOf]);
+    if (actionRef.current.key !== actionKey) {
+      actionRef.current = {
+        key: actionKey,
+        correlationId: createP2ListCorrelationId(),
+      };
+    }
     setState({
       employee: null,
       maskedFields: [],
@@ -66,7 +79,11 @@ export function EmployeeDetailRoute({
     void fetchEmployeeDetail(
       employeeId,
       { asOf: asOf ?? undefined },
-      createP2ListRequestInit(personaId, controller.signal),
+      createP2ListRequestInit(
+        personaId,
+        controller.signal,
+        actionRef.current.correlationId,
+      ),
     )
       .then((response) => {
         if (controller.signal.aborted) {
@@ -92,6 +109,12 @@ export function EmployeeDetailRoute({
       .catch((caught: unknown) => {
         if (controller.signal.aborted) {
           return;
+        }
+        if (isCompletedP2ListDenial(caught)) {
+          actionRef.current = {
+            ...actionRef.current,
+            correlationId: createP2ListCorrelationId(),
+          };
         }
         setState({
           employee: null,

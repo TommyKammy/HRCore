@@ -36,6 +36,7 @@ const cursorSecret =
 const acceptedAt = new Date("2026-07-25T08:00:00.000Z");
 const authorizedActor: P2ListActorContext = {
   actorId: "actor-lifecycle-operator",
+  actorRole: "hr_operator",
   tenantId: "tenant-repo-owned-synthetic",
   permissions: [p2ListPermissions.lifecycleRequestListRead],
   dataScope: { organizationCodes: ["ORG-LIFECYCLE-SYNTHETIC"] },
@@ -173,6 +174,14 @@ test("GET /lifecycle/transaction-requests binds cursor to filters and actor cont
     harness.auditEvents.at(-1)?.eventType,
     "lifecycle_request_list.page_requested",
   );
+  assert.notEqual(
+    harness.auditEvents[0]?.filterFingerprint,
+    harness.auditEvents.at(-1)?.filterFingerprint,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    new RegExp(cursor, "u"),
+  );
 
   for (const fixture of [
     {
@@ -294,13 +303,22 @@ test("GET /lifecycle/transaction-requests fails closed across actor, scope, and 
     ).length,
     5,
   );
+  const permissionDenial = harness.auditEvents.find(
+    (event) => event.actorId === "actor-without-list-permission",
+  );
+  assert.equal(permissionDenial?.sort, "requestedAt:desc");
+  assert.equal(permissionDenial?.pageSize, 25);
+  assert.match(
+    permissionDenial?.filterFingerprint ?? "",
+    /^[A-Za-z0-9_-]{43}$/u,
+  );
 });
 
 test("GET /lifecycle/transaction-requests validates bounded filters before repository access", async (t) => {
   const harness = await createHarness(t, 1);
   if (!harness) return;
 
-  for (const fixture of [
+  const fixtures = [
     { query: "requestedBy=actor-private", code: "unsupported_filter" },
     { query: "requestType=onboarding,unknown", code: "invalid_filter" },
     { query: "status=submitted,submitted", code: "invalid_filter" },
@@ -327,7 +345,8 @@ test("GET /lifecycle/transaction-requests validates bounded filters before repos
       code: "date_range_too_wide",
     },
     { query: "effectiveFrom=2026-08-01", code: "invalid_filter" },
-  ]) {
+  ] as const;
+  for (const fixture of fixtures) {
     const response: {
       statusCode: number;
       json(): Record<string, unknown>;
@@ -343,7 +362,27 @@ test("GET /lifecycle/transaction-requests validates bounded filters before repos
       "The lifecycle request list request is invalid.",
     );
   }
-  assert.equal(harness.auditEvents.length, 0);
+  assert.deepEqual(
+    harness.auditEvents.map((event) => ({
+      eventType: event.eventType,
+      reasonCode: event.reasonCode,
+      policyDecision: event.policyDecision,
+    })),
+    fixtures.map((fixture) => ({
+      eventType: "authorization.denied",
+      reasonCode: fixture.code,
+      policyDecision: "deny",
+    })),
+  );
+  assert.ok(
+    harness.auditEvents.every((event) =>
+      /^[A-Za-z0-9_-]{43}$/u.test(event.filterFingerprint ?? ""),
+    ),
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    /actor-private|privateSalary/u,
+  );
 });
 
 test("server lifecycle runtime persists bounded allow and deny audit events", async (t) => {
@@ -456,7 +495,7 @@ test("server lifecycle runtime persists bounded allow and deny audit events", as
         resource_type: "lifecycleRequest",
         policy_decision: "deny",
         reason_code: "actor_context_required",
-        filter_fingerprint_type: "object",
+        filter_fingerprint_type: "string",
       },
     ],
   );
@@ -515,6 +554,33 @@ test("GET /lifecycle/transaction-requests/:requestId authorizes detail and emits
   assert.doesNotMatch(
     JSON.stringify(harness.auditEvents),
     /p2list-transaction-001/u,
+  );
+});
+
+test("GET /lifecycle/transaction-requests/:requestId audits unsupported detail filters", async (t) => {
+  const harness = await createHarness(t, 1, {
+    authorized: authorizedDetailActor,
+  });
+  if (!harness) return;
+
+  const response = await harness.app.inject({
+    method: "GET",
+    url: "/lifecycle/transaction-requests/p2list-transaction-001?privateField=secret",
+    headers: { authorization: "Bearer authorized" },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.json().code, "unsupported_filter");
+  assert.equal(harness.auditEvents.length, 1);
+  assert.equal(harness.auditEvents[0]?.eventType, "authorization.denied");
+  assert.equal(harness.auditEvents[0]?.reasonCode, "unsupported_filter");
+  assert.match(
+    harness.auditEvents[0]?.filterFingerprint ?? "",
+    /^[A-Za-z0-9_-]{43}$/u,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(harness.auditEvents),
+    /p2list-transaction-001|privateField|secret/u,
   );
 });
 

@@ -728,6 +728,11 @@
       }
     },
     "/employees": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/P2ListClientCorrelationId"
+        }
+      ],
       "get": {
         "operationId": "listBoundedEmployees",
         "summary": "List bounded synthetic employees",
@@ -970,6 +975,11 @@
       }
     },
     "/employees/{employeeId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/P2ListClientCorrelationId"
+        }
+      ],
       "get": {
         "operationId": "getBoundedEmployeeDetail",
         "summary": "Get one authorized bounded synthetic employee",
@@ -1055,6 +1065,11 @@
       }
     },
     "/lifecycle/transaction-requests": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/P2ListClientCorrelationId"
+        }
+      ],
       "get": {
         "operationId": "listBoundedLifecycleTransactionRequests",
         "summary": "List bounded synthetic lifecycle transaction requests",
@@ -1596,6 +1611,11 @@
       }
     },
     "/lifecycle/transaction-requests/{requestId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/P2ListClientCorrelationId"
+        }
+      ],
       "get": {
         "operationId": "getBoundedLifecycleRequestDetail",
         "summary": "Get one authorized bounded synthetic lifecycle request",
@@ -1673,6 +1693,11 @@
       }
     },
     "/exports/employee-list": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/P2ListClientCorrelationId"
+        }
+      ],
       "post": {
         "operationId": "exportBoundedEmployeeList",
         "summary": "Export a bounded filtered synthetic employee list",
@@ -1853,6 +1878,11 @@
       }
     },
     "/exports/lifecycle-request-list": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/P2ListClientCorrelationId"
+        }
+      ],
       "post": {
         "operationId": "exportBoundedLifecycleRequestList",
         "summary": "Export a bounded filtered synthetic lifecycle request list",
@@ -2142,6 +2172,99 @@
         }
       }
     },
+    "/support/p2list/audit-evidence/{correlationId}": {
+      "get": {
+        "operationId": "getBoundedP2ListAuditEvidence",
+        "summary": "Get bounded P2LIST audit evidence by exact correlation ID",
+        "description": "Returns only versioned non-PII list, detail, export, authorization, and aggregate metric evidence for one exact correlation ID. Requires support:correlation:read and an explicit correlationIds data-scope binding. This local synthetic surface is not an unrestricted audit browser, production support console, SIEM, retention archive, or audit-immutability claim.",
+        "x-hrcore-required-permission": "support:correlation:read",
+        "x-hrcore-readiness": "bounded_synthetic_only_not_production_ready",
+        "x-hrcore-implementation-status": "bounded_runtime",
+        "x-hrcore-data-scope": "correlationIds exact membership",
+        "x-hrcore-maximum-events": 20,
+        "parameters": [
+          {
+            "name": "correlationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "X-HRCore-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "description": "WebUI action correlation ID. Only canonical p2list-ui UUID values are propagated; other values are replaced by a server-generated identifier.",
+            "schema": {
+              "type": "string",
+              "pattern": "^p2list-ui-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded evidence and non-PII metrics for the authorized exact correlation ID.",
+            "headers": {
+              "X-HRCore-Correlation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListAuditEvidenceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The exact correlation identifier is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authoritative server-side actor context is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The actor lacks support:correlation:read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Evidence is absent or outside the actor's exact correlation data scope; both cases use the same response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2ListErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/writeback-events/work-email": {
       "post": {
         "operationId": "ingestSyntheticWorkEmailWriteback",
@@ -2186,6 +2309,18 @@
     }
   },
   "components": {
+    "parameters": {
+      "P2ListClientCorrelationId": {
+        "name": "X-HRCore-Correlation-Id",
+        "in": "header",
+        "required": false,
+        "description": "WebUI action correlation ID. Only canonical p2list-ui UUID values are propagated; other values are replaced by a server-generated identifier.",
+        "schema": {
+          "type": "string",
+          "pattern": "^p2list-ui-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        }
+      }
+    },
     "schemas": {
       "HealthResponse": {
         "type": "object",
@@ -3525,7 +3660,13 @@
         "x-hrcore-server-side-state-cleanup": "delete_after_expiry",
         "x-hrcore-authorization-context-fingerprint": {
           "algorithm": "sha256_canonical_json",
-          "inputs": ["actorId", "tenantId", "permissions", "dataScope"]
+          "inputs": [
+            "actorId",
+            "actorRole",
+            "tenantId",
+            "permissions",
+            "dataScope"
+          ]
         },
         "x-hrcore-server-side-state-required-fields": [
           "resource",
@@ -4210,6 +4351,228 @@
         },
         "additionalProperties": false
       },
+      "P2ListAuditEvidenceEvent": {
+        "type": "object",
+        "required": [
+          "eventType",
+          "eventVersion",
+          "occurredAt",
+          "actorId",
+          "actorRole",
+          "evaluatedPermission",
+          "dataScopeId",
+          "filterFingerprint",
+          "sort",
+          "pageSize",
+          "rowCount",
+          "resourceType",
+          "correlationId",
+          "policyDecision",
+          "reasonCode",
+          "exportSchemaVersion",
+          "durationMs"
+        ],
+        "properties": {
+          "eventType": {
+            "type": "string",
+            "enum": [
+              "employee_list.viewed",
+              "employee_list.search_applied",
+              "employee_list.page_requested",
+              "employee_detail.opened_from_list",
+              "lifecycle_request_list.viewed",
+              "lifecycle_request_list.search_applied",
+              "lifecycle_request_list.page_requested",
+              "lifecycle_request_detail.opened_from_list",
+              "bounded_export.requested",
+              "bounded_export.completed",
+              "bounded_export.denied",
+              "authorization.denied"
+            ]
+          },
+          "eventVersion": {
+            "type": "string",
+            "const": "p2list_audit_v1"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actorId": {
+            "type": ["string", "null"]
+          },
+          "actorRole": {
+            "type": ["string", "null"]
+          },
+          "evaluatedPermission": {
+            "type": "string"
+          },
+          "dataScopeId": {
+            "type": ["string", "null"]
+          },
+          "filterFingerprint": {
+            "type": ["string", "null"]
+          },
+          "sort": {
+            "type": ["string", "null"]
+          },
+          "pageSize": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "maximum": 100
+          },
+          "rowCount": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "resourceType": {
+            "type": "string",
+            "enum": ["employee", "lifecycleRequest"]
+          },
+          "correlationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "policyDecision": {
+            "type": "string",
+            "enum": ["allow", "deny"]
+          },
+          "reasonCode": {
+            "type": ["string", "null"]
+          },
+          "exportSchemaVersion": {
+            "type": ["string", "null"],
+            "enum": ["p2list_export_v1", null]
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600000
+          }
+        },
+        "additionalProperties": false
+      },
+      "P2ListAuditEvidenceResponse": {
+        "type": "object",
+        "required": ["correlationId", "events", "metrics", "authorization"],
+        "properties": {
+          "correlationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/P2ListAuditEvidenceEvent"
+            }
+          },
+          "metrics": {
+            "type": "object",
+            "required": [
+              "requestCount",
+              "latencyMs",
+              "denialReasons",
+              "exportResults"
+            ],
+            "properties": {
+              "requestCount": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1
+              },
+              "latencyMs": {
+                "type": "object",
+                "required": ["count", "minimum", "maximum", "average"],
+                "properties": {
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1
+                  },
+                  "minimum": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 600000
+                  },
+                  "maximum": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 600000
+                  },
+                  "average": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 600000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "denialReasons": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "required": ["reasonCode", "count"],
+                  "properties": {
+                    "reasonCode": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 20
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "exportResults": {
+                "type": "object",
+                "required": ["requested", "completed", "denied"],
+                "properties": {
+                  "requested": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  },
+                  "completed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  },
+                  "denied": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "authorization": {
+            "type": "object",
+            "required": ["dataScope", "readiness"],
+            "properties": {
+              "dataScope": {
+                "type": "string",
+                "const": "correlation_exact"
+              },
+              "readiness": {
+                "type": "string",
+                "const": "bounded_synthetic_only_not_production_ready"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "P2ListErrorResponse": {
         "type": "object",
         "required": ["code", "message", "correlationId", "readiness"],
@@ -4226,6 +4589,7 @@
               "cursor_invalid",
               "cursor_version_unsupported",
               "cursor_filter_mismatch",
+              "correlation_reuse_conflict",
               "actor_context_required",
               "permission_denied",
               "data_scope_denied",
