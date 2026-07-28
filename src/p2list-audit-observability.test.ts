@@ -27,6 +27,10 @@ const employeeListDenialCorrelationId =
   "p2list-ui-723e4567-e89b-42d3-a456-426614174000";
 const lifecycleListDenialCorrelationId =
   "p2list-ui-823e4567-e89b-42d3-a456-426614174000";
+const employeeExportDenialCorrelationId =
+  "p2list-ui-923e4567-e89b-42d3-a456-426614174000";
+const lifecycleExportDenialCorrelationId =
+  "p2list-ui-a23e4567-e89b-42d3-a456-426614174000";
 const operatorToken = "p2list-observability-operator-token-0001";
 const otherTenantOperatorToken =
   "p2list-observability-other-tenant-operator-token-0001";
@@ -230,6 +234,70 @@ test("P2LIST WebUI correlation is idempotently traceable through policy and boun
   assert.equal(conflictingLifecycleListDenial.statusCode, 400);
   assert.equal(
     conflictingLifecycleListDenial.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const deniedEmployeeExport = await app.inject({
+      method: "POST",
+      url: "/exports/employee-list",
+      headers: {
+        authorization: `Bearer ${deniedOperatorToken}`,
+        "x-hrcore-correlation-id": employeeExportDenialCorrelationId,
+      },
+      payload: {
+        filters: { organizationCode: "ORG-EXPORT-ONE" },
+        reasonCode: "uat_reconciliation",
+      },
+    });
+    assert.equal(deniedEmployeeExport.statusCode, 403);
+  }
+  const conflictingEmployeeExportDenial = await app.inject({
+    method: "POST",
+    url: "/exports/employee-list",
+    headers: {
+      authorization: `Bearer ${deniedOperatorToken}`,
+      "x-hrcore-correlation-id": employeeExportDenialCorrelationId,
+    },
+    payload: {
+      filters: { organizationCode: "ORG-EXPORT-TWO" },
+      reasonCode: "operational_reconciliation",
+    },
+  });
+  assert.equal(conflictingEmployeeExportDenial.statusCode, 400);
+  assert.equal(
+    conflictingEmployeeExportDenial.json().code,
+    "correlation_reuse_conflict",
+  );
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const deniedLifecycleExport = await app.inject({
+      method: "POST",
+      url: "/exports/lifecycle-request-list",
+      headers: {
+        authorization: `Bearer ${deniedOperatorToken}`,
+        "x-hrcore-correlation-id": lifecycleExportDenialCorrelationId,
+      },
+      payload: {
+        filters: { organizationCode: "ORG-EXPORT-ONE" },
+        reasonCode: "uat_reconciliation",
+      },
+    });
+    assert.equal(deniedLifecycleExport.statusCode, 403);
+  }
+  const conflictingLifecycleExportDenial = await app.inject({
+    method: "POST",
+    url: "/exports/lifecycle-request-list",
+    headers: {
+      authorization: `Bearer ${deniedOperatorToken}`,
+      "x-hrcore-correlation-id": lifecycleExportDenialCorrelationId,
+    },
+    payload: {
+      filters: { organizationCode: "ORG-EXPORT-TWO" },
+      reasonCode: "operational_reconciliation",
+    },
+  });
+  assert.equal(conflictingLifecycleExportDenial.statusCode, 400);
+  assert.equal(
+    conflictingLifecycleExportDenial.json().code,
     "correlation_reuse_conflict",
   );
   const deniedEmployeeDetail = await app.inject({

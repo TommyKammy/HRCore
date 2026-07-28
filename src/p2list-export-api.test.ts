@@ -314,7 +314,11 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
     {
       name: "missing export permission",
       token: "no-export",
-      payload: exportPayload("ORG-SYNTHETIC"),
+      payload: {
+        filters: { organizationCode: "ORG-PREAUTH-PRIVATE" },
+        reasonCode: "free form private reason",
+        fields: ["rawPayload"],
+      },
       status: 403,
       code: "permission_denied",
     },
@@ -404,7 +408,7 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
     assert.equal(response.json().code, scenario.code, scenario.name);
     assert.doesNotMatch(
       response.body,
-      /ORG-SYNTHETIC|ORG-TOO-MANY|free form private reason|rawPayload/u,
+      /ORG-SYNTHETIC|ORG-TOO-MANY|ORG-PREAUTH-PRIVATE|free form private reason|rawPayload/u,
       scenario.name,
     );
   }
@@ -422,7 +426,7 @@ test("bounded exports fail closed for authorization, policy, column, and row-cap
   );
   assert.doesNotMatch(
     JSON.stringify(deniedEvents),
-    /ORG-SYNTHETIC|ORG-TOO-MANY|free form private reason|rawPayload/u,
+    /ORG-SYNTHETIC|ORG-TOO-MANY|ORG-PREAUTH-PRIVATE|free form private reason|rawPayload/u,
   );
 });
 

@@ -132,6 +132,9 @@ export function registerP2ListExportRoutes(
       );
       const occurredAt = currentTimestamp(runtime);
       const permission = employeePolicy.permission;
+      const preAuthorizationRequestFingerprint = fingerprintExportRequestBody(
+        request.body,
+      );
       reply.header(p2ListCorrelationHeader, correlationId);
       let actor: P2ListActorContext | undefined;
       let parsedInput: ParsedExportRequest<P2ListEmployeeFilters> | undefined;
@@ -197,7 +200,7 @@ export function registerP2ListExportRoutes(
           startedAt,
           requestFingerprint: parsedInput
             ? fingerprintExportRequest(parsedInput)
-            : undefined,
+            : preAuthorizationRequestFingerprint,
         });
       }
     },
@@ -221,6 +224,9 @@ export function registerP2ListExportRoutes(
       );
       const occurredAt = currentTimestamp(runtime);
       const permission = lifecyclePolicy.permission;
+      const preAuthorizationRequestFingerprint = fingerprintExportRequestBody(
+        request.body,
+      );
       reply.header(p2ListCorrelationHeader, correlationId);
       let actor: P2ListActorContext | undefined;
       let parsedInput: ParsedExportRequest<P2ListLifecycleFilters> | undefined;
@@ -286,7 +292,7 @@ export function registerP2ListExportRoutes(
           startedAt,
           requestFingerprint: parsedInput
             ? fingerprintExportRequest(parsedInput)
-            : undefined,
+            : preAuthorizationRequestFingerprint,
         });
       }
     },
@@ -527,28 +533,40 @@ async function handleExportError(
   if (!(error instanceof P2ListReadModelError)) {
     throw error;
   }
+  let responseError = error;
   if (runtime?.emitAuditEvent && error.code !== "correlation_reuse_conflict") {
-    await runtime.emitAuditEvent({
-      eventId: randomUUID(),
-      eventType: "bounded_export.denied",
-      eventVersion: p2ListAuditEventVersion,
-      occurredAt: context.occurredAt,
-      actorId: safeActorId(context.actor),
-      actorRole: safeP2ListActorRole(context.actor),
-      evaluatedPermission: context.permission,
-      dataScopeId: safeDataScopeFingerprint(context.actor),
-      filterFingerprint: context.requestFingerprint,
-      resourceType: context.resourceType,
-      correlationId: context.correlationId,
-      policyDecision: "deny",
-      reasonCode: error.code,
-      exportSchemaVersion: p2ListExportSchemaVersion,
-      durationMs: elapsedP2ListDurationMs(context.startedAt),
-    });
+    try {
+      await runtime.emitAuditEvent({
+        eventId: randomUUID(),
+        eventType: "bounded_export.denied",
+        eventVersion: p2ListAuditEventVersion,
+        occurredAt: context.occurredAt,
+        actorId: safeActorId(context.actor),
+        actorRole: safeP2ListActorRole(context.actor),
+        evaluatedPermission: context.permission,
+        dataScopeId: safeDataScopeFingerprint(context.actor),
+        filterFingerprint: context.requestFingerprint,
+        resourceType: context.resourceType,
+        correlationId: context.correlationId,
+        policyDecision: "deny",
+        reasonCode: error.code,
+        exportSchemaVersion: p2ListExportSchemaVersion,
+        durationMs: elapsedP2ListDurationMs(context.startedAt),
+      });
+    } catch (auditError) {
+      if (
+        auditError instanceof P2ListReadModelError &&
+        auditError.code === "correlation_reuse_conflict"
+      ) {
+        responseError = auditError;
+      } else {
+        throw auditError;
+      }
+    }
   }
-  return reply.code(statusForError(error.code)).send({
-    code: error.code,
-    message: publicErrorMessage(error.code),
+  return reply.code(statusForError(responseError.code)).send({
+    code: responseError.code,
+    message: publicErrorMessage(responseError.code),
     correlationId: context.correlationId,
     readiness: p2ListReadiness,
   });
@@ -560,6 +578,13 @@ function fingerprintExportRequest<Filters>(
   return fingerprintP2ListValue({
     filters: input.filters,
     reasonCode: input.reasonCode,
+  });
+}
+
+function fingerprintExportRequestBody(value: unknown): string {
+  return fingerprintP2ListValue({
+    requestBodyPresent: value !== undefined,
+    requestBody: value ?? null,
   });
 }
 
