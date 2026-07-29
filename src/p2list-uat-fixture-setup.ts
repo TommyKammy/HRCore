@@ -2,11 +2,9 @@ import { fileURLToPath } from "node:url";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-  p2ListAuditEventVersion,
-  p2ListExportSchemaVersion,
-  p2ListPermissions,
-} from "./p2list-contract.js";
+import { buildApp } from "./app.js";
+import { p2ListPermissions } from "./p2list-contract.js";
+import { createServerP2ListRuntimes } from "./p2list-employee-runtime.js";
 import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
 import {
   createP2ListEmployeeFixtureRows,
@@ -15,27 +13,19 @@ import {
   type P2ListEmployeeFixtureRow,
   type P2ListLifecycleFixtureRow,
 } from "./p2list-read-model-fixtures.js";
-import {
-  fingerprintP2ListAuthorizationScope,
-  type P2ListActorContext,
-} from "./p2list-read-model-types.js";
-import {
-  fingerprintP2ListCollectionRequest,
-  fingerprintP2ListCollectionResult,
-  fingerprintP2ListRequestInput,
-  fingerprintP2ListRequestResult,
-} from "./p2list-request-identity.js";
+import type { P2ListActorContext } from "./p2list-read-model-types.js";
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
 
 export const p2ListUatManifestSecret =
   "p2list-uat-manifest-local-synthetic-secret-2026";
 export const p2ListUatCursorSecret =
   "p2list-uat-cursor-local-synthetic-secret-2026";
-export const p2ListUatSupportCorrelationId = "p2list-uat-support-correlation";
+export const p2ListUatSupportCorrelationId =
+  "p2list-ui-00000000-0000-4000-8000-000000000702";
 export const p2ListUatSupportCorrelationIds = {
-  listAction: "p2list-uat-support-list-action",
+  listAction: "p2list-ui-00000000-0000-4000-8000-000000000701",
   exportCompleted: p2ListUatSupportCorrelationId,
-  exportDenied: "p2list-uat-support-export-denied",
+  exportDenied: "p2list-ui-00000000-0000-4000-8000-000000000703",
 } as const;
 export const p2ListUatExportDenialCorrelationIds = {
   unfiltered: "p2list-ui-00000000-0000-4000-8000-000000000801",
@@ -68,105 +58,6 @@ const hrOperatorActor: P2ListActorContext = {
   ],
   dataScope: { organizationCodes },
 };
-const supportDataScopeId = fingerprintP2ListAuthorizationScope(hrOperatorActor);
-const supportListRequestFingerprint = fingerprintP2ListCollectionRequest(
-  "employee.list",
-  {
-    q: "UAT-G100-G26-G25",
-    asOf: "2026-07-01",
-  },
-);
-const supportListFilterFingerprint = fingerprintP2ListCollectionResult(
-  "employee.list",
-  supportListRequestFingerprint,
-  {
-    items: Array.from({ length: 25 }, (_, index) => ({
-      employeeId: `EMP-${String(index + 1).padStart(3, "0")}`,
-    })),
-    pageInfo: { limit: 25, hasNextPage: false },
-  },
-);
-const supportExportRequestFingerprint = fingerprintP2ListRequestInput(
-  "employee.export",
-  {
-    filters: { employeeId: "EMP-001", asOf: "2026-07-01" },
-    reasonCode: "uat_reconciliation",
-  },
-);
-const supportExportFilterFingerprint = fingerprintP2ListRequestResult(
-  "employee.export",
-  supportExportRequestFingerprint,
-  [{ employeeId: "EMP-001" }],
-);
-const supportDeniedFilterFingerprint = fingerprintP2ListRequestInput(
-  "employee.export",
-  {
-    filters: { q: "UAT", asOf: "2026-07-01" },
-    reasonCode: "uat_reconciliation",
-  },
-);
-const supportAuditEvents = [
-  {
-    eventId: "p2list-uat-audit-event-list-001",
-    eventType: "employee_list.viewed",
-    occurredAt: "2026-07-01T00:00:00.000Z",
-    evaluatedPermission: p2ListPermissions.employeeListRead,
-    filterFingerprint: supportListFilterFingerprint,
-    sort: "employeeId:asc",
-    pageSize: 25,
-    rowCount: 25,
-    correlationId: p2ListUatSupportCorrelationIds.listAction,
-    policyDecision: "allow",
-    reasonCode: null,
-    exportSchemaVersion: null,
-    durationMs: 7,
-  },
-  {
-    eventId: "p2list-uat-audit-event-export-requested-001",
-    eventType: "bounded_export.requested",
-    occurredAt: "2026-07-01T00:01:00.000Z",
-    evaluatedPermission: p2ListPermissions.employeeListExport,
-    filterFingerprint: supportExportFilterFingerprint,
-    sort: null,
-    pageSize: null,
-    rowCount: 1,
-    correlationId: p2ListUatSupportCorrelationIds.exportCompleted,
-    policyDecision: "allow",
-    reasonCode: "uat_reconciliation",
-    exportSchemaVersion: p2ListExportSchemaVersion,
-    durationMs: 5,
-  },
-  {
-    eventId: "p2list-uat-audit-event-export-completed-001",
-    eventType: "bounded_export.completed",
-    occurredAt: "2026-07-01T00:01:01.000Z",
-    evaluatedPermission: p2ListPermissions.employeeListExport,
-    filterFingerprint: supportExportFilterFingerprint,
-    sort: null,
-    pageSize: null,
-    rowCount: 1,
-    correlationId: p2ListUatSupportCorrelationIds.exportCompleted,
-    policyDecision: "allow",
-    reasonCode: "uat_reconciliation",
-    exportSchemaVersion: p2ListExportSchemaVersion,
-    durationMs: 8,
-  },
-  {
-    eventId: "p2list-uat-audit-event-export-denied-001",
-    eventType: "bounded_export.denied",
-    occurredAt: "2026-07-01T00:02:00.000Z",
-    evaluatedPermission: p2ListPermissions.employeeListExport,
-    filterFingerprint: supportDeniedFilterFingerprint,
-    sort: null,
-    pageSize: null,
-    rowCount: null,
-    correlationId: p2ListUatSupportCorrelationIds.exportDenied,
-    policyDecision: "deny",
-    reasonCode: "export_row_limit_exceeded",
-    exportSchemaVersion: p2ListExportSchemaVersion,
-    durationMs: 4,
-  },
-] as const;
 
 export interface P2ListUatFixtureResult {
   apiEnvironmentPath: string;
@@ -211,25 +102,11 @@ export async function prepareP2ListUatFixture(
 
   const employees = createUatEmployees();
   const lifecycleRequests = createUatLifecycleRequests(employees);
-  const database = await openLocalSyntheticWritebackDatabase(
-    `file:${databasePath}`,
-  );
-  try {
-    seedEmployees(database, employees);
-    seedLifecycleRequests(database, lifecycleRequests);
-    seedSupportAuditEvidence(database);
-  } finally {
-    database.close();
-  }
-
   const manifest = createP2ListFixtureManifest(
     {
       datasetReference: "p2list-formal-uat-101-employees-three-lifecycle-types",
       employees,
       lifecycleRequests,
-      additionalSourceRowPrimaryKeys: {
-        audit_event: supportAuditEvents.map((event) => event.eventId),
-      },
     },
     p2ListUatManifestSecret,
   );
@@ -238,12 +115,22 @@ export async function prepareP2ListUatFixture(
     `${JSON.stringify(manifest, null, 2)}\n`,
     "utf8",
   );
-
-  const actorRegistry = createActorRegistry();
   const runtimeEnvironment = createP2ListUatRuntimeEnvironment({
     databasePath,
     manifestPath,
   });
+  const database = await openLocalSyntheticWritebackDatabase(
+    `file:${databasePath}`,
+  );
+  try {
+    seedEmployees(database, employees);
+    seedLifecycleRequests(database, lifecycleRequests);
+    await seedSupportAuditEvidenceThroughRuntime(database, runtimeEnvironment);
+  } finally {
+    database.close();
+  }
+
+  const actorRegistry = createActorRegistry();
   await writeFile(
     apiEnvironmentPath,
     [
@@ -460,39 +347,82 @@ function seedLifecycleRequests(
   }
 }
 
-function seedSupportAuditEvidence(
+async function seedSupportAuditEvidenceThroughRuntime(
   database: OnboardingTransactionRequestDatabase,
+  environment: NodeJS.ProcessEnv,
+): Promise<void> {
+  const now = () => new Date("2026-07-01T00:00:00.000Z");
+  const runtimes = await createServerP2ListRuntimes(database, environment, {
+    now,
+  });
+  const app = await buildApp({
+    p2ListAuditEvidenceApi: runtimes.auditEvidence,
+    p2ListEmployeeApi: runtimes.employee,
+    p2ListExportApi: runtimes.export,
+    p2ListLifecycleApi: runtimes.lifecycle,
+  });
+  const headers = {
+    authorization: `Bearer ${p2ListUatTokens.hrOperator}`,
+    "x-hrcore-correlation-id": p2ListUatSupportCorrelationIds.listAction,
+  };
+
+  try {
+    requireFixtureResponse(
+      await app.inject({
+        method: "GET",
+        url: "/employees?q=UAT-G100-G26-G25&asOf=2026-07-01&sort=employeeId&direction=asc&limit=25",
+        headers,
+      }),
+      200,
+      "employee list support evidence",
+    );
+    requireFixtureResponse(
+      await app.inject({
+        method: "POST",
+        url: "/exports/employee-list",
+        headers: {
+          ...headers,
+          "x-hrcore-correlation-id":
+            p2ListUatSupportCorrelationIds.exportCompleted,
+        },
+        payload: {
+          filters: { employeeId: "EMP-001", asOf: "2026-07-01" },
+          reasonCode: "uat_reconciliation",
+        },
+      }),
+      200,
+      "completed export support evidence",
+    );
+    requireFixtureResponse(
+      await app.inject({
+        method: "POST",
+        url: "/exports/employee-list",
+        headers: {
+          ...headers,
+          "x-hrcore-correlation-id":
+            p2ListUatSupportCorrelationIds.exportDenied,
+        },
+        payload: {
+          filters: { organizationCode: employeeOrganization },
+          reasonCode: "uat_reconciliation",
+        },
+      }),
+      422,
+      "denied export support evidence",
+    );
+  } finally {
+    await app.close();
+  }
+}
+
+function requireFixtureResponse(
+  response: { statusCode: number; body: string },
+  expectedStatusCode: number,
+  action: string,
 ): void {
-  const insert = database.prepare(
-    `
-        INSERT INTO p2list_audit_event (
-          event_id, event_type, event_version, occurred_at, actor_id,
-          actor_role, evaluated_permission, data_scope_id, filter_fingerprint,
-          sort, page_size, row_count, resource_type, correlation_id,
-          policy_decision, reason_code, export_schema_version, duration_ms,
-          poc_marker
-        )
-        VALUES (?, ?, ?, ?, 'actor-hr-operator', 'hr_operator', ?, ?, ?, ?, ?,
-                ?, 'employee', ?, ?, ?, ?, ?, 'synthetic_poc')
-    `,
-  );
-  for (const event of supportAuditEvents) {
-    insert.run(
-      event.eventId,
-      event.eventType,
-      p2ListAuditEventVersion,
-      event.occurredAt,
-      event.evaluatedPermission,
-      supportDataScopeId,
-      event.filterFingerprint,
-      event.sort,
-      event.pageSize,
-      event.rowCount,
-      event.correlationId,
-      event.policyDecision,
-      event.reasonCode,
-      event.exportSchemaVersion,
-      event.durationMs,
+  if (response.statusCode !== expectedStatusCode) {
+    throw new Error(
+      `P2LIST UAT ${action} returned ${response.statusCode}: ${response.body}`,
     );
   }
 }

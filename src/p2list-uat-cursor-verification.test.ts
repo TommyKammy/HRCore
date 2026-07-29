@@ -17,11 +17,13 @@ test("P2LIST formal UAT cursor verifier exercises all mandatory failure and muta
       code: "cursor_filter_mismatch",
     },
     concurrentChange: {
-      statusCode: 200,
       firstPageLastEmployeeId: "EMP-025",
-      afterCursorEmployeeSeen: true,
-      beforeCursorEmployeeSeen: false,
-      overlapCount: 0,
+      pageCount: 5,
+      traversedRowCount: 101,
+      uniqueRowCount: 101,
+      omittedEmployeeIds: [],
+      duplicateEmployeeIds: [],
+      acceptedSnapshotPreserved: true,
     },
     expired: {
       statusCode: 400,

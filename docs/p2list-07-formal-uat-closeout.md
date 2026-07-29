@@ -97,19 +97,19 @@ closeout.
 
 Use these exact repository-owned synthetic handles during formal UAT:
 
-| Purpose                         | Input                                    | Expected rows/result                         |
-| ------------------------------- | ---------------------------------------- | -------------------------------------------- |
-| Equal-sort 25-row traversal     | `q=UAT-G100-G26-G25`, sort by `hireDate` | 25 employees                                 |
-| Equal-sort 26-row traversal     | `q=UAT-G100-G26`, sort by `hireDate`     | 26 employees                                 |
-| Equal-sort 100-row traversal    | `q=UAT-G100`, sort by `hireDate`         | 100 employees                                |
-| Over-cap bounded export         | `organizationCode=ORG-UAT-OVER-CAP`      | 101 rows; export denied over cap             |
-| Formula-safe one-row export     | `employeeId=EMP-001`                     | `position_code` source value starts with `=` |
-| Empty collection                | `employeeId=EMP-NOT-PRESENT`             | 0 employees                                  |
-| One-row collection/detail       | `employeeId=EMP-001`                     | 1 employee                                   |
-| Three normalized lifecycle rows | unfiltered lifecycle list                | onboarding, transfer, termination            |
-| Exact list-action evidence      | `p2list-uat-support-list-action`         | 1 bounded list event                         |
-| Exact completed-export evidence | `p2list-uat-support-correlation`         | requested and completed events               |
-| Exact denied-export evidence    | `p2list-uat-support-export-denied`       | 1 bounded denial event                       |
+| Purpose                         | Input                                            | Expected rows/result                         |
+| ------------------------------- | ------------------------------------------------ | -------------------------------------------- |
+| Equal-sort 25-row traversal     | `q=UAT-G100-G26-G25`, sort by `hireDate`         | 25 employees                                 |
+| Equal-sort 26-row traversal     | `q=UAT-G100-G26`, sort by `hireDate`             | 26 employees                                 |
+| Equal-sort 100-row traversal    | `q=UAT-G100`, sort by `hireDate`                 | 100 employees                                |
+| Over-cap bounded export         | `organizationCode=ORG-UAT-OVER-CAP`              | 101 rows; export denied over cap             |
+| Formula-safe one-row export     | `employeeId=EMP-001`                             | `position_code` source value starts with `=` |
+| Empty collection                | `employeeId=EMP-NOT-PRESENT`                     | 0 employees                                  |
+| One-row collection/detail       | `employeeId=EMP-001`                             | 1 employee                                   |
+| Three normalized lifecycle rows | unfiltered lifecycle list                        | onboarding, transfer, termination            |
+| Exact list-action evidence      | `p2list-ui-00000000-0000-4000-8000-000000000701` | 1 bounded list event                         |
+| Exact completed-export evidence | `p2list-ui-00000000-0000-4000-8000-000000000702` | requested and completed events               |
+| Exact denied-export evidence    | `p2list-ui-00000000-0000-4000-8000-000000000703` | 1 bounded denial event                       |
 
 The 25/26/100 groups share the same hire date, so sorting by `hireDate`
 exercises deterministic tie-breaking. For P2LIST-UAT-08, apply the organization
@@ -237,9 +237,9 @@ the same API:
 
 ```sh
 for correlation_id in \
-  p2list-uat-support-list-action \
-  p2list-uat-support-correlation \
-  p2list-uat-support-export-denied \
+  p2list-ui-00000000-0000-4000-8000-000000000701 \
+  p2list-ui-00000000-0000-4000-8000-000000000702 \
+  p2list-ui-00000000-0000-4000-8000-000000000703 \
   p2list-ui-00000000-0000-4000-8000-000000000801 \
   p2list-ui-00000000-0000-4000-8000-000000000802 \
   p2list-ui-00000000-0000-4000-8000-000000000803 \
@@ -278,9 +278,10 @@ these bounded API steps:
 2. append a byte to that opaque cursor and require `400 cursor_invalid`;
 3. reuse the original cursor with `q=UAT-G100-G26` and require
    `400 cursor_filter_mismatch`;
-4. change only two synthetic employment codes after page 1, moving one row
-   before and one row after the accepted keyset, then require page 2 to include
-   `EMP-025A`, exclude `EMP-000`, and overlap page 1 by zero rows;
+4. after page 1 has returned `EMP-001` through `EMP-025`, change only that
+   already-returned synthetic `EMP-025` source row to `EMP-000`, then traverse
+   every remaining cursor and require the accepted `EMP-001` through `EMP-101`
+   snapshot to contain exactly 101 unique rows with no omission or duplicate;
 5. obtain a fresh cursor, advance the verifier-owned clock by the contract TTL
    of 900 seconds plus one millisecond, and require `400 cursor_invalid`.
 
@@ -298,11 +299,13 @@ the JSON output as the operator evidence and require exactly:
     "code": "cursor_filter_mismatch"
   },
   "concurrentChange": {
-    "statusCode": 200,
     "firstPageLastEmployeeId": "EMP-025",
-    "afterCursorEmployeeSeen": true,
-    "beforeCursorEmployeeSeen": false,
-    "overlapCount": 0
+    "pageCount": 5,
+    "traversedRowCount": 101,
+    "uniqueRowCount": 101,
+    "omittedEmployeeIds": [],
+    "duplicateEmployeeIds": [],
+    "acceptedSnapshotPreserved": true
   },
   "expired": { "statusCode": 400, "code": "cursor_invalid" }
 }

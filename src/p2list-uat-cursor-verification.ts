@@ -26,11 +26,13 @@ export interface P2ListUatCursorVerificationEvidence {
   tampered: { statusCode: number; code: string };
   filterMismatch: { statusCode: number; code: string };
   concurrentChange: {
-    statusCode: number;
     firstPageLastEmployeeId: string;
-    afterCursorEmployeeSeen: boolean;
-    beforeCursorEmployeeSeen: boolean;
-    overlapCount: number;
+    pageCount: number;
+    traversedRowCount: number;
+    uniqueRowCount: number;
+    omittedEmployeeIds: string[];
+    duplicateEmployeeIds: string[];
+    acceptedSnapshotPreserved: boolean;
   };
   expired: { statusCode: number; code: string };
 }
@@ -92,34 +94,47 @@ export async function runP2ListUatCursorVerification(
 
     database
       .prepare(
-        "UPDATE employment SET employment_code = 'EMP-000' WHERE employment_code = 'EMP-101'",
-      )
-      .run();
-    database
-      .prepare(
-        "UPDATE employment SET employment_code = 'EMP-025A' WHERE employment_code = 'EMP-100'",
+        "UPDATE employment SET employment_code = 'EMP-000' WHERE employment_code = 'EMP-025'",
       )
       .run();
 
-    const secondPage = await requestEmployeePage(
-      app,
-      { ...baseQuery, cursor },
-      "p2list-ui-00000000-0000-4000-8000-000000000904",
+    const expectedSnapshotIds = Array.from(
+      { length: 101 },
+      (_, index) => `EMP-${String(index + 1).padStart(3, "0")}`,
     );
-    assert.equal(secondPage.statusCode, 200);
-    const secondPageIds = employeeIds(requireEmployeePage(secondPage.body));
-    const overlapCount = secondPageIds.filter((employeeId) =>
-      firstPageIds.includes(employeeId),
-    ).length;
-    assert.equal(secondPageIds.includes("EMP-025A"), true);
-    assert.equal(secondPageIds.includes("EMP-000"), false);
-    assert.equal(overlapCount, 0);
+    const traversedIds = [...firstPageIds];
+    let nextCursor: string | null = cursor;
+    let pageCount = 1;
+    let correlationSequence = 904;
+    while (nextCursor) {
+      const page = await requestEmployeePage(
+        app,
+        { ...baseQuery, cursor: nextCursor },
+        uatCorrelationId(correlationSequence),
+      );
+      correlationSequence += 1;
+      assert.equal(page.statusCode, 200);
+      const pageBody = requireEmployeePage(page.body);
+      traversedIds.push(...employeeIds(pageBody));
+      nextCursor = readNextCursor(pageBody);
+      pageCount += 1;
+    }
+    const duplicateEmployeeIds = traversedIds.filter(
+      (employeeId, index) => traversedIds.indexOf(employeeId) !== index,
+    );
+    const omittedEmployeeIds = expectedSnapshotIds.filter(
+      (employeeId) => !traversedIds.includes(employeeId),
+    );
+    assert.deepEqual(traversedIds, expectedSnapshotIds);
+    assert.deepEqual(duplicateEmployeeIds, []);
+    assert.deepEqual(omittedEmployeeIds, []);
 
     const expiringPage = await requestEmployeePage(
       app,
       baseQuery,
-      "p2list-ui-00000000-0000-4000-8000-000000000905",
+      uatCorrelationId(correlationSequence),
     );
+    correlationSequence += 1;
     assert.equal(expiringPage.statusCode, 200);
     const expiringCursor = requireCursor(
       requireEmployeePage(expiringPage.body),
@@ -128,7 +143,7 @@ export async function runP2ListUatCursorVerification(
     const expired = await requestEmployeePage(
       app,
       { ...baseQuery, cursor: expiringCursor },
-      "p2list-ui-00000000-0000-4000-8000-000000000906",
+      uatCorrelationId(correlationSequence),
     );
     const expiredCode = requireErrorCode(expired.body);
     assert.equal(expired.statusCode, 400);
@@ -145,11 +160,13 @@ export async function runP2ListUatCursorVerification(
         code: filterMismatchCode,
       },
       concurrentChange: {
-        statusCode: secondPage.statusCode,
         firstPageLastEmployeeId: firstPageIds.at(-1) ?? "",
-        afterCursorEmployeeSeen: secondPageIds.includes("EMP-025A"),
-        beforeCursorEmployeeSeen: secondPageIds.includes("EMP-000"),
-        overlapCount,
+        pageCount,
+        traversedRowCount: traversedIds.length,
+        uniqueRowCount: new Set(traversedIds).size,
+        omittedEmployeeIds,
+        duplicateEmployeeIds,
+        acceptedSnapshotPreserved: true,
       },
       expired: {
         statusCode: expired.statusCode,
@@ -195,13 +212,23 @@ function requireEmployeePage(value: unknown): Record<string, unknown> {
 }
 
 function requireCursor(page: Record<string, unknown>): string {
+  const cursor = readNextCursor(page);
+  if (!cursor) {
+    throw new TypeError("P2LIST UAT cursor evidence is missing nextCursor.");
+  }
+  return cursor;
+}
+
+function readNextCursor(page: Record<string, unknown>): string | null {
   const pageInfo = page.pageInfo;
   assert.ok(
     pageInfo && typeof pageInfo === "object" && !Array.isArray(pageInfo),
   );
   const cursor = (pageInfo as Record<string, unknown>).nextCursor;
-  if (typeof cursor !== "string") {
-    throw new TypeError("P2LIST UAT cursor evidence is missing nextCursor.");
+  if (cursor !== null && typeof cursor !== "string") {
+    throw new TypeError(
+      "P2LIST UAT cursor evidence has an invalid nextCursor.",
+    );
   }
   return cursor;
 }
@@ -225,6 +252,10 @@ function requireErrorCode(value: unknown): string {
     throw new TypeError("P2LIST UAT cursor evidence is missing an error code.");
   }
   return code;
+}
+
+function uatCorrelationId(sequence: number): string {
+  return `p2list-ui-00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
