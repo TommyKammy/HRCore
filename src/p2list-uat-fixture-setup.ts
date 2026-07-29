@@ -2,7 +2,11 @@ import { fileURLToPath } from "node:url";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { p2ListPermissions } from "./p2list-contract.js";
+import {
+  p2ListAuditEventVersion,
+  p2ListExportSchemaVersion,
+  p2ListPermissions,
+} from "./p2list-contract.js";
 import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
 import {
   createP2ListEmployeeFixtureRows,
@@ -18,6 +22,17 @@ export const p2ListUatManifestSecret =
 export const p2ListUatCursorSecret =
   "p2list-uat-cursor-local-synthetic-secret-2026";
 export const p2ListUatSupportCorrelationId = "p2list-uat-support-correlation";
+export const p2ListUatSupportCorrelationIds = {
+  listAction: "p2list-uat-support-list-action",
+  exportCompleted: p2ListUatSupportCorrelationId,
+  exportDenied: "p2list-uat-support-export-denied",
+} as const;
+export const p2ListUatExportDenialCorrelationIds = {
+  unfiltered: "p2list-ui-00000000-0000-4000-8000-000000000801",
+  overCap: "p2list-ui-00000000-0000-4000-8000-000000000802",
+  unsupportedColumns: "p2list-ui-00000000-0000-4000-8000-000000000803",
+  missingReason: "p2list-ui-00000000-0000-4000-8000-000000000804",
+} as const;
 export const p2ListUatTokens = {
   hrOperator: "p2list-uat-hr-operator-token-2026-local-only",
   approver: "p2list-uat-approver-token-2026-local-only",
@@ -27,6 +42,68 @@ export const p2ListUatTokens = {
 const employeeOrganization = "ORG-UAT-OVER-CAP";
 const lifecycleOrganization = "ORG-LIFECYCLE-SYNTHETIC";
 const tenantId = "tenant-repo-owned-synthetic";
+const supportAuditEvents = [
+  {
+    eventId: "p2list-uat-audit-event-list-001",
+    eventType: "employee_list.viewed",
+    occurredAt: "2026-07-01T00:00:00.000Z",
+    evaluatedPermission: p2ListPermissions.employeeListRead,
+    filterFingerprint: null,
+    sort: "employeeId:asc",
+    pageSize: 25,
+    rowCount: 25,
+    correlationId: p2ListUatSupportCorrelationIds.listAction,
+    policyDecision: "allow",
+    reasonCode: null,
+    exportSchemaVersion: null,
+    durationMs: 7,
+  },
+  {
+    eventId: "p2list-uat-audit-event-export-requested-001",
+    eventType: "bounded_export.requested",
+    occurredAt: "2026-07-01T00:01:00.000Z",
+    evaluatedPermission: p2ListPermissions.employeeListExport,
+    filterFingerprint: "uat-seeded-employee-export-filter",
+    sort: null,
+    pageSize: null,
+    rowCount: 1,
+    correlationId: p2ListUatSupportCorrelationIds.exportCompleted,
+    policyDecision: "allow",
+    reasonCode: "uat_reconciliation",
+    exportSchemaVersion: p2ListExportSchemaVersion,
+    durationMs: 5,
+  },
+  {
+    eventId: "p2list-uat-audit-event-export-completed-001",
+    eventType: "bounded_export.completed",
+    occurredAt: "2026-07-01T00:01:01.000Z",
+    evaluatedPermission: p2ListPermissions.employeeListExport,
+    filterFingerprint: "uat-seeded-employee-export-filter",
+    sort: null,
+    pageSize: null,
+    rowCount: 1,
+    correlationId: p2ListUatSupportCorrelationIds.exportCompleted,
+    policyDecision: "allow",
+    reasonCode: "uat_reconciliation",
+    exportSchemaVersion: p2ListExportSchemaVersion,
+    durationMs: 8,
+  },
+  {
+    eventId: "p2list-uat-audit-event-export-denied-001",
+    eventType: "bounded_export.denied",
+    occurredAt: "2026-07-01T00:02:00.000Z",
+    evaluatedPermission: p2ListPermissions.employeeListExport,
+    filterFingerprint: "uat-seeded-over-cap-export-filter",
+    sort: null,
+    pageSize: null,
+    rowCount: null,
+    correlationId: p2ListUatSupportCorrelationIds.exportDenied,
+    policyDecision: "deny",
+    reasonCode: "export_row_limit_exceeded",
+    exportSchemaVersion: p2ListExportSchemaVersion,
+    durationMs: 4,
+  },
+] as const;
 
 export interface P2ListUatFixtureResult {
   apiEnvironmentPath: string;
@@ -59,24 +136,25 @@ export async function prepareP2ListUatFixture(
 
   const employees = createUatEmployees();
   const lifecycleRequests = createUatLifecycleRequests(employees);
-  const auditEventId = "p2list-uat-audit-event-001";
   const database = await openLocalSyntheticWritebackDatabase(
     `file:${databasePath}`,
   );
   try {
     seedEmployees(database, employees);
     seedLifecycleRequests(database, lifecycleRequests);
-    seedSupportAuditEvidence(database, auditEventId);
+    seedSupportAuditEvidence(database);
   } finally {
     database.close();
   }
 
   const manifest = createP2ListFixtureManifest(
     {
-      datasetReference: "p2list-formal-uat-100-employees-three-lifecycle-types",
+      datasetReference: "p2list-formal-uat-101-employees-three-lifecycle-types",
       employees,
       lifecycleRequests,
-      additionalSourceRowPrimaryKeys: { audit_event: [auditEventId] },
+      additionalSourceRowPrimaryKeys: {
+        audit_event: supportAuditEvents.map((event) => event.eventId),
+      },
     },
     p2ListUatManifestSecret,
   );
@@ -110,6 +188,7 @@ export async function prepareP2ListUatFixture(
       `export VITE_P2LIST_HR_OPERATOR_TOKEN=${shellQuote(p2ListUatTokens.hrOperator)}`,
       `export VITE_P2LIST_APPROVER_TOKEN=${shellQuote(p2ListUatTokens.approver)}`,
       `export VITE_P2LIST_SUPPORT_TOKEN=${shellQuote(p2ListUatTokens.support)}`,
+      "export VITE_P2LIST_UAT_RESPONSE_DROP_MODE='response_drop_once'",
       "",
     ].join("\n"),
     { encoding: "utf8", mode: 0o600 },
@@ -139,6 +218,7 @@ function createUatEmployees(): P2ListEmployeeFixtureRow[] {
             ? "UAT-G100 Equal Sort Employee"
             : "UAT-G101 Over Cap Employee",
     organizationCode: employeeOrganization,
+    positionCode: index === 0 ? "=1+1" : row.positionCode,
   }));
 }
 
@@ -303,11 +383,9 @@ function seedLifecycleRequests(
 
 function seedSupportAuditEvidence(
   database: OnboardingTransactionRequestDatabase,
-  eventId: string,
 ): void {
-  database
-    .prepare(
-      `
+  const insert = database.prepare(
+    `
         INSERT INTO p2list_audit_event (
           event_id, event_type, event_version, occurred_at, actor_id,
           actor_role, evaluated_permission, data_scope_id, filter_fingerprint,
@@ -315,16 +393,29 @@ function seedSupportAuditEvidence(
           policy_decision, reason_code, export_schema_version, duration_ms,
           poc_marker
         )
-        VALUES (
-          ?, 'employee_list.viewed', 'p2list_audit_v1',
-          '2026-07-01T00:00:00.000Z', 'actor-hr-operator', 'hr_operator',
-          'employee:list:read', 'organization:ORG-UAT-OVER-CAP', NULL,
-          'employeeId:asc', 25, 25, 'employee', ?, 'allow', NULL, NULL, 7,
-          'synthetic_poc'
-        )
-      `,
-    )
-    .run(eventId, p2ListUatSupportCorrelationId);
+        VALUES (?, ?, ?, ?, 'actor-hr-operator', 'hr_operator', ?, ?, ?, ?, ?,
+                ?, 'employee', ?, ?, ?, ?, ?, 'synthetic_poc')
+    `,
+  );
+  for (const event of supportAuditEvents) {
+    insert.run(
+      event.eventId,
+      event.eventType,
+      p2ListAuditEventVersion,
+      event.occurredAt,
+      event.evaluatedPermission,
+      `organization:${employeeOrganization}`,
+      event.filterFingerprint,
+      event.sort,
+      event.pageSize,
+      event.rowCount,
+      event.correlationId,
+      event.policyDecision,
+      event.reasonCode,
+      event.exportSchemaVersion,
+      event.durationMs,
+    );
+  }
 }
 
 function createActorRegistry() {
@@ -365,7 +456,12 @@ function createActorRegistry() {
         actorRole: "hr_ops_support",
         tenantId,
         permissions: [p2ListPermissions.supportCorrelationRead],
-        dataScope: { correlationIds: [p2ListUatSupportCorrelationId] },
+        dataScope: {
+          correlationIds: [
+            ...Object.values(p2ListUatSupportCorrelationIds),
+            ...Object.values(p2ListUatExportDenialCorrelationIds),
+          ],
+        },
       },
     },
   ];

@@ -11,6 +11,7 @@ import {
   fetchLifecycleRequests,
   fetchOpenApiContract,
   isCompletedP2ListDenial,
+  p2ListUatDropNextExportResponseStorageKey,
   type EmployeeListResponse,
   type LifecycleRequestListResponse,
 } from "./api-client";
@@ -63,6 +64,7 @@ const employeeListItem: EmployeeListResponse["items"][number] = {
 };
 
 afterEach(() => {
+  sessionStorage.removeItem(p2ListUatDropNextExportResponseStorageKey);
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -125,6 +127,52 @@ describe("OpenAPI contract API client", () => {
 });
 
 describe("bounded export API client", () => {
+  it("drops one fully received export response only when the UAT harness is armed", async () => {
+    vi.stubEnv("VITE_P2LIST_UAT_RESPONSE_DROP_MODE", "response_drop_once");
+    sessionStorage.setItem(p2ListUatDropNextExportResponseStorageKey, "armed");
+    const firstResponse = new Response("employee_id\nEMP-001\n", {
+      status: 200,
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition":
+          'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+        "x-hrcore-correlation-id": "employee-export-dropped-response",
+        "x-hrcore-export-schema-version": "p2list_export_v1",
+      },
+    });
+    const bodyRead = vi.spyOn(firstResponse, "arrayBuffer");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(firstResponse)
+      .mockResolvedValueOnce(
+        new Response("employee_id\nEMP-001\n", {
+          status: 200,
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition":
+              'attachment; filename="hrcore-bounded-employees-p2list_export_v1.csv"',
+            "x-hrcore-correlation-id": "employee-export-retry-success",
+            "x-hrcore-export-schema-version": "p2list_export_v1",
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const filters = { employeeId: "EMP-001", asOf: "2026-07-26" };
+    await expect(
+      fetchEmployeeExport(filters, "uat_reconciliation"),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(bodyRead).toHaveBeenCalledOnce();
+    expect(
+      sessionStorage.getItem(p2ListUatDropNextExportResponseStorageKey),
+    ).toBeNull();
+    await expect(
+      fetchEmployeeExport(filters, "uat_reconciliation"),
+    ).resolves.toMatchObject({
+      correlationId: "employee-export-retry-success",
+    });
+  });
+
   it("posts only canonical filters and a reason then validates the CSV artifact", async () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>

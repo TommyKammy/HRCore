@@ -7,8 +7,9 @@ import test from "node:test";
 import { openLocalSyntheticWritebackDatabase } from "./local-sqlite.js";
 import { verifyP2ListSyntheticDatasetManifest } from "./p2list-read-model-types.js";
 import {
+  p2ListUatExportDenialCorrelationIds,
   p2ListUatManifestSecret,
-  p2ListUatSupportCorrelationId,
+  p2ListUatSupportCorrelationIds,
   p2ListUatTokens,
   prepareP2ListUatFixture,
 } from "./p2list-uat-fixture-setup.js";
@@ -33,12 +34,34 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
     assert.equal(result.lifecycleRequestCount, 3);
     assert.equal(provenance.values("employment").length, 101);
     assert.equal(provenance.values("transaction_request").length, 3);
-    assert.equal(provenance.values("audit_event").length, 1);
+    assert.equal(provenance.values("audit_event").length, 4);
     assert.match(apiEnvironment, /P2LIST_EMPLOYEE_ACTORS_JSON/u);
     assert.match(apiEnvironment, /P2LIST_EMPLOYEE_MANIFEST_PATH/u);
     assert.match(apiEnvironment, /P2LIST_UAT_APPROVER_TOKEN/u);
     assert.match(apiEnvironment, /P2LIST_UAT_SUPPORT_TOKEN/u);
     assert.match(webEnvironment, /VITE_P2LIST_HR_OPERATOR_TOKEN/u);
+    assert.match(
+      webEnvironment,
+      /VITE_P2LIST_UAT_RESPONSE_DROP_MODE='response_drop_once'/u,
+    );
+    for (const correlationId of Object.values(
+      p2ListUatExportDenialCorrelationIds,
+    )) {
+      assert.match(
+        correlationId,
+        /^p2list-ui-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+        "runtime denial handles must be accepted as client correlations",
+      );
+    }
+    for (const correlationId of [
+      ...Object.values(p2ListUatSupportCorrelationIds),
+      ...Object.values(p2ListUatExportDenialCorrelationIds),
+    ]) {
+      assert.ok(
+        apiEnvironment.includes(correlationId),
+        `generated support scope must bind ${correlationId}`,
+      );
+    }
     for (const token of Object.values(p2ListUatTokens)) {
       assert.ok(
         apiEnvironment.includes(token) || webEnvironment.includes(token),
@@ -92,11 +115,32 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
           all(): Array<{ request_type: string }>;
         }
       ).all();
-      const supportEvidence = database
+      const formulaPosition = database
         .prepare(
-          "SELECT COUNT(*) AS count FROM p2list_audit_event WHERE correlation_id = ?",
+          `
+            SELECT assignment.position_code
+            FROM assignment
+            JOIN employment ON employment.id = assignment.employment_id
+            WHERE employment.employment_code = 'EMP-001'
+          `,
         )
-        .get(p2ListUatSupportCorrelationId) as { count: number };
+        .get() as { position_code: string };
+      const supportEvidence = (
+        database.prepare(
+          `
+            SELECT correlation_id, event_type, policy_decision, reason_code
+            FROM p2list_audit_event
+            ORDER BY correlation_id, event_type
+          `,
+        ) as unknown as {
+          all(): Array<{
+            correlation_id: string;
+            event_type: string;
+            policy_decision: string;
+            reason_code: string | null;
+          }>;
+        }
+      ).all();
 
       assert.equal(employeeCount.count, 101);
       assert.deepEqual(
@@ -116,7 +160,36 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
         lifecycleTypes.map((row) => row.request_type),
         ["hire", "terminate", "transfer"],
       );
-      assert.equal(supportEvidence.count, 1);
+      assert.equal(formulaPosition.position_code, "=1+1");
+      assert.deepEqual(
+        supportEvidence.map((row) => ({ ...row })),
+        [
+          {
+            correlation_id: p2ListUatSupportCorrelationIds.exportCompleted,
+            event_type: "bounded_export.completed",
+            policy_decision: "allow",
+            reason_code: "uat_reconciliation",
+          },
+          {
+            correlation_id: p2ListUatSupportCorrelationIds.exportCompleted,
+            event_type: "bounded_export.requested",
+            policy_decision: "allow",
+            reason_code: "uat_reconciliation",
+          },
+          {
+            correlation_id: p2ListUatSupportCorrelationIds.exportDenied,
+            event_type: "bounded_export.denied",
+            policy_decision: "deny",
+            reason_code: "export_row_limit_exceeded",
+          },
+          {
+            correlation_id: p2ListUatSupportCorrelationIds.listAction,
+            event_type: "employee_list.viewed",
+            policy_decision: "allow",
+            reason_code: null,
+          },
+        ],
+      );
     } finally {
       database.close();
     }

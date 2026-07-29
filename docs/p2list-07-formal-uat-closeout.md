@@ -63,8 +63,8 @@ closeout.
    The generated dataset contains 101 employees in one meaningfully filterable
    organization scope, nested search-prefix groups of 25, 26, and 100 rows,
    plus one submitted onboarding, transfer, and termination request. It also
-   contains one bounded support evidence record for correlation
-   `p2list-uat-support-correlation`.
+   contains four bounded audit events across three exact support correlation
+   handles.
 
 6. Start the API and WebUI in separate shells from the repository root:
 
@@ -81,7 +81,8 @@ closeout.
    The generated actor registry gives the HR operator only the explicit list,
    detail, bounded export, and download permissions; gives the approver no list
    or detail permissions; and gives HR Ops/support only exact lookup of the
-   named support correlation. Browser persona state is not authorization.
+   named support and UAT export-denial correlations. Browser persona state is
+   not authorization.
 
 7. Do not edit or reuse generated tokens outside this repository-owned local
    synthetic run. Re-run `npm run setup:p2list:uat` to reset the dataset.
@@ -96,21 +97,26 @@ closeout.
 
 Use these exact repository-owned synthetic handles during formal UAT:
 
-| Purpose                         | Input                                        | Expected rows/result              |
-| ------------------------------- | -------------------------------------------- | --------------------------------- |
-| Equal-sort 25-row traversal     | `q=UAT-G100-G26-G25`, sort by `hireDate`     | 25 employees                      |
-| Equal-sort 26-row traversal     | `q=UAT-G100-G26`, sort by `hireDate`         | 26 employees                      |
-| Equal-sort 100-row traversal    | `q=UAT-G100`, sort by `hireDate`             | 100 employees                     |
-| Over-cap bounded export         | `organizationCode=ORG-UAT-OVER-CAP`          | 101 rows; export denied over cap  |
-| Empty collection                | `employeeId=EMP-NOT-PRESENT`                 | 0 employees                       |
-| One-row collection/detail       | `employeeId=EMP-001`                         | 1 employee                        |
-| Three normalized lifecycle rows | unfiltered lifecycle list                    | onboarding, transfer, termination |
-| Exact support evidence          | correlation `p2list-uat-support-correlation` | 1 bounded audit event             |
+| Purpose                         | Input                                    | Expected rows/result                         |
+| ------------------------------- | ---------------------------------------- | -------------------------------------------- |
+| Equal-sort 25-row traversal     | `q=UAT-G100-G26-G25`, sort by `hireDate` | 25 employees                                 |
+| Equal-sort 26-row traversal     | `q=UAT-G100-G26`, sort by `hireDate`     | 26 employees                                 |
+| Equal-sort 100-row traversal    | `q=UAT-G100`, sort by `hireDate`         | 100 employees                                |
+| Over-cap bounded export         | `organizationCode=ORG-UAT-OVER-CAP`      | 101 rows; export denied over cap             |
+| Formula-safe one-row export     | `employeeId=EMP-001`                     | `position_code` source value starts with `=` |
+| Empty collection                | `employeeId=EMP-NOT-PRESENT`             | 0 employees                                  |
+| One-row collection/detail       | `employeeId=EMP-001`                     | 1 employee                                   |
+| Three normalized lifecycle rows | unfiltered lifecycle list                | onboarding, transfer, termination            |
+| Exact list-action evidence      | `p2list-uat-support-list-action`         | 1 bounded list event                         |
+| Exact completed-export evidence | `p2list-uat-support-correlation`         | requested and completed events               |
+| Exact denied-export evidence    | `p2list-uat-support-export-denied`       | 1 bounded denial event                       |
 
 The 25/26/100 groups share the same hire date, so sorting by `hireDate`
 exercises deterministic tie-breaking. For P2LIST-UAT-08, apply the organization
 filter before requesting CSV output with reason `uat_reconciliation`; the
-collection is meaningfully filtered but exceeds the hard 100-row cap.
+collection is meaningfully filtered but exceeds the hard 100-row cap. The
+synthetic `EMP-001` position code is `=1+1`, specifically so its successful
+one-row CSV export can prove formula neutralization.
 
 ## Executable Authorization Checks
 
@@ -137,17 +143,119 @@ curl --silent --show-error --include \
 Each response must be `403 permission_denied` and must not contain `items`,
 `item`, employee identifiers, or lifecycle identifiers.
 
-The current WebUI audit workflow is static and does not call the bounded support
-endpoint. Execute P2LIST-UAT-09 against the same running API:
+## Executable Request-Identity Retry Check
+
+The generated WebUI environment enables a one-shot, repository-owned UAT
+harness. It is inert unless explicitly armed in browser session storage and is
+absent from ordinary WebUI startup environments. The generated environment sets
+`VITE_P2LIST_UAT_RESPONSE_DROP_MODE=response_drop_once`; do not set that value
+outside this bounded local UAT run.
+
+1. Open browser developer tools, select Network, enable Preserve log, and filter
+   requests to `exports/employee-list`.
+2. As HR operator, filter Employees by `EMP-001`, open CSV output, and select
+   reason `uat_reconciliation`.
+3. In the Console, arm exactly one accepted-response drop:
+
+   ```js
+   sessionStorage.setItem(
+     "hrcore.p2list.uat.drop-next-export-response",
+     "armed",
+   );
+   ```
+
+4. Submit the export. The API must receive and complete the request; the
+   one-shot client boundary then consumes and discards that response before
+   returning it to the workflow. Record the first request's
+   `x-hrcore-correlation-id` as `A` and confirm the WebUI reports a network
+   failure.
+5. Without changing the filter or reason, submit again. The second outgoing
+   correlation must equal `A`, and the CSV must download. The session-storage
+   arm must already be absent.
+6. Filter by `ORG-UAT-OVER-CAP` and submit the same reason twice. The first
+   completed `422 export_row_limit_exceeded` response has correlation `B`; the
+   next attempt must use a different correlation `C`.
+
+This distinguishes an uncertain caller result after server acceptance from a
+completed server denial. Do not use browser offline mode as a substitute,
+because it does not prove that the server accepted the request.
+
+## Executable Export Checks
+
+For P2LIST-UAT-07, export `EMP-001` with reason `uat_reconciliation`. The
+download must use schema `p2list_export_v1`, contain one row, and serialize the
+`position_code` cell as `'=1+1`. Also export lifecycle requests filtered by
+`ORG-LIFECYCLE-SYNTHETIC`; its schema and row count must remain bounded.
+
+The WebUI intentionally blocks malformed export input before transport. To test
+the server-owned P2LIST-UAT-08 denial paths, source the API environment and run:
 
 ```sh
-curl --silent --show-error --include \
-  --header "Authorization: Bearer ${P2LIST_UAT_SUPPORT_TOKEN}" \
-  "http://127.0.0.1:3000/support/p2list/audit-evidence/p2list-uat-support-correlation"
+source .local/p2list-uat/api-environment.sh
+export P2LIST_UAT_API_BASE=http://127.0.0.1:3000
+
+p2list_uat_export() {
+  correlation_id=$1
+  payload=$2
+  curl --silent --show-error --include \
+    --header "Authorization: Bearer ${P2LIST_UAT_HR_OPERATOR_TOKEN}" \
+    --header "Content-Type: application/json" \
+    --header "Accept: text/csv" \
+    --header "x-hrcore-correlation-id: ${correlation_id}" \
+    --data "${payload}" \
+    "${P2LIST_UAT_API_BASE}/exports/employee-list"
+}
+
+p2list_uat_export p2list-ui-00000000-0000-4000-8000-000000000801 \
+  '{"filters":{},"reasonCode":"uat_reconciliation"}'
+p2list_uat_export p2list-ui-00000000-0000-4000-8000-000000000802 \
+  '{"filters":{"organizationCode":"ORG-UAT-OVER-CAP"},"reasonCode":"uat_reconciliation"}'
+p2list_uat_export p2list-ui-00000000-0000-4000-8000-000000000803 \
+  '{"filters":{"employeeId":"EMP-001"},"reasonCode":"uat_reconciliation","columns":["employeeId","rawPayload"]}'
+p2list_uat_export p2list-ui-00000000-0000-4000-8000-000000000804 \
+  '{"filters":{"employeeId":"EMP-001"}}'
 ```
 
-The response must be `200`, contain exactly the requested correlation and one
-bounded event, and contain no broad-search result or raw employee row.
+The four responses must respectively be:
+
+| Correlation                                      | HTTP | Code                          |
+| ------------------------------------------------ | ---- | ----------------------------- |
+| `p2list-ui-00000000-0000-4000-8000-000000000801` | 422  | `export_filter_required`      |
+| `p2list-ui-00000000-0000-4000-8000-000000000802` | 422  | `export_row_limit_exceeded`   |
+| `p2list-ui-00000000-0000-4000-8000-000000000803` | 422  | `export_field_denied`         |
+| `p2list-ui-00000000-0000-4000-8000-000000000804` | 400  | `export_reason_code_required` |
+
+Every response must be JSON with no CSV payload or raw filter value.
+Its `x-hrcore-correlation-id` response header must exactly echo the supplied
+UUID-form UAT correlation.
+
+## Executable Support Evidence Checks
+
+The current WebUI audit workflow is static and does not call the bounded support
+endpoint. After the export-denial commands above, execute P2LIST-UAT-09 against
+the same API:
+
+```sh
+for correlation_id in \
+  p2list-uat-support-list-action \
+  p2list-uat-support-correlation \
+  p2list-uat-support-export-denied \
+  p2list-ui-00000000-0000-4000-8000-000000000801 \
+  p2list-ui-00000000-0000-4000-8000-000000000802 \
+  p2list-ui-00000000-0000-4000-8000-000000000803 \
+  p2list-ui-00000000-0000-4000-8000-000000000804
+do
+  curl --silent --show-error --include \
+    --header "Authorization: Bearer ${P2LIST_UAT_SUPPORT_TOKEN}" \
+    "${P2LIST_UAT_API_BASE}/support/p2list/audit-evidence/${correlation_id}"
+done
+```
+
+Each response must be `200`, contain exactly the requested correlation, and
+contain no broad-search result or raw employee row. The three seeded handles
+prove one list action, a requested/completed export pair, and one denied export.
+Each runtime denial handle proves one `bounded_export.denied` event with the
+expected denial code.
 
 ## Current-Head Evidence Protocol
 
@@ -191,7 +299,7 @@ acceptance.
 | P2LIST-UAT-06 | Approver       | Attempt employee/lifecycle list and detail access without explicit permission                   | Server returns bounded denial without row or subject leakage                                   | authorization matrix and denial-audit suites | Pending      |
 | P2LIST-UAT-07 | HR operator    | Export a meaningfully filtered employee and lifecycle result with an allowed reason and columns | CSV schema matches the allowlist, formulas are neutralized, and rows stay at or below 100      | export helper/API suites                     | Pending      |
 | P2LIST-UAT-08 | HR operator    | Attempt unfiltered, over-cap, unsupported-column, or missing-reason export                      | Request is denied with no CSV payload or raw-filter audit leakage                              | export negative and observability suites     | Pending      |
-| P2LIST-UAT-09 | HR Ops/support | Look up one exact authorized correlation                                                        | Action, API decision, export outcome, and denial evidence are linked without broad search      | audit observability suite                    | Pending      |
+| P2LIST-UAT-09 | HR Ops/support | Look up each named exact authorized correlation                                                 | Action, API decision, export outcome, and denial evidence are linked without broad search      | audit observability suite                    | Pending      |
 | P2LIST-UAT-10 | HR operator    | Use expired, tampered, filter-mismatched, and concurrent-change cursors                         | Request fails closed or preserves accepted-at traversal without mixed snapshots                | cursor and request-identity suites           | Pending      |
 | P2LIST-UAT-11 | HR operator    | Complete employee and lifecycle list operations on desktop and mobile                           | Controls remain labelled, keyboard reachable, non-overlapping, and free of horizontal overflow | WebUI unit and Playwright visual suites      | Pending      |
 
@@ -215,7 +323,7 @@ acceptance.
 | Export allowlist, row cap, reason, and formula safety                    | `src/p2list-export.test.ts`, `src/p2list-export-api.test.ts` |
 | Correlation, retry, denial, exact support lookup, and redaction          | `src/p2list-audit-observability.test.ts`                     |
 | Canonical request/result identity and accepted-at reuse                  | `src/p2list-request-identity.test.ts`                        |
-| Reproducible 100-row, lifecycle, persona, manifest, and support fixture  | `src/p2list-uat-fixture-setup.test.ts`                       |
+| Reproducible 101-row, lifecycle, persona, manifest, and support fixture  | `src/p2list-uat-fixture-setup.test.ts`                       |
 | Browser request identity and error states                                | `web/src/api-client.test.ts`                                 |
 | Browser list, detail navigation, export, denied, empty, and retry states | `web/src/app/list-screens.test.tsx`                          |
 | Desktop/tablet/mobile visual and overflow checks                         | `web/e2e/visual-alignment.spec.ts`                           |
@@ -233,8 +341,10 @@ acceptance.
 7. For export scenarios, record the filter summary, reason code, selected
    schema, response row count, and denial code where applicable. Never attach
    raw CSV content containing non-synthetic data.
-8. For support lookup, use only `p2list-uat-support-correlation`, the exact
-   correlation authorized by the generated server-owned support actor scope.
+8. For support lookup, use only the exact seeded and export-denial correlation
+   handles listed in Executable Support Evidence Checks. The generated
+   server-owned support scope authorizes those handles individually, not a
+   prefix or broad search.
 9. Classify every deviation as `blocker`, `must-fix`, or `post-UAT`.
 10. Record one formal verdict: `Accepted`, `Conditional`, or `Blocked`.
 11. Update #418 and #410 only after the human verdict and all blocker/must-fix
