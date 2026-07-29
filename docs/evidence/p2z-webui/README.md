@@ -9,6 +9,12 @@ once with its Playwright project, viewport, reproducible capture command,
 repository guard fails when a screenshot is missing, extra, renamed, or changed
 without a matching manifest update.
 
+The authoritative project/viewports and seven-screen inventory live in
+`src/p2z-webui-visual-evidence-contract.ts`. Playwright configuration, the
+capture test, the manifest updater, and the repository guard share that
+contract. The updater refuses to bless a missing, unexpected, renamed, or
+wrong-width PNG.
+
 ## Viewports
 
 - `desktop-chromium-*`: 1440 x 900 CSS pixels

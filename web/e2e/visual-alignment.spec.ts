@@ -3,11 +3,18 @@ import path from "node:path";
 
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 
+import {
+  p2zVisualEvidenceScreenNames,
+  p2zVisualEvidenceScreens,
+  type P2zVisualEvidenceScreen,
+} from "../../src/p2z-webui-visual-evidence-contract.js";
+
 const captureEvidence = process.env.CAPTURE_WEB_EVIDENCE === "1";
 const evidenceDirectory = path.resolve(
   process.cwd(),
   "docs/evidence/p2z-webui",
 );
+const observedCaptureScreens = new Set<P2zVisualEvidenceScreen>();
 
 async function openMobileNavigation(page: Page) {
   if ((page.viewportSize()?.width ?? 0) > 768) {
@@ -148,7 +155,13 @@ async function assertRowActionsWithinViewport(page: Page) {
     .toBe(true);
 }
 
-async function capture(page: Page, testInfo: TestInfo, name: string) {
+async function capture(
+  page: Page,
+  testInfo: TestInfo,
+  name: P2zVisualEvidenceScreen,
+) {
+  observedCaptureScreens.add(name);
+
   if (!captureEvidence) {
     return;
   }
@@ -367,6 +380,7 @@ async function mockBoundedCollectionApis(page: Page) {
 test("matches the bounded practical-use visual contract", async ({
   page,
 }, testInfo) => {
+  observedCaptureScreens.clear();
   await mockBoundedCollectionApis(page);
   await page.goto("/");
   await expect(
@@ -383,14 +397,14 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page.getByText("今日と7日以内")).toBeVisible();
   await expect(page.getByRole("heading", { name: "連携状況" })).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "dashboard");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.dashboard);
 
   await navigate(page, /Employees/);
   await expect(page.getByRole("heading", { name: "Employees" })).toBeVisible();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await assertRowActionsWithinViewport(page);
-  await capture(page, testInfo, "employee-list");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.employeeList);
 
   await page.getByRole("textbox", { name: "組織コード" }).fill("DENIED");
   await page.getByRole("button", { name: "検索" }).click();
@@ -447,7 +461,7 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "外部ID / 連携状態" }),
   ).toHaveCount(0);
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "employee-detail");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.employeeDetail);
 
   await navigate(page, /Procedures/);
   await expect(page.getByRole("heading", { name: "Procedures" })).toBeVisible();
@@ -474,7 +488,7 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page).toHaveURL(/requestType=onboarding/u);
   await assertNoHorizontalOverflow(page);
   await assertRowActionsWithinViewport(page);
-  await capture(page, testInfo, "lifecycle-list");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.lifecycleList);
 
   await navigate(page, /Transfer/);
   await expect(
@@ -483,7 +497,7 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page.getByLabel("手続き進捗")).toBeVisible();
   await expect(page.getByText("Transfer impact preview")).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "transfer");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.transfer);
 
   await page.getByRole("button", { name: "Create transfer request" }).click();
   await selectPersona(page, "approver");
@@ -495,7 +509,7 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "Transfer approvals" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "approval-inbox");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.approvalInbox);
 
   await selectPersona(page, "hr-ops-support");
   await navigate(page, /Ops\/DLQ/);
@@ -505,5 +519,8 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "DLQ decision" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "job-monitor");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.jobMonitor);
+  expect([...observedCaptureScreens].sort()).toEqual(
+    [...p2zVisualEvidenceScreenNames].sort(),
+  );
 });
