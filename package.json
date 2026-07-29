@@ -15,10 +15,13 @@
     "format:check": "prettier --check .",
     "policy:mvp-a": "tsx src/mvp-a-policy-as-code-ci.ts",
     "preview:web": "vite preview --host 127.0.0.1",
+    "setup:p2list:uat": "tsx src/p2list-uat-fixture-setup.ts",
+    "verify:p2list:uat:cursor": "npm --silent run build && node dist/p2list-uat-cursor-verification.js",
     "test": "npm run build && node --test \"dist/**/*.test.js\"",
     "test:web": "vitest run",
     "test:web:e2e": "playwright test",
     "capture:web:evidence": "CAPTURE_WEB_EVIDENCE=1 playwright test --project=desktop-chromium --project=tablet-chromium --project=mobile-chromium",
+    "verify:p2list:uat": "npm run build && node --test dist/p2list-contract.test.js dist/p2list-read-model-repository.test.js dist/p2list-employee-api.test.js dist/p2list-lifecycle-api.test.js dist/p2list-export.test.js dist/p2list-export-api.test.js dist/p2list-audit-observability.test.js dist/p2list-request-identity.test.js dist/p2list-uat-fixture-setup.test.js dist/p2list-uat-cursor-verification.test.js dist/p2list-formal-uat-closeout.test.js && vitest run web/src/api-client.test.ts web/src/app/list-screens.test.tsx && playwright test web/e2e/visual-alignment.spec.ts",
     "verify:pre-pr": "npm run build && npm run build:web && npm run policy:mvp-a && npm test && npm run test:web && npm run test:web:e2e && npm run format:check && npm run audit && npm run db:check"
   },
   "engines": {

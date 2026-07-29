@@ -69,6 +69,7 @@ The CHILD-P2Y-05 bounded browser UAT package is recorded in [P2Y WebUI Practical
 The final CHILD-P2Y-06 WebUI practical-use candidate review is recorded in [P2Y WebUI Practical-Use Readiness Review Closeout](docs/p2y-webui-practical-readiness-review-closeout.md).
 The bounded employee/lifecycle list API, authorization, cursor, export, and audit contract is recorded in [P2LIST-00 List API Contract and Authorization Gate](docs/p2list-00-list-api-contract-authorization-gate.md).
 The bounded P2LIST correlation, audit evidence lookup, retry, metrics, and redaction contract is recorded in [P2LIST Audit Observability](docs/p2list-06-audit-observability.md).
+The current-head formal employee/lifecycle list UAT package and human-verdict boundary are recorded in [P2LIST-07 Formal List UAT and Bounded Closeout](docs/p2list-07-formal-uat-closeout.md).
 
 The default server always wires the bounded employee and lifecycle-list
 runtimes. Without

@@ -21,11 +21,14 @@ export interface P2ListLifecycleFixtureRow {
   personId: string;
   transactionRequestId: string;
   displayName: string;
-  requestType: "hire";
+  requestType: "hire" | "change" | "transfer" | "terminate";
   status: "submitted";
   requestedAt: string;
   correlationId: string;
-  payloadVersion: "mvp_a_onboarding_v1";
+  payloadVersion:
+    | "mvp_a_onboarding_v1"
+    | "mvp_b_transfer_v1"
+    | "mvp_c_termination_v1";
   payloadJson: string;
   organizationCode: string;
   effectiveDate: string;

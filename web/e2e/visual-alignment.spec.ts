@@ -118,6 +118,36 @@ async function assertNoHorizontalOverflow(page: Page) {
   }
 }
 
+async function assertRowActionsWithinViewport(page: Page) {
+  const viewportWidth = page.viewportSize()?.width;
+  expect(viewportWidth).toBeDefined();
+  await expect
+    .poll(
+      () =>
+        page.evaluate((expectedViewportWidth) => {
+          const actions = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              ".collection-results .row-action",
+            ),
+          );
+          return (
+            actions.length > 0 &&
+            actions.every((action) => {
+              const bounds = action.getBoundingClientRect();
+              return (
+                bounds.width > 0 &&
+                bounds.height > 0 &&
+                bounds.left >= 0 &&
+                bounds.right <= expectedViewportWidth
+              );
+            })
+          );
+        }, viewportWidth ?? 0),
+      { message: "row actions must be visible within the viewport" },
+    )
+    .toBe(true);
+}
+
 async function capture(page: Page, testInfo: TestInfo, name: string) {
   if (!captureEvidence) {
     return;
@@ -359,6 +389,7 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page.getByRole("heading", { name: "Employees" })).toBeVisible();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
   await assertNoHorizontalOverflow(page);
+  await assertRowActionsWithinViewport(page);
   await capture(page, testInfo, "employee-list");
 
   await page.getByRole("textbox", { name: "組織コード" }).fill("DENIED");
@@ -442,6 +473,7 @@ test("matches the bounded practical-use visual contract", async ({
   await page.getByRole("button", { name: "検索" }).click();
   await expect(page).toHaveURL(/requestType=onboarding/u);
   await assertNoHorizontalOverflow(page);
+  await assertRowActionsWithinViewport(page);
   await capture(page, testInfo, "lifecycle-list");
 
   await navigate(page, /Transfer/);

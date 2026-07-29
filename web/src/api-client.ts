@@ -194,6 +194,9 @@ export class ApiClientError extends Error {
   }
 }
 
+export const p2ListUatDropNextExportResponseStorageKey =
+  "hrcore.p2list.uat.drop-next-export-response";
+
 const completedP2ListDenialCodes = new Set([
   "actor_context_required",
   "permission_denied",
@@ -676,6 +679,12 @@ async function fetchBoundedExport(
     headers,
     body: JSON.stringify({ filters, reasonCode }),
   });
+  if (consumeP2ListUatResponseDropArm()) {
+    await response.arrayBuffer();
+    throw new TypeError(
+      "The repository-owned P2LIST UAT harness dropped the accepted export response.",
+    );
+  }
   if (!response.ok) {
     const errorDetails = await readErrorDetails(response);
     throw new ApiClientError(`Request failed for ${path}: ${response.status}`, {
@@ -709,6 +718,26 @@ async function fetchBoundedExport(
     schemaVersion,
     correlationId,
   };
+}
+
+function consumeP2ListUatResponseDropArm(): boolean {
+  if (
+    import.meta.env.VITE_P2LIST_UAT_RESPONSE_DROP_MODE !== "response_drop_once"
+  ) {
+    return false;
+  }
+  try {
+    const storage = globalThis.sessionStorage;
+    if (
+      storage.getItem(p2ListUatDropNextExportResponseStorageKey) !== "armed"
+    ) {
+      return false;
+    }
+    storage.removeItem(p2ListUatDropNextExportResponseStorageKey);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseExportFileName(value: string | null): string | undefined {
