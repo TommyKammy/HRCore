@@ -2,6 +2,7 @@
 
 Date: 2026-07-18  
 Status: Implemented for bounded/non-production visual UAT
+Evidence contract version: `p2z-webui-visual-alignment-v1`
 
 ## Purpose
 
@@ -123,6 +124,12 @@ before visual evidence is accepted.
 
 Repository-owned screenshots and their regeneration command are documented in
 [`evidence/p2z-webui/README.md`](evidence/p2z-webui/README.md).
+Every committed P2Z evidence PNG is covered by
+[`evidence/p2z-webui/manifest.json`](evidence/p2z-webui/manifest.json). The
+manifest binds each image to this contract version, its Playwright
+project/viewport, the reproducible capture command, and a SHA-256 digest.
+Digest freshness detects unreviewed repository drift but does not replace
+human visual UAT or its verdict.
 
 ## Acceptance Verdict
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat } from "node:fs/promises";
 import test from "node:test";
 import path from "node:path";
 
@@ -8,6 +9,98 @@ import { readRepoFile } from "./test-helpers/database.js";
 const contractPath = "docs/p2z-webui-visual-alignment-contract.md";
 const uatPath = "docs/p2z-webui-visual-uat-package.md";
 const evidencePath = "docs/evidence/p2z-webui";
+const evidenceManifestPath = `${evidencePath}/manifest.json`;
+const evidenceContractVersion = "p2z-webui-visual-alignment-v1";
+const evidenceCaptureCommand = "npm run capture:web:evidence";
+const projectViewports = {
+  "desktop-chromium": { width: 1440, height: 900 },
+  "tablet-chromium": { width: 768, height: 1024 },
+  "mobile-chromium": { width: 390, height: 844 },
+} as const;
+
+type EvidenceProject = keyof typeof projectViewports;
+
+type EvidenceArtifact = {
+  file: string;
+  project: EvidenceProject;
+  viewport: { width: number; height: number };
+  captureCommand: string;
+  contractVersion: string;
+  sha256: string;
+};
+
+type EvidenceManifest = {
+  schemaVersion: number;
+  contract: { path: string; version: string };
+  artifacts: EvidenceArtifact[];
+};
+
+function validateEvidenceManifest(
+  manifest: EvidenceManifest,
+  actualDigests: ReadonlyMap<string, string>,
+): string[] {
+  const errors: string[] = [];
+  const seenFiles = new Set<string>();
+
+  if (manifest.schemaVersion !== 1) {
+    errors.push(`unsupported schema version: ${manifest.schemaVersion}`);
+  }
+  if (manifest.contract.path !== contractPath) {
+    errors.push(`unexpected contract path: ${manifest.contract.path}`);
+  }
+  if (manifest.contract.version !== evidenceContractVersion) {
+    errors.push(`unexpected contract version: ${manifest.contract.version}`);
+  }
+
+  for (const artifact of manifest.artifacts) {
+    if (seenFiles.has(artifact.file)) {
+      errors.push(`duplicate manifest entry: ${artifact.file}`);
+    }
+    seenFiles.add(artifact.file);
+
+    const expectedViewport = projectViewports[artifact.project];
+    if (expectedViewport === undefined) {
+      errors.push(`unknown Playwright project: ${String(artifact.project)}`);
+    } else {
+      if (!artifact.file.startsWith(`${artifact.project}-`)) {
+        errors.push(
+          `project/file mismatch: ${artifact.project} / ${artifact.file}`,
+        );
+      }
+      if (
+        artifact.viewport.width !== expectedViewport.width ||
+        artifact.viewport.height !== expectedViewport.height
+      ) {
+        errors.push(`viewport mismatch: ${artifact.file}`);
+      }
+    }
+
+    if (artifact.captureCommand !== evidenceCaptureCommand) {
+      errors.push(`capture command mismatch: ${artifact.file}`);
+    }
+    if (artifact.contractVersion !== manifest.contract.version) {
+      errors.push(`artifact contract mismatch: ${artifact.file}`);
+    }
+    if (!/^[a-f0-9]{64}$/u.test(artifact.sha256)) {
+      errors.push(`invalid SHA-256 digest: ${artifact.file}`);
+    }
+
+    const actualDigest = actualDigests.get(artifact.file);
+    if (actualDigest === undefined) {
+      errors.push(`missing evidence file: ${artifact.file}`);
+    } else if (actualDigest !== artifact.sha256) {
+      errors.push(`digest mismatch: ${artifact.file}`);
+    }
+  }
+
+  for (const file of actualDigests.keys()) {
+    if (!seenFiles.has(file)) {
+      errors.push(`unmanifested evidence file: ${file}`);
+    }
+  }
+
+  return errors.sort();
+}
 const appModulePaths = [
   "web/src/App.tsx",
   "web/src/app/AppShell.tsx",
@@ -32,6 +125,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     contract,
     uat,
     evidenceReadme,
+    evidenceManifestText,
     appModules,
     styleModules,
     persona,
@@ -43,6 +137,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     readRepoFile(contractPath),
     readRepoFile(uatPath),
     readRepoFile(`${evidencePath}/README.md`),
+    readRepoFile(evidenceManifestPath),
     Promise.all(appModulePaths.map(readRepoFile)),
     Promise.all(styleModulePaths.map(readRepoFile)),
     readRepoFile("web/src/persona.ts"),
@@ -53,6 +148,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   ]);
   const app = appModules.join("\n");
   const styles = styleModules.join("\n");
+  const evidenceManifest = JSON.parse(evidenceManifestText) as EvidenceManifest;
 
   assert.match(
     appModules[0],
@@ -161,24 +257,50 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     /npm run capture:web:evidence/u,
     "visual evidence README must document deterministic regeneration",
   );
+  assert.match(
+    evidenceReadme,
+    /npm run update:p2z:evidence-manifest/u,
+    "visual evidence README must document the manifest update workflow",
+  );
+  assert.match(
+    packageJson,
+    /"update:p2z:evidence-manifest":\s*"node scripts\/update-p2z-evidence-manifest\.mjs"/u,
+    "package scripts must expose deterministic manifest regeneration",
+  );
+  assert.ok(
+    contract.includes(
+      `Evidence contract version: \`${evidenceContractVersion}\``,
+    ),
+    "the P2Z contract must publish the manifest contract version",
+  );
 
-  const screenshots = [
-    "desktop-chromium-dashboard.png",
-    "desktop-chromium-employee-detail.png",
-    "desktop-chromium-transfer.png",
-    "desktop-chromium-approval-inbox.png",
-    "desktop-chromium-job-monitor.png",
-    "tablet-chromium-dashboard.png",
-    "tablet-chromium-employee-detail.png",
-    "tablet-chromium-transfer.png",
-    "tablet-chromium-approval-inbox.png",
-    "tablet-chromium-job-monitor.png",
-    "mobile-chromium-dashboard.png",
-    "mobile-chromium-employee-detail.png",
-    "mobile-chromium-transfer.png",
-    "mobile-chromium-approval-inbox.png",
-    "mobile-chromium-job-monitor.png",
-  ] as const;
+  const screenshots = (await readdir(path.resolve(process.cwd(), evidencePath)))
+    .filter((file) => file.endsWith(".png"))
+    .sort();
+  const actualDigests = new Map(
+    await Promise.all(
+      screenshots.map(async (screenshot) => {
+        const contents = await readFile(
+          path.resolve(process.cwd(), evidencePath, screenshot),
+        );
+        return [
+          screenshot,
+          createHash("sha256").update(contents).digest("hex"),
+        ] as const;
+      }),
+    ),
+  );
+
+  assert.deepEqual(
+    validateEvidenceManifest(evidenceManifest, actualDigests),
+    [],
+    `${evidenceManifestPath} must exactly cover the current PNG inventory`,
+  );
+  assert.equal(
+    evidenceManifest.artifacts.length,
+    screenshots.length,
+    "every committed P2Z screenshot must have exactly one manifest entry",
+  );
 
   for (const screenshot of screenshots) {
     const screenshotStat = await stat(
@@ -189,6 +311,58 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
       `${screenshot} must contain rendered visual evidence`,
     );
   }
+});
+
+test("P2Z evidence manifest rejects missing, extra, renamed, duplicate, and changed screenshots", async () => {
+  const manifest = JSON.parse(
+    await readRepoFile(evidenceManifestPath),
+  ) as EvidenceManifest;
+  const artifact = manifest.artifacts[0];
+  assert.ok(artifact, "the P2Z evidence manifest must not be empty");
+
+  const singleArtifactManifest: EvidenceManifest = {
+    ...manifest,
+    artifacts: [artifact],
+  };
+  const matchingEvidence = new Map([[artifact.file, artifact.sha256]]);
+
+  assert.deepEqual(
+    validateEvidenceManifest(singleArtifactManifest, matchingEvidence),
+    [],
+  );
+  assert.ok(
+    validateEvidenceManifest(singleArtifactManifest, new Map()).includes(
+      `missing evidence file: ${artifact.file}`,
+    ),
+  );
+  assert.ok(
+    validateEvidenceManifest(
+      singleArtifactManifest,
+      new Map([...matchingEvidence, ["extra-evidence.png", "0".repeat(64)]]),
+    ).includes("unmanifested evidence file: extra-evidence.png"),
+  );
+  assert.deepEqual(
+    validateEvidenceManifest(
+      singleArtifactManifest,
+      new Map([["renamed-evidence.png", artifact.sha256]]),
+    ).filter((error) => /(?:missing|unmanifested) evidence file/u.test(error)),
+    [
+      `missing evidence file: ${artifact.file}`,
+      "unmanifested evidence file: renamed-evidence.png",
+    ],
+  );
+  assert.ok(
+    validateEvidenceManifest(
+      singleArtifactManifest,
+      new Map([[artifact.file, "0".repeat(64)]]),
+    ).includes(`digest mismatch: ${artifact.file}`),
+  );
+  assert.ok(
+    validateEvidenceManifest(
+      { ...manifest, artifacts: [artifact, artifact] },
+      matchingEvidence,
+    ).includes(`duplicate manifest entry: ${artifact.file}`),
+  );
 });
 
 test("P2Z visual acceptance does not promote stronger readiness", async () => {

@@ -1,0 +1,240 @@
+{
+  "schemaVersion": 1,
+  "contract": {
+    "path": "docs/p2z-webui-visual-alignment-contract.md",
+    "version": "p2z-webui-visual-alignment-v1"
+  },
+  "artifacts": [
+    {
+      "file": "desktop-chromium-approval-inbox.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "1ce939919356703be2f9fdef33d97d19298192b273ec481b17e14d84f017226b"
+    },
+    {
+      "file": "desktop-chromium-dashboard.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "b28a80d03afc2b8cacf006b98a3cecb103a673a1bd52d306814b0eb964016d6c"
+    },
+    {
+      "file": "desktop-chromium-employee-detail.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "873f230aa21a32b91b115fddbff7bb93f90cda3990cec9cbc7067cf00cc7cf95"
+    },
+    {
+      "file": "desktop-chromium-employee-list.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "9c764db126f17eafc1d0dcc863619f56dfd4267435537d2cc2a5fe3d57672673"
+    },
+    {
+      "file": "desktop-chromium-job-monitor.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "4a4ccc02f921959e2649d4a555d281d4a97ae234d9b7e52635d39694c2296f2e"
+    },
+    {
+      "file": "desktop-chromium-lifecycle-list.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "34895ce03500b4fea9923c4eb62f1be366e16b62d9e6e040df6510a7a5dd4730"
+    },
+    {
+      "file": "desktop-chromium-transfer.png",
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "7a603fb42b9b547c3205d58c1f894478faf9d3b82629946713b69bf4e47b120b"
+    },
+    {
+      "file": "mobile-chromium-approval-inbox.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "da3b3de3ec452d222d765d9042677ae2e1b11f6eb60c60bea4d5f505ecdb83a5"
+    },
+    {
+      "file": "mobile-chromium-dashboard.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "3d98cabcd5159b1a29fff487d27be2b3f805731bc333d93778d56994a36be829"
+    },
+    {
+      "file": "mobile-chromium-employee-detail.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "6e9db87cb13bcfb244ce41172d9199d2fd8c17c2cf0100253b78ef704ebf30c1"
+    },
+    {
+      "file": "mobile-chromium-employee-list.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "a1455d847b41d4834051231996503167a050eae5da4a3530bf0237bf0934d465"
+    },
+    {
+      "file": "mobile-chromium-job-monitor.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "efe8b611d2680cd519e4b0f8e82a69cdfd4967694dd696e9ee9d0ebb5e281855"
+    },
+    {
+      "file": "mobile-chromium-lifecycle-list.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "8374a29788c41551cb8749ba04213813feb78cf4e43dab892d8f480d1d9ea877"
+    },
+    {
+      "file": "mobile-chromium-transfer.png",
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "236cf4538a206377d03227d9487bf09c1a3dd6d18468c01778f3c1d879f4090c"
+    },
+    {
+      "file": "tablet-chromium-approval-inbox.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "2fd7bcb69e5f2543af7acc9328621d718b3982713f7d5955bb1a823adca5b488"
+    },
+    {
+      "file": "tablet-chromium-dashboard.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "e5f8afee65d924d9c254082a85ab1d169e1dc6558a5e63ce9adcc029c6eaaa6d"
+    },
+    {
+      "file": "tablet-chromium-employee-detail.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "9db7c472164e3b8c03660c6562e4580432e680d31fcaf6712af468e8d6b4ba02"
+    },
+    {
+      "file": "tablet-chromium-employee-list.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "fc4f7dd8c0724ea8f0ee2804be742986994ad45052538b8296a28f8705231ef8"
+    },
+    {
+      "file": "tablet-chromium-job-monitor.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "3354a14572baeeefdc9a06f41380b7e8ae44fbeedfec90dbe3a7d8d143c5777d"
+    },
+    {
+      "file": "tablet-chromium-lifecycle-list.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "ae7f3c0271168e843943d22ef753d9aece5fd226ba04b94313060c5a3301515a"
+    },
+    {
+      "file": "tablet-chromium-transfer.png",
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "captureCommand": "npm run capture:web:evidence",
+      "contractVersion": "p2z-webui-visual-alignment-v1",
+      "sha256": "a5c4596e472dd8e78da297b4099ee73880831b39b2b91d42fab30a84c167b0c7"
+    }
+  ]
+}
