@@ -128,7 +128,8 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
       const supportEvidence = (
         database.prepare(
           `
-            SELECT correlation_id, event_type, policy_decision, reason_code
+            SELECT correlation_id, event_type, policy_decision, reason_code,
+                   data_scope_id, filter_fingerprint
             FROM p2list_audit_event
             ORDER BY correlation_id, event_type
           `,
@@ -138,6 +139,8 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
             event_type: string;
             policy_decision: string;
             reason_code: string | null;
+            data_scope_id: string;
+            filter_fingerprint: string;
           }>;
         }
       ).all();
@@ -161,8 +164,20 @@ test("P2LIST formal UAT setup creates a reproducible bounded dataset and environ
         ["hire", "terminate", "transfer"],
       );
       assert.equal(formulaPosition.position_code, "=1+1");
+      for (const event of supportEvidence) {
+        assert.match(event.data_scope_id, /^[A-Za-z0-9_-]{43}$/u);
+        assert.match(event.filter_fingerprint, /^[A-Za-z0-9_-]{43}$/u);
+        assert.notEqual(event.data_scope_id, "ORG-UAT-OVER-CAP");
+        assert.doesNotMatch(event.filter_fingerprint, /UAT|EMP|ORG/u);
+      }
       assert.deepEqual(
-        supportEvidence.map((row) => ({ ...row })),
+        supportEvidence.map(
+          ({
+            data_scope_id: _dataScopeId,
+            filter_fingerprint: _filterFingerprint,
+            ...row
+          }) => ({ ...row }),
+        ),
         [
           {
             correlation_id: p2ListUatSupportCorrelationIds.exportCompleted,

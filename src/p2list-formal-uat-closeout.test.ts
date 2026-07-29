@@ -40,6 +40,7 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     "Executable Request-Identity Retry Check",
     "Executable Export Checks",
     "Executable Support Evidence Checks",
+    "Executable Cursor Failure And Concurrent-Change Checks",
     "Persona Matrix",
     "Formal Scenario Matrix",
     "Evidence Matrix",
@@ -67,6 +68,11 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     "p2list-uat-support-list-action",
     "p2list-uat-support-export-denied",
     "p2list-ui-00000000-0000-4000-8000-000000000801",
+    "npm --silent run verify:p2list:uat:cursor",
+    "cursor_filter_mismatch",
+    "EMP-025A",
+    "900 seconds plus one millisecond",
+    "^[A-Za-z0-9_-]{43}$",
   ] as const) {
     assert.ok(
       normalized.includes(requiredText.replace(/\s+/gu, " ").trim()),
@@ -144,6 +150,16 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     packageJson,
     /"verify:p2list:uat"[^]*dist\/p2list-uat-fixture-setup\.test\.js/u,
     "the focused P2LIST UAT verifier must validate its generated fixture",
+  );
+  assert.match(
+    packageJson,
+    /"verify:p2list:uat:cursor"\s*:\s*"npm --silent run build && node dist\/p2list-uat-cursor-verification\.js"/u,
+    "package.json must expose the executable cursor verification procedure",
+  );
+  assert.match(
+    packageJson,
+    /"verify:p2list:uat"[^]*dist\/p2list-uat-cursor-verification\.test\.js/u,
+    "the focused P2LIST UAT verifier must exercise the cursor procedure",
   );
   assert.doesNotMatch(
     closeout,

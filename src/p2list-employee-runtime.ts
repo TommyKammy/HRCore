@@ -52,38 +52,46 @@ interface P2ListServerBaseRuntime {
   repository: P2ListReadModelRepository;
   provenance: P2ListEmployeeApiRuntime["provenance"];
   resolveActor: P2ListEmployeeApiRuntime["resolveActor"];
+  now?: () => Date;
   resolveCorrelationAcceptedAt(
     correlationId: string,
     observedAt: string,
   ): string;
 }
 
+export interface P2ListServerRuntimeOptions {
+  now?: () => Date;
+}
+
 export async function createServerP2ListEmployeeRuntime(
   db: OnboardingTransactionRequestDatabase,
   environment: NodeJS.ProcessEnv = process.env,
+  options: P2ListServerRuntimeOptions = {},
 ): Promise<P2ListEmployeeApiRuntime> {
-  const runtime = await createServerP2ListBaseRuntime(environment, db);
+  const runtime = await createServerP2ListBaseRuntime(environment, db, options);
   return createEmployeeRuntime(db, runtime);
 }
 
 export async function createServerP2ListLifecycleRuntime(
   db: OnboardingTransactionRequestDatabase,
   environment: NodeJS.ProcessEnv = process.env,
+  options: P2ListServerRuntimeOptions = {},
 ): Promise<P2ListLifecycleApiRuntime> {
-  const runtime = await createServerP2ListBaseRuntime(environment, db);
+  const runtime = await createServerP2ListBaseRuntime(environment, db, options);
   return createLifecycleRuntime(db, runtime);
 }
 
 export async function createServerP2ListRuntimes(
   db: OnboardingTransactionRequestDatabase,
   environment: NodeJS.ProcessEnv = process.env,
+  options: P2ListServerRuntimeOptions = {},
 ): Promise<{
   employee: P2ListEmployeeApiRuntime;
   auditEvidence: P2ListAuditEvidenceRuntime;
   export: P2ListExportApiRuntime;
   lifecycle: P2ListLifecycleApiRuntime;
 }> {
-  const runtime = await createServerP2ListBaseRuntime(environment, db);
+  const runtime = await createServerP2ListBaseRuntime(environment, db, options);
   return {
     employee: createEmployeeRuntime(db, runtime),
     auditEvidence: {
@@ -98,6 +106,7 @@ export async function createServerP2ListRuntimes(
 async function createServerP2ListBaseRuntime(
   environment: NodeJS.ProcessEnv,
   db: OnboardingTransactionRequestDatabase,
+  options: P2ListServerRuntimeOptions,
 ): Promise<P2ListServerBaseRuntime> {
   const provenance = await loadVerifiedProvenance(environment);
   const cursorSecret =
@@ -107,11 +116,12 @@ async function createServerP2ListBaseRuntime(
 
   const repository = new P2ListReadModelRepository(
     db,
-    new P2ListCursorManager({ secret: cursorSecret }),
+    new P2ListCursorManager({ secret: cursorSecret, now: options.now }),
   );
   return {
     repository,
     provenance,
+    now: options.now,
     resolveActor(request) {
       const token = readBearerToken(request.headers.authorization);
       if (!token) {

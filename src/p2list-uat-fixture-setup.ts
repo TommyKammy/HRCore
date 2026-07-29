@@ -15,6 +15,16 @@ import {
   type P2ListEmployeeFixtureRow,
   type P2ListLifecycleFixtureRow,
 } from "./p2list-read-model-fixtures.js";
+import {
+  fingerprintP2ListAuthorizationScope,
+  type P2ListActorContext,
+} from "./p2list-read-model-types.js";
+import {
+  fingerprintP2ListCollectionRequest,
+  fingerprintP2ListCollectionResult,
+  fingerprintP2ListRequestInput,
+  fingerprintP2ListRequestResult,
+} from "./p2list-request-identity.js";
 import type { OnboardingTransactionRequestDatabase } from "./onboarding-transaction-request-types.js";
 
 export const p2ListUatManifestSecret =
@@ -42,13 +52,66 @@ export const p2ListUatTokens = {
 const employeeOrganization = "ORG-UAT-OVER-CAP";
 const lifecycleOrganization = "ORG-LIFECYCLE-SYNTHETIC";
 const tenantId = "tenant-repo-owned-synthetic";
+const organizationCodes = [employeeOrganization, lifecycleOrganization];
+const hrOperatorActor: P2ListActorContext = {
+  actorId: "actor-hr-operator",
+  actorRole: "hr_operator",
+  tenantId,
+  permissions: [
+    p2ListPermissions.employeeListRead,
+    p2ListPermissions.employeeDetailRead,
+    p2ListPermissions.employeeListExport,
+    p2ListPermissions.lifecycleRequestListRead,
+    p2ListPermissions.lifecycleRequestDetailRead,
+    p2ListPermissions.lifecycleRequestListExport,
+    p2ListPermissions.csvDownload,
+  ],
+  dataScope: { organizationCodes },
+};
+const supportDataScopeId = fingerprintP2ListAuthorizationScope(hrOperatorActor);
+const supportListRequestFingerprint = fingerprintP2ListCollectionRequest(
+  "employee.list",
+  {
+    q: "UAT-G100-G26-G25",
+    asOf: "2026-07-01",
+  },
+);
+const supportListFilterFingerprint = fingerprintP2ListCollectionResult(
+  "employee.list",
+  supportListRequestFingerprint,
+  {
+    items: Array.from({ length: 25 }, (_, index) => ({
+      employeeId: `EMP-${String(index + 1).padStart(3, "0")}`,
+    })),
+    pageInfo: { limit: 25, hasNextPage: false },
+  },
+);
+const supportExportRequestFingerprint = fingerprintP2ListRequestInput(
+  "employee.export",
+  {
+    filters: { employeeId: "EMP-001", asOf: "2026-07-01" },
+    reasonCode: "uat_reconciliation",
+  },
+);
+const supportExportFilterFingerprint = fingerprintP2ListRequestResult(
+  "employee.export",
+  supportExportRequestFingerprint,
+  [{ employeeId: "EMP-001" }],
+);
+const supportDeniedFilterFingerprint = fingerprintP2ListRequestInput(
+  "employee.export",
+  {
+    filters: { q: "UAT", asOf: "2026-07-01" },
+    reasonCode: "uat_reconciliation",
+  },
+);
 const supportAuditEvents = [
   {
     eventId: "p2list-uat-audit-event-list-001",
     eventType: "employee_list.viewed",
     occurredAt: "2026-07-01T00:00:00.000Z",
     evaluatedPermission: p2ListPermissions.employeeListRead,
-    filterFingerprint: null,
+    filterFingerprint: supportListFilterFingerprint,
     sort: "employeeId:asc",
     pageSize: 25,
     rowCount: 25,
@@ -63,7 +126,7 @@ const supportAuditEvents = [
     eventType: "bounded_export.requested",
     occurredAt: "2026-07-01T00:01:00.000Z",
     evaluatedPermission: p2ListPermissions.employeeListExport,
-    filterFingerprint: "uat-seeded-employee-export-filter",
+    filterFingerprint: supportExportFilterFingerprint,
     sort: null,
     pageSize: null,
     rowCount: 1,
@@ -78,7 +141,7 @@ const supportAuditEvents = [
     eventType: "bounded_export.completed",
     occurredAt: "2026-07-01T00:01:01.000Z",
     evaluatedPermission: p2ListPermissions.employeeListExport,
-    filterFingerprint: "uat-seeded-employee-export-filter",
+    filterFingerprint: supportExportFilterFingerprint,
     sort: null,
     pageSize: null,
     rowCount: 1,
@@ -93,7 +156,7 @@ const supportAuditEvents = [
     eventType: "bounded_export.denied",
     occurredAt: "2026-07-01T00:02:00.000Z",
     evaluatedPermission: p2ListPermissions.employeeListExport,
-    filterFingerprint: "uat-seeded-over-cap-export-filter",
+    filterFingerprint: supportDeniedFilterFingerprint,
     sort: null,
     pageSize: null,
     rowCount: null,
@@ -114,6 +177,18 @@ export interface P2ListUatFixtureResult {
   outputDirectory: string;
   supportCorrelationId: string;
   webEnvironmentPath: string;
+}
+
+export function createP2ListUatRuntimeEnvironment(
+  fixture: Pick<P2ListUatFixtureResult, "databasePath" | "manifestPath">,
+): NodeJS.ProcessEnv {
+  return {
+    DATABASE_URL: `file:${fixture.databasePath}`,
+    P2LIST_EMPLOYEE_MANIFEST_PATH: fixture.manifestPath,
+    P2LIST_EMPLOYEE_MANIFEST_SECRET: p2ListUatManifestSecret,
+    P2LIST_EMPLOYEE_CURSOR_SECRET: p2ListUatCursorSecret,
+    P2LIST_EMPLOYEE_ACTORS_JSON: JSON.stringify(createActorRegistry()),
+  };
 }
 
 export async function prepareP2ListUatFixture(
@@ -165,14 +240,18 @@ export async function prepareP2ListUatFixture(
   );
 
   const actorRegistry = createActorRegistry();
+  const runtimeEnvironment = createP2ListUatRuntimeEnvironment({
+    databasePath,
+    manifestPath,
+  });
   await writeFile(
     apiEnvironmentPath,
     [
       "# Generated repository-owned synthetic P2LIST UAT environment.",
       `export DATABASE_URL=${shellQuote(`file:${relativeFromRepository(databasePath)}`)}`,
       `export P2LIST_EMPLOYEE_MANIFEST_PATH=${shellQuote(relativeFromRepository(manifestPath))}`,
-      `export P2LIST_EMPLOYEE_MANIFEST_SECRET=${shellQuote(p2ListUatManifestSecret)}`,
-      `export P2LIST_EMPLOYEE_CURSOR_SECRET=${shellQuote(p2ListUatCursorSecret)}`,
+      `export P2LIST_EMPLOYEE_MANIFEST_SECRET=${shellQuote(runtimeEnvironment.P2LIST_EMPLOYEE_MANIFEST_SECRET!)}`,
+      `export P2LIST_EMPLOYEE_CURSOR_SECRET=${shellQuote(runtimeEnvironment.P2LIST_EMPLOYEE_CURSOR_SECRET!)}`,
       `export P2LIST_EMPLOYEE_ACTORS_JSON=${shellQuote(JSON.stringify(actorRegistry))}`,
       `export P2LIST_UAT_HR_OPERATOR_TOKEN=${shellQuote(p2ListUatTokens.hrOperator)}`,
       `export P2LIST_UAT_APPROVER_TOKEN=${shellQuote(p2ListUatTokens.approver)}`,
@@ -404,7 +483,7 @@ function seedSupportAuditEvidence(
       p2ListAuditEventVersion,
       event.occurredAt,
       event.evaluatedPermission,
-      `organization:${employeeOrganization}`,
+      supportDataScopeId,
       event.filterFingerprint,
       event.sort,
       event.pageSize,
@@ -419,25 +498,10 @@ function seedSupportAuditEvidence(
 }
 
 function createActorRegistry() {
-  const organizationCodes = [employeeOrganization, lifecycleOrganization];
   return [
     {
       token: p2ListUatTokens.hrOperator,
-      actor: {
-        actorId: "actor-hr-operator",
-        actorRole: "hr_operator",
-        tenantId,
-        permissions: [
-          p2ListPermissions.employeeListRead,
-          p2ListPermissions.employeeDetailRead,
-          p2ListPermissions.employeeListExport,
-          p2ListPermissions.lifecycleRequestListRead,
-          p2ListPermissions.lifecycleRequestDetailRead,
-          p2ListPermissions.lifecycleRequestListExport,
-          p2ListPermissions.csvDownload,
-        ],
-        dataScope: { organizationCodes },
-      },
+      actor: hrOperatorActor,
     },
     {
       token: p2ListUatTokens.approver,

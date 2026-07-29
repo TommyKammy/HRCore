@@ -255,7 +255,58 @@ Each response must be `200`, contain exactly the requested correlation, and
 contain no broad-search result or raw employee row. The three seeded handles
 prove one list action, a requested/completed export pair, and one denied export.
 Each runtime denial handle proves one `bounded_export.denied` event with the
-expected denial code.
+expected denial code. Every returned `dataScopeId` and non-null
+`filterFingerprint` must match `^[A-Za-z0-9_-]{43}$`; no raw organization code,
+query, or filter value may appear.
+
+## Executable Cursor Failure And Concurrent-Change Checks
+
+Stop any API process using the generated fixture, then run P2LIST-UAT-10 from
+the tested checkout:
+
+```sh
+npm --silent run verify:p2list:uat:cursor \
+  | tee .local/p2list-uat/cursor-evidence.json
+```
+
+The command creates an isolated copy of the repository-owned fixture and calls
+the real `GET /employees` route with the generated HR operator. It executes
+these bounded API steps:
+
+1. obtain a page-1 cursor for `q=UAT`, `sort=employeeId`, `direction=asc`, and
+   `limit=25`;
+2. append a byte to that opaque cursor and require `400 cursor_invalid`;
+3. reuse the original cursor with `q=UAT-G100-G26` and require
+   `400 cursor_filter_mismatch`;
+4. change only two synthetic employment codes after page 1, moving one row
+   before and one row after the accepted keyset, then require page 2 to include
+   `EMP-025A`, exclude `EMP-000`, and overlap page 1 by zero rows;
+5. obtain a fresh cursor, advance the verifier-owned clock by the contract TTL
+   of 900 seconds plus one millisecond, and require `400 cursor_invalid`.
+
+The clock is passed directly to the in-process UAT runtime; no production
+environment variable, HTTP clock-control endpoint, or authorization bypass is
+created. The command removes its isolated database after completion. Preserve
+the JSON output as the operator evidence and require exactly:
+
+```json
+{
+  "cursorTtlSeconds": 900,
+  "tampered": { "statusCode": 400, "code": "cursor_invalid" },
+  "filterMismatch": {
+    "statusCode": 400,
+    "code": "cursor_filter_mismatch"
+  },
+  "concurrentChange": {
+    "statusCode": 200,
+    "firstPageLastEmployeeId": "EMP-025",
+    "afterCursorEmployeeSeen": true,
+    "beforeCursorEmployeeSeen": false,
+    "overlapCount": 0
+  },
+  "expired": { "statusCode": 400, "code": "cursor_invalid" }
+}
+```
 
 ## Current-Head Evidence Protocol
 
