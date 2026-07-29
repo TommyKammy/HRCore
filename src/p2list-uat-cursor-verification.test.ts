@@ -20,6 +20,8 @@ test("P2LIST formal UAT cursor verifier exercises all mandatory failure and muta
       firstPageLastEmployeeId: "EMP-025",
       mutatedUntraversedEmployeeId: "EMP-101",
       acceptedAsOf: "2026-07-29",
+      continuationObservedAt: "2026-07-30T00:00:10.000Z",
+      clockAdvancedWithinTtlSeconds: 20,
       acceptedOrganizationCode: "ORG-UAT-OVER-CAP",
       futureOrganizationCode: "ORG-UAT-FUTURE",
       returnedOrganizationCode: "ORG-UAT-OVER-CAP",

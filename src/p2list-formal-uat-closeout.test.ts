@@ -71,6 +71,7 @@ test("P2LIST-07 formal UAT package is reproducible without claiming the human ve
     "npm --silent run verify:p2list:uat:cursor",
     "cursor_filter_mismatch",
     "mutatedUntraversedEmployeeId",
+    "continuationObservedAt",
     "acceptedAtProjectionPreserved",
     "900 seconds plus one millisecond",
     "^[A-Za-z0-9_-]{43}$",

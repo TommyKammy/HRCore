@@ -29,6 +29,8 @@ export interface P2ListUatCursorVerificationEvidence {
     firstPageLastEmployeeId: string;
     mutatedUntraversedEmployeeId: string;
     acceptedAsOf: string;
+    continuationObservedAt: string;
+    clockAdvancedWithinTtlSeconds: number;
     acceptedOrganizationCode: string;
     futureOrganizationCode: string;
     returnedOrganizationCode: string;
@@ -52,7 +54,7 @@ export async function runP2ListUatCursorVerification(
   const database = await openLocalSyntheticWritebackDatabase(
     `file:${fixture.databasePath}`,
   );
-  let nowMs = Date.parse("2026-07-29T00:00:00.000Z");
+  let nowMs = Date.parse("2026-07-29T23:59:50.000Z");
   const now = () => new Date(nowMs);
   let app: Awaited<ReturnType<typeof buildApp>> | undefined;
 
@@ -97,6 +99,16 @@ export async function runP2ListUatCursorVerification(
     assert.equal(filterMismatch.statusCode, 400);
     assert.equal(filterMismatchCode, "cursor_filter_mismatch");
 
+    const expiringPage = await requestEmployeePage(
+      app,
+      baseQuery,
+      "p2list-ui-00000000-0000-4000-8000-000000000904",
+    );
+    assert.equal(expiringPage.statusCode, 200);
+    const expiringCursor = requireCursor(
+      requireEmployeePage(expiringPage.body),
+    );
+
     const mutatedUntraversedEmployeeId = "EMP-101";
     const acceptedAsOf = requireAppliedAsOf(firstPageBody);
     const acceptedOrganizationCode = "ORG-UAT-OVER-CAP";
@@ -133,10 +145,14 @@ export async function runP2ListUatCursorVerification(
       { length: 101 },
       (_, index) => `EMP-${String(index + 1).padStart(3, "0")}`,
     );
+    const clockAdvancedWithinTtlSeconds = 20;
+    nowMs += clockAdvancedWithinTtlSeconds * 1_000;
+    const continuationObservedAt = now().toISOString();
+    assert.equal(continuationObservedAt, "2026-07-30T00:00:10.000Z");
     const traversedIds = [...firstPageIds];
     let nextCursor: string | null = cursor;
     let pageCount = 1;
-    let correlationSequence = 904;
+    let correlationSequence = 905;
     let returnedOrganizationCode: string | undefined;
     while (nextCursor) {
       const page = await requestEmployeePage(
@@ -145,7 +161,7 @@ export async function runP2ListUatCursorVerification(
         uatCorrelationId(correlationSequence),
       );
       correlationSequence += 1;
-      assert.equal(page.statusCode, 200);
+      assert.equal(page.statusCode, 200, JSON.stringify(page.body));
       const pageBody = requireEmployeePage(page.body);
       traversedIds.push(...employeeIds(pageBody));
       returnedOrganizationCode ??= readEmployeeOrganizationCode(
@@ -167,16 +183,6 @@ export async function runP2ListUatCursorVerification(
     assert.equal(returnedOrganizationCode, acceptedOrganizationCode);
     assert.notEqual(returnedOrganizationCode, futureOrganizationCode);
 
-    const expiringPage = await requestEmployeePage(
-      app,
-      baseQuery,
-      uatCorrelationId(correlationSequence),
-    );
-    correlationSequence += 1;
-    assert.equal(expiringPage.statusCode, 200);
-    const expiringCursor = requireCursor(
-      requireEmployeePage(expiringPage.body),
-    );
     nowMs += p2ListCursorContract.serverSideStateTtlSeconds * 1_000 + 1;
     const expired = await requestEmployeePage(
       app,
@@ -201,6 +207,8 @@ export async function runP2ListUatCursorVerification(
         firstPageLastEmployeeId: firstPageIds.at(-1) ?? "",
         mutatedUntraversedEmployeeId,
         acceptedAsOf,
+        continuationObservedAt,
+        clockAdvancedWithinTtlSeconds,
         acceptedOrganizationCode,
         futureOrganizationCode,
         returnedOrganizationCode,

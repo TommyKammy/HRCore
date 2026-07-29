@@ -278,15 +278,19 @@ these bounded API steps:
 2. append a byte to that opaque cursor and require `400 cursor_invalid`;
 3. reuse the original cursor with `q=UAT-G100-G26` and require
    `400 cursor_filter_mismatch`;
-4. after page 1 has returned `EMP-001` through `EMP-025`, close the current
+4. obtain and retain a second page-1 cursor before changing the fixture so its
+   expiry can be verified independently;
+5. after page 1 has returned `EMP-001` through `EMP-025`, close the current
    assignment for the still-untraversed `EMP-101` on the accepted `asOf` date
    and add a future assignment in `ORG-UAT-FUTURE` starting the next day, then
-   traverse every remaining cursor and require `EMP-101` to retain its accepted
-   `ORG-UAT-OVER-CAP` projection while the complete `EMP-001` through
-   `EMP-101` traversal contains exactly 101 unique rows with no omission or
-   duplicate;
-5. obtain a fresh cursor, advance the verifier-owned clock by the contract TTL
-   of 900 seconds plus one millisecond, and require `400 cursor_invalid`.
+   advance the verifier clock by 20 seconds across midnight while remaining
+   inside the cursor TTL, traverse every remaining cursor, and require `EMP-101`
+   to retain its accepted `ORG-UAT-OVER-CAP` projection while the complete
+   `EMP-001` through `EMP-101` traversal contains exactly 101 unique rows with
+   no omission or duplicate;
+6. advance the verifier-owned clock by the contract TTL of 900 seconds plus one
+   millisecond and require the retained second cursor to return
+   `400 cursor_invalid`.
 
 The clock is passed directly to the in-process UAT runtime; no production
 environment variable, HTTP clock-control endpoint, or authorization bypass is
@@ -305,6 +309,8 @@ the JSON output as the operator evidence and require exactly:
     "firstPageLastEmployeeId": "EMP-025",
     "mutatedUntraversedEmployeeId": "EMP-101",
     "acceptedAsOf": "2026-07-29",
+    "continuationObservedAt": "2026-07-30T00:00:10.000Z",
+    "clockAdvancedWithinTtlSeconds": 20,
     "acceptedOrganizationCode": "ORG-UAT-OVER-CAP",
     "futureOrganizationCode": "ORG-UAT-FUTURE",
     "returnedOrganizationCode": "ORG-UAT-OVER-CAP",
