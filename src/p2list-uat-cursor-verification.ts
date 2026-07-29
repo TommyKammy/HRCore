@@ -27,12 +27,17 @@ export interface P2ListUatCursorVerificationEvidence {
   filterMismatch: { statusCode: number; code: string };
   concurrentChange: {
     firstPageLastEmployeeId: string;
+    mutatedUntraversedEmployeeId: string;
+    acceptedAsOf: string;
+    acceptedOrganizationCode: string;
+    futureOrganizationCode: string;
+    returnedOrganizationCode: string;
     pageCount: number;
     traversedRowCount: number;
     uniqueRowCount: number;
     omittedEmployeeIds: string[];
     duplicateEmployeeIds: string[];
-    acceptedSnapshotPreserved: boolean;
+    acceptedAtProjectionPreserved: boolean;
   };
   expired: { statusCode: number; code: string };
 }
@@ -92,11 +97,37 @@ export async function runP2ListUatCursorVerification(
     assert.equal(filterMismatch.statusCode, 400);
     assert.equal(filterMismatchCode, "cursor_filter_mismatch");
 
-    database
+    const mutatedUntraversedEmployeeId = "EMP-101";
+    const acceptedAsOf = requireAppliedAsOf(firstPageBody);
+    const acceptedOrganizationCode = "ORG-UAT-OVER-CAP";
+    const futureOrganizationCode = "ORG-UAT-FUTURE";
+    assert.equal(acceptedAsOf, "2026-07-29");
+    const currentAssignmentUpdate = database
       .prepare(
-        "UPDATE employment SET employment_code = 'EMP-000' WHERE employment_code = 'EMP-025'",
+        "UPDATE assignment SET end_date = ? WHERE id = 'p2list-assignment-101'",
       )
-      .run();
+      .run(acceptedAsOf) as { changes?: unknown };
+    assert.equal(currentAssignmentUpdate.changes, 1);
+    const futureAssignmentInsert = database
+      .prepare(
+        `
+          INSERT INTO assignment (
+            id, person_id, employment_id, assignment_code, organization_code,
+            position_code, start_date, end_date
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+        `,
+      )
+      .run(
+        "p2list-assignment-101-future",
+        "p2list-person-101",
+        "p2list-employment-101",
+        "ASSIGN-101-FUTURE",
+        futureOrganizationCode,
+        "POS-101-FUTURE",
+        "2026-07-30",
+      ) as { changes?: unknown };
+    assert.equal(futureAssignmentInsert.changes, 1);
 
     const expectedSnapshotIds = Array.from(
       { length: 101 },
@@ -106,6 +137,7 @@ export async function runP2ListUatCursorVerification(
     let nextCursor: string | null = cursor;
     let pageCount = 1;
     let correlationSequence = 904;
+    let returnedOrganizationCode: string | undefined;
     while (nextCursor) {
       const page = await requestEmployeePage(
         app,
@@ -116,6 +148,10 @@ export async function runP2ListUatCursorVerification(
       assert.equal(page.statusCode, 200);
       const pageBody = requireEmployeePage(page.body);
       traversedIds.push(...employeeIds(pageBody));
+      returnedOrganizationCode ??= readEmployeeOrganizationCode(
+        pageBody,
+        mutatedUntraversedEmployeeId,
+      );
       nextCursor = readNextCursor(pageBody);
       pageCount += 1;
     }
@@ -128,6 +164,8 @@ export async function runP2ListUatCursorVerification(
     assert.deepEqual(traversedIds, expectedSnapshotIds);
     assert.deepEqual(duplicateEmployeeIds, []);
     assert.deepEqual(omittedEmployeeIds, []);
+    assert.equal(returnedOrganizationCode, acceptedOrganizationCode);
+    assert.notEqual(returnedOrganizationCode, futureOrganizationCode);
 
     const expiringPage = await requestEmployeePage(
       app,
@@ -161,12 +199,17 @@ export async function runP2ListUatCursorVerification(
       },
       concurrentChange: {
         firstPageLastEmployeeId: firstPageIds.at(-1) ?? "",
+        mutatedUntraversedEmployeeId,
+        acceptedAsOf,
+        acceptedOrganizationCode,
+        futureOrganizationCode,
+        returnedOrganizationCode,
         pageCount,
         traversedRowCount: traversedIds.length,
         uniqueRowCount: new Set(traversedIds).size,
         omittedEmployeeIds,
         duplicateEmployeeIds,
-        acceptedSnapshotPreserved: true,
+        acceptedAtProjectionPreserved: true,
       },
       expired: {
         statusCode: expired.statusCode,
@@ -243,6 +286,42 @@ function employeeIds(page: Record<string, unknown>): string[] {
     }
     return employeeId;
   });
+}
+
+function readEmployeeOrganizationCode(
+  page: Record<string, unknown>,
+  employeeId: string,
+): string | undefined {
+  assert.ok(Array.isArray(page.items));
+  const item = page.items.find(
+    (candidate) =>
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      (candidate as Record<string, unknown>).employeeId === employeeId,
+  );
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    return undefined;
+  }
+  const organizationCode = (item as Record<string, unknown>).organizationCode;
+  if (typeof organizationCode !== "string") {
+    throw new TypeError("P2LIST UAT cursor evidence has no organizationCode.");
+  }
+  return organizationCode;
+}
+
+function requireAppliedAsOf(page: Record<string, unknown>): string {
+  const appliedFilters = page.appliedFilters;
+  assert.ok(
+    appliedFilters &&
+      typeof appliedFilters === "object" &&
+      !Array.isArray(appliedFilters),
+  );
+  const asOf = (appliedFilters as Record<string, unknown>).asOf;
+  if (typeof asOf !== "string") {
+    throw new TypeError("P2LIST UAT cursor evidence has no applied asOf.");
+  }
+  return asOf;
 }
 
 function requireErrorCode(value: unknown): string {

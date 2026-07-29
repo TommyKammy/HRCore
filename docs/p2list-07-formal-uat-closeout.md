@@ -278,10 +278,13 @@ these bounded API steps:
 2. append a byte to that opaque cursor and require `400 cursor_invalid`;
 3. reuse the original cursor with `q=UAT-G100-G26` and require
    `400 cursor_filter_mismatch`;
-4. after page 1 has returned `EMP-001` through `EMP-025`, change only that
-   already-returned synthetic `EMP-025` source row to `EMP-000`, then traverse
-   every remaining cursor and require the accepted `EMP-001` through `EMP-101`
-   snapshot to contain exactly 101 unique rows with no omission or duplicate;
+4. after page 1 has returned `EMP-001` through `EMP-025`, close the current
+   assignment for the still-untraversed `EMP-101` on the accepted `asOf` date
+   and add a future assignment in `ORG-UAT-FUTURE` starting the next day, then
+   traverse every remaining cursor and require `EMP-101` to retain its accepted
+   `ORG-UAT-OVER-CAP` projection while the complete `EMP-001` through
+   `EMP-101` traversal contains exactly 101 unique rows with no omission or
+   duplicate;
 5. obtain a fresh cursor, advance the verifier-owned clock by the contract TTL
    of 900 seconds plus one millisecond, and require `400 cursor_invalid`.
 
@@ -300,12 +303,17 @@ the JSON output as the operator evidence and require exactly:
   },
   "concurrentChange": {
     "firstPageLastEmployeeId": "EMP-025",
+    "mutatedUntraversedEmployeeId": "EMP-101",
+    "acceptedAsOf": "2026-07-29",
+    "acceptedOrganizationCode": "ORG-UAT-OVER-CAP",
+    "futureOrganizationCode": "ORG-UAT-FUTURE",
+    "returnedOrganizationCode": "ORG-UAT-OVER-CAP",
     "pageCount": 5,
     "traversedRowCount": 101,
     "uniqueRowCount": 101,
     "omittedEmployeeIds": [],
     "duplicateEmployeeIds": [],
-    "acceptedSnapshotPreserved": true
+    "acceptedAtProjectionPreserved": true
   },
   "expired": { "statusCode": 400, "code": "cursor_invalid" }
 }
