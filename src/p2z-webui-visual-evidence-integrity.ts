@@ -174,6 +174,29 @@ export function validateP2zPngScanlineFilters(
   }
 }
 
+export function validateP2zPngPalette(
+  colorType: number,
+  bitDepth: number,
+  length: number,
+  sawPalette: boolean,
+  sawImageData: boolean,
+  file: string,
+): void {
+  const entries = length / 3;
+  if (
+    sawPalette ||
+    sawImageData ||
+    colorType === 0 ||
+    colorType === 4 ||
+    length === 0 ||
+    length % 3 !== 0 ||
+    length > 768 ||
+    (colorType === 3 && entries > 2 ** bitDepth)
+  ) {
+    throw new Error(`${file} has an invalid PNG palette`);
+  }
+}
+
 export function inspectP2zPng(
   contents: Buffer,
   file: string,
@@ -248,9 +271,14 @@ export function inspectP2zPng(
         break;
       }
       case "PLTE":
-        if (sawImageData || length === 0 || length % 3 !== 0 || length > 768) {
-          throw new Error(`${file} has an invalid PNG palette`);
-        }
+        validateP2zPngPalette(
+          colorType,
+          bitDepth,
+          length,
+          sawPalette,
+          sawImageData,
+          file,
+        );
         sawPalette = true;
         break;
       case "IDAT":

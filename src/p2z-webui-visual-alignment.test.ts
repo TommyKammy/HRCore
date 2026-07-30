@@ -34,6 +34,7 @@ import {
   type P2zVisualEvidenceCaptureArtifact,
   type P2zVisualEvidenceCaptureProvenance,
   type P2zVisualEvidenceSourceState,
+  validateP2zPngPalette,
   validateP2zPngScanlineFilters,
   validateP2zVisualEvidenceCaptureProvenance,
 } from "./p2z-webui-visual-evidence-integrity.js";
@@ -686,6 +687,22 @@ test("P2Z evidence PNG validation rejects truncated rendered data", async () => 
         "invalid-filter.png",
       ),
     /invalid PNG scanline filter 5/u,
+  );
+  assert.throws(
+    () => validateP2zPngPalette(0, 8, 3, false, false, "grayscale.png"),
+    /invalid PNG palette/u,
+  );
+  assert.throws(
+    () => validateP2zPngPalette(4, 8, 3, false, false, "grayscale-alpha.png"),
+    /invalid PNG palette/u,
+  );
+  assert.throws(
+    () => validateP2zPngPalette(2, 8, 3, true, false, "duplicate-palette.png"),
+    /invalid PNG palette/u,
+  );
+  assert.throws(
+    () => validateP2zPngPalette(3, 1, 9, false, false, "indexed-palette.png"),
+    /invalid PNG palette/u,
   );
 });
 
