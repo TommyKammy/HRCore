@@ -3,6 +3,8 @@ import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { inflateSync } from "node:zlib";
 
+import { PNG } from "pngjs";
+
 import {
   p2zExpectedVisualEvidenceFiles,
   p2zVisualEvidenceProjectNames,
@@ -21,11 +23,7 @@ const p2zVisualEvidenceSourceFiles = [
   "package.json",
   "playwright.config.ts",
   "scripts/capture-p2z-web-evidence.ts",
-  "src/p2list-contract.ts",
-  "src/app.ts",
-  "src/openapi.ts",
-  "src/p2z-webui-visual-evidence-contract.ts",
-  "src/p2z-webui-visual-evidence-integrity.ts",
+  "scripts/update-p2z-evidence-manifest.ts",
   "vite.config.ts",
   "web/e2e/visual-alignment.spec.ts",
 ] as const;
@@ -33,6 +31,13 @@ const p2zVisualEvidenceSourceFiles = [
 const pngSignature = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
+
+type InflateInfoResult = {
+  buffer: Buffer;
+  engine: {
+    bytesWritten: number;
+  };
+};
 
 const crcTable = Array.from({ length: 256 }, (_, value) => {
   let crc = value;
@@ -233,7 +238,7 @@ export function inspectP2zPng(
 
     const typeBytes = contents.subarray(typeStart, dataStart);
     const type = typeBytes.toString("ascii");
-    if (!/^[A-Za-z]{4}$/u.test(type)) {
+    if (!/^[A-Za-z]{4}$/u.test(type) || (typeBytes[2]! & 0x20) !== 0) {
       throw new Error(`${file} has an invalid PNG chunk type`);
     }
 
@@ -325,9 +330,17 @@ export function inspectP2zPng(
   }
   const rowBytes = Math.ceil((width * channels * bitDepth) / 8);
   const expectedInflatedLength = height * (rowBytes + 1);
+  const compressedImageData = Buffer.concat(imageData);
   let inflated: Buffer;
   try {
-    inflated = inflateSync(Buffer.concat(imageData));
+    const result = inflateSync(compressedImageData, {
+      info: true,
+      maxOutputLength: expectedInflatedLength + 1,
+    }) as unknown as InflateInfoResult;
+    inflated = result.buffer;
+    if (result.engine.bytesWritten !== compressedImageData.length) {
+      throw new Error("trailing compressed bytes");
+    }
   } catch {
     throw new Error(`${file} has invalid compressed PNG image data`);
   }
@@ -338,25 +351,41 @@ export function inspectP2zPng(
   }
   validateP2zPngScanlineFilters(inflated, rowBytes, height, file);
 
+  try {
+    const decoded = PNG.sync.read(contents, { checkCRC: true });
+    if (decoded.width !== width || decoded.height !== height) {
+      throw new Error("decoded dimensions do not match IHDR");
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? `: ${error.message}` : "";
+    throw new Error(`${file} failed full PNG decode${reason}`);
+  }
+
   return { width, height };
 }
 
-async function listRuntimeWebSourceFiles(
+async function listRuntimeSourceFiles(
   rootDirectory: string,
 ): Promise<string[]> {
-  const sourceDirectory = path.join(rootDirectory, "web/src");
+  const sourceDirectories = ["src", "web/src"].map((directory) =>
+    path.join(rootDirectory, directory),
+  );
   const files: string[] = [];
+  const excludedDirectories = new Set(["__tests__", "test-helpers"]);
 
   async function visit(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        await visit(entryPath);
+        if (!excludedDirectories.has(entry.name)) {
+          await visit(entryPath);
+        }
       } else if (
         entry.isFile() &&
         !entry.name.includes(".test.") &&
+        !entry.name.includes(".spec.") &&
         !entry.name.startsWith("test-") &&
-        entry.name !== "vite-env.d.ts"
+        !entry.name.endsWith(".d.ts")
       ) {
         files.push(
           normalizeP2zVisualEvidenceSourcePath(
@@ -367,7 +396,9 @@ async function listRuntimeWebSourceFiles(
     }
   }
 
-  await visit(sourceDirectory);
+  for (const sourceDirectory of sourceDirectories) {
+    await visit(sourceDirectory);
+  }
   return files;
 }
 
@@ -375,8 +406,10 @@ export async function readP2zVisualEvidenceSourceState(
   rootDirectory = process.cwd(),
 ): Promise<P2zVisualEvidenceSourceState> {
   const files = [
-    ...p2zVisualEvidenceSourceFiles,
-    ...(await listRuntimeWebSourceFiles(rootDirectory)),
+    ...new Set([
+      ...p2zVisualEvidenceSourceFiles,
+      ...(await listRuntimeSourceFiles(rootDirectory)),
+    ]),
   ].sort();
   const hash = createHash(p2zVisualEvidenceSourceAlgorithm);
 
@@ -406,6 +439,7 @@ export async function createP2zVisualEvidenceCaptureProvenance(
     deviceScaleFactor: number;
   },
   rootDirectory = process.cwd(),
+  evidenceDirectory = path.join(rootDirectory, "docs/evidence/p2z-webui"),
 ): Promise<P2zVisualEvidenceCaptureProvenance> {
   return {
     schemaVersion: p2zVisualEvidenceCaptureProvenanceSchemaVersion,
@@ -416,6 +450,7 @@ export async function createP2zVisualEvidenceCaptureProvenance(
     artifacts: await readP2zVisualEvidenceCaptureArtifacts(
       project,
       rootDirectory,
+      evidenceDirectory,
     ),
   };
 }
@@ -423,8 +458,8 @@ export async function createP2zVisualEvidenceCaptureProvenance(
 export async function readP2zVisualEvidenceCaptureArtifacts(
   project: P2zVisualEvidenceProject,
   rootDirectory = process.cwd(),
+  evidenceDirectory = path.join(rootDirectory, "docs/evidence/p2z-webui"),
 ): Promise<P2zVisualEvidenceCaptureArtifact[]> {
-  const evidenceDirectory = path.join(rootDirectory, "docs/evidence/p2z-webui");
   const files = p2zExpectedVisualEvidenceFiles.filter((file) =>
     file.startsWith(`${project}-`),
   );

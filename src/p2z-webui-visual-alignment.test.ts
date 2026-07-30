@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import test from "node:test";
 import path from "node:path";
+import { deflateSync } from "node:zlib";
 
 import {
   p2zExpectedVisualEvidenceFiles,
@@ -66,6 +67,52 @@ type ActualEvidence = {
   sha256: string;
   pixelWidth: number;
 };
+
+const testPngSignature = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+
+function testPngCrc32(contents: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of contents) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) === 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createTestPngChunk(type: string, data: Buffer): Buffer {
+  const typeBytes = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(testPngCrc32(Buffer.concat([typeBytes, data])));
+  return Buffer.concat([length, typeBytes, data, crc]);
+}
+
+function createIndexedTestPng(
+  pixelIndex: number,
+  trailingCompressedBytes = Buffer.alloc(0),
+): Buffer {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 3;
+  const imageData = Buffer.concat([
+    deflateSync(Buffer.from([0, pixelIndex])),
+    trailingCompressedBytes,
+  ]);
+  return Buffer.concat([
+    testPngSignature,
+    createTestPngChunk("IHDR", header),
+    createTestPngChunk("PLTE", Buffer.from([0, 0, 0])),
+    createTestPngChunk("IDAT", imageData),
+    createTestPngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
   const screenshots = await listP2zPngEvidenceFiles();
@@ -271,6 +318,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     e2e,
     playwrightConfig,
     packageJson,
+    captureScript,
     ci,
     readme,
   ] = await Promise.all([
@@ -284,6 +332,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     readRepoFile("web/e2e/visual-alignment.spec.ts"),
     readRepoFile("playwright.config.ts"),
     readRepoFile("package.json"),
+    readRepoFile("scripts/capture-p2z-web-evidence.ts"),
     readRepoFile(".github/workflows/ci.yml"),
     readRepoFile("README.md"),
   ]);
@@ -400,7 +449,24 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   assert.match(
     packageJson,
     /"capture:web:evidence":\s*"tsx scripts\/capture-p2z-web-evidence\.ts"/u,
-    "evidence capture must invalidate all project provenance before Playwright",
+    "evidence capture must use the all-project staging wrapper",
+  );
+  for (const captureAtomicitySignal of [
+    "mkdtemp",
+    "P2Z_EVIDENCE_OUTPUT_DIRECTORY",
+    "expectedStagedFiles",
+    "invalidateP2zVisualEvidenceCaptureProvenance",
+  ] as const) {
+    assert.ok(
+      captureScript.includes(captureAtomicitySignal),
+      `capture wrapper must preserve atomicity signal: ${captureAtomicitySignal}`,
+    );
+  }
+  assert.ok(
+    captureScript.indexOf(
+      "for (const file of p2zExpectedVisualEvidenceFiles)",
+    ) < captureScript.indexOf("for (const file of provenanceFiles)"),
+    "capture promotion must write PNGs before provenance sidecars",
   );
   assert.match(
     ci,
@@ -485,8 +551,25 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   assert.ok(currentSource.files.includes("src/app.ts"));
   assert.ok(currentSource.files.includes("src/openapi.ts"));
   assert.ok(currentSource.files.includes("src/p2list-contract.ts"));
+  assert.ok(currentSource.files.includes("src/server.ts"));
   assert.ok(
     currentSource.files.includes("scripts/capture-p2z-web-evidence.ts"),
+  );
+  assert.equal(
+    new Set(currentSource.files).size,
+    currentSource.files.length,
+    "visual source inventory must not hash files more than once",
+  );
+  assert.equal(
+    currentSource.files.some(
+      (file) =>
+        file.includes(".test.") ||
+        (file.includes(".spec.") &&
+          file !== "web/e2e/visual-alignment.spec.ts") ||
+        file.includes("/test-helpers/"),
+    ),
+    false,
+    "visual source inventory must stay bounded to runtime and capture files",
   );
   assert.deepEqual(
     canonicalizeP2zVisualEvidenceSourceContents(
@@ -703,6 +786,25 @@ test("P2Z evidence PNG validation rejects truncated rendered data", async () => 
   assert.throws(
     () => validateP2zPngPalette(3, 1, 9, false, false, "indexed-palette.png"),
     /invalid PNG palette/u,
+  );
+  assert.deepEqual(
+    inspectP2zPng(createIndexedTestPng(0), "indexed-valid.png"),
+    {
+      width: 1,
+      height: 1,
+    },
+  );
+  assert.throws(
+    () => inspectP2zPng(createIndexedTestPng(255), "indexed-missing.png"),
+    /failed full PNG decode: index 255 not in palette/u,
+  );
+  assert.throws(
+    () =>
+      inspectP2zPng(
+        createIndexedTestPng(0, Buffer.from([0xde, 0xad])),
+        "trailing-zlib.png",
+      ),
+    /invalid compressed PNG image data/u,
   );
 });
 

@@ -10,21 +10,27 @@ repository guard fails when a screenshot is missing, extra, renamed, or changed
 without a matching manifest update. The manifest also binds the evidence to a
 SHA-256 fingerprint of the current runtime WebUI source, capture specification,
 Playwright configuration, and locked dependency state so visual-source changes
-cannot leave stale screenshots green.
+cannot leave stale screenshots green. The fingerprint conservatively covers
+all non-test runtime files under both `src` and `web/src`, avoiding a fragile
+hand-maintained transitive-import allowlist.
 
 The authoritative project/viewports and seven-screen inventory live in
 `src/p2z-webui-visual-evidence-contract.ts`. Playwright configuration, the
 capture test, the manifest updater, and the repository guard share that
 contract. The updater refuses to bless a missing, unexpected, renamed, or
-wrong-sized PNG, including files with uppercase `.PNG` extensions. It also
-validates PNG chunk CRCs, the terminal `IEND` chunk, and decompressed image data
-before recording any digest.
+wrong-sized PNG, including files with uppercase `.PNG` extensions or nested
+evidence directories. It performs strict container and zlib-stream checks, then
+uses the maintained `pngjs` decoder for scanline reconstruction, palette-index
+validation, and full pixel decoding before recording any digest.
 
 Each evidence project also writes a deterministic
 `*-capture-provenance.json` sidecar containing the captured viewport, device
 pixel ratio, exact screenshot inventory and SHA-256 digests, and source
-fingerprint. Manifest regeneration compares those digests with the current PNGs
-and rejects a stale sidecar left by a partially failed capture. A
+fingerprint. The capture wrapper writes all three Playwright projects to an
+isolated staging directory and promotes PNGs followed by provenance sidecars
+only after the complete run and exact staged inventory succeed. Manifest
+regeneration compares those digests with the current PNGs and rejects a stale
+or partially promoted sidecar. A
 viewport-height, source, dependency, or visual-contract change therefore
 requires `npm run capture:web:evidence` before the manifest can be updated. The
 fingerprint includes the served HRCore OpenAPI contract because its version is

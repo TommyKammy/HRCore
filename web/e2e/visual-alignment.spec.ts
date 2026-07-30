@@ -16,10 +16,10 @@ import {
 } from "../../src/p2z-webui-visual-evidence-integrity.js";
 
 const captureEvidence = process.env.CAPTURE_WEB_EVIDENCE === "1";
-const evidenceDirectory = path.resolve(
-  process.cwd(),
-  "docs/evidence/p2z-webui",
-);
+const evidenceDirectory =
+  captureEvidence && process.env.P2Z_EVIDENCE_OUTPUT_DIRECTORY
+    ? path.resolve(process.env.P2Z_EVIDENCE_OUTPUT_DIRECTORY)
+    : path.resolve(process.cwd(), "docs/evidence/p2z-webui");
 const observedCaptureScreens = new Set<P2zVisualEvidenceScreen>();
 
 async function openMobileNavigation(page: Page) {
@@ -553,10 +553,15 @@ test("matches the bounded practical-use visual contract", async ({
     const project = testInfo.project.name as P2zVisualEvidenceProject;
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
-    const provenance = await createP2zVisualEvidenceCaptureProvenance(project, {
-      viewport: viewport ?? { width: 0, height: 0 },
-      deviceScaleFactor: await page.evaluate(() => window.devicePixelRatio),
-    });
+    const provenance = await createP2zVisualEvidenceCaptureProvenance(
+      project,
+      {
+        viewport: viewport ?? { width: 0, height: 0 },
+        deviceScaleFactor: await page.evaluate(() => window.devicePixelRatio),
+      },
+      process.cwd(),
+      evidenceDirectory,
+    );
     await writeFile(
       path.join(
         evidenceDirectory,
