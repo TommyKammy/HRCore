@@ -3,9 +3,17 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { inflateSync } from "node:zlib";
 
+import {
+  p2zExpectedVisualEvidenceFiles,
+  p2zVisualEvidenceProjects,
+  type P2zVisualEvidenceProject,
+} from "./p2z-webui-visual-evidence-contract.js";
+
 export const p2zVisualEvidenceSourceAlgorithm = "sha256";
+export const p2zVisualEvidenceCaptureProvenanceSchemaVersion = 1;
 
 const p2zVisualEvidenceSourceFiles = [
+  "docs/p2z-webui-visual-alignment-contract.md",
   "index.html",
   "package-lock.json",
   "package.json",
@@ -39,8 +47,27 @@ export type P2zVisualEvidenceSourceState = {
   sha256: string;
 };
 
+export type P2zVisualEvidenceCaptureProvenance = {
+  schemaVersion: typeof p2zVisualEvidenceCaptureProvenanceSchemaVersion;
+  project: P2zVisualEvidenceProject;
+  viewport: { width: number; height: number };
+  deviceScaleFactor: number;
+  source: P2zVisualEvidenceSourceState;
+  files: string[];
+};
+
 export function isP2zPngEvidenceFile(file: string): boolean {
   return /\.png$/iu.test(file);
+}
+
+export function normalizeP2zVisualEvidenceSourcePath(file: string): string {
+  return file.replaceAll("\\", "/");
+}
+
+export function p2zVisualEvidenceCaptureProvenanceFile(
+  project: P2zVisualEvidenceProject,
+): string {
+  return `${project}-capture-provenance.json`;
 }
 
 function crc32(contents: Buffer): number {
@@ -70,6 +97,23 @@ function isValidPngBitDepth(colorType: number, bitDepth: number): boolean {
     [6, [8, 16]],
   ]);
   return validDepths.get(colorType)?.includes(bitDepth) ?? false;
+}
+
+export function validateP2zPngScanlineFilters(
+  inflated: Buffer,
+  rowBytes: number,
+  height: number,
+  file: string,
+): void {
+  const stride = rowBytes + 1;
+  for (let row = 0; row < height; row += 1) {
+    const filter = inflated[row * stride];
+    if (filter === undefined || filter > 4) {
+      throw new Error(
+        `${file} has invalid PNG scanline filter ${String(filter)} at row ${row}`,
+      );
+    }
+  }
 }
 
 export function inspectP2zPng(
@@ -206,6 +250,7 @@ export function inspectP2zPng(
       `${file} decoded PNG data length ${inflated.length} does not match ${expectedInflatedLength}`,
     );
   }
+  validateP2zPngScanlineFilters(inflated, rowBytes, height, file);
 
   return { width, height };
 }
@@ -227,7 +272,11 @@ async function listRuntimeWebSourceFiles(
         !entry.name.startsWith("test-") &&
         entry.name !== "vite-env.d.ts"
       ) {
-        files.push(path.relative(rootDirectory, entryPath));
+        files.push(
+          normalizeP2zVisualEvidenceSourcePath(
+            path.relative(rootDirectory, entryPath),
+          ),
+        );
       }
     }
   }
@@ -260,4 +309,67 @@ export async function readP2zVisualEvidenceSourceState(
     files,
     sha256: hash.digest("hex"),
   };
+}
+
+export async function createP2zVisualEvidenceCaptureProvenance(
+  project: P2zVisualEvidenceProject,
+  capture: {
+    viewport: { width: number; height: number };
+    deviceScaleFactor: number;
+  },
+  rootDirectory = process.cwd(),
+): Promise<P2zVisualEvidenceCaptureProvenance> {
+  return {
+    schemaVersion: p2zVisualEvidenceCaptureProvenanceSchemaVersion,
+    project,
+    viewport: { ...capture.viewport },
+    deviceScaleFactor: capture.deviceScaleFactor,
+    source: await readP2zVisualEvidenceSourceState(rootDirectory),
+    files: p2zExpectedVisualEvidenceFiles.filter((file) =>
+      file.startsWith(`${project}-`),
+    ),
+  };
+}
+
+export function validateP2zVisualEvidenceCaptureProvenance(
+  provenance: P2zVisualEvidenceCaptureProvenance,
+  project: P2zVisualEvidenceProject,
+  currentSource: P2zVisualEvidenceSourceState,
+): string[] {
+  const errors: string[] = [];
+  const projectContract = p2zVisualEvidenceProjects[project];
+  const expectedFiles = p2zExpectedVisualEvidenceFiles.filter((file) =>
+    file.startsWith(`${project}-`),
+  );
+
+  if (
+    provenance.schemaVersion !== p2zVisualEvidenceCaptureProvenanceSchemaVersion
+  ) {
+    errors.push(`unsupported capture provenance schema for ${project}`);
+  }
+  if (provenance.project !== project) {
+    errors.push(`capture provenance project mismatch for ${project}`);
+  }
+  if (
+    provenance.viewport.width !== projectContract.viewport.width ||
+    provenance.viewport.height !== projectContract.viewport.height
+  ) {
+    errors.push(`capture provenance viewport mismatch for ${project}`);
+  }
+  if (provenance.deviceScaleFactor !== projectContract.deviceScaleFactor) {
+    errors.push(`capture provenance DPR mismatch for ${project}`);
+  }
+  if (JSON.stringify(provenance.files) !== JSON.stringify(expectedFiles)) {
+    errors.push(`capture provenance file inventory mismatch for ${project}`);
+  }
+  if (
+    provenance.source.algorithm !== currentSource.algorithm ||
+    JSON.stringify(provenance.source.files) !==
+      JSON.stringify(currentSource.files) ||
+    provenance.source.sha256 !== currentSource.sha256
+  ) {
+    errors.push(`capture provenance source mismatch for ${project}`);
+  }
+
+  return errors;
 }

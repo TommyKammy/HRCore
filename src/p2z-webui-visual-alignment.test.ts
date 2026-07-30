@@ -8,6 +8,7 @@ import {
   p2zExpectedVisualEvidenceFiles,
   p2zVisualEvidenceCaptureCommand,
   p2zVisualEvidenceContractVersion,
+  p2zVisualEvidenceProjectNames,
   p2zVisualEvidenceProjects,
   type P2zVisualEvidenceProject,
   validateP2zVisualEvidenceInventory,
@@ -15,8 +16,13 @@ import {
 import {
   inspectP2zPng,
   isP2zPngEvidenceFile,
+  normalizeP2zVisualEvidenceSourcePath,
+  p2zVisualEvidenceCaptureProvenanceFile,
   readP2zVisualEvidenceSourceState,
+  type P2zVisualEvidenceCaptureProvenance,
   type P2zVisualEvidenceSourceState,
+  validateP2zPngScanlineFilters,
+  validateP2zVisualEvidenceCaptureProvenance,
 } from "./p2z-webui-visual-evidence-integrity.js";
 import { readRepoFile } from "./test-helpers/database.js";
 
@@ -38,13 +44,13 @@ type EvidenceManifest = {
   schemaVersion: number;
   contract: { path: string; version: string };
   source: P2zVisualEvidenceSourceState;
+  captures: P2zVisualEvidenceCaptureProvenance[];
   artifacts: EvidenceArtifact[];
 };
 
 type ActualEvidence = {
   sha256: string;
   pixelWidth: number;
-  pixelHeight: number;
 };
 
 async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
@@ -64,11 +70,28 @@ async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
           {
             sha256: createHash("sha256").update(contents).digest("hex"),
             pixelWidth: dimensions.width,
-            pixelHeight: dimensions.height,
           },
         ] as const;
       }),
     ),
+  );
+}
+
+async function readCaptureProvenance(): Promise<
+  P2zVisualEvidenceCaptureProvenance[]
+> {
+  return Promise.all(
+    p2zVisualEvidenceProjectNames.map(async (project) => {
+      const contents = await readFile(
+        path.resolve(
+          process.cwd(),
+          evidencePath,
+          p2zVisualEvidenceCaptureProvenanceFile(project),
+        ),
+        "utf8",
+      );
+      return JSON.parse(contents) as P2zVisualEvidenceCaptureProvenance;
+    }),
   );
 }
 
@@ -81,7 +104,7 @@ function validateEvidenceManifest(
   const expectedFiles = new Set(p2zExpectedVisualEvidenceFiles);
   const seenFiles = new Set<string>();
 
-  if (manifest.schemaVersion !== 2) {
+  if (manifest.schemaVersion !== 3) {
     errors.push(`unsupported schema version: ${manifest.schemaVersion}`);
   }
   if (manifest.contract.path !== contractPath) {
@@ -103,6 +126,26 @@ function validateEvidenceManifest(
   }
   if (manifest.source.sha256 !== currentSource.sha256) {
     errors.push("visual evidence source digest mismatch");
+  }
+
+  const seenCaptureProjects = new Set<P2zVisualEvidenceProject>();
+  for (const capture of manifest.captures) {
+    if (seenCaptureProjects.has(capture.project)) {
+      errors.push(`duplicate capture provenance: ${capture.project}`);
+    }
+    seenCaptureProjects.add(capture.project);
+    errors.push(
+      ...validateP2zVisualEvidenceCaptureProvenance(
+        capture,
+        capture.project,
+        currentSource,
+      ),
+    );
+  }
+  for (const project of p2zVisualEvidenceProjectNames) {
+    if (!seenCaptureProjects.has(project)) {
+      errors.push(`missing capture provenance: ${project}`);
+    }
   }
 
   for (const artifact of manifest.artifacts) {
@@ -358,6 +401,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
 
   const actualEvidence = await readActualEvidence();
   const currentSource = await readP2zVisualEvidenceSourceState();
+  const captureProvenance = await readCaptureProvenance();
   const screenshots = [...actualEvidence.keys()];
 
   assert.deepEqual(
@@ -369,6 +413,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     evidenceManifest.artifacts.length,
     screenshots.length,
     "every committed P2Z screenshot must have exactly one manifest entry",
+  );
+  assert.deepEqual(
+    evidenceManifest.captures,
+    captureProvenance,
+    "manifest capture provenance must match the repository-owned sidecars",
   );
 
   for (const screenshot of screenshots) {
@@ -392,6 +441,11 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   const currentSource = await readP2zVisualEvidenceSourceState();
 
   assert.equal(isP2zPngEvidenceFile("comparison.PNG"), true);
+  assert.equal(
+    normalizeP2zVisualEvidenceSourcePath("web\\src\\App.tsx"),
+    "web/src/App.tsx",
+  );
+  assert.ok(currentSource.files.includes(contractPath));
   assert.deepEqual(
     validateEvidenceManifest(manifest, matchingEvidence, currentSource),
     [],
@@ -409,7 +463,6 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   extraEvidence.set("extra-evidence.png", {
     sha256: "0".repeat(64),
     pixelWidth: 1,
-    pixelHeight: 1,
   });
   assert.ok(
     validateEvidenceManifest(manifest, extraEvidence, currentSource).includes(
@@ -421,7 +474,6 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   uppercaseEvidence.set("comparison.PNG", {
     sha256: "0".repeat(64),
     pixelWidth: 1,
-    pixelHeight: 1,
   });
   assert.ok(
     validateEvidenceManifest(
@@ -485,6 +537,22 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
       sha256: "0".repeat(64),
     }).includes("visual evidence source digest mismatch"),
   );
+
+  const capture = manifest.captures[0];
+  assert.ok(capture);
+  assert.ok(
+    validateP2zVisualEvidenceCaptureProvenance(
+      {
+        ...capture,
+        viewport: {
+          ...capture.viewport,
+          height: capture.viewport.height + 1,
+        },
+      },
+      capture.project,
+      currentSource,
+    ).includes(`capture provenance viewport mismatch for ${capture.project}`),
+  );
 });
 
 test("P2Z evidence PNG validation rejects truncated rendered data", async () => {
@@ -499,6 +567,16 @@ test("P2Z evidence PNG validation rejects truncated rendered data", async () => 
   assert.throws(
     () => inspectP2zPng(truncated, file),
     /truncated PNG chunk|missing required PNG chunks/u,
+  );
+  assert.throws(
+    () =>
+      validateP2zPngScanlineFilters(
+        Buffer.from([5, 0]),
+        1,
+        1,
+        "invalid-filter.png",
+      ),
+    /invalid PNG scanline filter 5/u,
   );
 });
 

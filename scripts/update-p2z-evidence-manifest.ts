@@ -13,7 +13,10 @@ import {
 import {
   inspectP2zPng,
   isP2zPngEvidenceFile,
+  p2zVisualEvidenceCaptureProvenanceFile,
   readP2zVisualEvidenceSourceState,
+  type P2zVisualEvidenceCaptureProvenance,
+  validateP2zVisualEvidenceCaptureProvenance,
 } from "../src/p2z-webui-visual-evidence-integrity.js";
 
 const evidenceDirectory = path.resolve(
@@ -33,6 +36,30 @@ if (inventoryErrors.length > 0) {
     )}`,
   );
 }
+
+const currentSource = await readP2zVisualEvidenceSourceState();
+const captures = await Promise.all(
+  p2zVisualEvidenceProjectNames.map(async (project) => {
+    const provenance = JSON.parse(
+      await readFile(
+        path.join(
+          evidenceDirectory,
+          p2zVisualEvidenceCaptureProvenanceFile(project),
+        ),
+        "utf8",
+      ),
+    ) as P2zVisualEvidenceCaptureProvenance;
+    const errors = validateP2zVisualEvidenceCaptureProvenance(
+      provenance,
+      project,
+      currentSource,
+    );
+    if (errors.length > 0) {
+      throw new Error(errors.join("\n"));
+    }
+    return provenance;
+  }),
+);
 
 const artifacts = await Promise.all(
   p2zExpectedVisualEvidenceFiles.map(async (file) => {
@@ -68,12 +95,13 @@ const artifacts = await Promise.all(
 );
 
 const manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   contract: {
     path: "docs/p2z-webui-visual-alignment-contract.md",
     version: p2zVisualEvidenceContractVersion,
   },
-  source: await readP2zVisualEvidenceSourceState(),
+  source: currentSource,
+  captures,
   artifacts,
 };
 

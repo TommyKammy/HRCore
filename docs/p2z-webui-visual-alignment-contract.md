@@ -129,9 +129,11 @@ Every committed P2Z evidence PNG is covered by
 manifest binds each image to this contract version, its Playwright
 project/viewport, the reproducible capture command, a SHA-256 digest, and a
 fingerprint of the runtime WebUI/capture source tree. The repository guard also
-fully validates each PNG's chunk integrity and decompressed image data. Digest
-freshness detects unreviewed repository drift but does not replace human visual
-UAT or its verdict.
+fully validates each PNG's chunk integrity, decompressed image data, and
+scanline filters. Per-project capture-provenance sidecars bind the screenshots
+to the captured viewport height, device pixel ratio, source tree, and this
+contract's contents. Digest freshness detects unreviewed repository drift but
+does not replace human visual UAT or its verdict.
 
 ## Acceptance Verdict
 

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "contract": {
     "path": "docs/p2z-webui-visual-alignment-contract.md",
     "version": "p2z-webui-visual-alignment-v1"
@@ -7,6 +7,7 @@
   "source": {
     "algorithm": "sha256",
     "files": [
+      "docs/p2z-webui-visual-alignment-contract.md",
       "index.html",
       "package-lock.json",
       "package.json",
@@ -41,8 +42,184 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "bce89f461d9cbb8eb17616742d2a1a028c1a1ed304ea18be5565f7004ed4a6f0"
+    "sha256": "b4ac49f21e357c94323df3fa40e1e8f8b6deb95d83552a7b1def9c14fa80b7ef"
   },
+  "captures": [
+    {
+      "schemaVersion": 1,
+      "project": "desktop-chromium",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "deviceScaleFactor": 1,
+      "source": {
+        "algorithm": "sha256",
+        "files": [
+          "docs/p2z-webui-visual-alignment-contract.md",
+          "index.html",
+          "package-lock.json",
+          "package.json",
+          "playwright.config.ts",
+          "src/p2z-webui-visual-evidence-contract.ts",
+          "src/p2z-webui-visual-evidence-integrity.ts",
+          "vite.config.ts",
+          "web/e2e/visual-alignment.spec.ts",
+          "web/src/App.tsx",
+          "web/src/ErrorBoundary.tsx",
+          "web/src/api-client.ts",
+          "web/src/app/AppShell.tsx",
+          "web/src/app/approvals-workflow.tsx",
+          "web/src/app/detail-route-error.ts",
+          "web/src/app/employee-detail-route.tsx",
+          "web/src/app/lifecycle-detail-route.tsx",
+          "web/src/app/lifecycle-workflows.tsx",
+          "web/src/app/list-query-state.ts",
+          "web/src/app/list-screens.tsx",
+          "web/src/app/model.ts",
+          "web/src/app/operations-workflows.tsx",
+          "web/src/app/record-status.ts",
+          "web/src/app/screens.tsx",
+          "web/src/app/shared.tsx",
+          "web/src/main.tsx",
+          "web/src/persona.ts",
+          "web/src/styles.css",
+          "web/src/styles/foundations.css",
+          "web/src/styles/responsive.css",
+          "web/src/styles/screens.css",
+          "web/src/styles/shared.css",
+          "web/src/styles/shell.css",
+          "web/src/styles/workflows.css"
+        ],
+        "sha256": "b4ac49f21e357c94323df3fa40e1e8f8b6deb95d83552a7b1def9c14fa80b7ef"
+      },
+      "files": [
+        "desktop-chromium-dashboard.png",
+        "desktop-chromium-employee-list.png",
+        "desktop-chromium-employee-detail.png",
+        "desktop-chromium-lifecycle-list.png",
+        "desktop-chromium-transfer.png",
+        "desktop-chromium-approval-inbox.png",
+        "desktop-chromium-job-monitor.png"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "project": "tablet-chromium",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "deviceScaleFactor": 1,
+      "source": {
+        "algorithm": "sha256",
+        "files": [
+          "docs/p2z-webui-visual-alignment-contract.md",
+          "index.html",
+          "package-lock.json",
+          "package.json",
+          "playwright.config.ts",
+          "src/p2z-webui-visual-evidence-contract.ts",
+          "src/p2z-webui-visual-evidence-integrity.ts",
+          "vite.config.ts",
+          "web/e2e/visual-alignment.spec.ts",
+          "web/src/App.tsx",
+          "web/src/ErrorBoundary.tsx",
+          "web/src/api-client.ts",
+          "web/src/app/AppShell.tsx",
+          "web/src/app/approvals-workflow.tsx",
+          "web/src/app/detail-route-error.ts",
+          "web/src/app/employee-detail-route.tsx",
+          "web/src/app/lifecycle-detail-route.tsx",
+          "web/src/app/lifecycle-workflows.tsx",
+          "web/src/app/list-query-state.ts",
+          "web/src/app/list-screens.tsx",
+          "web/src/app/model.ts",
+          "web/src/app/operations-workflows.tsx",
+          "web/src/app/record-status.ts",
+          "web/src/app/screens.tsx",
+          "web/src/app/shared.tsx",
+          "web/src/main.tsx",
+          "web/src/persona.ts",
+          "web/src/styles.css",
+          "web/src/styles/foundations.css",
+          "web/src/styles/responsive.css",
+          "web/src/styles/screens.css",
+          "web/src/styles/shared.css",
+          "web/src/styles/shell.css",
+          "web/src/styles/workflows.css"
+        ],
+        "sha256": "b4ac49f21e357c94323df3fa40e1e8f8b6deb95d83552a7b1def9c14fa80b7ef"
+      },
+      "files": [
+        "tablet-chromium-dashboard.png",
+        "tablet-chromium-employee-list.png",
+        "tablet-chromium-employee-detail.png",
+        "tablet-chromium-lifecycle-list.png",
+        "tablet-chromium-transfer.png",
+        "tablet-chromium-approval-inbox.png",
+        "tablet-chromium-job-monitor.png"
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "project": "mobile-chromium",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "deviceScaleFactor": 3,
+      "source": {
+        "algorithm": "sha256",
+        "files": [
+          "docs/p2z-webui-visual-alignment-contract.md",
+          "index.html",
+          "package-lock.json",
+          "package.json",
+          "playwright.config.ts",
+          "src/p2z-webui-visual-evidence-contract.ts",
+          "src/p2z-webui-visual-evidence-integrity.ts",
+          "vite.config.ts",
+          "web/e2e/visual-alignment.spec.ts",
+          "web/src/App.tsx",
+          "web/src/ErrorBoundary.tsx",
+          "web/src/api-client.ts",
+          "web/src/app/AppShell.tsx",
+          "web/src/app/approvals-workflow.tsx",
+          "web/src/app/detail-route-error.ts",
+          "web/src/app/employee-detail-route.tsx",
+          "web/src/app/lifecycle-detail-route.tsx",
+          "web/src/app/lifecycle-workflows.tsx",
+          "web/src/app/list-query-state.ts",
+          "web/src/app/list-screens.tsx",
+          "web/src/app/model.ts",
+          "web/src/app/operations-workflows.tsx",
+          "web/src/app/record-status.ts",
+          "web/src/app/screens.tsx",
+          "web/src/app/shared.tsx",
+          "web/src/main.tsx",
+          "web/src/persona.ts",
+          "web/src/styles.css",
+          "web/src/styles/foundations.css",
+          "web/src/styles/responsive.css",
+          "web/src/styles/screens.css",
+          "web/src/styles/shared.css",
+          "web/src/styles/shell.css",
+          "web/src/styles/workflows.css"
+        ],
+        "sha256": "b4ac49f21e357c94323df3fa40e1e8f8b6deb95d83552a7b1def9c14fa80b7ef"
+      },
+      "files": [
+        "mobile-chromium-dashboard.png",
+        "mobile-chromium-employee-list.png",
+        "mobile-chromium-employee-detail.png",
+        "mobile-chromium-lifecycle-list.png",
+        "mobile-chromium-transfer.png",
+        "mobile-chromium-approval-inbox.png",
+        "mobile-chromium-job-monitor.png"
+      ]
+    }
+  ],
   "artifacts": [
     {
       "file": "desktop-chromium-dashboard.png",
@@ -75,7 +252,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "873f230aa21a32b91b115fddbff7bb93f90cda3990cec9cbc7067cf00cc7cf95"
+      "sha256": "2c68525228c67f587377828e994cd75871589332452d940986900a22723bfe0b"
     },
     {
       "file": "desktop-chromium-lifecycle-list.png",
@@ -108,7 +285,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "1ce939919356703be2f9fdef33d97d19298192b273ec481b17e14d84f017226b"
+      "sha256": "9f91623b87d802c5c5e8d958a51dec5fba827f5a37eb1e7c52e4fde1795fe347"
     },
     {
       "file": "desktop-chromium-job-monitor.png",
@@ -152,7 +329,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "9db7c472164e3b8c03660c6562e4580432e680d31fcaf6712af468e8d6b4ba02"
+      "sha256": "fabf37af9ebcf8573a0f9b8868cc3984c26505caf574b3ff43f4a48855ef394a"
     },
     {
       "file": "tablet-chromium-lifecycle-list.png",
@@ -229,7 +406,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "6e9db87cb13bcfb244ce41172d9199d2fd8c17c2cf0100253b78ef704ebf30c1"
+      "sha256": "4b1c742e0311743bc65db0ba866c2afc92c9e5bc4fff4a74833af29c0ab12dbc"
     },
     {
       "file": "mobile-chromium-lifecycle-list.png",

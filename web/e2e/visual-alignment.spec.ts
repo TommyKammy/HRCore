@@ -1,13 +1,19 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 
 import {
+  p2zVisualEvidenceProjectNames,
   p2zVisualEvidenceScreenNames,
   p2zVisualEvidenceScreens,
+  type P2zVisualEvidenceProject,
   type P2zVisualEvidenceScreen,
 } from "../../src/p2z-webui-visual-evidence-contract.js";
+import {
+  createP2zVisualEvidenceCaptureProvenance,
+  p2zVisualEvidenceCaptureProvenanceFile,
+} from "../../src/p2z-webui-visual-evidence-integrity.js";
 
 const captureEvidence = process.env.CAPTURE_WEB_EVIDENCE === "1";
 const evidenceDirectory = path.resolve(
@@ -523,4 +529,23 @@ test("matches the bounded practical-use visual contract", async ({
   expect([...observedCaptureScreens].sort()).toEqual(
     [...p2zVisualEvidenceScreenNames].sort(),
   );
+
+  if (captureEvidence) {
+    expect(p2zVisualEvidenceProjectNames).toContain(testInfo.project.name);
+    const project = testInfo.project.name as P2zVisualEvidenceProject;
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    const provenance = await createP2zVisualEvidenceCaptureProvenance(project, {
+      viewport: viewport ?? { width: 0, height: 0 },
+      deviceScaleFactor: await page.evaluate(() => window.devicePixelRatio),
+    });
+    await writeFile(
+      path.join(
+        evidenceDirectory,
+        p2zVisualEvidenceCaptureProvenanceFile(project),
+      ),
+      `${JSON.stringify(provenance, null, 2)}\n`,
+      "utf8",
+    );
+  }
 });

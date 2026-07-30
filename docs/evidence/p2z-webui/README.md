@@ -20,6 +20,13 @@ wrong-sized PNG, including files with uppercase `.PNG` extensions. It also
 validates PNG chunk CRCs, the terminal `IEND` chunk, and decompressed image data
 before recording any digest.
 
+Each evidence project also writes a deterministic
+`*-capture-provenance.json` sidecar containing the captured viewport, device
+pixel ratio, exact screenshot inventory, and source fingerprint. Manifest
+regeneration rejects stale sidecars, so a viewport-height, source, dependency,
+or visual-contract change requires `npm run capture:web:evidence` before the
+manifest can be updated.
+
 ## Viewports
 
 - `desktop-chromium-*`: 1440 x 900 CSS pixels
