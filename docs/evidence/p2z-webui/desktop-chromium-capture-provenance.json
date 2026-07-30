@@ -11,6 +11,7 @@
     "files": [
       "docs/p2z-webui-visual-alignment-contract.md",
       "index.html",
+      "openapi/hrcore.openapi.json",
       "package-lock.json",
       "package.json",
       "playwright.config.ts",
@@ -44,7 +45,7 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "b4ac49f21e357c94323df3fa40e1e8f8b6deb95d83552a7b1def9c14fa80b7ef"
+    "sha256": "c4904db165f01aab1d8968d98b851878dbce7240d0ee38f0ef9a602f150e7c4a"
   },
   "files": [
     "desktop-chromium-dashboard.png",

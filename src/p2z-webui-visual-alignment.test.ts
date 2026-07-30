@@ -363,6 +363,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "Playwright evidence projects must use the shared viewport contract",
   );
   assert.match(
+    playwrightConfig,
+    /CAPTURE_WEB_EVIDENCE !== "1"/u,
+    "evidence capture must not reuse servers from another checkout",
+  );
+  assert.match(
     packageJson,
     /"test:web:e2e":\s*"playwright test"/u,
     "package scripts must expose the P2Z browser smoke",
@@ -446,6 +451,7 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
     "web/src/App.tsx",
   );
   assert.ok(currentSource.files.includes(contractPath));
+  assert.ok(currentSource.files.includes("openapi/hrcore.openapi.json"));
   assert.deepEqual(
     validateEvidenceManifest(manifest, matchingEvidence, currentSource),
     [],

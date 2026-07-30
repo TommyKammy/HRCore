@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 import { p2zVisualEvidenceProjects } from "./src/p2z-webui-visual-evidence-contract.js";
 
-const reuseExistingServer = !process.env.CI;
+const reuseExistingServer =
+  !process.env.CI && process.env.CAPTURE_WEB_EVIDENCE !== "1";
 
 export default defineConfig({
   testDir: "./web/e2e",

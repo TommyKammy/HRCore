@@ -25,7 +25,10 @@ Each evidence project also writes a deterministic
 pixel ratio, exact screenshot inventory, and source fingerprint. Manifest
 regeneration rejects stale sidecars, so a viewport-height, source, dependency,
 or visual-contract change requires `npm run capture:web:evidence` before the
-manifest can be updated.
+manifest can be updated. The fingerprint includes the served HRCore OpenAPI
+contract because its version is rendered in every capture. Capture mode also
+disables Playwright server reuse so evidence cannot come from another checkout
+already listening on the local ports.
 
 ## Viewports
 

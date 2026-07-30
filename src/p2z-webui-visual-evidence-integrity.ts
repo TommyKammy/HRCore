@@ -15,6 +15,7 @@ export const p2zVisualEvidenceCaptureProvenanceSchemaVersion = 1;
 const p2zVisualEvidenceSourceFiles = [
   "docs/p2z-webui-visual-alignment-contract.md",
   "index.html",
+  "openapi/hrcore.openapi.json",
   "package-lock.json",
   "package.json",
   "playwright.config.ts",
