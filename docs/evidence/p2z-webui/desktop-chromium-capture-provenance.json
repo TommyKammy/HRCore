@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": "desktop-chromium",
   "viewport": {
     "width": 1440,
@@ -45,15 +45,36 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "c4904db165f01aab1d8968d98b851878dbce7240d0ee38f0ef9a602f150e7c4a"
+    "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
   },
-  "files": [
-    "desktop-chromium-dashboard.png",
-    "desktop-chromium-employee-list.png",
-    "desktop-chromium-employee-detail.png",
-    "desktop-chromium-lifecycle-list.png",
-    "desktop-chromium-transfer.png",
-    "desktop-chromium-approval-inbox.png",
-    "desktop-chromium-job-monitor.png"
+  "artifacts": [
+    {
+      "file": "desktop-chromium-dashboard.png",
+      "sha256": "b28a80d03afc2b8cacf006b98a3cecb103a673a1bd52d306814b0eb964016d6c"
+    },
+    {
+      "file": "desktop-chromium-employee-list.png",
+      "sha256": "9c764db126f17eafc1d0dcc863619f56dfd4267435537d2cc2a5fe3d57672673"
+    },
+    {
+      "file": "desktop-chromium-employee-detail.png",
+      "sha256": "2c68525228c67f587377828e994cd75871589332452d940986900a22723bfe0b"
+    },
+    {
+      "file": "desktop-chromium-lifecycle-list.png",
+      "sha256": "34895ce03500b4fea9923c4eb62f1be366e16b62d9e6e040df6510a7a5dd4730"
+    },
+    {
+      "file": "desktop-chromium-transfer.png",
+      "sha256": "7a603fb42b9b547c3205d58c1f894478faf9d3b82629946713b69bf4e47b120b"
+    },
+    {
+      "file": "desktop-chromium-approval-inbox.png",
+      "sha256": "9f91623b87d802c5c5e8d958a51dec5fba827f5a37eb1e7c52e4fde1795fe347"
+    },
+    {
+      "file": "desktop-chromium-job-monitor.png",
+      "sha256": "4a4ccc02f921959e2649d4a555d281d4a97ae234d9b7e52635d39694c2296f2e"
+    }
   ]
 }

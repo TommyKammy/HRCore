@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": "tablet-chromium",
   "viewport": {
     "width": 768,
@@ -45,15 +45,36 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "c4904db165f01aab1d8968d98b851878dbce7240d0ee38f0ef9a602f150e7c4a"
+    "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
   },
-  "files": [
-    "tablet-chromium-dashboard.png",
-    "tablet-chromium-employee-list.png",
-    "tablet-chromium-employee-detail.png",
-    "tablet-chromium-lifecycle-list.png",
-    "tablet-chromium-transfer.png",
-    "tablet-chromium-approval-inbox.png",
-    "tablet-chromium-job-monitor.png"
+  "artifacts": [
+    {
+      "file": "tablet-chromium-dashboard.png",
+      "sha256": "e5f8afee65d924d9c254082a85ab1d169e1dc6558a5e63ce9adcc029c6eaaa6d"
+    },
+    {
+      "file": "tablet-chromium-employee-list.png",
+      "sha256": "fc4f7dd8c0724ea8f0ee2804be742986994ad45052538b8296a28f8705231ef8"
+    },
+    {
+      "file": "tablet-chromium-employee-detail.png",
+      "sha256": "fabf37af9ebcf8573a0f9b8868cc3984c26505caf574b3ff43f4a48855ef394a"
+    },
+    {
+      "file": "tablet-chromium-lifecycle-list.png",
+      "sha256": "ae7f3c0271168e843943d22ef753d9aece5fd226ba04b94313060c5a3301515a"
+    },
+    {
+      "file": "tablet-chromium-transfer.png",
+      "sha256": "a5c4596e472dd8e78da297b4099ee73880831b39b2b91d42fab30a84c167b0c7"
+    },
+    {
+      "file": "tablet-chromium-approval-inbox.png",
+      "sha256": "2fd7bcb69e5f2543af7acc9328621d718b3982713f7d5955bb1a823adca5b488"
+    },
+    {
+      "file": "tablet-chromium-job-monitor.png",
+      "sha256": "3354a14572baeeefdc9a06f41380b7e8ae44fbeedfec90dbe3a7d8d143c5777d"
+    }
   ]
 }

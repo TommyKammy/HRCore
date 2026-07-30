@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": "mobile-chromium",
   "viewport": {
     "width": 390,
@@ -45,15 +45,36 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "c4904db165f01aab1d8968d98b851878dbce7240d0ee38f0ef9a602f150e7c4a"
+    "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
   },
-  "files": [
-    "mobile-chromium-dashboard.png",
-    "mobile-chromium-employee-list.png",
-    "mobile-chromium-employee-detail.png",
-    "mobile-chromium-lifecycle-list.png",
-    "mobile-chromium-transfer.png",
-    "mobile-chromium-approval-inbox.png",
-    "mobile-chromium-job-monitor.png"
+  "artifacts": [
+    {
+      "file": "mobile-chromium-dashboard.png",
+      "sha256": "3d98cabcd5159b1a29fff487d27be2b3f805731bc333d93778d56994a36be829"
+    },
+    {
+      "file": "mobile-chromium-employee-list.png",
+      "sha256": "a1455d847b41d4834051231996503167a050eae5da4a3530bf0237bf0934d465"
+    },
+    {
+      "file": "mobile-chromium-employee-detail.png",
+      "sha256": "4b1c742e0311743bc65db0ba866c2afc92c9e5bc4fff4a74833af29c0ab12dbc"
+    },
+    {
+      "file": "mobile-chromium-lifecycle-list.png",
+      "sha256": "8374a29788c41551cb8749ba04213813feb78cf4e43dab892d8f480d1d9ea877"
+    },
+    {
+      "file": "mobile-chromium-transfer.png",
+      "sha256": "236cf4538a206377d03227d9487bf09c1a3dd6d18468c01778f3c1d879f4090c"
+    },
+    {
+      "file": "mobile-chromium-approval-inbox.png",
+      "sha256": "da3b3de3ec452d222d765d9042677ae2e1b11f6eb60c60bea4d5f505ecdb83a5"
+    },
+    {
+      "file": "mobile-chromium-job-monitor.png",
+      "sha256": "efe8b611d2680cd519e4b0f8e82a69cdfd4967694dd696e9ee9d0ebb5e281855"
+    }
   ]
 }

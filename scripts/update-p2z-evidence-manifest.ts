@@ -14,6 +14,7 @@ import {
   inspectP2zPng,
   isP2zPngEvidenceFile,
   p2zVisualEvidenceCaptureProvenanceFile,
+  readP2zVisualEvidenceCaptureArtifacts,
   readP2zVisualEvidenceSourceState,
   type P2zVisualEvidenceCaptureProvenance,
   validateP2zVisualEvidenceCaptureProvenance,
@@ -49,10 +50,13 @@ const captures = await Promise.all(
         "utf8",
       ),
     ) as P2zVisualEvidenceCaptureProvenance;
+    const actualArtifacts =
+      await readP2zVisualEvidenceCaptureArtifacts(project);
     const errors = validateP2zVisualEvidenceCaptureProvenance(
       provenance,
       project,
       currentSource,
+      actualArtifacts,
     );
     if (errors.length > 0) {
       throw new Error(errors.join("\n"));

@@ -19,6 +19,7 @@ import {
   normalizeP2zVisualEvidenceSourcePath,
   p2zVisualEvidenceCaptureProvenanceFile,
   readP2zVisualEvidenceSourceState,
+  type P2zVisualEvidenceCaptureArtifact,
   type P2zVisualEvidenceCaptureProvenance,
   type P2zVisualEvidenceSourceState,
   validateP2zPngScanlineFilters,
@@ -95,6 +96,18 @@ async function readCaptureProvenance(): Promise<
   );
 }
 
+function captureArtifactsFromActualEvidence(
+  project: P2zVisualEvidenceProject,
+  actualEvidence: ReadonlyMap<string, ActualEvidence>,
+): P2zVisualEvidenceCaptureArtifact[] {
+  return p2zExpectedVisualEvidenceFiles
+    .filter((file) => file.startsWith(`${project}-`))
+    .flatMap((file) => {
+      const actual = actualEvidence.get(file);
+      return actual === undefined ? [] : [{ file, sha256: actual.sha256 }];
+    });
+}
+
 function validateEvidenceManifest(
   manifest: EvidenceManifest,
   actualEvidence: ReadonlyMap<string, ActualEvidence>,
@@ -139,6 +152,7 @@ function validateEvidenceManifest(
         capture,
         capture.project,
         currentSource,
+        captureArtifactsFromActualEvidence(capture.project, actualEvidence),
       ),
     );
   }
@@ -557,7 +571,27 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
       },
       capture.project,
       currentSource,
+      captureArtifactsFromActualEvidence(capture.project, matchingEvidence),
     ).includes(`capture provenance viewport mismatch for ${capture.project}`),
+  );
+
+  const captureArtifact = capture.artifacts[0];
+  assert.ok(captureArtifact);
+  assert.ok(
+    validateP2zVisualEvidenceCaptureProvenance(
+      {
+        ...capture,
+        artifacts: [
+          { ...captureArtifact, sha256: "0".repeat(64) },
+          ...capture.artifacts.slice(1),
+        ],
+      },
+      capture.project,
+      currentSource,
+      captureArtifactsFromActualEvidence(capture.project, matchingEvidence),
+    ).includes(
+      `capture provenance artifact digest mismatch for ${capture.project}`,
+    ),
   );
 });
 

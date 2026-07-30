@@ -10,7 +10,7 @@ import {
 } from "./p2z-webui-visual-evidence-contract.js";
 
 export const p2zVisualEvidenceSourceAlgorithm = "sha256";
-export const p2zVisualEvidenceCaptureProvenanceSchemaVersion = 1;
+export const p2zVisualEvidenceCaptureProvenanceSchemaVersion = 2;
 
 const p2zVisualEvidenceSourceFiles = [
   "docs/p2z-webui-visual-alignment-contract.md",
@@ -54,7 +54,12 @@ export type P2zVisualEvidenceCaptureProvenance = {
   viewport: { width: number; height: number };
   deviceScaleFactor: number;
   source: P2zVisualEvidenceSourceState;
-  files: string[];
+  artifacts: P2zVisualEvidenceCaptureArtifact[];
+};
+
+export type P2zVisualEvidenceCaptureArtifact = {
+  file: string;
+  sha256: string;
 };
 
 export function isP2zPngEvidenceFile(file: string): boolean {
@@ -326,16 +331,37 @@ export async function createP2zVisualEvidenceCaptureProvenance(
     viewport: { ...capture.viewport },
     deviceScaleFactor: capture.deviceScaleFactor,
     source: await readP2zVisualEvidenceSourceState(rootDirectory),
-    files: p2zExpectedVisualEvidenceFiles.filter((file) =>
-      file.startsWith(`${project}-`),
+    artifacts: await readP2zVisualEvidenceCaptureArtifacts(
+      project,
+      rootDirectory,
     ),
   };
+}
+
+export async function readP2zVisualEvidenceCaptureArtifacts(
+  project: P2zVisualEvidenceProject,
+  rootDirectory = process.cwd(),
+): Promise<P2zVisualEvidenceCaptureArtifact[]> {
+  const evidenceDirectory = path.join(rootDirectory, "docs/evidence/p2z-webui");
+  const files = p2zExpectedVisualEvidenceFiles.filter((file) =>
+    file.startsWith(`${project}-`),
+  );
+  return Promise.all(
+    files.map(async (file) => {
+      const contents = await readFile(path.join(evidenceDirectory, file));
+      return {
+        file,
+        sha256: createHash("sha256").update(contents).digest("hex"),
+      };
+    }),
+  );
 }
 
 export function validateP2zVisualEvidenceCaptureProvenance(
   provenance: P2zVisualEvidenceCaptureProvenance,
   project: P2zVisualEvidenceProject,
   currentSource: P2zVisualEvidenceSourceState,
+  actualArtifacts: readonly P2zVisualEvidenceCaptureArtifact[],
 ): string[] {
   const errors: string[] = [];
   const projectContract = p2zVisualEvidenceProjects[project];
@@ -360,8 +386,21 @@ export function validateP2zVisualEvidenceCaptureProvenance(
   if (provenance.deviceScaleFactor !== projectContract.deviceScaleFactor) {
     errors.push(`capture provenance DPR mismatch for ${project}`);
   }
-  if (JSON.stringify(provenance.files) !== JSON.stringify(expectedFiles)) {
+  if (
+    JSON.stringify(provenance.artifacts.map(({ file }) => file)) !==
+    JSON.stringify(expectedFiles)
+  ) {
     errors.push(`capture provenance file inventory mismatch for ${project}`);
+  }
+  if (
+    provenance.artifacts.some(({ sha256 }) => !/^[a-f0-9]{64}$/u.test(sha256))
+  ) {
+    errors.push(`capture provenance digest format mismatch for ${project}`);
+  }
+  if (
+    JSON.stringify(provenance.artifacts) !== JSON.stringify(actualArtifacts)
+  ) {
+    errors.push(`capture provenance artifact digest mismatch for ${project}`);
   }
   if (
     provenance.source.algorithm !== currentSource.algorithm ||

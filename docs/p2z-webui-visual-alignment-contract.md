@@ -131,9 +131,10 @@ project/viewport, the reproducible capture command, a SHA-256 digest, and a
 fingerprint of the runtime WebUI/capture source tree. The repository guard also
 fully validates each PNG's chunk integrity, decompressed image data, and
 scanline filters. Per-project capture-provenance sidecars bind the screenshots
-to the captured viewport height, device pixel ratio, source tree, and this
-contract's contents. Digest freshness detects unreviewed repository drift but
-does not replace human visual UAT or its verdict.
+to their individual content digests, the captured viewport height, device pixel
+ratio, source tree, and this contract's contents. Digest freshness detects
+unreviewed repository drift but does not replace human visual UAT or its
+verdict.
 
 ## Acceptance Verdict
 
