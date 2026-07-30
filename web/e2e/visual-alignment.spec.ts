@@ -466,6 +466,24 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(
     page.getByRole("heading", { name: "外部ID / 連携状態" }),
   ).toHaveCount(0);
+
+  await page
+    .getByRole("textbox", { name: "Bounded record ID" })
+    .fill("EMP-000128");
+  await page.getByRole("button", { name: "参照", exact: true }).click();
+  await page.reload();
+  await selectPersona(page, "hr-operator");
+  await expect(page.getByRole("heading", { name: "基本情報" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "履歴タイムライン" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "外部ID / 連携状態" }),
+  ).toBeVisible();
+  await expect(page.getByText("taro.yamada@***")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "異動手続きを開く" }),
+  ).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await capture(page, testInfo, p2zVisualEvidenceScreens.employeeDetail);
 

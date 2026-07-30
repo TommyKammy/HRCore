@@ -19,6 +19,7 @@ const p2zVisualEvidenceSourceFiles = [
   "package-lock.json",
   "package.json",
   "playwright.config.ts",
+  "src/p2list-contract.ts",
   "src/p2z-webui-visual-evidence-contract.ts",
   "src/p2z-webui-visual-evidence-integrity.ts",
   "vite.config.ts",
@@ -68,6 +69,12 @@ export function isP2zPngEvidenceFile(file: string): boolean {
 
 export function normalizeP2zVisualEvidenceSourcePath(file: string): string {
   return file.replaceAll("\\", "/");
+}
+
+export function canonicalizeP2zVisualEvidenceSourceContents(
+  contents: Buffer,
+): Buffer {
+  return Buffer.from(contents.toString("utf8").replaceAll("\r\n", "\n"));
 }
 
 export function p2zVisualEvidenceCaptureProvenanceFile(
@@ -301,7 +308,9 @@ export async function readP2zVisualEvidenceSourceState(
   const hash = createHash(p2zVisualEvidenceSourceAlgorithm);
 
   for (const file of files) {
-    const contents = await readFile(path.join(rootDirectory, file));
+    const contents = canonicalizeP2zVisualEvidenceSourceContents(
+      await readFile(path.join(rootDirectory, file)),
+    );
     hash.update(file);
     hash.update("\0");
     hash.update(String(contents.length));

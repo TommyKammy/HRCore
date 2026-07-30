@@ -14,6 +14,7 @@ import {
   validateP2zVisualEvidenceInventory,
 } from "./p2z-webui-visual-evidence-contract.js";
 import {
+  canonicalizeP2zVisualEvidenceSourceContents,
   inspectP2zPng,
   isP2zPngEvidenceFile,
   normalizeP2zVisualEvidenceSourcePath,
@@ -466,6 +467,13 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   );
   assert.ok(currentSource.files.includes(contractPath));
   assert.ok(currentSource.files.includes("openapi/hrcore.openapi.json"));
+  assert.ok(currentSource.files.includes("src/p2list-contract.ts"));
+  assert.deepEqual(
+    canonicalizeP2zVisualEvidenceSourceContents(
+      Buffer.from("first\r\nsecond\r\n"),
+    ),
+    Buffer.from("first\nsecond\n"),
+  );
   assert.deepEqual(
     validateEvidenceManifest(manifest, matchingEvidence, currentSource),
     [],

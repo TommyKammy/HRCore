@@ -13,6 +13,7 @@
       "package-lock.json",
       "package.json",
       "playwright.config.ts",
+      "src/p2list-contract.ts",
       "src/p2z-webui-visual-evidence-contract.ts",
       "src/p2z-webui-visual-evidence-integrity.ts",
       "vite.config.ts",
@@ -43,7 +44,7 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
+    "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
   },
   "captures": [
     {
@@ -63,6 +64,7 @@
           "package-lock.json",
           "package.json",
           "playwright.config.ts",
+          "src/p2list-contract.ts",
           "src/p2z-webui-visual-evidence-contract.ts",
           "src/p2z-webui-visual-evidence-integrity.ts",
           "vite.config.ts",
@@ -93,7 +95,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
+        "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
       },
       "artifacts": [
         {
@@ -106,7 +108,7 @@
         },
         {
           "file": "desktop-chromium-employee-detail.png",
-          "sha256": "2c68525228c67f587377828e994cd75871589332452d940986900a22723bfe0b"
+          "sha256": "4dc46a320178d6a5cabf3215f1e269cc8a72e866474e8a65fbe3a0cb008b265e"
         },
         {
           "file": "desktop-chromium-lifecycle-list.png",
@@ -143,6 +145,7 @@
           "package-lock.json",
           "package.json",
           "playwright.config.ts",
+          "src/p2list-contract.ts",
           "src/p2z-webui-visual-evidence-contract.ts",
           "src/p2z-webui-visual-evidence-integrity.ts",
           "vite.config.ts",
@@ -173,7 +176,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
+        "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
       },
       "artifacts": [
         {
@@ -186,7 +189,7 @@
         },
         {
           "file": "tablet-chromium-employee-detail.png",
-          "sha256": "fabf37af9ebcf8573a0f9b8868cc3984c26505caf574b3ff43f4a48855ef394a"
+          "sha256": "37611b01ffe5f8e0d7c2b1e1a9cafb675ff7d26caacbf2bbc8a44b4edc62362d"
         },
         {
           "file": "tablet-chromium-lifecycle-list.png",
@@ -223,6 +226,7 @@
           "package-lock.json",
           "package.json",
           "playwright.config.ts",
+          "src/p2list-contract.ts",
           "src/p2z-webui-visual-evidence-contract.ts",
           "src/p2z-webui-visual-evidence-integrity.ts",
           "vite.config.ts",
@@ -253,7 +257,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
+        "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
       },
       "artifacts": [
         {
@@ -266,7 +270,7 @@
         },
         {
           "file": "mobile-chromium-employee-detail.png",
-          "sha256": "4b1c742e0311743bc65db0ba866c2afc92c9e5bc4fff4a74833af29c0ab12dbc"
+          "sha256": "8511b0fab357a6bbcad05f10f50e18c7bb4b0297195508f38ec67e1b4048119b"
         },
         {
           "file": "mobile-chromium-lifecycle-list.png",
@@ -319,7 +323,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "2c68525228c67f587377828e994cd75871589332452d940986900a22723bfe0b"
+      "sha256": "4dc46a320178d6a5cabf3215f1e269cc8a72e866474e8a65fbe3a0cb008b265e"
     },
     {
       "file": "desktop-chromium-lifecycle-list.png",
@@ -396,7 +400,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "fabf37af9ebcf8573a0f9b8868cc3984c26505caf574b3ff43f4a48855ef394a"
+      "sha256": "37611b01ffe5f8e0d7c2b1e1a9cafb675ff7d26caacbf2bbc8a44b4edc62362d"
     },
     {
       "file": "tablet-chromium-lifecycle-list.png",
@@ -473,7 +477,7 @@
       },
       "captureCommand": "npm run capture:web:evidence",
       "contractVersion": "p2z-webui-visual-alignment-v1",
-      "sha256": "4b1c742e0311743bc65db0ba866c2afc92c9e5bc4fff4a74833af29c0ab12dbc"
+      "sha256": "8511b0fab357a6bbcad05f10f50e18c7bb4b0297195508f38ec67e1b4048119b"
     },
     {
       "file": "mobile-chromium-lifecycle-list.png",

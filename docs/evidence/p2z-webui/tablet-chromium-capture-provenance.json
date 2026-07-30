@@ -15,6 +15,7 @@
       "package-lock.json",
       "package.json",
       "playwright.config.ts",
+      "src/p2list-contract.ts",
       "src/p2z-webui-visual-evidence-contract.ts",
       "src/p2z-webui-visual-evidence-integrity.ts",
       "vite.config.ts",
@@ -45,7 +46,7 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "d572bf5914b8d1ffb1315712d4744a1d146e38c171fc7ab7f4a7c207a09e0a1f"
+    "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
   },
   "artifacts": [
     {
@@ -58,7 +59,7 @@
     },
     {
       "file": "tablet-chromium-employee-detail.png",
-      "sha256": "fabf37af9ebcf8573a0f9b8868cc3984c26505caf574b3ff43f4a48855ef394a"
+      "sha256": "37611b01ffe5f8e0d7c2b1e1a9cafb675ff7d26caacbf2bbc8a44b4edc62362d"
     },
     {
       "file": "tablet-chromium-lifecycle-list.png",
