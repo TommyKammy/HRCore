@@ -13,6 +13,9 @@
       "package-lock.json",
       "package.json",
       "playwright.config.ts",
+      "scripts/capture-p2z-web-evidence.ts",
+      "src/app.ts",
+      "src/openapi.ts",
       "src/p2list-contract.ts",
       "src/p2z-webui-visual-evidence-contract.ts",
       "src/p2z-webui-visual-evidence-integrity.ts",
@@ -44,7 +47,7 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
+    "sha256": "5cb567ccc163047755df522b568e0958383e7263f116a5ad092594ad742c2284"
   },
   "captures": [
     {
@@ -64,6 +67,9 @@
           "package-lock.json",
           "package.json",
           "playwright.config.ts",
+          "scripts/capture-p2z-web-evidence.ts",
+          "src/app.ts",
+          "src/openapi.ts",
           "src/p2list-contract.ts",
           "src/p2z-webui-visual-evidence-contract.ts",
           "src/p2z-webui-visual-evidence-integrity.ts",
@@ -95,7 +101,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
+        "sha256": "5cb567ccc163047755df522b568e0958383e7263f116a5ad092594ad742c2284"
       },
       "artifacts": [
         {
@@ -145,6 +151,9 @@
           "package-lock.json",
           "package.json",
           "playwright.config.ts",
+          "scripts/capture-p2z-web-evidence.ts",
+          "src/app.ts",
+          "src/openapi.ts",
           "src/p2list-contract.ts",
           "src/p2z-webui-visual-evidence-contract.ts",
           "src/p2z-webui-visual-evidence-integrity.ts",
@@ -176,7 +185,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
+        "sha256": "5cb567ccc163047755df522b568e0958383e7263f116a5ad092594ad742c2284"
       },
       "artifacts": [
         {
@@ -226,6 +235,9 @@
           "package-lock.json",
           "package.json",
           "playwright.config.ts",
+          "scripts/capture-p2z-web-evidence.ts",
+          "src/app.ts",
+          "src/openapi.ts",
           "src/p2list-contract.ts",
           "src/p2z-webui-visual-evidence-contract.ts",
           "src/p2z-webui-visual-evidence-integrity.ts",
@@ -257,7 +269,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "675478ef8053033a5391e1de79e3327e66bd4fea64993739d0ddde8a0d24d579"
+        "sha256": "5cb567ccc163047755df522b568e0958383e7263f116a5ad092594ad742c2284"
       },
       "artifacts": [
         {

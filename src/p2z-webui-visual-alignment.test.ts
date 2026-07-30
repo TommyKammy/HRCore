@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import path from "node:path";
 
@@ -16,7 +25,9 @@ import {
 import {
   canonicalizeP2zVisualEvidenceSourceContents,
   inspectP2zPng,
+  invalidateP2zVisualEvidenceCaptureProvenance,
   isP2zPngEvidenceFile,
+  listP2zPngEvidenceFiles,
   normalizeP2zVisualEvidenceSourcePath,
   p2zVisualEvidenceCaptureProvenanceFile,
   readP2zVisualEvidenceSourceState,
@@ -56,9 +67,7 @@ type ActualEvidence = {
 };
 
 async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
-  const screenshots = (await readdir(path.resolve(process.cwd(), evidencePath)))
-    .filter(isP2zPngEvidenceFile)
-    .sort();
+  const screenshots = await listP2zPngEvidenceFiles();
 
   return new Map(
     await Promise.all(
@@ -388,6 +397,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "package scripts must expose the P2Z browser smoke",
   );
   assert.match(
+    packageJson,
+    /"capture:web:evidence":\s*"tsx scripts\/capture-p2z-web-evidence\.ts"/u,
+    "evidence capture must invalidate all project provenance before Playwright",
+  );
+  assert.match(
     ci,
     /playwright install --with-deps chromium/u,
     "CI must install Chromium before canonical verification",
@@ -467,7 +481,12 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   );
   assert.ok(currentSource.files.includes(contractPath));
   assert.ok(currentSource.files.includes("openapi/hrcore.openapi.json"));
+  assert.ok(currentSource.files.includes("src/app.ts"));
+  assert.ok(currentSource.files.includes("src/openapi.ts"));
   assert.ok(currentSource.files.includes("src/p2list-contract.ts"));
+  assert.ok(
+    currentSource.files.includes("scripts/capture-p2z-web-evidence.ts"),
+  );
   assert.deepEqual(
     canonicalizeP2zVisualEvidenceSourceContents(
       Buffer.from("first\r\nsecond\r\n"),
@@ -601,6 +620,48 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
       `capture provenance artifact digest mismatch for ${capture.project}`,
     ),
   );
+});
+
+test("P2Z capture setup invalidates all projects and finds nested PNG evidence", async (t) => {
+  const rootDirectory = await mkdtemp(
+    path.join(tmpdir(), "hrcore-p2z-evidence-"),
+  );
+  t.after(() => rm(rootDirectory, { recursive: true, force: true }));
+  const evidenceDirectory = path.join(rootDirectory, evidencePath);
+  await mkdir(path.join(evidenceDirectory, "archive"), { recursive: true });
+  await Promise.all(
+    p2zVisualEvidenceProjectNames.map((project) =>
+      writeFile(
+        path.join(
+          evidenceDirectory,
+          p2zVisualEvidenceCaptureProvenanceFile(project),
+        ),
+        "{}",
+      ),
+    ),
+  );
+  await writeFile(path.join(evidenceDirectory, "root.png"), "");
+  await writeFile(
+    path.join(evidenceDirectory, "archive", "comparison.PNG"),
+    "",
+  );
+
+  assert.deepEqual(await listP2zPngEvidenceFiles(evidenceDirectory), [
+    "archive/comparison.PNG",
+    "root.png",
+  ]);
+
+  await invalidateP2zVisualEvidenceCaptureProvenance(rootDirectory);
+  for (const project of p2zVisualEvidenceProjectNames) {
+    await assert.rejects(
+      access(
+        path.join(
+          evidenceDirectory,
+          p2zVisualEvidenceCaptureProvenanceFile(project),
+        ),
+      ),
+    );
+  }
 });
 
 test("P2Z evidence PNG validation rejects truncated rendered data", async () => {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -12,7 +12,7 @@ import {
 } from "../src/p2z-webui-visual-evidence-contract.js";
 import {
   inspectP2zPng,
-  isP2zPngEvidenceFile,
+  listP2zPngEvidenceFiles,
   p2zVisualEvidenceCaptureProvenanceFile,
   readP2zVisualEvidenceCaptureArtifacts,
   readP2zVisualEvidenceSourceState,
@@ -25,9 +25,7 @@ const evidenceDirectory = path.resolve(
   "docs/evidence/p2z-webui",
 );
 const manifestPath = path.join(evidenceDirectory, "manifest.json");
-const pngFiles = (await readdir(evidenceDirectory))
-  .filter(isP2zPngEvidenceFile)
-  .sort();
+const pngFiles = await listP2zPngEvidenceFiles(evidenceDirectory);
 const inventoryErrors = validateP2zVisualEvidenceInventory(pngFiles);
 
 if (inventoryErrors.length > 0) {

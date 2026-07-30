@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { inflateSync } from "node:zlib";
 
 import {
   p2zExpectedVisualEvidenceFiles,
+  p2zVisualEvidenceProjectNames,
   p2zVisualEvidenceProjects,
   type P2zVisualEvidenceProject,
 } from "./p2z-webui-visual-evidence-contract.js";
@@ -19,7 +20,10 @@ const p2zVisualEvidenceSourceFiles = [
   "package-lock.json",
   "package.json",
   "playwright.config.ts",
+  "scripts/capture-p2z-web-evidence.ts",
   "src/p2list-contract.ts",
+  "src/app.ts",
+  "src/openapi.ts",
   "src/p2z-webui-visual-evidence-contract.ts",
   "src/p2z-webui-visual-evidence-integrity.ts",
   "vite.config.ts",
@@ -71,6 +75,30 @@ export function normalizeP2zVisualEvidenceSourcePath(file: string): string {
   return file.replaceAll("\\", "/");
 }
 
+export async function listP2zPngEvidenceFiles(
+  evidenceDirectory = path.resolve(process.cwd(), "docs/evidence/p2z-webui"),
+): Promise<string[]> {
+  const files: string[] = [];
+
+  async function visit(directory: string): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(entryPath);
+      } else if (entry.isFile() && isP2zPngEvidenceFile(entry.name)) {
+        files.push(
+          normalizeP2zVisualEvidenceSourcePath(
+            path.relative(evidenceDirectory, entryPath),
+          ),
+        );
+      }
+    }
+  }
+
+  await visit(evidenceDirectory);
+  return files.sort();
+}
+
 export function canonicalizeP2zVisualEvidenceSourceContents(
   contents: Buffer,
 ): Buffer {
@@ -81,6 +109,23 @@ export function p2zVisualEvidenceCaptureProvenanceFile(
   project: P2zVisualEvidenceProject,
 ): string {
   return `${project}-capture-provenance.json`;
+}
+
+export async function invalidateP2zVisualEvidenceCaptureProvenance(
+  rootDirectory = process.cwd(),
+): Promise<void> {
+  const evidenceDirectory = path.join(rootDirectory, "docs/evidence/p2z-webui");
+  await Promise.all(
+    p2zVisualEvidenceProjectNames.map((project) =>
+      rm(
+        path.join(
+          evidenceDirectory,
+          p2zVisualEvidenceCaptureProvenanceFile(project),
+        ),
+        { force: true },
+      ),
+    ),
+  );
 }
 
 function crc32(contents: Buffer): number {
