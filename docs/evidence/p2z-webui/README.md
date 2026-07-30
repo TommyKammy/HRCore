@@ -7,13 +7,18 @@ The repository-owned [`manifest.json`](manifest.json) records every PNG exactly
 once with its Playwright project, viewport, reproducible capture command,
 `p2z-webui-visual-alignment-v1` contract version, and SHA-256 digest. The P2Z
 repository guard fails when a screenshot is missing, extra, renamed, or changed
-without a matching manifest update.
+without a matching manifest update. The manifest also binds the evidence to a
+SHA-256 fingerprint of the current runtime WebUI source, capture specification,
+Playwright configuration, and locked dependency state so visual-source changes
+cannot leave stale screenshots green.
 
 The authoritative project/viewports and seven-screen inventory live in
 `src/p2z-webui-visual-evidence-contract.ts`. Playwright configuration, the
 capture test, the manifest updater, and the repository guard share that
 contract. The updater refuses to bless a missing, unexpected, renamed, or
-wrong-width PNG.
+wrong-sized PNG, including files with uppercase `.PNG` extensions. It also
+validates PNG chunk CRCs, the terminal `IEND` chunk, and decompressed image data
+before recording any digest.
 
 ## Viewports
 

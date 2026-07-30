@@ -12,6 +12,12 @@ import {
   type P2zVisualEvidenceProject,
   validateP2zVisualEvidenceInventory,
 } from "./p2z-webui-visual-evidence-contract.js";
+import {
+  inspectP2zPng,
+  isP2zPngEvidenceFile,
+  readP2zVisualEvidenceSourceState,
+  type P2zVisualEvidenceSourceState,
+} from "./p2z-webui-visual-evidence-integrity.js";
 import { readRepoFile } from "./test-helpers/database.js";
 
 const contractPath = "docs/p2z-webui-visual-alignment-contract.md";
@@ -31,29 +37,19 @@ type EvidenceArtifact = {
 type EvidenceManifest = {
   schemaVersion: number;
   contract: { path: string; version: string };
+  source: P2zVisualEvidenceSourceState;
   artifacts: EvidenceArtifact[];
 };
 
 type ActualEvidence = {
   sha256: string;
   pixelWidth: number;
+  pixelHeight: number;
 };
-
-const pngSignature = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-]);
-
-function readPngWidth(contents: Buffer, file: string): number {
-  assert.ok(
-    contents.length >= 24 && contents.subarray(0, 8).equals(pngSignature),
-    `${file} must be a readable PNG`,
-  );
-  return contents.readUInt32BE(16);
-}
 
 async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
   const screenshots = (await readdir(path.resolve(process.cwd(), evidencePath)))
-    .filter((file) => file.endsWith(".png"))
+    .filter(isP2zPngEvidenceFile)
     .sort();
 
   return new Map(
@@ -62,11 +58,13 @@ async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
         const contents = await readFile(
           path.resolve(process.cwd(), evidencePath, screenshot),
         );
+        const dimensions = inspectP2zPng(contents, screenshot);
         return [
           screenshot,
           {
             sha256: createHash("sha256").update(contents).digest("hex"),
-            pixelWidth: readPngWidth(contents, screenshot),
+            pixelWidth: dimensions.width,
+            pixelHeight: dimensions.height,
           },
         ] as const;
       }),
@@ -77,12 +75,13 @@ async function readActualEvidence(): Promise<Map<string, ActualEvidence>> {
 function validateEvidenceManifest(
   manifest: EvidenceManifest,
   actualEvidence: ReadonlyMap<string, ActualEvidence>,
+  currentSource: P2zVisualEvidenceSourceState,
 ): string[] {
   const errors = validateP2zVisualEvidenceInventory([...actualEvidence.keys()]);
   const expectedFiles = new Set(p2zExpectedVisualEvidenceFiles);
   const seenFiles = new Set<string>();
 
-  if (manifest.schemaVersion !== 1) {
+  if (manifest.schemaVersion !== 2) {
     errors.push(`unsupported schema version: ${manifest.schemaVersion}`);
   }
   if (manifest.contract.path !== contractPath) {
@@ -90,6 +89,20 @@ function validateEvidenceManifest(
   }
   if (manifest.contract.version !== p2zVisualEvidenceContractVersion) {
     errors.push(`unexpected contract version: ${manifest.contract.version}`);
+  }
+  if (manifest.source.algorithm !== currentSource.algorithm) {
+    errors.push(
+      `unexpected source digest algorithm: ${manifest.source.algorithm}`,
+    );
+  }
+  if (
+    JSON.stringify(manifest.source.files) !==
+    JSON.stringify(currentSource.files)
+  ) {
+    errors.push("visual evidence source file inventory mismatch");
+  }
+  if (manifest.source.sha256 !== currentSource.sha256) {
+    errors.push("visual evidence source digest mismatch");
   }
 
   for (const artifact of manifest.artifacts) {
@@ -344,10 +357,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   );
 
   const actualEvidence = await readActualEvidence();
+  const currentSource = await readP2zVisualEvidenceSourceState();
   const screenshots = [...actualEvidence.keys()];
 
   assert.deepEqual(
-    validateEvidenceManifest(evidenceManifest, actualEvidence),
+    validateEvidenceManifest(evidenceManifest, actualEvidence, currentSource),
     [],
     `${evidenceManifestPath} must exactly cover the current PNG inventory`,
   );
@@ -375,13 +389,18 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   const artifact = manifest.artifacts[0];
   assert.ok(artifact, "the P2Z evidence manifest must not be empty");
   const matchingEvidence = await readActualEvidence();
+  const currentSource = await readP2zVisualEvidenceSourceState();
 
-  assert.deepEqual(validateEvidenceManifest(manifest, matchingEvidence), []);
+  assert.equal(isP2zPngEvidenceFile("comparison.PNG"), true);
+  assert.deepEqual(
+    validateEvidenceManifest(manifest, matchingEvidence, currentSource),
+    [],
+  );
 
   const missingEvidence = new Map(matchingEvidence);
   missingEvidence.delete(artifact.file);
   assert.ok(
-    validateEvidenceManifest(manifest, missingEvidence).includes(
+    validateEvidenceManifest(manifest, missingEvidence, currentSource).includes(
       `missing expected evidence file: ${artifact.file}`,
     ),
   );
@@ -390,11 +409,26 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   extraEvidence.set("extra-evidence.png", {
     sha256: "0".repeat(64),
     pixelWidth: 1,
+    pixelHeight: 1,
   });
   assert.ok(
-    validateEvidenceManifest(manifest, extraEvidence).includes(
+    validateEvidenceManifest(manifest, extraEvidence, currentSource).includes(
       "unexpected evidence file: extra-evidence.png",
     ),
+  );
+
+  const uppercaseEvidence = new Map(matchingEvidence);
+  uppercaseEvidence.set("comparison.PNG", {
+    sha256: "0".repeat(64),
+    pixelWidth: 1,
+    pixelHeight: 1,
+  });
+  assert.ok(
+    validateEvidenceManifest(
+      manifest,
+      uppercaseEvidence,
+      currentSource,
+    ).includes("unexpected evidence file: comparison.PNG"),
   );
 
   const renamedEvidence = new Map(matchingEvidence);
@@ -402,7 +436,11 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   assert.ok(renamedContents);
   renamedEvidence.delete(artifact.file);
   renamedEvidence.set("renamed-evidence.png", renamedContents);
-  const renameErrors = validateEvidenceManifest(manifest, renamedEvidence);
+  const renameErrors = validateEvidenceManifest(
+    manifest,
+    renamedEvidence,
+    currentSource,
+  );
   assert.ok(
     renameErrors.includes(`missing expected evidence file: ${artifact.file}`),
   );
@@ -416,7 +454,7 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
     sha256: "0".repeat(64),
   });
   assert.ok(
-    validateEvidenceManifest(manifest, changedEvidence).includes(
+    validateEvidenceManifest(manifest, changedEvidence, currentSource).includes(
       `digest mismatch: ${artifact.file}`,
     ),
   );
@@ -427,15 +465,40 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
     pixelWidth: renamedContents.pixelWidth + 1,
   });
   assert.ok(
-    validateEvidenceManifest(manifest, wrongWidthEvidence).includes(
-      `PNG width mismatch: ${artifact.file}`,
-    ),
+    validateEvidenceManifest(
+      manifest,
+      wrongWidthEvidence,
+      currentSource,
+    ).includes(`PNG width mismatch: ${artifact.file}`),
   );
   assert.ok(
     validateEvidenceManifest(
       { ...manifest, artifacts: [...manifest.artifacts, artifact] },
       matchingEvidence,
+      currentSource,
     ).includes(`duplicate manifest entry: ${artifact.file}`),
+  );
+
+  assert.ok(
+    validateEvidenceManifest(manifest, matchingEvidence, {
+      ...currentSource,
+      sha256: "0".repeat(64),
+    }).includes("visual evidence source digest mismatch"),
+  );
+});
+
+test("P2Z evidence PNG validation rejects truncated rendered data", async () => {
+  const file = p2zExpectedVisualEvidenceFiles[0];
+  assert.ok(file);
+  const contents = await readFile(
+    path.resolve(process.cwd(), evidencePath, file),
+  );
+  const truncated = contents.subarray(0, contents.length - 12);
+
+  assert.ok(truncated.length > 10_000);
+  assert.throws(
+    () => inspectP2zPng(truncated, file),
+    /truncated PNG chunk|missing required PNG chunks/u,
   );
 });
 

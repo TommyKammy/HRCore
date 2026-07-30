@@ -10,25 +10,19 @@ import {
   p2zVisualEvidenceProjects,
   validateP2zVisualEvidenceInventory,
 } from "../src/p2z-webui-visual-evidence-contract.js";
+import {
+  inspectP2zPng,
+  isP2zPngEvidenceFile,
+  readP2zVisualEvidenceSourceState,
+} from "../src/p2z-webui-visual-evidence-integrity.js";
 
 const evidenceDirectory = path.resolve(
   process.cwd(),
   "docs/evidence/p2z-webui",
 );
 const manifestPath = path.join(evidenceDirectory, "manifest.json");
-const pngSignature = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-]);
-
-function readPngWidth(contents: Buffer, file: string): number {
-  if (contents.length < 24 || !contents.subarray(0, 8).equals(pngSignature)) {
-    throw new Error(`${file} is not a readable PNG`);
-  }
-  return contents.readUInt32BE(16);
-}
-
 const pngFiles = (await readdir(evidenceDirectory))
-  .filter((file) => file.endsWith(".png"))
+  .filter(isP2zPngEvidenceFile)
   .sort();
 const inventoryErrors = validateP2zVisualEvidenceInventory(pngFiles);
 
@@ -54,11 +48,11 @@ const artifacts = await Promise.all(
     const projectContract = p2zVisualEvidenceProjects[project];
     const expectedPixelWidth =
       projectContract.viewport.width * projectContract.deviceScaleFactor;
-    const actualPixelWidth = readPngWidth(contents, file);
+    const dimensions = inspectP2zPng(contents, file);
 
-    if (actualPixelWidth !== expectedPixelWidth) {
+    if (dimensions.width !== expectedPixelWidth) {
       throw new Error(
-        `${file} width ${actualPixelWidth}px does not match ${project} capture width ${expectedPixelWidth}px`,
+        `${file} width ${dimensions.width}px does not match ${project} capture width ${expectedPixelWidth}px`,
       );
     }
 
@@ -74,11 +68,12 @@ const artifacts = await Promise.all(
 );
 
 const manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   contract: {
     path: "docs/p2z-webui-visual-alignment-contract.md",
     version: p2zVisualEvidenceContractVersion,
   },
+  source: await readP2zVisualEvidenceSourceState(),
   artifacts,
 };
 
