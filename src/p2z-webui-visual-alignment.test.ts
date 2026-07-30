@@ -771,7 +771,24 @@ test("P2Z capture setup invalidates all projects and finds nested PNG evidence",
   }
 });
 
-test("P2Z source state equality covers inventory and digest", () => {
+test("P2Z source state excludes untracked files and compares tracked state", async (t) => {
+  const scratchDirectory = await mkdtemp(
+    path.join(process.cwd(), "src/.p2z-untracked-"),
+  );
+  t.after(() => rm(scratchDirectory, { recursive: true, force: true }));
+  const scratchFile = normalizeP2zVisualEvidenceSourcePath(
+    path.relative(
+      process.cwd(),
+      path.join(scratchDirectory, "scratch-module.ts"),
+    ),
+  );
+  await writeFile(path.join(process.cwd(), scratchFile), "export {};\n");
+
+  assert.equal(
+    (await readP2zVisualEvidenceSourceState()).files.includes(scratchFile),
+    false,
+  );
+
   const source: P2zVisualEvidenceSourceState = {
     algorithm: "sha256",
     files: ["src/app.ts"],

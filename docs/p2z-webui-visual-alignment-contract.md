@@ -129,9 +129,10 @@ Every committed P2Z evidence PNG is covered by
 manifest binds each image to this contract version, its Playwright
 project/viewport, the reproducible capture command, a SHA-256 digest, and a
 fingerprint of the complete non-test backend/WebUI runtime and capture source
-tree. The repository guard combines strict PNG container and zlib-stream checks
-with a maintained decoder that reconstructs scanlines and validates palette
-indices and decoded pixels, and rejects symbolic links in the evidence tree.
+tree, limited to Git-tracked inputs. The repository guard combines strict PNG
+container and zlib-stream checks with a maintained decoder that reconstructs
+scanlines and validates palette indices and decoded pixels, and rejects
+symbolic links in the evidence tree.
 Capture freezes the source fingerprint before launching every contract-defined
 project, rejects source drift before promotion, stages the complete run outside
 the repository, and promotes PNGs before per-project provenance only after the

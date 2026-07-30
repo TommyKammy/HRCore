@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
@@ -368,42 +369,26 @@ export function inspectP2zPng(
   return { width, height };
 }
 
-async function listRuntimeSourceFiles(
-  rootDirectory: string,
-): Promise<string[]> {
-  const sourceDirectories = ["src", "web/src"].map((directory) =>
-    path.join(rootDirectory, directory),
-  );
-  const files: string[] = [];
+function listTrackedRuntimeSourceFiles(rootDirectory: string): string[] {
   const excludedDirectories = new Set(["__tests__", "test-helpers"]);
-
-  async function visit(directory: string): Promise<void> {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        if (!excludedDirectories.has(entry.name)) {
-          await visit(entryPath);
-        }
-      } else if (
-        entry.isFile() &&
-        !entry.name.includes(".test.") &&
-        !entry.name.includes(".spec.") &&
-        !entry.name.startsWith("test-") &&
-        !entry.name.endsWith(".d.ts")
-      ) {
-        files.push(
-          normalizeP2zVisualEvidenceSourcePath(
-            path.relative(rootDirectory, entryPath),
-          ),
-        );
-      }
-    }
-  }
-
-  for (const sourceDirectory of sourceDirectories) {
-    await visit(sourceDirectory);
-  }
-  return files;
+  return execFileSync("git", ["ls-files", "-z", "--", "src", "web/src"], {
+    cwd: rootDirectory,
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter(Boolean)
+    .map(normalizeP2zVisualEvidenceSourcePath)
+    .filter((file) => {
+      const segments = file.split("/");
+      const name = segments.at(-1) ?? "";
+      return (
+        !segments.some((segment) => excludedDirectories.has(segment)) &&
+        !name.includes(".test.") &&
+        !name.includes(".spec.") &&
+        !name.startsWith("test-") &&
+        !name.endsWith(".d.ts")
+      );
+    });
 }
 
 export async function readP2zVisualEvidenceSourceState(
@@ -412,7 +397,7 @@ export async function readP2zVisualEvidenceSourceState(
   const files = [
     ...new Set([
       ...p2zVisualEvidenceSourceFiles,
-      ...(await listRuntimeSourceFiles(rootDirectory)),
+      ...listTrackedRuntimeSourceFiles(rootDirectory),
     ]),
   ].sort();
   const hash = createHash(p2zVisualEvidenceSourceAlgorithm);

@@ -11,8 +11,9 @@ without a matching manifest update. The manifest also binds the evidence to a
 SHA-256 fingerprint of the current runtime WebUI source, capture specification,
 Playwright configuration, and locked dependency state so visual-source changes
 cannot leave stale screenshots green. The fingerprint conservatively covers
-all non-test runtime files under both `src` and `web/src`, avoiding a fragile
-hand-maintained transitive-import allowlist.
+all Git-tracked non-test runtime files under both `src` and `web/src`, avoiding
+a fragile hand-maintained transitive-import allowlist without making local
+scratch files part of committed provenance.
 
 The authoritative project/viewports and seven-screen inventory live in
 `src/p2z-webui-visual-evidence-contract.ts`. Playwright configuration, the
