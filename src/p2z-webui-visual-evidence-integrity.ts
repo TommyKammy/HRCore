@@ -88,14 +88,18 @@ export async function listP2zPngEvidenceFiles(
   async function visit(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const entryPath = path.join(directory, entry.name);
+      const relativePath = normalizeP2zVisualEvidenceSourcePath(
+        path.relative(evidenceDirectory, entryPath),
+      );
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `P2Z evidence directory contains a symbolic link: ${relativePath}`,
+        );
+      }
       if (entry.isDirectory()) {
         await visit(entryPath);
       } else if (entry.isFile() && isP2zPngEvidenceFile(entry.name)) {
-        files.push(
-          normalizeP2zVisualEvidenceSourcePath(
-            path.relative(evidenceDirectory, entryPath),
-          ),
-        );
+        files.push(relativePath);
       }
     }
   }
@@ -432,6 +436,17 @@ export async function readP2zVisualEvidenceSourceState(
   };
 }
 
+export function areP2zVisualEvidenceSourceStatesEqual(
+  left: P2zVisualEvidenceSourceState,
+  right: P2zVisualEvidenceSourceState,
+): boolean {
+  return (
+    left.algorithm === right.algorithm &&
+    JSON.stringify(left.files) === JSON.stringify(right.files) &&
+    left.sha256 === right.sha256
+  );
+}
+
 export async function createP2zVisualEvidenceCaptureProvenance(
   project: P2zVisualEvidenceProject,
   capture: {
@@ -520,10 +535,7 @@ export function validateP2zVisualEvidenceCaptureProvenance(
     errors.push(`capture provenance artifact digest mismatch for ${project}`);
   }
   if (
-    provenance.source.algorithm !== currentSource.algorithm ||
-    JSON.stringify(provenance.source.files) !==
-      JSON.stringify(currentSource.files) ||
-    provenance.source.sha256 !== currentSource.sha256
+    !areP2zVisualEvidenceSourceStatesEqual(provenance.source, currentSource)
   ) {
     errors.push(`capture provenance source mismatch for ${project}`);
   }

@@ -7,6 +7,7 @@ import {
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,6 +25,7 @@ import {
   validateP2zVisualEvidenceInventory,
 } from "./p2z-webui-visual-evidence-contract.js";
 import {
+  areP2zVisualEvidenceSourceStatesEqual,
   canonicalizeP2zVisualEvidenceSourceContents,
   inspectP2zPng,
   invalidateP2zVisualEvidenceCaptureProvenance,
@@ -456,6 +458,8 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "P2Z_EVIDENCE_OUTPUT_DIRECTORY",
     "expectedStagedFiles",
     "invalidateP2zVisualEvidenceCaptureProvenance",
+    "sourceBeforeCapture",
+    "assertCaptureSourceUnchanged",
   ] as const) {
     assert.ok(
       captureScript.includes(captureAtomicitySignal),
@@ -463,10 +467,19 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     );
   }
   assert.ok(
-    captureScript.indexOf(
+    captureScript.lastIndexOf(
       "for (const file of p2zExpectedVisualEvidenceFiles)",
-    ) < captureScript.indexOf("for (const file of provenanceFiles)"),
+    ) < captureScript.lastIndexOf("for (const file of provenanceFiles)"),
     "capture promotion must write PNGs before provenance sidecars",
+  );
+  assert.ok(
+    captureScript.indexOf("sourceBeforeCapture") <
+      captureScript.indexOf("spawnSync("),
+    "capture must freeze the source state before Playwright starts",
+  );
+  assert.ok(
+    captureScript.includes("...p2zVisualEvidenceProjectNames.map"),
+    "capture must derive Playwright project arguments from the shared contract",
   );
   assert.match(
     ci,
@@ -735,6 +748,16 @@ test("P2Z capture setup invalidates all projects and finds nested PNG evidence",
     "root.png",
   ]);
 
+  await symlink(
+    "root.png",
+    path.join(evidenceDirectory, "linked-evidence.png"),
+  );
+  await assert.rejects(
+    listP2zPngEvidenceFiles(evidenceDirectory),
+    /P2Z evidence directory contains a symbolic link: linked-evidence\.png/u,
+  );
+  await rm(path.join(evidenceDirectory, "linked-evidence.png"));
+
   await invalidateP2zVisualEvidenceCaptureProvenance(rootDirectory);
   for (const project of p2zVisualEvidenceProjectNames) {
     await assert.rejects(
@@ -746,6 +769,36 @@ test("P2Z capture setup invalidates all projects and finds nested PNG evidence",
       ),
     );
   }
+});
+
+test("P2Z source state equality covers inventory and digest", () => {
+  const source: P2zVisualEvidenceSourceState = {
+    algorithm: "sha256",
+    files: ["src/app.ts"],
+    sha256: "1".repeat(64),
+  };
+
+  assert.equal(
+    areP2zVisualEvidenceSourceStatesEqual(source, {
+      ...source,
+      files: [...source.files],
+    }),
+    true,
+  );
+  assert.equal(
+    areP2zVisualEvidenceSourceStatesEqual(source, {
+      ...source,
+      files: ["src/openapi.ts"],
+    }),
+    false,
+  );
+  assert.equal(
+    areP2zVisualEvidenceSourceStatesEqual(source, {
+      ...source,
+      sha256: "2".repeat(64),
+    }),
+    false,
+  );
 });
 
 test("P2Z evidence PNG validation rejects truncated rendered data", async () => {

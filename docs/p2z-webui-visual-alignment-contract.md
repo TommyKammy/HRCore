@@ -131,8 +131,10 @@ project/viewport, the reproducible capture command, a SHA-256 digest, and a
 fingerprint of the complete non-test backend/WebUI runtime and capture source
 tree. The repository guard combines strict PNG container and zlib-stream checks
 with a maintained decoder that reconstructs scanlines and validates palette
-indices and decoded pixels. Capture first stages all projects outside the
-repository and promotes PNGs before per-project provenance only after the
+indices and decoded pixels, and rejects symbolic links in the evidence tree.
+Capture freezes the source fingerprint before launching every contract-defined
+project, rejects source drift before promotion, stages the complete run outside
+the repository, and promotes PNGs before per-project provenance only after the
 complete run succeeds. Those sidecars bind the screenshots to their individual
 content digests, the captured viewport height, device pixel ratio, source tree,
 and this contract's contents. Digest freshness detects unreviewed repository

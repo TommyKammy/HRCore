@@ -19,16 +19,20 @@ The authoritative project/viewports and seven-screen inventory live in
 capture test, the manifest updater, and the repository guard share that
 contract. The updater refuses to bless a missing, unexpected, renamed, or
 wrong-sized PNG, including files with uppercase `.PNG` extensions or nested
-evidence directories. It performs strict container and zlib-stream checks, then
-uses the maintained `pngjs` decoder for scanline reconstruction, palette-index
+evidence directories, and fails closed on symbolic links anywhere in the
+evidence tree. It performs strict container and zlib-stream checks, then uses
+the maintained `pngjs` decoder for scanline reconstruction, palette-index
 validation, and full pixel decoding before recording any digest.
 
 Each evidence project also writes a deterministic
 `*-capture-provenance.json` sidecar containing the captured viewport, device
 pixel ratio, exact screenshot inventory and SHA-256 digests, and source
-fingerprint. The capture wrapper writes all three Playwright projects to an
-isolated staging directory and promotes PNGs followed by provenance sidecars
-only after the complete run and exact staged inventory succeed. Manifest
+fingerprint. The capture wrapper derives every Playwright project from the
+shared contract, freezes the source fingerprint before starting Playwright,
+and rejects a run if the source or any staged provenance differs before
+promotion. It writes the projects to an isolated staging directory and promotes
+PNGs followed by provenance sidecars only after the complete run and exact
+staged inventory succeed. Manifest
 regeneration compares those digests with the current PNGs and rejects a stale
 or partially promoted sidecar. A
 viewport-height, source, dependency, or visual-contract change therefore

@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,8 +15,12 @@ import {
   p2zVisualEvidenceProjectNames,
 } from "../src/p2z-webui-visual-evidence-contract.js";
 import {
+  areP2zVisualEvidenceSourceStatesEqual,
   invalidateP2zVisualEvidenceCaptureProvenance,
   p2zVisualEvidenceCaptureProvenanceFile,
+  readP2zVisualEvidenceSourceState,
+  type P2zVisualEvidenceCaptureProvenance,
+  type P2zVisualEvidenceSourceState,
 } from "../src/p2z-webui-visual-evidence-integrity.js";
 
 const rootDirectory = process.cwd();
@@ -27,6 +38,19 @@ const expectedStagedFiles = [
   ...p2zExpectedVisualEvidenceFiles,
   ...provenanceFiles,
 ].sort();
+const sourceBeforeCapture =
+  await readP2zVisualEvidenceSourceState(rootDirectory);
+
+function assertCaptureSourceUnchanged(
+  stage: string,
+  source: P2zVisualEvidenceSourceState,
+): void {
+  if (!areP2zVisualEvidenceSourceStatesEqual(sourceBeforeCapture, source)) {
+    throw new Error(
+      `P2Z source state changed ${stage}; discard the staged capture and retry`,
+    );
+  }
+}
 
 try {
   const playwrightCli = path.resolve(
@@ -38,9 +62,7 @@ try {
     [
       playwrightCli,
       "test",
-      "--project=desktop-chromium",
-      "--project=tablet-chromium",
-      "--project=mobile-chromium",
+      ...p2zVisualEvidenceProjectNames.map((project) => `--project=${project}`),
     ],
     {
       env: {
@@ -58,6 +80,10 @@ try {
   if (capture.status !== 0) {
     process.exitCode = capture.status ?? 1;
   } else {
+    assertCaptureSourceUnchanged(
+      "during capture",
+      await readP2zVisualEvidenceSourceState(rootDirectory),
+    );
     const actualStagedFiles = (await readdir(stagingDirectory)).sort();
     if (
       JSON.stringify(actualStagedFiles) !== JSON.stringify(expectedStagedFiles)
@@ -68,6 +94,17 @@ try {
         )}\nactual ${actualStagedFiles.join(", ")}`,
       );
     }
+
+    for (const file of provenanceFiles) {
+      const provenance = JSON.parse(
+        await readFile(path.join(stagingDirectory, file), "utf8"),
+      ) as P2zVisualEvidenceCaptureProvenance;
+      assertCaptureSourceUnchanged(`while creating ${file}`, provenance.source);
+    }
+    assertCaptureSourceUnchanged(
+      "before promotion",
+      await readP2zVisualEvidenceSourceState(rootDirectory),
+    );
 
     await mkdir(repositoryEvidenceDirectory, { recursive: true });
     await invalidateP2zVisualEvidenceCaptureProvenance(rootDirectory);
