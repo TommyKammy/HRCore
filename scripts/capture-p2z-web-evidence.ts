@@ -21,6 +21,7 @@ import {
   readP2zVisualEvidenceSourceState,
   type P2zVisualEvidenceCaptureProvenance,
   type P2zVisualEvidenceSourceState,
+  validateP2zInstalledDependencyTree,
 } from "../src/p2z-webui-visual-evidence-integrity.js";
 
 const rootDirectory = process.cwd();
@@ -28,6 +29,22 @@ const repositoryEvidenceDirectory = path.resolve(
   rootDirectory,
   "docs/evidence/p2z-webui",
 );
+const dependencyErrors = validateP2zInstalledDependencyTree(
+  JSON.parse(
+    await readFile(path.join(rootDirectory, "package-lock.json"), "utf8"),
+  ),
+  JSON.parse(
+    await readFile(
+      path.join(rootDirectory, "node_modules/.package-lock.json"),
+      "utf8",
+    ),
+  ),
+);
+if (dependencyErrors.length > 0) {
+  throw new Error(
+    `P2Z capture requires dependencies installed from package-lock.json; run npm ci before retrying:\n${dependencyErrors.join("\n")}`,
+  );
+}
 const stagingDirectory = await mkdtemp(
   path.join(tmpdir(), "hrcore-p2z-capture-"),
 );

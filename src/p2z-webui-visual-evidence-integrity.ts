@@ -73,6 +73,57 @@ export type P2zVisualEvidenceCaptureArtifact = {
   sha256: string;
 };
 
+export type P2zDependencyLock = {
+  packages?: Record<
+    string,
+    {
+      version?: string;
+      resolved?: string;
+      integrity?: string;
+      optional?: boolean;
+      link?: boolean;
+    }
+  >;
+};
+
+export function validateP2zInstalledDependencyTree(
+  expectedLock: P2zDependencyLock,
+  installedLock: P2zDependencyLock,
+): string[] {
+  const expected = expectedLock.packages ?? {};
+  const installed = installedLock.packages ?? {};
+  const errors: string[] = [];
+  const identityFields = ["version", "resolved", "integrity", "link"] as const;
+
+  for (const [packagePath, expectedPackage] of Object.entries(expected)) {
+    if (packagePath === "") continue;
+    const installedPackage = installed[packagePath];
+    if (installedPackage === undefined) {
+      if (!expectedPackage.optional) {
+        errors.push(`missing installed dependency: ${packagePath}`);
+      }
+      continue;
+    }
+    if (
+      identityFields.some(
+        (field) => installedPackage[field] !== expectedPackage[field],
+      )
+    ) {
+      errors.push(
+        `installed dependency does not match lockfile: ${packagePath}`,
+      );
+    }
+  }
+
+  for (const packagePath of Object.keys(installed)) {
+    if (expected[packagePath] === undefined) {
+      errors.push(`unexpected installed dependency: ${packagePath}`);
+    }
+  }
+
+  return errors.sort();
+}
+
 export function isP2zPngEvidenceFile(file: string): boolean {
   return /\.png$/iu.test(file);
 }

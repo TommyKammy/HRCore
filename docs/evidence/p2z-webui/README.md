@@ -61,15 +61,17 @@ ports.
 
 ## Regeneration
 
-Install Chromium once, then regenerate all evidence:
+Install the locked dependencies and Chromium, then regenerate all evidence:
 
 ```sh
+npm ci
 npx playwright install chromium
 npm run capture:web:evidence
 ```
 
-The capture test fails on missing visual anchors, horizontal overflow, or a
-mobile drawer that has not closed after navigation.
+The capture wrapper rejects an installed dependency tree that differs from
+`package-lock.json`. The capture test fails on missing visual anchors,
+horizontal overflow, or a mobile drawer that has not closed after navigation.
 
 ## Intentional Regeneration Review
 

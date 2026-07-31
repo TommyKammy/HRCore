@@ -39,6 +39,7 @@ import {
   type P2zVisualEvidenceSourceState,
   validateP2zPngPalette,
   validateP2zPngScanlineFilters,
+  validateP2zInstalledDependencyTree,
   validateP2zVisualEvidenceCaptureProvenance,
 } from "./p2z-webui-visual-evidence-integrity.js";
 import { readRepoFile } from "./test-helpers/database.js";
@@ -460,6 +461,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "invalidateP2zVisualEvidenceCaptureProvenance",
     "sourceBeforeCapture",
     "assertCaptureSourceUnchanged",
+    "validateP2zInstalledDependencyTree",
   ] as const) {
     assert.ok(
       captureScript.includes(captureAtomicitySignal),
@@ -815,6 +817,52 @@ test("P2Z source state excludes untracked files and compares tracked state", asy
       sha256: "2".repeat(64),
     }),
     false,
+  );
+});
+
+test("P2Z capture dependency guard rejects stale installed trees", () => {
+  const expected = {
+    packages: {
+      "": { version: "0.0.0" },
+      "node_modules/required": {
+        version: "2.0.0",
+        integrity: "sha512-current",
+      },
+      "node_modules/missing": { version: "1.0.0" },
+      "node_modules/platform-optional": {
+        version: "1.0.0",
+        optional: true,
+      },
+    },
+  };
+
+  assert.deepEqual(
+    validateP2zInstalledDependencyTree(expected, {
+      packages: {
+        "node_modules/required": {
+          version: "2.0.0",
+          integrity: "sha512-current",
+        },
+        "node_modules/missing": { version: "1.0.0" },
+      },
+    }),
+    [],
+  );
+  assert.deepEqual(
+    validateP2zInstalledDependencyTree(expected, {
+      packages: {
+        "node_modules/required": {
+          version: "1.0.0",
+          integrity: "sha512-stale",
+        },
+        "node_modules/unexpected": { version: "1.0.0" },
+      },
+    }),
+    [
+      "installed dependency does not match lockfile: node_modules/required",
+      "missing installed dependency: node_modules/missing",
+      "unexpected installed dependency: node_modules/unexpected",
+    ],
   );
 });
 
