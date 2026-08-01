@@ -187,7 +187,7 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "de670fcab6afbba813b59431faaeb180462161ab9ac1e506fae1a84553eaf879"
+    "sha256": "c147976b46594663f7508737dbb30c935685ed2089279be6c31b899cd1475612"
   },
   "artifacts": [
     {
@@ -196,7 +196,7 @@
     },
     {
       "file": "desktop-chromium-employee-list.png",
-      "sha256": "9c764db126f17eafc1d0dcc863619f56dfd4267435537d2cc2a5fe3d57672673"
+      "sha256": "c6bca4c4a333098d904b05f038c4af82acbeaf8eae5ca63caa559eb0481f1979"
     },
     {
       "file": "desktop-chromium-employee-detail.png",

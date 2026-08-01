@@ -20,7 +20,48 @@ const evidenceDirectory =
   captureEvidence && process.env.P2Z_EVIDENCE_OUTPUT_DIRECTORY
     ? path.resolve(process.env.P2Z_EVIDENCE_OUTPUT_DIRECTORY)
     : path.resolve(process.cwd(), "docs/evidence/p2z-webui");
-const observedCaptureScreens = new Set<P2zVisualEvidenceScreen>();
+const isolatedScenarioScreens = {
+  dashboard: p2zVisualEvidenceScreens.dashboard,
+  employeeList: p2zVisualEvidenceScreens.employeeList,
+  employeeDetail: p2zVisualEvidenceScreens.employeeDetail,
+  lifecycleList: p2zVisualEvidenceScreens.lifecycleList,
+  transfer: p2zVisualEvidenceScreens.transfer,
+  approvalInbox: p2zVisualEvidenceScreens.approvalInbox,
+  jobMonitor: p2zVisualEvidenceScreens.jobMonitor,
+} as const;
+let measuredCaptureGeometry:
+  | {
+      viewport: { width: number; height: number };
+      deviceScaleFactor: number;
+    }
+  | undefined;
+
+async function expectMobileNavigationState(page: Page, open: boolean) {
+  if ((page.viewportSize()?.width ?? 0) > 768) {
+    return;
+  }
+
+  await expect(
+    page.getByRole("button", {
+      name: open ? "ナビゲーションを閉じる" : "ナビゲーションを開く",
+    }),
+  ).toHaveAttribute("aria-expanded", String(open));
+  const sidebar = page.locator("aside.sidebar");
+  await expect
+    .poll(
+      async () => {
+        const bounds = await sidebar.boundingBox();
+        if (!bounds) {
+          return false;
+        }
+        return open ? bounds.x >= -1 : bounds.x + bounds.width <= 1;
+      },
+      {
+        message: `mobile navigation must finish ${open ? "opening" : "closing"}`,
+      },
+    )
+    .toBe(true);
+}
 
 async function openMobileNavigation(page: Page) {
   if ((page.viewportSize()?.width ?? 0) > 768) {
@@ -32,12 +73,14 @@ async function openMobileNavigation(page: Page) {
   });
   if (await openButton.isVisible()) {
     await openButton.click();
+    await expectMobileNavigationState(page, true);
   }
 }
 
 async function selectPersona(page: Page, persona: string) {
   await openMobileNavigation(page);
   await page.getByLabel("Persona").selectOption(persona);
+  await expect(page.getByLabel("Persona")).toHaveValue(persona);
   if ((page.viewportSize()?.width ?? 0) <= 768) {
     const closeButton = page.getByRole("button", {
       name: "ナビゲーションを閉じる",
@@ -45,20 +88,19 @@ async function selectPersona(page: Page, persona: string) {
     if (await closeButton.isVisible()) {
       await closeButton.click();
     }
-    await expect(
-      page.getByRole("button", { name: "ナビゲーションを開く" }),
-    ).toBeVisible();
+    await expectMobileNavigationState(page, false);
   }
 }
 
 async function navigate(page: Page, name: RegExp) {
   await openMobileNavigation(page);
-  await page.getByRole("navigation").getByRole("button", { name }).click();
+  const routeButton = page
+    .getByRole("navigation")
+    .getByRole("button", { name });
+  await routeButton.click();
+  await expect(routeButton).toHaveAttribute("aria-pressed", "true");
   if ((page.viewportSize()?.width ?? 0) <= 768) {
-    await expect(
-      page.getByRole("button", { name: "ナビゲーションを開く" }),
-    ).toBeVisible();
-    await page.waitForTimeout(220);
+    await expectMobileNavigationState(page, false);
   }
 }
 
@@ -166,21 +208,35 @@ async function capture(
   testInfo: TestInfo,
   name: P2zVisualEvidenceScreen,
 ) {
-  observedCaptureScreens.add(name);
-
   if (!captureEvidence) {
     return;
   }
 
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(220);
+  await page.evaluate(() => window.scrollTo({ left: 0, top: 0 }));
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({ left: window.scrollX, top: window.scrollY })),
+    )
+    .toEqual({ left: 0, top: 0 });
+  await page.evaluate(() => document.fonts.ready);
+  await expect(page.locator(".app-root")).toBeVisible();
   await mkdir(evidenceDirectory, { recursive: true });
   const screenshot = await page.screenshot({
     path: path.join(evidenceDirectory, `${testInfo.project.name}-${name}.png`),
     fullPage: true,
   });
-  const viewportWidth = page.viewportSize()?.width;
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
   const devicePixelRatio = await page.evaluate(() => window.devicePixelRatio);
+  const currentCaptureGeometry = {
+    viewport: viewport ?? { width: 0, height: 0 },
+    deviceScaleFactor: devicePixelRatio,
+  };
+  if (measuredCaptureGeometry) {
+    expect(currentCaptureGeometry).toEqual(measuredCaptureGeometry);
+  } else {
+    measuredCaptureGeometry = currentCaptureGeometry;
+  }
   const geometryReport = await page.evaluate(() => ({
     bodyWidth: document.body.scrollWidth,
     documentWidth: document.documentElement.scrollWidth,
@@ -207,9 +263,8 @@ async function capture(
       .slice(0, 10),
   }));
 
-  expect(viewportWidth).toBeDefined();
   expect(screenshot.readUInt32BE(16), JSON.stringify(geometryReport)).toBe(
-    Math.round((viewportWidth ?? 0) * devicePixelRatio),
+    Math.round(currentCaptureGeometry.viewport.width * devicePixelRatio),
   );
 }
 
@@ -383,34 +438,66 @@ async function mockBoundedCollectionApis(page: Page) {
   });
 }
 
-test("matches the bounded practical-use visual contract", async ({
-  page,
-}, testInfo) => {
-  observedCaptureScreens.clear();
+async function openScenario(page: Page, persona: string, route: RegExp) {
   await mockBoundedCollectionApis(page);
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Fail-closed persona guard" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-
-  await selectPersona(page, "hr-operator");
-  await navigate(page, /Work queue/);
+  await selectPersona(page, persona);
   await expect(page.getByText("API contract connected")).toBeVisible();
+  await navigate(page, route);
+}
+
+test.afterAll(async ({}, testInfo) => {
+  if (!captureEvidence) {
+    return;
+  }
+
+  expect(p2zVisualEvidenceProjectNames).toContain(testInfo.project.name);
+  const project = testInfo.project.name as P2zVisualEvidenceProject;
+  if (!measuredCaptureGeometry) {
+    throw new Error(`missing measured capture geometry for ${project}`);
+  }
+  const provenance = await createP2zVisualEvidenceCaptureProvenance(
+    project,
+    measuredCaptureGeometry,
+    process.cwd(),
+    evidenceDirectory,
+  );
+  await writeFile(
+    path.join(
+      evidenceDirectory,
+      p2zVisualEvidenceCaptureProvenanceFile(project),
+    ),
+    `${JSON.stringify(provenance, null, 2)}\n`,
+    "utf8",
+  );
+});
+
+test("dashboard scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-operator", /Work queue/);
   await expect(
     page.getByRole("region", { name: "本日の業務サマリー" }),
   ).toBeVisible();
   await expect(page.getByText("今日と7日以内")).toBeVisible();
   await expect(page.getByRole("heading", { name: "連携状況" })).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.dashboard);
+  await capture(page, testInfo, isolatedScenarioScreens.dashboard);
+});
 
-  await navigate(page, /Employees/);
+test("employee list scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-operator", /Employees/);
   await expect(page.getByRole("heading", { name: "Employees" })).toBeVisible();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await assertRowActionsWithinViewport(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.employeeList);
+  await capture(page, testInfo, isolatedScenarioScreens.employeeList);
 
   await page.getByRole("textbox", { name: "組織コード" }).fill("DENIED");
   await page.getByRole("button", { name: "検索" }).click();
@@ -453,7 +540,13 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page).toHaveURL(/cursor=e2e-opaque-next-page/u);
   await page.getByRole("button", { name: "前のページへ" }).click();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
+});
 
+test("employee detail scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-operator", /Employees/);
+  await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
   await page
     .getByRole("button", { name: "Synthetic Employee 001の詳細を開く" })
     .click();
@@ -485,9 +578,13 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("button", { name: "異動手続きを開く" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.employeeDetail);
+  await capture(page, testInfo, isolatedScenarioScreens.employeeDetail);
+});
 
-  await navigate(page, /Procedures/);
+test("lifecycle list scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-operator", /Procedures/);
   await expect(page.getByRole("heading", { name: "Procedures" })).toBeVisible();
   for (const [subject, requestId, heading] of [
     ["Synthetic Onboarding Subject", "request-onboarding-001", "Onboarding"],
@@ -512,17 +609,29 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page).toHaveURL(/requestType=onboarding/u);
   await assertNoHorizontalOverflow(page);
   await assertRowActionsWithinViewport(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.lifecycleList);
+  await capture(page, testInfo, isolatedScenarioScreens.lifecycleList);
+});
 
-  await navigate(page, /Transfer/);
+test("transfer scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-operator", /Transfer/);
   await expect(
     page.getByRole("heading", { name: "Transfer", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("手続き進捗")).toBeVisible();
   await expect(page.getByText("Transfer impact preview")).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.transfer);
+  await capture(page, testInfo, isolatedScenarioScreens.transfer);
+});
 
+test("approval inbox scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-operator", /Transfer/);
+  await expect(
+    page.getByRole("heading", { name: "Transfer", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Create transfer request" }).click();
   await selectPersona(page, "approver");
   await navigate(page, /Approvals/);
@@ -533,42 +642,24 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "Transfer approvals" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.approvalInbox);
+  await capture(page, testInfo, isolatedScenarioScreens.approvalInbox);
+});
 
-  await selectPersona(page, "hr-ops-support");
-  await navigate(page, /Ops\/DLQ/);
+test("job monitor scenario matches the visual contract", async ({
+  page,
+}, testInfo) => {
+  await openScenario(page, "hr-ops-support", /Ops\/DLQ/);
   await expect(page.getByText("Recent runs")).toBeVisible();
   await expect(page.getByText("Failed items")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "DLQ decision" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, p2zVisualEvidenceScreens.jobMonitor);
-  expect([...observedCaptureScreens].sort()).toEqual(
+  await capture(page, testInfo, isolatedScenarioScreens.jobMonitor);
+});
+
+test("isolated scenario map covers the evidence screen contract", () => {
+  expect(Object.values(isolatedScenarioScreens).sort()).toEqual(
     [...p2zVisualEvidenceScreenNames].sort(),
   );
-
-  if (captureEvidence) {
-    expect(p2zVisualEvidenceProjectNames).toContain(testInfo.project.name);
-    const project = testInfo.project.name as P2zVisualEvidenceProject;
-    const viewport = page.viewportSize();
-    expect(viewport).not.toBeNull();
-    const provenance = await createP2zVisualEvidenceCaptureProvenance(
-      project,
-      {
-        viewport: viewport ?? { width: 0, height: 0 },
-        deviceScaleFactor: await page.evaluate(() => window.devicePixelRatio),
-      },
-      process.cwd(),
-      evidenceDirectory,
-    );
-    await writeFile(
-      path.join(
-        evidenceDirectory,
-        p2zVisualEvidenceCaptureProvenanceFile(project),
-      ),
-      `${JSON.stringify(provenance, null, 2)}\n`,
-      "utf8",
-    );
-  }
 });
