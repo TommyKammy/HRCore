@@ -386,6 +386,23 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   ] as const) {
     assert.ok(uat.includes(scenario), `${uatPath} must include ${scenario}`);
   }
+  for (const uatBoundary of [
+    "Formal human visual UAT verdict",
+    "Issue #406 close eligibility",
+    "Blocked pending the formal human verdict",
+    "GET /openapi.json",
+    "client-state",
+    "synthetic simulations",
+    "end-to-end workflow API integration",
+    "Overall human verdict: **Pending human execution**",
+    "Pending assignment",
+    "Run-specific Audit capture pending",
+  ] as const) {
+    assert.ok(
+      uat.includes(uatBoundary),
+      `${uatPath} must preserve UAT boundary: ${uatBoundary}`,
+    );
+  }
 
   for (const sourceSignal of [
     "DashboardView",

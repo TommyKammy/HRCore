@@ -1,8 +1,10 @@
 # P2Z WebUI Visual UAT Package
 
-Date: 2026-07-18  
-UAT scope: bounded/non-production visual and workflow rehearsal  
-Automated gate: Passed
+- Issue: #406
+- Package date: 2026-07-18
+- Boundary review date: 2026-08-01
+- UAT scope: bounded/non-production visual and workflow rehearsal
+- Automated gate: Passed
 
 ## Entry Verdict
 
@@ -12,6 +14,41 @@ P2Y synthetic workflows.
 
 This package is not HR practical-use readiness, production-like readiness, or
 go-live approval.
+
+## Verdict Boundary
+
+| Decision surface                | Current verdict                          |
+| ------------------------------- | ---------------------------------------- |
+| Automated visual UAT candidate  | Go                                       |
+| Formal human visual UAT verdict | Pending human execution                  |
+| Issue #406 close eligibility    | Blocked pending the formal human verdict |
+| Production-like readiness       | Blocked                                  |
+| Go-live approval                | Blocked                                  |
+
+The automated checks and repository-owned screenshots prepare the package for
+formal visual UAT, but they do not supply its verdict. Only the named human UAT
+tester may record `Accepted`, `Conditional`, or `Blocked` for each scenario and
+the overall verdict. Agent-prepared evidence must remain identified as
+preflight evidence and cannot unlock Issue #406 closeout.
+
+## Backend Integration Boundary
+
+- The local test runner uses `GET /health` only to confirm that the API process
+  is ready. The WebUI loads `GET /openapi.json` to render the API contract
+  connection status.
+- The later bounded P2LIST implementation connects the employee and lifecycle
+  list/detail screens, plus their explicitly allowlisted export actions, to
+  repository-owned synthetic/non-production APIs. Those routes retain their
+  server-owned authorization, scope, masking, cursor, and audit boundaries.
+- Onboarding, transfer, termination, approval, CSV dry-run, Ops/DLQ, Audit, and
+  support-review workflow mutations remain repository-owned client-state
+  synthetic simulations unless a scenario explicitly names a P2LIST API.
+- Persona selection remains a client-side visual/navigation boundary. It is not
+  production authentication or proof of server-side authorization.
+
+Consequently, this visual UAT validates bounded UI comprehension and workflow
+rehearsal. It must not be described as end-to-end workflow API integration,
+production authorization, or production-like readiness.
 
 ## Preconditions
 
@@ -58,6 +95,31 @@ Expected result:
 | P2Z-UAT-06 | HR Ops/support            | Audit             | Open Audit                                              | one exact correlation lookup and evidence timeline are visible                            |
 | P2Z-UAT-07 | Any bounded persona       | Mobile drawer     | Repeat at 390 x 844                                     | drawer opens explicitly, closes after route selection, and no primary action is lost      |
 | P2Z-UAT-08 | No persona                | Fail-closed entry | Reload without persona                                  | workflows remain hidden and the bounded reason is visible                                 |
+
+## Human Execution Record
+
+Overall human verdict: **Pending human execution**
+
+The named human tester must replace every pending field during one formal run
+against a recorded commit. `Actual result` must describe what the tester
+observed; `Evidence` must link the run-specific screenshot or trace rather than
+relying only on the automated reference image.
+
+| ID         | Human tester       | Execution date | Viewport | Persona                   | Expected result                          | Actual result           | Evidence                                                                                  | Scenario verdict |
+| ---------- | ------------------ | -------------- | -------- | ------------------------- | ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| P2Z-UAT-01 | Pending assignment | Pending        | 1440x900 | HR operator               | Dashboard structure is understandable    | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending       | Pending          |
+| P2Z-UAT-02 | Pending assignment | Pending        | 1440x900 | HR operator               | Employee detail remains masked and clear | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending | Pending          |
+| P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | Transfer steps and impact remain clear   | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
+| P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | Approval evidence and actions are clear  | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
+| P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Job and DLQ evidence is understandable   | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
+| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Exact audit lookup is understandable     | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
+| P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Bounded persona selected  | Drawer and primary actions remain usable | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
+| P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | Workflow content remains fail-closed     | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
+
+For each `blocker`, `must-fix`, or `post-UAT` result, create or link a GitHub
+Issue and record its number, owner, scope boundary, and disposition beside the
+scenario before assigning the overall verdict. If no finding exists, record
+`none observed` explicitly; do not leave the finding status implicit.
 
 ## Visual Review Checklist
 
@@ -135,4 +197,7 @@ For every finding capture:
 
 Bounded visual UAT is accepted only when blocker and must-fix counts are zero,
 all primary scenarios are completed, and any post-UAT backlog is recorded with
-an owner and scope boundary.
+an owner and scope boundary. The final human owner must then record the overall
+`Accepted`, `Conditional`, or `Blocked` verdict in Issue #406 and link it from
+the Obsidian P2Z plan. Automated or agent-prepared results cannot perform this
+step.
