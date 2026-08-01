@@ -460,6 +460,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "P2Z mobile navigation must wait for explicit drawer state",
   );
   assert.ok(
+    e2e.includes('page.getByText("API contract connected")') &&
+      e2e.includes("measuredCaptureGeometry"),
+    "P2Z isolated scenarios must wait for contract readiness and record measured capture geometry",
+  );
+  assert.ok(
     playwrightConfig.includes("p2zVisualEvidenceProjects"),
     "Playwright evidence projects must use the shared viewport contract",
   );

@@ -5,7 +5,6 @@ import { expect, type Page, test, type TestInfo } from "@playwright/test";
 
 import {
   p2zVisualEvidenceProjectNames,
-  p2zVisualEvidenceProjects,
   p2zVisualEvidenceScreenNames,
   p2zVisualEvidenceScreens,
   type P2zVisualEvidenceProject,
@@ -30,6 +29,12 @@ const isolatedScenarioScreens = {
   approvalInbox: p2zVisualEvidenceScreens.approvalInbox,
   jobMonitor: p2zVisualEvidenceScreens.jobMonitor,
 } as const;
+let measuredCaptureGeometry:
+  | {
+      viewport: { width: number; height: number };
+      deviceScaleFactor: number;
+    }
+  | undefined;
 
 async function expectMobileNavigationState(page: Page, open: boolean) {
   if ((page.viewportSize()?.width ?? 0) > 768) {
@@ -220,8 +225,18 @@ async function capture(
     path: path.join(evidenceDirectory, `${testInfo.project.name}-${name}.png`),
     fullPage: true,
   });
-  const viewportWidth = page.viewportSize()?.width;
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
   const devicePixelRatio = await page.evaluate(() => window.devicePixelRatio);
+  const currentCaptureGeometry = {
+    viewport: viewport ?? { width: 0, height: 0 },
+    deviceScaleFactor: devicePixelRatio,
+  };
+  if (measuredCaptureGeometry) {
+    expect(currentCaptureGeometry).toEqual(measuredCaptureGeometry);
+  } else {
+    measuredCaptureGeometry = currentCaptureGeometry;
+  }
   const geometryReport = await page.evaluate(() => ({
     bodyWidth: document.body.scrollWidth,
     documentWidth: document.documentElement.scrollWidth,
@@ -248,9 +263,8 @@ async function capture(
       .slice(0, 10),
   }));
 
-  expect(viewportWidth).toBeDefined();
   expect(screenshot.readUInt32BE(16), JSON.stringify(geometryReport)).toBe(
-    Math.round((viewportWidth ?? 0) * devicePixelRatio),
+    Math.round(currentCaptureGeometry.viewport.width * devicePixelRatio),
   );
 }
 
@@ -432,6 +446,7 @@ async function openScenario(page: Page, persona: string, route: RegExp) {
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await selectPersona(page, persona);
+  await expect(page.getByText("API contract connected")).toBeVisible();
   await navigate(page, route);
 }
 
@@ -442,13 +457,12 @@ test.afterAll(async ({}, testInfo) => {
 
   expect(p2zVisualEvidenceProjectNames).toContain(testInfo.project.name);
   const project = testInfo.project.name as P2zVisualEvidenceProject;
-  const captureContract = p2zVisualEvidenceProjects[project];
+  if (!measuredCaptureGeometry) {
+    throw new Error(`missing measured capture geometry for ${project}`);
+  }
   const provenance = await createP2zVisualEvidenceCaptureProvenance(
     project,
-    {
-      viewport: captureContract.viewport,
-      deviceScaleFactor: captureContract.deviceScaleFactor,
-    },
+    measuredCaptureGeometry,
     process.cwd(),
     evidenceDirectory,
   );
@@ -466,7 +480,6 @@ test("dashboard scenario matches the visual contract", async ({
   page,
 }, testInfo) => {
   await openScenario(page, "hr-operator", /Work queue/);
-  await expect(page.getByText("API contract connected")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "本日の業務サマリー" }),
   ).toBeVisible();
