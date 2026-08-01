@@ -54,16 +54,36 @@ production authorization, or production-like readiness.
 
 1. Use repository-owned synthetic/non-production fixtures only.
 2. Do not configure live provider credentials.
-3. Start the local API and WebUI:
+3. Record the exact tested commit in the Human Execution Record before starting:
 
    ```sh
+   git rev-parse HEAD
+   ```
+
+4. Generate the bounded P2LIST UAT dataset and environment files. This replaces
+   only `.local/p2list-uat/`:
+
+   ```sh
+   npm run setup:p2list:uat
+   ```
+
+5. Start the local API and WebUI in separate shells with the generated
+   server-owned actor registry and bounded browser tokens:
+
+   ```sh
+   source .local/p2list-uat/api-environment.sh
    npm run dev
+   ```
+
+   ```sh
+   source .local/p2list-uat/web-environment.sh
    npm run dev:web
    ```
 
-4. Open `http://127.0.0.1:5173`.
-5. Use the persona specified by each scenario.
-6. Use `EMP-000128` for bounded direct employee lookup.
+6. Open `http://127.0.0.1:5173`.
+7. Use the persona specified by each scenario. Browser persona selection does
+   not replace the generated API actor binding.
+8. Use `EMP-000128` for bounded direct employee lookup.
 
 ## Automated Gate
 
@@ -99,11 +119,16 @@ Expected result:
 ## Human Execution Record
 
 Overall human verdict: **Pending human execution**
+Tested commit: **Pending human execution**
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
 observed; `Evidence` must link the run-specific screenshot or trace rather than
 relying only on the automated reference image.
+
+The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
+or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
+or `Blocked`.
 
 | ID         | Human tester       | Execution date | Viewport | Persona                   | Expected result                          | Actual result           | Evidence                                                                                  | Scenario verdict |
 | ---------- | ------------------ | -------------- | -------- | ------------------------- | ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
@@ -116,10 +141,24 @@ relying only on the automated reference image.
 | P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Bounded persona selected  | Drawer and primary actions remain usable | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
 | P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | Workflow content remains fail-closed     | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
 
+## Scenario Finding Record
+
+| ID         | Finding status | Linked GitHub Issue | Owner   | Scope boundary | Disposition |
+| ---------- | -------------- | ------------------- | ------- | -------------- | ----------- |
+| P2Z-UAT-01 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-02 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-03 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-04 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-05 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-06 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-07 | Pending        | Pending             | Pending | Pending        | Pending     |
+| P2Z-UAT-08 | Pending        | Pending             | Pending | Pending        | Pending     |
+
 For each `blocker`, `must-fix`, or `post-UAT` result, create or link a GitHub
 Issue and record its number, owner, scope boundary, and disposition beside the
 scenario before assigning the overall verdict. If no finding exists, record
-`none observed` explicitly; do not leave the finding status implicit.
+`none observed` in `Finding status` and `not applicable` in the remaining
+finding fields; do not leave the finding status implicit.
 
 ## Visual Review Checklist
 

@@ -386,6 +386,50 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   ] as const) {
     assert.ok(uat.includes(scenario), `${uatPath} must include ${scenario}`);
   }
+  const humanRecordStart = uat.indexOf("## Human Execution Record");
+  const findingRecordStart = uat.indexOf("## Scenario Finding Record");
+  const visualChecklistStart = uat.indexOf("## Visual Review Checklist");
+  assert.ok(
+    humanRecordStart >= 0 &&
+      findingRecordStart > humanRecordStart &&
+      visualChecklistStart > findingRecordStart,
+    `${uatPath} must keep separate execution and finding records`,
+  );
+  const executionRecord = uat.slice(humanRecordStart, findingRecordStart);
+  const findingRecord = uat.slice(findingRecordStart, visualChecklistStart);
+  const normalizedExecutionRecord = executionRecord.replace(/\s+/gu, " ");
+  const normalizedFindingRecord = findingRecord.replace(/\s+/gu, " ");
+  for (const scenario of Array.from(
+    { length: 8 },
+    (_, index) => `P2Z-UAT-${String(index + 1).padStart(2, "0")}`,
+  )) {
+    assert.ok(
+      executionRecord.includes(scenario) && findingRecord.includes(scenario),
+      `${uatPath} must provide execution and finding fields for ${scenario}`,
+    );
+  }
+  assert.ok(
+    normalizedExecutionRecord.includes(
+      "| ID | Human tester | Execution date | Viewport | Persona | Expected result | Actual result | Evidence | Scenario verdict |",
+    ),
+    `${uatPath} must keep the human execution record structure`,
+  );
+  assert.ok(
+    normalizedFindingRecord.includes(
+      "| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Disposition |",
+    ),
+    `${uatPath} must keep per-scenario finding disposition fields`,
+  );
+  assert.match(
+    normalizedExecutionRecord,
+    /Overall human verdict: \*\*(?:Pending human execution|Accepted|Conditional|Blocked)\*\*/u,
+    `${uatPath} must allow pending or completed human verdicts`,
+  );
+  assert.match(
+    normalizedExecutionRecord,
+    /Tested commit: \*\*(?:Pending human execution|[0-9a-f]{40})\*\*/u,
+    `${uatPath} must bind a completed human run to a commit`,
+  );
   for (const uatBoundary of [
     "Formal human visual UAT verdict",
     "Issue #406 close eligibility",
@@ -394,9 +438,10 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "client-state",
     "synthetic simulations",
     "end-to-end workflow API integration",
-    "Overall human verdict: **Pending human execution**",
-    "Pending assignment",
-    "Run-specific Audit capture pending",
+    "git rev-parse HEAD",
+    "npm run setup:p2list:uat",
+    "source .local/p2list-uat/api-environment.sh",
+    "source .local/p2list-uat/web-environment.sh",
   ] as const) {
     assert.ok(
       uat.includes(uatBoundary),
