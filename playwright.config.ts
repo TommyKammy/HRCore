@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const reuseExistingServer = !process.env.CI;
+import { p2zVisualEvidenceProjects } from "./src/p2z-webui-visual-evidence-contract.js";
+
+const reuseExistingServer =
+  !process.env.CI && process.env.CAPTURE_WEB_EVIDENCE !== "1";
 
 export default defineConfig({
   testDir: "./web/e2e",
@@ -38,8 +41,12 @@ export default defineConfig({
     {
       name: "desktop-chromium",
       use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 1440, height: 900 },
+        ...devices[p2zVisualEvidenceProjects["desktop-chromium"].device],
+        viewport: {
+          ...p2zVisualEvidenceProjects["desktop-chromium"].viewport,
+        },
+        deviceScaleFactor:
+          p2zVisualEvidenceProjects["desktop-chromium"].deviceScaleFactor,
       },
     },
     {
@@ -52,16 +59,24 @@ export default defineConfig({
     {
       name: "tablet-chromium",
       use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 768, height: 1024 },
+        ...devices[p2zVisualEvidenceProjects["tablet-chromium"].device],
+        viewport: {
+          ...p2zVisualEvidenceProjects["tablet-chromium"].viewport,
+        },
+        deviceScaleFactor:
+          p2zVisualEvidenceProjects["tablet-chromium"].deviceScaleFactor,
       },
     },
     {
       name: "mobile-chromium",
       use: {
-        ...devices["iPhone 13"],
+        ...devices[p2zVisualEvidenceProjects["mobile-chromium"].device],
         browserName: "chromium",
-        viewport: { width: 390, height: 844 },
+        viewport: {
+          ...p2zVisualEvidenceProjects["mobile-chromium"].viewport,
+        },
+        deviceScaleFactor:
+          p2zVisualEvidenceProjects["mobile-chromium"].deviceScaleFactor,
       },
     },
   ],

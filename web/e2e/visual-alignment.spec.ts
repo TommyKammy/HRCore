@@ -1,13 +1,26 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, type Page, test, type TestInfo } from "@playwright/test";
 
+import {
+  p2zVisualEvidenceProjectNames,
+  p2zVisualEvidenceScreenNames,
+  p2zVisualEvidenceScreens,
+  type P2zVisualEvidenceProject,
+  type P2zVisualEvidenceScreen,
+} from "../../src/p2z-webui-visual-evidence-contract.js";
+import {
+  createP2zVisualEvidenceCaptureProvenance,
+  p2zVisualEvidenceCaptureProvenanceFile,
+} from "../../src/p2z-webui-visual-evidence-integrity.js";
+
 const captureEvidence = process.env.CAPTURE_WEB_EVIDENCE === "1";
-const evidenceDirectory = path.resolve(
-  process.cwd(),
-  "docs/evidence/p2z-webui",
-);
+const evidenceDirectory =
+  captureEvidence && process.env.P2Z_EVIDENCE_OUTPUT_DIRECTORY
+    ? path.resolve(process.env.P2Z_EVIDENCE_OUTPUT_DIRECTORY)
+    : path.resolve(process.cwd(), "docs/evidence/p2z-webui");
+const observedCaptureScreens = new Set<P2zVisualEvidenceScreen>();
 
 async function openMobileNavigation(page: Page) {
   if ((page.viewportSize()?.width ?? 0) > 768) {
@@ -148,7 +161,13 @@ async function assertRowActionsWithinViewport(page: Page) {
     .toBe(true);
 }
 
-async function capture(page: Page, testInfo: TestInfo, name: string) {
+async function capture(
+  page: Page,
+  testInfo: TestInfo,
+  name: P2zVisualEvidenceScreen,
+) {
+  observedCaptureScreens.add(name);
+
   if (!captureEvidence) {
     return;
   }
@@ -367,6 +386,7 @@ async function mockBoundedCollectionApis(page: Page) {
 test("matches the bounded practical-use visual contract", async ({
   page,
 }, testInfo) => {
+  observedCaptureScreens.clear();
   await mockBoundedCollectionApis(page);
   await page.goto("/");
   await expect(
@@ -383,14 +403,14 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page.getByText("今日と7日以内")).toBeVisible();
   await expect(page.getByRole("heading", { name: "連携状況" })).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "dashboard");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.dashboard);
 
   await navigate(page, /Employees/);
   await expect(page.getByRole("heading", { name: "Employees" })).toBeVisible();
   await expect(page.getByText("Synthetic Employee 001")).toBeVisible();
   await assertNoHorizontalOverflow(page);
   await assertRowActionsWithinViewport(page);
-  await capture(page, testInfo, "employee-list");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.employeeList);
 
   await page.getByRole("textbox", { name: "組織コード" }).fill("DENIED");
   await page.getByRole("button", { name: "検索" }).click();
@@ -446,8 +466,26 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(
     page.getByRole("heading", { name: "外部ID / 連携状態" }),
   ).toHaveCount(0);
+
+  await page
+    .getByRole("textbox", { name: "Bounded record ID" })
+    .fill("EMP-000128");
+  await page.getByRole("button", { name: "参照", exact: true }).click();
+  await page.reload();
+  await selectPersona(page, "hr-operator");
+  await expect(page.getByRole("heading", { name: "基本情報" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "履歴タイムライン" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "外部ID / 連携状態" }),
+  ).toBeVisible();
+  await expect(page.getByText("taro.yamada@***")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "異動手続きを開く" }),
+  ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "employee-detail");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.employeeDetail);
 
   await navigate(page, /Procedures/);
   await expect(page.getByRole("heading", { name: "Procedures" })).toBeVisible();
@@ -474,7 +512,7 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page).toHaveURL(/requestType=onboarding/u);
   await assertNoHorizontalOverflow(page);
   await assertRowActionsWithinViewport(page);
-  await capture(page, testInfo, "lifecycle-list");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.lifecycleList);
 
   await navigate(page, /Transfer/);
   await expect(
@@ -483,7 +521,7 @@ test("matches the bounded practical-use visual contract", async ({
   await expect(page.getByLabel("手続き進捗")).toBeVisible();
   await expect(page.getByText("Transfer impact preview")).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "transfer");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.transfer);
 
   await page.getByRole("button", { name: "Create transfer request" }).click();
   await selectPersona(page, "approver");
@@ -495,7 +533,7 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "Transfer approvals" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "approval-inbox");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.approvalInbox);
 
   await selectPersona(page, "hr-ops-support");
   await navigate(page, /Ops\/DLQ/);
@@ -505,5 +543,32 @@ test("matches the bounded practical-use visual contract", async ({
     page.getByRole("heading", { name: "DLQ decision" }),
   ).toBeVisible();
   await assertNoHorizontalOverflow(page);
-  await capture(page, testInfo, "job-monitor");
+  await capture(page, testInfo, p2zVisualEvidenceScreens.jobMonitor);
+  expect([...observedCaptureScreens].sort()).toEqual(
+    [...p2zVisualEvidenceScreenNames].sort(),
+  );
+
+  if (captureEvidence) {
+    expect(p2zVisualEvidenceProjectNames).toContain(testInfo.project.name);
+    const project = testInfo.project.name as P2zVisualEvidenceProject;
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    const provenance = await createP2zVisualEvidenceCaptureProvenance(
+      project,
+      {
+        viewport: viewport ?? { width: 0, height: 0 },
+        deviceScaleFactor: await page.evaluate(() => window.devicePixelRatio),
+      },
+      process.cwd(),
+      evidenceDirectory,
+    );
+    await writeFile(
+      path.join(
+        evidenceDirectory,
+        p2zVisualEvidenceCaptureProvenanceFile(project),
+      ),
+      `${JSON.stringify(provenance, null, 2)}\n`,
+      "utf8",
+    );
+  }
 });

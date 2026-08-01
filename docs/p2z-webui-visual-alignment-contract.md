@@ -2,6 +2,7 @@
 
 Date: 2026-07-18  
 Status: Implemented for bounded/non-production visual UAT
+Evidence contract version: `p2z-webui-visual-alignment-v1`
 
 ## Purpose
 
@@ -123,6 +124,23 @@ before visual evidence is accepted.
 
 Repository-owned screenshots and their regeneration command are documented in
 [`evidence/p2z-webui/README.md`](evidence/p2z-webui/README.md).
+Every committed P2Z evidence PNG is covered by
+[`evidence/p2z-webui/manifest.json`](evidence/p2z-webui/manifest.json). The
+manifest binds each image to this contract version, its Playwright
+project/viewport, the reproducible capture command, a SHA-256 digest, and a
+fingerprint of the complete non-test backend/WebUI runtime and capture source
+tree, limited to Git-tracked inputs. The repository guard combines strict PNG
+container and zlib-stream checks with a maintained decoder that reconstructs
+scanlines and validates palette indices and decoded pixels, and rejects
+symbolic links in the evidence tree.
+Capture freezes the source fingerprint before launching every contract-defined
+project, verifies the installed dependency tree against `package-lock.json`,
+rejects source drift before promotion, stages the complete run outside the
+repository, and promotes PNGs before per-project provenance only after the
+complete run succeeds. Those sidecars bind the screenshots to their individual
+content digests, the captured viewport height, device pixel ratio, source tree,
+and this contract's contents. Digest freshness detects unreviewed repository
+drift but does not replace human visual UAT or its verdict.
 
 ## Acceptance Verdict
 

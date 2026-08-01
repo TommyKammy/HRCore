@@ -3,6 +3,46 @@
 These screenshots are repository-owned evidence for the bounded/non-production
 P2Z visual UAT contract.
 
+The repository-owned [`manifest.json`](manifest.json) records every PNG exactly
+once with its Playwright project, viewport, reproducible capture command,
+`p2z-webui-visual-alignment-v1` contract version, and SHA-256 digest. The P2Z
+repository guard fails when a screenshot is missing, extra, renamed, or changed
+without a matching manifest update. The manifest also binds the evidence to a
+SHA-256 fingerprint of the current runtime WebUI source, capture specification,
+Playwright configuration, and locked dependency state so visual-source changes
+cannot leave stale screenshots green. The fingerprint conservatively covers
+all Git-tracked non-test runtime files under both `src` and `web/src`, avoiding
+a fragile hand-maintained transitive-import allowlist without making local
+scratch files part of committed provenance.
+
+The authoritative project/viewports and seven-screen inventory live in
+`src/p2z-webui-visual-evidence-contract.ts`. Playwright configuration, the
+capture test, the manifest updater, and the repository guard share that
+contract. The updater refuses to bless a missing, unexpected, renamed, or
+wrong-sized PNG, including files with uppercase `.PNG` extensions or nested
+evidence directories, and fails closed on symbolic links anywhere in the
+evidence tree. It performs strict container and zlib-stream checks, then uses
+the maintained `pngjs` decoder for scanline reconstruction, palette-index
+validation, and full pixel decoding before recording any digest.
+
+Each evidence project also writes a deterministic
+`*-capture-provenance.json` sidecar containing the captured viewport, device
+pixel ratio, exact screenshot inventory and SHA-256 digests, and source
+fingerprint. The capture wrapper derives every Playwright project from the
+shared contract, freezes the source fingerprint before starting Playwright,
+and rejects a run if the source or any staged provenance differs before
+promotion. It writes the projects to an isolated staging directory and promotes
+PNGs followed by provenance sidecars only after the complete run and exact
+staged inventory succeed. Manifest
+regeneration compares those digests with the current PNGs and rejects a stale
+or partially promoted sidecar. A
+viewport-height, source, dependency, or visual-contract change therefore
+requires `npm run capture:web:evidence` before the manifest can be updated. The
+fingerprint includes the served HRCore OpenAPI contract because its version is
+rendered in every capture. Capture mode also disables Playwright server reuse so
+evidence cannot come from another checkout already listening on the local
+ports.
+
 ## Viewports
 
 - `desktop-chromium-*`: 1440 x 900 CSS pixels
@@ -21,15 +61,34 @@ P2Z visual UAT contract.
 
 ## Regeneration
 
-Install Chromium once, then regenerate all evidence:
+Install the locked dependencies and Chromium, then regenerate all evidence:
 
 ```sh
+npm ci
 npx playwright install chromium
 npm run capture:web:evidence
 ```
 
-The capture test fails on missing visual anchors, horizontal overflow, or a
-mobile drawer that has not closed after navigation.
+The capture wrapper rejects an installed dependency tree that differs from
+`package-lock.json`. The capture test fails on missing visual anchors,
+horizontal overflow, or a mobile drawer that has not closed after navigation.
+
+## Intentional Regeneration Review
+
+When a visual change is intentional:
+
+1. Run `npm run capture:web:evidence`.
+2. Review every changed PNG against the P2Z visual alignment contract and
+   confirm that only repository-owned synthetic/non-production data appears.
+3. Record any visual-UAT finding in the owning issue; do not treat a matching
+   digest as visual acceptance.
+4. Run `npm run update:p2z:evidence-manifest` only after the image review.
+5. Review the PNG and `manifest.json` diff together, then run the focused P2Z
+   guard and `npm run verify:pre-pr`.
+
+The manifest intentionally has no generated timestamp. Identical evidence
+therefore produces a stable diff, while every image-content change requires an
+explicit digest update.
 
 The screenshots contain synthetic/non-production fixtures only. They are not
 evidence of real employee data access, live provider operation, production
