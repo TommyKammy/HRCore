@@ -432,8 +432,32 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   );
   assert.ok(
     e2e.includes("p2zVisualEvidenceScreens") &&
-      e2e.includes("observedCaptureScreens"),
-    "P2Z E2E must execute the shared authoritative evidence screen set",
+      e2e.includes("isolatedScenarioScreens"),
+    "P2Z E2E must map isolated scenarios to the authoritative evidence screen set",
+  );
+  assert.doesNotMatch(
+    e2e,
+    /waitForTimeout/u,
+    "P2Z E2E readiness must use observable application state instead of fixed sleeps",
+  );
+  for (const scenario of [
+    "dashboard",
+    "employee list",
+    "employee detail",
+    "lifecycle list",
+    "transfer",
+    "approval inbox",
+    "job monitor",
+  ] as const) {
+    assert.ok(
+      e2e.includes(`test(\"${scenario} scenario matches the visual contract\"`),
+      `P2Z E2E must isolate the ${scenario} scenario`,
+    );
+  }
+  assert.ok(
+    e2e.includes("expectMobileNavigationState") &&
+      e2e.includes('toHaveAttribute("aria-expanded"'),
+    "P2Z mobile navigation must wait for explicit drawer state",
   );
   assert.ok(
     playwrightConfig.includes("p2zVisualEvidenceProjects"),
