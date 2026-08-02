@@ -108,7 +108,7 @@ Expected result:
 | ID         | Persona                   | Screen            | Procedure                                               | Expected result                                                                           |
 | ---------- | ------------------------- | ----------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | P2Z-UAT-01 | HR operator               | Dashboard         | Select HR operator                                      | KPI, seven-day work queue, integration health, and recent drafts are visible              |
-| P2Z-UAT-02 | HR operator               | Employee detail   | Open Employees or look up `EMP-000128`                  | masked profile, lifecycle timeline, and external IDs are visible                          |
+| P2Z-UAT-02 | HR operator               | Employee detail   | Look up `EMP-000128`                                    | masked profile, lifecycle timeline, and external IDs are visible                          |
 | P2Z-UAT-03 | HR operator               | Transfer          | Open Transfer and inspect defaults                      | step 3/5, input, impact preview, validation, and request detail are visible               |
 | P2Z-UAT-04 | HR operator then Approver | Approval inbox    | Create transfer request, switch persona, open Approvals | selected transfer evidence and separated reject/return/approve/cancel actions are visible |
 | P2Z-UAT-05 | HR Ops/support            | Job monitor       | Open Ops/DLQ                                            | runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible          |
@@ -128,18 +128,19 @@ relying only on the automated reference image.
 
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
-or `Blocked`.
+or `Blocked`. A non-pending overall verdict requires a 40-character tested
+commit and no `Pending` values in either record.
 
-| ID         | Human tester       | Execution date | Viewport | Persona                   | Expected result                          | Actual result           | Evidence                                                                                  | Scenario verdict |
-| ---------- | ------------------ | -------------- | -------- | ------------------------- | ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
-| P2Z-UAT-01 | Pending assignment | Pending        | 1440x900 | HR operator               | Dashboard structure is understandable    | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending       | Pending          |
-| P2Z-UAT-02 | Pending assignment | Pending        | 1440x900 | HR operator               | Employee detail remains masked and clear | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending | Pending          |
-| P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | Transfer steps and impact remain clear   | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
-| P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | Approval evidence and actions are clear  | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
-| P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Job and DLQ evidence is understandable   | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
-| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Exact audit lookup is understandable     | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
-| P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Bounded persona selected  | Drawer and primary actions remain usable | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
-| P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | Workflow content remains fail-closed     | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
+| ID         | Human tester       | Execution date | Viewport | Persona                   | Expected result                                                  | Actual result           | Evidence                                                                                  | Scenario verdict |
+| ---------- | ------------------ | -------------- | -------- | ------------------------- | ---------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| P2Z-UAT-01 | Pending assignment | Pending        | 1440x900 | HR operator               | Dashboard structure is understandable                            | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending       | Pending          |
+| P2Z-UAT-02 | Pending assignment | Pending        | 1440x900 | HR operator               | Masked profile, lifecycle timeline, and external IDs are visible | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending | Pending          |
+| P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | Transfer steps and impact remain clear                           | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
+| P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | Approval evidence and actions are clear                          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
+| P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Job and DLQ evidence is understandable                           | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
+| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Exact audit lookup is understandable                             | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
+| P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Pending actual persona    | Drawer and primary actions remain usable                         | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
+| P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | Workflow content remains fail-closed                             | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
 
 ## Scenario Finding Record
 

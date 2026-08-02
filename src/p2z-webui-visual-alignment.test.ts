@@ -399,6 +399,12 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   const findingRecord = uat.slice(findingRecordStart, visualChecklistStart);
   const normalizedExecutionRecord = executionRecord.replace(/\s+/gu, " ");
   const normalizedFindingRecord = findingRecord.replace(/\s+/gu, " ");
+  const executionRows = executionRecord
+    .split("\n")
+    .filter((line) => /^\| P2Z-UAT-\d{2} \|/u.test(line));
+  const findingRows = findingRecord
+    .split("\n")
+    .filter((line) => /^\| P2Z-UAT-\d{2} \|/u.test(line));
   for (const scenario of Array.from(
     { length: 8 },
     (_, index) => `P2Z-UAT-${String(index + 1).padStart(2, "0")}`,
@@ -420,16 +426,28 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     ),
     `${uatPath} must keep per-scenario finding disposition fields`,
   );
-  assert.match(
-    normalizedExecutionRecord,
-    /Overall human verdict: \*\*(?:Pending human execution|Accepted|Conditional|Blocked)\*\*/u,
-    `${uatPath} must allow pending or completed human verdicts`,
-  );
-  assert.match(
-    normalizedExecutionRecord,
-    /Tested commit: \*\*(?:Pending human execution|[0-9a-f]{40})\*\*/u,
-    `${uatPath} must bind a completed human run to a commit`,
-  );
+  const overallVerdict = normalizedExecutionRecord.match(
+    /Overall human verdict: \*\*(Pending human execution|Accepted|Conditional|Blocked)\*\*/u,
+  )?.[1];
+  assert.ok(overallVerdict, `${uatPath} must record the overall human verdict`);
+  const testedCommit = normalizedExecutionRecord.match(
+    /Tested commit: \*\*(Pending human execution|[0-9a-f]{40})\*\*/u,
+  )?.[1];
+  assert.ok(testedCommit, `${uatPath} must record the tested commit`);
+  if (overallVerdict !== "Pending human execution") {
+    assert.match(
+      testedCommit,
+      /^[0-9a-f]{40}$/u,
+      `${uatPath} must bind a completed human run to a commit`,
+    );
+    for (const row of [...executionRows, ...findingRows]) {
+      assert.doesNotMatch(
+        row,
+        /\bPending\b/iu,
+        `${uatPath} must replace every pending field before final verdict`,
+      );
+    }
+  }
   for (const uatBoundary of [
     "Formal human visual UAT verdict",
     "Issue #406 close eligibility",
