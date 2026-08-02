@@ -440,12 +440,42 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
       /^[0-9a-f]{40}$/u,
       `${uatPath} must bind a completed human run to a commit`,
     );
-    for (const row of [...executionRows, ...findingRows]) {
+    for (const row of executionRows) {
       assert.doesNotMatch(
         row,
         /\bPending\b/iu,
         `${uatPath} must replace every pending field before final verdict`,
       );
+      const scenarioVerdict = row
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+        .at(-1);
+      assert.match(
+        scenarioVerdict ?? "",
+        /^(?:Accepted|Conditional|Blocked)$/u,
+        `${uatPath} must use a supported completed scenario verdict`,
+      );
+    }
+    for (const row of findingRows) {
+      assert.doesNotMatch(
+        row,
+        /\bPending\b/iu,
+        `${uatPath} must replace every pending field before final verdict`,
+      );
+    }
+    if (overallVerdict === "Accepted") {
+      for (const row of findingRows) {
+        const findingStatus = row
+          .split("|")
+          .slice(1, -1)
+          .map((cell) => cell.trim())[1];
+        assert.doesNotMatch(
+          findingStatus ?? "",
+          /\b(?:blocker|must-fix)\b/iu,
+          `${uatPath} cannot be accepted with blocking findings`,
+        );
+      }
     }
   }
   for (const uatBoundary of [
