@@ -440,6 +440,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
       /^[0-9a-f]{40}$/u,
       `${uatPath} must bind a completed human run to a commit`,
     );
+    const scenarioVerdicts: string[] = [];
     for (const row of executionRows) {
       assert.doesNotMatch(
         row,
@@ -456,22 +457,61 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
         /^(?:Accepted|Conditional|Blocked)$/u,
         `${uatPath} must use a supported completed scenario verdict`,
       );
+      scenarioVerdicts.push(scenarioVerdict ?? "");
     }
+    const findingStatuses: string[] = [];
     for (const row of findingRows) {
       assert.doesNotMatch(
         row,
         /\bPending\b/iu,
         `${uatPath} must replace every pending field before final verdict`,
       );
-    }
-    if (overallVerdict === "Accepted") {
-      for (const row of findingRows) {
-        const findingStatus = row
+      const [, findingStatus, linkedIssue, owner, scopeBoundary, disposition] =
+        row
           .split("|")
           .slice(1, -1)
-          .map((cell) => cell.trim())[1];
+          .map((cell) => cell.trim());
+      assert.match(
+        findingStatus ?? "",
+        /^(?:none observed|blocker|must-fix|post-UAT)$/u,
+        `${uatPath} must use a supported finding status`,
+      );
+      findingStatuses.push(findingStatus ?? "");
+      const findingMetadata = [linkedIssue, owner, scopeBoundary, disposition];
+      if (findingStatus === "none observed") {
+        for (const value of findingMetadata) {
+          assert.equal(
+            value,
+            "not applicable",
+            `${uatPath} must mark clean finding metadata not applicable`,
+          );
+        }
+      } else {
+        assert.match(
+          linkedIssue ?? "",
+          /(?:#\d+|\/issues\/\d+)/u,
+          `${uatPath} must link an Issue for each recorded finding`,
+        );
+        for (const value of [owner, scopeBoundary, disposition]) {
+          assert.doesNotMatch(
+            value ?? "",
+            /^(?:|not applicable|n\/a|none|tbd|unknown)$/iu,
+            `${uatPath} must record finding ownership and disposition metadata`,
+          );
+        }
+      }
+    }
+    if (overallVerdict === "Accepted") {
+      for (const scenarioVerdict of scenarioVerdicts) {
+        assert.notEqual(
+          scenarioVerdict,
+          "Blocked",
+          `${uatPath} cannot be accepted with a blocked scenario`,
+        );
+      }
+      for (const findingStatus of findingStatuses) {
         assert.doesNotMatch(
-          findingStatus ?? "",
+          findingStatus,
           /\b(?:blocker|must-fix)\b/iu,
           `${uatPath} cannot be accepted with blocking findings`,
         );
