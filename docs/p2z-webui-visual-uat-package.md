@@ -124,7 +124,9 @@ Tested commit: **Pending human execution**
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
 observed; `Evidence` must link the run-specific screenshot or trace rather than
-relying only on the automated reference image.
+relying only on the automated reference image. Use either a repository path
+under `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`
+or a GitHub `user-attachments/assets` URL for each run artifact.
 
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,

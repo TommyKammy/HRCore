@@ -374,7 +374,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     assert.ok(contract.includes(boundary), `missing P2Z boundary: ${boundary}`);
   }
 
-  for (const scenario of [
+  const expectedScenarios = [
     "P2Z-UAT-01",
     "P2Z-UAT-02",
     "P2Z-UAT-03",
@@ -383,9 +383,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "P2Z-UAT-06",
     "P2Z-UAT-07",
     "P2Z-UAT-08",
-  ] as const) {
-    assert.ok(uat.includes(scenario), `${uatPath} must include ${scenario}`);
-  }
+  ] as const;
   const humanRecordStart = uat.indexOf("## Human Execution Record");
   const findingRecordStart = uat.indexOf("## Scenario Finding Record");
   const visualChecklistStart = uat.indexOf("## Visual Review Checklist");
@@ -408,13 +406,15 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   const findingRows = findingRecord
     .split("\n")
     .filter((line) => /^\| P2Z-UAT-\d{2} \|/u.test(line));
-  for (const scenario of Array.from(
-    { length: 8 },
-    (_, index) => `P2Z-UAT-${String(index + 1).padStart(2, "0")}`,
-  )) {
-    assert.ok(
-      executionRecord.includes(scenario) && findingRecord.includes(scenario),
-      `${uatPath} must provide execution and finding fields for ${scenario}`,
+  for (const [recordName, rows] of [
+    ["execution", executionRows],
+    ["finding", findingRows],
+  ] as const) {
+    const rowIds = rows.map((row) => row.split("|")[1]?.trim());
+    assert.deepEqual(
+      [...rowIds].sort(),
+      [...expectedScenarios].sort(),
+      `${uatPath} must provide exactly one ${recordName} row per scenario`,
     );
   }
   assert.ok(
@@ -474,11 +474,10 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
         (match) => match[1],
       );
       assert.ok(
-        evidenceTargets.some(
-          (target) =>
-            !/^evidence\/p2z-webui\/(?:README\.md|(?:desktop|tablet|mobile)-chromium-[^)]+\.png)$/u.test(
-              target,
-            ),
+        evidenceTargets.some((target) =>
+          /^(?:evidence\/p2z-webui\/runs\/[0-9a-f]{40}\/P2Z-UAT-\d{2}\.(?:png|jpe?g|webp|json|zip|txt|md)|https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+)$/u.test(
+            target ?? "",
+          ),
         ),
         `${uatPath} must link run-specific evidence for every scenario`,
       );
