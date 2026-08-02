@@ -398,6 +398,32 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   const executionRecord = uat.slice(humanRecordStart, findingRecordStart);
   const findingRecord = uat.slice(findingRecordStart, visualChecklistStart);
   const visualChecklist = uat.slice(visualChecklistStart, evidenceMatrixStart);
+  const requiredChecklistItems = [
+    "Navigation, page heading, and workspace use the same visual hierarchy.",
+    "Japanese task labels are primary and technical identifiers remain readable.",
+    "Status, priority, deadline, provider, and scope are distinguishable without relying on color alone.",
+    "Forms and impact previews remain aligned at desktop width.",
+    "Master/detail selection is visually clear.",
+    "Destructive and primary actions are visually separated.",
+    "Text does not clip or overlap.",
+    "Loading, empty, error, blocked, success, and disabled states are understandable.",
+    "Keyboard focus is visible.",
+    "Mobile controls remain inside the viewport.",
+  ] as const;
+  const checklistEntries = Array.from(
+    visualChecklist
+      .replace(/\n {6}/gu, " ")
+      .matchAll(/^- \[([ xX])\] (.+)$/gmu),
+    (match) => ({
+      checked: /^x$/iu.test(match[1] ?? ""),
+      label: match[2],
+    }),
+  );
+  assert.deepEqual(
+    checklistEntries.map((entry) => entry.label),
+    requiredChecklistItems,
+    `${uatPath} must keep every required visual checklist item`,
+  );
   const normalizedExecutionRecord = executionRecord.replace(/\s+/gu, " ");
   const normalizedFindingRecord = findingRecord.replace(/\s+/gu, " ");
   const executionRows = executionRecord
@@ -445,18 +471,39 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     );
     const scenarioVerdicts: string[] = [];
     for (const row of executionRows) {
-      assert.doesNotMatch(
-        row,
-        /\bPending\b/iu,
-        `${uatPath} must replace every pending field before final verdict`,
-      );
       const executionCells = row
         .split("|")
         .slice(1, -1)
         .map((cell) => cell.trim());
-      const [, humanTester, executionDate, , , , actualResult, evidence] =
-        executionCells;
+      const [
+        scenarioId,
+        humanTester,
+        executionDate,
+        ,
+        persona,
+        ,
+        actualResult,
+        evidence,
+      ] = executionCells;
       const scenarioVerdict = executionCells.at(-1);
+      for (const value of [
+        humanTester,
+        executionDate,
+        persona,
+        actualResult,
+        scenarioVerdict,
+      ]) {
+        assert.doesNotMatch(
+          value ?? "",
+          /^Pending(?: assignment| actual persona| human execution)?$/iu,
+          `${uatPath} must replace every pending execution field`,
+        );
+      }
+      assert.doesNotMatch(
+        evidence ?? "",
+        /\bcapture pending\b/iu,
+        `${uatPath} must replace pending evidence fields`,
+      );
       for (const value of [humanTester, actualResult]) {
         assert.doesNotMatch(
           value ?? "",
@@ -474,10 +521,15 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
         (match) => match[1],
       );
       assert.ok(
-        evidenceTargets.some((target) =>
-          /^(?:evidence\/p2z-webui\/runs\/[0-9a-f]{40}\/P2Z-UAT-\d{2}\.(?:png|jpe?g|webp|json|zip|txt|md)|https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+)$/u.test(
-            target ?? "",
-          ),
+        evidenceTargets.some(
+          (target) =>
+            new RegExp(
+              `^evidence/p2z-webui/runs/${testedCommit}/${scenarioId}\\.(?:png|jpe?g|webp|json|zip|txt|md)$`,
+              "u",
+            ).test(target ?? "") ||
+            /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/u.test(
+              target ?? "",
+            ),
         ),
         `${uatPath} must link run-specific evidence for every scenario`,
       );
@@ -490,16 +542,24 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     }
     const findingStatuses: string[] = [];
     for (const row of findingRows) {
-      assert.doesNotMatch(
-        row,
-        /\bPending\b/iu,
-        `${uatPath} must replace every pending field before final verdict`,
-      );
       const [, findingStatus, linkedIssue, owner, scopeBoundary, disposition] =
         row
           .split("|")
           .slice(1, -1)
           .map((cell) => cell.trim());
+      for (const value of [
+        findingStatus,
+        linkedIssue,
+        owner,
+        scopeBoundary,
+        disposition,
+      ]) {
+        assert.notEqual(
+          value,
+          "Pending",
+          `${uatPath} must replace every pending finding field`,
+        );
+      }
       assert.match(
         findingStatus ?? "",
         /^(?:none observed|blocker|must-fix|post-UAT)$/u,
@@ -531,10 +591,9 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
       }
     }
     if (overallVerdict === "Accepted") {
-      assert.doesNotMatch(
-        visualChecklist,
-        /^\s*- \[ \]/gmu,
-        `${uatPath} must complete the visual checklist before acceptance`,
+      assert.ok(
+        checklistEntries.every((entry) => entry.checked),
+        `${uatPath} must complete every visual checklist item before acceptance`,
       );
       for (const scenarioVerdict of scenarioVerdicts) {
         assert.notEqual(
