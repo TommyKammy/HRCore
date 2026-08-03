@@ -139,6 +139,10 @@ or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
 and no `Pending` values in either record. `Blocked` requires the tested commit,
 a completed `Blocked` scenario, and its `blocker` finding; later scenario and
 finding rows may remain pending because the run stops at that blocker.
+Before execution, `Pending human execution` may use either the initial pending
+commit placeholder or the 40-character commit recorded in precondition 3. Its
+scenario verdicts, finding rows, and checklist remain pending until the formal
+verdict is recorded.
 
 | ID         | Human tester       | Execution date | Viewport | Persona                   | Expected result                                                  | Actual result           | Evidence                                                                                  | Scenario verdict |
 | ---------- | ------------------ | -------------- | -------- | ------------------------- | ---------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |

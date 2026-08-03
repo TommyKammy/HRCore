@@ -9,6 +9,69 @@ export const p2zVisualUatScenarioIds = [
   "P2Z-UAT-08",
 ] as const;
 
+type P2zVisualUatScenarioId = (typeof p2zVisualUatScenarioIds)[number];
+
+const p2zVisualUatScenarioContracts: Record<
+  P2zVisualUatScenarioId,
+  {
+    viewport: string;
+    persona: string | "Any bounded persona";
+    expectedResult: string;
+  }
+> = {
+  "P2Z-UAT-01": {
+    viewport: "1440x900",
+    persona: "HR operator",
+    expectedResult: "Dashboard structure is understandable",
+  },
+  "P2Z-UAT-02": {
+    viewport: "1440x900",
+    persona: "HR operator",
+    expectedResult:
+      "Masked profile, lifecycle timeline, and external IDs are visible",
+  },
+  "P2Z-UAT-03": {
+    viewport: "1440x900",
+    persona: "HR operator",
+    expectedResult: "Transfer steps and impact remain clear",
+  },
+  "P2Z-UAT-04": {
+    viewport: "1440x900",
+    persona: "HR operator then Approver",
+    expectedResult: "Approval evidence and actions are clear",
+  },
+  "P2Z-UAT-05": {
+    viewport: "1440x900",
+    persona: "HR Ops/support",
+    expectedResult: "Job and DLQ evidence is understandable",
+  },
+  "P2Z-UAT-06": {
+    viewport: "1440x900",
+    persona: "HR Ops/support",
+    expectedResult: "Exact audit lookup is understandable",
+  },
+  "P2Z-UAT-07": {
+    viewport: "390x844",
+    persona: "Any bounded persona",
+    expectedResult: "Drawer and primary actions remain usable",
+  },
+  "P2Z-UAT-08": {
+    viewport: "1440x900",
+    persona: "No persona",
+    expectedResult: "Workflow content remains fail-closed",
+  },
+};
+
+const boundedPersonas = new Set(["HR operator", "Approver", "HR Ops/support"]);
+
+const p2zVisualUatDecisionSurfaces = [
+  "Automated visual UAT candidate",
+  "Formal human visual UAT verdict",
+  "Issue #406 close eligibility",
+  "Production-like readiness",
+  "Go-live approval",
+] as const;
+
 export const p2zVisualUatChecklistItems = [
   "Navigation, page heading, and workspace use the same visual hierarchy.",
   "Japanese task labels are primary and technical identifiers remain readable.",
@@ -89,6 +152,12 @@ const closeEligibilityByVerdict = new Map<P2zVisualUatOverallVerdict, string>([
   ["Accepted", "Eligible after evidence linkage"],
   ["Conditional", "Blocked pending named conditions"],
   ["Blocked", "Blocked by the formal human verdict"],
+]);
+
+const fixedDecisionSurfaceVerdicts = new Map([
+  ["Automated visual UAT candidate", "Go"],
+  ["Production-like readiness", "Blocked"],
+  ["Go-live approval", "Blocked"],
 ]);
 
 function markdownCells(line: string): string[] {
@@ -180,9 +249,14 @@ function validateCompletedExecutionRow(
   evidenceTargets: Set<string>,
   issues: string[],
 ): void {
-  const expectedViewport = row.id === "P2Z-UAT-07" ? "390x844" : "1440x900";
-  if (row.viewport !== expectedViewport) {
-    issues.push(`${row.id} must use viewport ${expectedViewport}`);
+  const scenario =
+    p2zVisualUatScenarioContracts[row.id as P2zVisualUatScenarioId];
+  if (!scenario) {
+    issues.push(`${row.id} must identify a supported UAT scenario`);
+    return;
+  }
+  if (row.viewport !== scenario.viewport) {
+    issues.push(`${row.id} must use viewport ${scenario.viewport}`);
   }
   if (!isSubstantive(row.humanTester)) {
     issues.push(`${row.id} must identify the human tester`);
@@ -190,11 +264,15 @@ function validateCompletedExecutionRow(
   if (!isIsoDate(row.executionDate)) {
     issues.push(`${row.id} must record a valid ISO execution date`);
   }
-  if (!isSubstantive(row.persona)) {
-    issues.push(`${row.id} must record the concrete persona`);
+  if (scenario.persona === "Any bounded persona") {
+    if (!boundedPersonas.has(row.persona)) {
+      issues.push(`${row.id} must record a concrete bounded persona`);
+    }
+  } else if (row.persona !== scenario.persona) {
+    issues.push(`${row.id} must use persona ${scenario.persona}`);
   }
-  if (!row.expectedResult) {
-    issues.push(`${row.id} must retain its expected result`);
+  if (row.expectedResult !== scenario.expectedResult) {
+    issues.push(`${row.id} must retain its documented expected result`);
   }
   if (!isSubstantive(row.actualResult)) {
     issues.push(`${row.id} must record the actual result`);
@@ -300,12 +378,22 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
   )?.[1];
   if (!testedCommit) issues.push("must record the tested commit");
 
+  const verdictBoundaryRows = verdictSection
+    .split("\n")
+    .filter((line) => /^\| .+ \| .+ \|$/u.test(line))
+    .map((line) => markdownCells(line))
+    .filter(
+      ([surface]) =>
+        surface !== "Decision surface" && !/^:?-+:?$/u.test(surface ?? ""),
+    );
+  if (
+    JSON.stringify(verdictBoundaryRows.map(([surface]) => surface)) !==
+    JSON.stringify(p2zVisualUatDecisionSurfaces)
+  ) {
+    issues.push("must keep the exact ordered verdict boundary surfaces");
+  }
   const verdictBoundary = new Map(
-    verdictSection
-      .split("\n")
-      .filter((line) => /^\| .+ \| .+ \|$/u.test(line))
-      .map((line) => markdownCells(line))
-      .map(([surface, verdict]) => [surface, verdict]),
+    verdictBoundaryRows.map(([surface, verdict]) => [surface, verdict]),
   );
   if (overallVerdict) {
     if (
@@ -320,6 +408,11 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
       issues.push(
         "Issue #406 close eligibility must match the overall verdict",
       );
+    }
+    for (const [surface, verdict] of fixedDecisionSurfaceVerdicts) {
+      if (verdictBoundary.get(surface) !== verdict) {
+        issues.push(`${surface} must remain ${verdict}`);
+      }
     }
   }
 
@@ -367,8 +460,30 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
 
   if (!overallVerdict || !testedCommit) return issues;
   if (overallVerdict === "Pending human execution") {
-    if (testedCommit !== "Pending human execution") {
-      issues.push("pending UAT must keep the tested commit pending");
+    if (
+      testedCommit !== "Pending human execution" &&
+      !/^[0-9a-f]{40}$/u.test(testedCommit)
+    ) {
+      issues.push(
+        "pending UAT must use a pending or 40-character tested commit",
+      );
+    }
+    if (executionRows.some((row) => row.verdict !== "Pending")) {
+      issues.push("pending UAT must keep every scenario verdict pending");
+    }
+    if (
+      findingRows.some(
+        (row) =>
+          row.status !== "Pending" ||
+          [row.linkedIssue, row.owner, row.scopeBoundary, row.disposition].some(
+            (value) => value !== "Pending",
+          ),
+      )
+    ) {
+      issues.push("pending UAT must keep every finding row pending");
+    }
+    if (checklist.some((entry) => entry.checked)) {
+      issues.push("pending UAT must keep the checklist incomplete");
     }
     return issues;
   }

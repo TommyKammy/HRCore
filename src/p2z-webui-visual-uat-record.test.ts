@@ -36,6 +36,9 @@ type UatFixture = {
   commit: string;
   boundaryVerdict: string;
   closeEligibility: string;
+  automatedCandidate: string;
+  productionReadiness: string;
+  goLiveApproval: string;
   executions: ExecutionFixture[];
   findings: FindingFixture[];
   checklist: Array<{ checked: boolean; label: string }>;
@@ -45,18 +48,34 @@ function completedExecution(
   id: string,
   verdict = "Accepted",
 ): ExecutionFixture {
+  const personaByScenario: Record<string, string> = {
+    "P2Z-UAT-01": "HR operator",
+    "P2Z-UAT-02": "HR operator",
+    "P2Z-UAT-03": "HR operator",
+    "P2Z-UAT-04": "HR operator then Approver",
+    "P2Z-UAT-05": "HR Ops/support",
+    "P2Z-UAT-06": "HR Ops/support",
+    "P2Z-UAT-07": "HR operator",
+    "P2Z-UAT-08": "No persona",
+  };
+  const expectedResultByScenario: Record<string, string> = {
+    "P2Z-UAT-01": "Dashboard structure is understandable",
+    "P2Z-UAT-02":
+      "Masked profile, lifecycle timeline, and external IDs are visible",
+    "P2Z-UAT-03": "Transfer steps and impact remain clear",
+    "P2Z-UAT-04": "Approval evidence and actions are clear",
+    "P2Z-UAT-05": "Job and DLQ evidence is understandable",
+    "P2Z-UAT-06": "Exact audit lookup is understandable",
+    "P2Z-UAT-07": "Drawer and primary actions remain usable",
+    "P2Z-UAT-08": "Workflow content remains fail-closed",
+  };
   return {
     id,
     tester: "Named Tester",
     date: "2026-08-03",
     viewport: id === "P2Z-UAT-07" ? "390x844" : "1440x900",
-    persona:
-      id === "P2Z-UAT-08"
-        ? "No persona"
-        : id === "P2Z-UAT-07"
-          ? "HR operator"
-          : "HR operator",
-    expected: `Expected result for ${id}`,
+    persona: personaByScenario[id] ?? "",
+    expected: expectedResultByScenario[id] ?? "",
     actual:
       id === "P2Z-UAT-06"
         ? "Approval pending is displayed as observed"
@@ -118,6 +137,11 @@ function pendingFinding(id: string): FindingFixture {
 }
 
 function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
+  const permanentBoundary = {
+    automatedCandidate: "Go",
+    productionReadiness: "Blocked",
+    goLiveApproval: "Blocked",
+  };
   const checklist = p2zVisualUatChecklistItems.map((label) => ({
     checked: overall !== "Pending human execution" && overall !== "Blocked",
     label,
@@ -128,6 +152,7 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
       commit: "Pending human execution",
       boundaryVerdict: overall,
       closeEligibility: "Blocked pending the formal human verdict",
+      ...permanentBoundary,
       executions: p2zVisualUatScenarioIds.map(pendingExecution),
       findings: p2zVisualUatScenarioIds.map(pendingFinding),
       checklist,
@@ -150,6 +175,7 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
       commit: testedCommit,
       boundaryVerdict: overall,
       closeEligibility: "Blocked pending named conditions",
+      ...permanentBoundary,
       executions,
       findings,
       checklist,
@@ -175,6 +201,7 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
       commit: testedCommit,
       boundaryVerdict: overall,
       closeEligibility: "Blocked by the formal human verdict",
+      ...permanentBoundary,
       executions,
       findings,
       checklist,
@@ -185,6 +212,7 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
     commit: testedCommit,
     boundaryVerdict: overall,
     closeEligibility: "Eligible after evidence linkage",
+    ...permanentBoundary,
     executions: p2zVisualUatScenarioIds.map((id) => completedExecution(id)),
     findings: p2zVisualUatScenarioIds.map(cleanFinding),
     checklist,
@@ -213,8 +241,11 @@ function renderFixture(input: UatFixture): string {
 
 | Decision surface | Current verdict |
 | --- | --- |
+| Automated visual UAT candidate | ${input.automatedCandidate} |
 | Formal human visual UAT verdict | ${input.boundaryVerdict} |
 | Issue #406 close eligibility | ${input.closeEligibility} |
+| Production-like readiness | ${input.productionReadiness} |
+| Go-live approval | ${input.goLiveApproval} |
 
 ## Backend Integration Boundary
 
@@ -263,6 +294,12 @@ test("P2Z visual UAT record accepts each documented state", () => {
 test("P2Z visual UAT record accepts literal pending UI copy in observations", () => {
   const input = fixture("Accepted");
   input.executions[5]!.actual = "Approval pending is displayed as observed";
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
+test("P2Z visual UAT record accepts the tested commit before execution", () => {
+  const input = fixture("Pending human execution");
+  input.commit = testedCommit;
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
@@ -316,12 +353,69 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must use viewport 390x844/u,
   });
 
+  const wrongFixedPersona = fixture("Accepted");
+  wrongFixedPersona.executions[7]!.persona = "HR operator";
+  cases.push({
+    name: "wrong persona for the fail-closed scenario",
+    input: wrongFixedPersona,
+    expected: /must use persona No persona/u,
+  });
+
+  const missingBoundedPersona = fixture("Accepted");
+  missingBoundedPersona.executions[6]!.persona = "Unknown actor";
+  cases.push({
+    name: "mobile scenario without a bounded persona",
+    input: missingBoundedPersona,
+    expected: /must record a concrete bounded persona/u,
+  });
+
+  const changedExpectedResult = fixture("Accepted");
+  changedExpectedResult.executions[0]!.expected = "Any result is acceptable";
+  cases.push({
+    name: "scenario expected result drift",
+    input: changedExpectedResult,
+    expected: /must retain its documented expected result/u,
+  });
+
   const staleBoundary = fixture("Conditional");
   staleBoundary.closeEligibility = "Eligible after evidence linkage";
   cases.push({
     name: "stale verdict boundary",
     input: staleBoundary,
     expected: /close eligibility must match/u,
+  });
+
+  const promotedReadiness = fixture("Accepted");
+  promotedReadiness.productionReadiness = "Go";
+  cases.push({
+    name: "production-like readiness promoted by visual UAT",
+    input: promotedReadiness,
+    expected: /Production-like readiness must remain Blocked/u,
+  });
+
+  const staleAutomatedCandidate = fixture("Accepted");
+  staleAutomatedCandidate.automatedCandidate = "Blocked";
+  cases.push({
+    name: "automated candidate verdict drift",
+    input: staleAutomatedCandidate,
+    expected: /Automated visual UAT candidate must remain Go/u,
+  });
+
+  const promotedGoLive = fixture("Accepted");
+  promotedGoLive.goLiveApproval = "Go";
+  cases.push({
+    name: "go-live approval promoted by visual UAT",
+    input: promotedGoLive,
+    expected: /Go-live approval must remain Blocked/u,
+  });
+
+  const mixedPendingState = fixture("Pending human execution");
+  mixedPendingState.commit = testedCommit;
+  mixedPendingState.executions[0] = completedExecution("P2Z-UAT-01");
+  cases.push({
+    name: "completed scenario under a pending overall verdict",
+    input: mixedPendingState,
+    expected: /must keep every scenario verdict pending/u,
   });
 
   const missingScenario = fixture("Accepted");
