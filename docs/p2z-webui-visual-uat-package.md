@@ -31,6 +31,11 @@ tester may record `Accepted`, `Conditional`, or `Blocked` for each scenario and
 the overall verdict. Agent-prepared evidence must remain identified as
 preflight evidence and cannot unlock Issue #406 closeout.
 
+When the overall human verdict changes, update both human rows in this table in
+the same commit. `Issue #406 close eligibility` must be `Eligible after evidence
+linkage` for `Accepted`, `Blocked pending named conditions` for `Conditional`,
+or `Blocked by the formal human verdict` for `Blocked`.
+
 ## Backend Integration Boundary
 
 - The local test runner uses `GET /health` only to confirm that the API process
@@ -130,8 +135,10 @@ or a GitHub `user-attachments/assets` URL for each run artifact.
 
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
-or `Blocked`. A non-pending overall verdict requires a 40-character tested
-commit and no `Pending` values in either record.
+or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
+and no `Pending` values in either record. `Blocked` requires the tested commit,
+a completed `Blocked` scenario, and its `blocker` finding; later scenario and
+finding rows may remain pending because the run stops at that blocker.
 
 | ID         | Human tester       | Execution date | Viewport | Persona                   | Expected result                                                  | Actual result           | Evidence                                                                                  | Scenario verdict |
 | ---------- | ------------------ | -------------- | -------- | ------------------------- | ---------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
@@ -157,11 +164,13 @@ commit and no `Pending` values in either record.
 | P2Z-UAT-07 | Pending        | Pending             | Pending | Pending        | Pending     |
 | P2Z-UAT-08 | Pending        | Pending             | Pending | Pending        | Pending     |
 
-For each `blocker`, `must-fix`, or `post-UAT` result, create or link a GitHub
-Issue and record its number, owner, scope boundary, and disposition beside the
-scenario before assigning the overall verdict. If no finding exists, record
-`none observed` in `Finding status` and `not applicable` in the remaining
-finding fields; do not leave the finding status implicit.
+For each `blocker`, `must-fix`, or `post-UAT` result, add a row, create or link a
+GitHub Issue, and record its number, owner, scope boundary, and disposition
+beside the scenario before assigning the overall verdict. Repeated scenario IDs
+are allowed when one scenario has multiple findings, but every scenario must
+have at least one row. If no finding exists, record `none observed` in `Finding
+status` and `not applicable` in the remaining finding fields; do not leave the
+finding status implicit.
 
 ## Visual Review Checklist
 

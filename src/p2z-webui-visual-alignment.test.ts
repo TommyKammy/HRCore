@@ -432,17 +432,18 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   const findingRows = findingRecord
     .split("\n")
     .filter((line) => /^\| P2Z-UAT-\d{2} \|/u.test(line));
-  for (const [recordName, rows] of [
-    ["execution", executionRows],
-    ["finding", findingRows],
-  ] as const) {
-    const rowIds = rows.map((row) => row.split("|")[1]?.trim());
-    assert.deepEqual(
-      [...rowIds].sort(),
-      [...expectedScenarios].sort(),
-      `${uatPath} must provide exactly one ${recordName} row per scenario`,
-    );
-  }
+  const executionRowIds = executionRows.map((row) => row.split("|")[1]?.trim());
+  assert.deepEqual(
+    executionRowIds,
+    expectedScenarios,
+    `${uatPath} must provide exactly one execution row per scenario`,
+  );
+  const findingRowIds = findingRows.map((row) => row.split("|")[1]?.trim());
+  assert.deepEqual(
+    [...new Set(findingRowIds)].sort(),
+    [...expectedScenarios].sort(),
+    `${uatPath} must provide at least one finding row per scenario`,
+  );
   assert.ok(
     normalizedExecutionRecord.includes(
       "| ID | Human tester | Execution date | Viewport | Persona | Expected result | Actual result | Evidence | Scenario verdict |",
@@ -459,6 +460,41 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     /Overall human verdict: \*\*(Pending human execution|Accepted|Conditional|Blocked)\*\*/u,
   )?.[1];
   assert.ok(overallVerdict, `${uatPath} must record the overall human verdict`);
+  const verdictBoundaryStart = uat.indexOf("## Verdict Boundary");
+  const backendBoundaryStart = uat.indexOf("## Backend Integration Boundary");
+  assert.ok(
+    verdictBoundaryStart >= 0 && backendBoundaryStart > verdictBoundaryStart,
+    `${uatPath} must keep the verdict boundary table`,
+  );
+  const verdictBoundaryRows = uat
+    .slice(verdictBoundaryStart, backendBoundaryStart)
+    .split("\n")
+    .filter((line) => /^\| .+ \| .+ \|$/u.test(line))
+    .map((line) =>
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    );
+  const verdictBoundary = new Map(
+    verdictBoundaryRows.map(([surface, verdict]) => [surface, verdict]),
+  );
+  assert.equal(
+    verdictBoundary.get("Formal human visual UAT verdict"),
+    overallVerdict,
+    `${uatPath} must synchronize the formal verdict boundary`,
+  );
+  const expectedCloseEligibility = new Map([
+    ["Pending human execution", "Blocked pending the formal human verdict"],
+    ["Accepted", "Eligible after evidence linkage"],
+    ["Conditional", "Blocked pending named conditions"],
+    ["Blocked", "Blocked by the formal human verdict"],
+  ]).get(overallVerdict);
+  assert.equal(
+    verdictBoundary.get("Issue #406 close eligibility"),
+    expectedCloseEligibility,
+    `${uatPath} must synchronize Issue #406 close eligibility`,
+  );
   const testedCommit = normalizedExecutionRecord.match(
     /Tested commit: \*\*(Pending human execution|[0-9a-f]{40})\*\*/u,
   )?.[1];
@@ -470,6 +506,9 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
       `${uatPath} must bind a completed human run to a commit`,
     );
     const scenarioVerdicts: string[] = [];
+    const blockedScenarioIds = new Set<string>();
+    const pendingScenarioIds = new Set<string>();
+    let blockedEncountered = false;
     for (const row of executionRows) {
       const executionCells = row
         .split("|")
@@ -479,13 +518,31 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
         scenarioId,
         humanTester,
         executionDate,
-        ,
+        viewport,
         persona,
         ,
         actualResult,
         evidence,
       ] = executionCells;
       const scenarioVerdict = executionCells.at(-1);
+      assert.equal(
+        viewport,
+        scenarioId === "P2Z-UAT-07" ? "390x844" : "1440x900",
+        `${uatPath} must record the required viewport for ${scenarioId}`,
+      );
+      if (scenarioVerdict === "Pending") {
+        assert.equal(
+          overallVerdict,
+          "Blocked",
+          `${uatPath} may retain pending scenarios only after a blocked run`,
+        );
+        assert.ok(
+          blockedEncountered,
+          `${uatPath} may retain pending scenarios only after the blocker`,
+        );
+        pendingScenarioIds.add(scenarioId ?? "");
+        continue;
+      }
       for (const value of [
         humanTester,
         executionDate,
@@ -539,14 +596,44 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
         `${uatPath} must use a supported completed scenario verdict`,
       );
       scenarioVerdicts.push(scenarioVerdict ?? "");
+      if (scenarioVerdict === "Blocked") {
+        blockedScenarioIds.add(scenarioId ?? "");
+        blockedEncountered = true;
+      }
     }
     const findingStatuses: string[] = [];
+    const blockerFindingScenarioIds = new Set<string>();
     for (const row of findingRows) {
-      const [, findingStatus, linkedIssue, owner, scopeBoundary, disposition] =
-        row
-          .split("|")
-          .slice(1, -1)
-          .map((cell) => cell.trim());
+      const [
+        scenarioId,
+        findingStatus,
+        linkedIssue,
+        owner,
+        scopeBoundary,
+        disposition,
+      ] = row
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim());
+      if (findingStatus === "Pending") {
+        assert.equal(
+          overallVerdict,
+          "Blocked",
+          `${uatPath} may retain pending findings only after a blocked run`,
+        );
+        assert.ok(
+          pendingScenarioIds.has(scenarioId ?? ""),
+          `${uatPath} may retain pending findings only for unexecuted scenarios`,
+        );
+        for (const value of [linkedIssue, owner, scopeBoundary, disposition]) {
+          assert.equal(
+            value,
+            "Pending",
+            `${uatPath} must keep unexecuted finding rows consistently pending`,
+          );
+        }
+        continue;
+      }
       for (const value of [
         findingStatus,
         linkedIssue,
@@ -566,6 +653,9 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
         `${uatPath} must use a supported finding status`,
       );
       findingStatuses.push(findingStatus ?? "");
+      if (findingStatus === "blocker") {
+        blockerFindingScenarioIds.add(scenarioId ?? "");
+      }
       const findingMetadata = [linkedIssue, owner, scopeBoundary, disposition];
       if (findingStatus === "none observed") {
         for (const value of findingMetadata) {
@@ -589,6 +679,21 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
           );
         }
       }
+    }
+    if (blockedScenarioIds.size > 0 || blockerFindingScenarioIds.size > 0) {
+      assert.equal(
+        overallVerdict,
+        "Blocked",
+        `${uatPath} must use an overall Blocked verdict for blocker evidence`,
+      );
+    }
+    if (overallVerdict === "Blocked") {
+      assert.ok(
+        [...blockedScenarioIds].some((scenarioId) =>
+          blockerFindingScenarioIds.has(scenarioId),
+        ),
+        `${uatPath} must bind the blocked verdict to a blocker finding`,
+      );
     }
     if (overallVerdict === "Accepted") {
       assert.ok(
@@ -614,7 +719,6 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
   for (const uatBoundary of [
     "Formal human visual UAT verdict",
     "Issue #406 close eligibility",
-    "Blocked pending the formal human verdict",
     "GET /openapi.json",
     "client-state",
     "synthetic simulations",
