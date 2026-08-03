@@ -6,7 +6,7 @@ import {
   p2zVisualUatScenarioIds,
   type P2zVisualUatOverallVerdict,
   validateP2zVisualUatRecord,
-} from "./p2z-webui-visual-uat-record.js";
+} from "./test-helpers/p2z-webui-visual-uat-record.js";
 
 const testedCommit = "a".repeat(40);
 

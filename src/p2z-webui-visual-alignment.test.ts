@@ -42,7 +42,7 @@ import {
   validateP2zInstalledDependencyTree,
   validateP2zVisualEvidenceCaptureProvenance,
 } from "./p2z-webui-visual-evidence-integrity.js";
-import { validateP2zVisualUatRecord } from "./p2z-webui-visual-uat-record.js";
+import { validateP2zVisualUatRecord } from "./test-helpers/p2z-webui-visual-uat-record.js";
 import { readRepoFile } from "./test-helpers/database.js";
 
 const contractPath = "docs/p2z-webui-visual-alignment-contract.md";
