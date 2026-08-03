@@ -125,13 +125,19 @@ Expected result:
 
 Overall human verdict: **Pending human execution**
 Tested commit: **Pending human execution**
+Named human tester: **Pending assignment**
+Overall verdict recorded by: **Pending assignment**
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
 observed; `Evidence` must link the run-specific screenshot or trace rather than
 relying only on the automated reference image. Use either a repository path
 under `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`
-or a GitHub `user-attachments/assets` URL for each run artifact.
+or a GitHub `user-attachments/assets` URL for each run artifact. A repository
+path must exist under `docs/` and be Git-tracked before closeout. Record the
+package-level tester before execution, use that exact identity in every
+completed scenario row, and allow only that tester to fill `Overall verdict
+recorded by`.
 
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
@@ -151,49 +157,54 @@ verdict is recorded.
 | P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | Transfer steps and impact remain clear                           | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
 | P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | Approval evidence and actions are clear                          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
 | P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Job and DLQ evidence is understandable                           | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
-| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | Exact audit lookup is understandable                             | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
+| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | One exact correlation lookup and evidence timeline are visible   | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
 | P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Pending actual persona    | Drawer and primary actions remain usable                         | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
 | P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | Workflow content remains fail-closed                             | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
 
 ## Scenario Finding Record
 
-| ID         | Finding status | Linked GitHub Issue | Owner   | Scope boundary | Disposition |
-| ---------- | -------------- | ------------------- | ------- | -------------- | ----------- |
-| P2Z-UAT-01 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-02 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-03 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-04 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-05 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-06 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-07 | Pending        | Pending             | Pending | Pending        | Pending     |
-| P2Z-UAT-08 | Pending        | Pending             | Pending | Pending        | Pending     |
+| ID         | Finding status | Linked GitHub Issue | Owner   | Scope boundary | Actor   | Tenant/environment | Subject binding | Route and viewport | Correlation ID | Evidence version | Screenshot or trace | Cleanup status | Disposition |
+| ---------- | -------------- | ------------------- | ------- | -------------- | ------- | ------------------ | --------------- | ------------------ | -------------- | ---------------- | ------------------- | -------------- | ----------- |
+| P2Z-UAT-01 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-02 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-03 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-04 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-05 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-06 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-07 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-08 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
 
 For each `blocker`, `must-fix`, or `post-UAT` result, add a row, create or link a
-GitHub Issue, and record its number, owner, scope boundary, and disposition
-beside the scenario before assigning the overall verdict. Repeated scenario IDs
-are allowed when one scenario has multiple findings, but every scenario must
-have at least one row. If no finding exists, record `none observed` in `Finding
-status` and `not applicable` in the remaining finding fields; do not leave the
-finding status implicit.
+GitHub Issue, and complete every Evidence Record field in that same row before
+assigning the overall verdict. Repeated scenario IDs are allowed when one
+scenario has multiple findings, but each finding must retain its own evidence
+link and every scenario must have at least one row. Repository-backed finding
+evidence uses
+`evidence/p2z-webui/runs/<tested-commit>/<scenario>-finding-<slug>.<artifact-extension>`;
+GitHub `user-attachments/assets` links are also allowed. If no finding exists,
+record `none observed` in `Finding status` and `not applicable` in every
+remaining finding field; do not leave the finding status implicit.
 
 ## Visual Review Checklist
 
-For each primary screen, record `completed`, `blocked`, `workaround`, `defect`,
-and `post-UAT backlog`.
+For each review item, set `Status` to `Completed` and record one explicit
+`Disposition`: `completed`, `blocked`, `workaround`, `defect`, or
+`post-UAT backlog`. Pending records keep both fields `Pending`.
+`Conditional` requires at least one non-clean disposition, and `Blocked`
+requires a `blocked` disposition.
 
-- [ ] Navigation, page heading, and workspace use the same visual hierarchy.
-- [ ] Japanese task labels are primary and technical identifiers remain
-      readable.
-- [ ] Status, priority, deadline, provider, and scope are distinguishable
-      without relying on color alone.
-- [ ] Forms and impact previews remain aligned at desktop width.
-- [ ] Master/detail selection is visually clear.
-- [ ] Destructive and primary actions are visually separated.
-- [ ] Text does not clip or overlap.
-- [ ] Loading, empty, error, blocked, success, and disabled states are
-      understandable.
-- [ ] Keyboard focus is visible.
-- [ ] Mobile controls remain inside the viewport.
+| Review item                                                                                         | Status  | Disposition |
+| --------------------------------------------------------------------------------------------------- | ------- | ----------- |
+| Navigation, page heading, and workspace use the same visual hierarchy.                              | Pending | Pending     |
+| Japanese task labels are primary and technical identifiers remain readable.                         | Pending | Pending     |
+| Status, priority, deadline, provider, and scope are distinguishable without relying on color alone. | Pending | Pending     |
+| Forms and impact previews remain aligned at desktop width.                                          | Pending | Pending     |
+| Master/detail selection is visually clear.                                                          | Pending | Pending     |
+| Destructive and primary actions are visually separated.                                             | Pending | Pending     |
+| Text does not clip or overlap.                                                                      | Pending | Pending     |
+| Loading, empty, error, blocked, success, and disabled states are understandable.                    | Pending | Pending     |
+| Keyboard focus is visible.                                                                          | Pending | Pending     |
+| Mobile controls remain inside the viewport.                                                         | Pending | Pending     |
 
 ## Evidence Matrix
 

@@ -28,12 +28,22 @@ type FindingFixture = {
   issue: string;
   owner: string;
   scope: string;
+  actor: string;
+  tenantEnvironment: string;
+  subjectBinding: string;
+  routeViewport: string;
+  correlationId: string;
+  evidenceVersion: string;
+  evidence: string;
+  cleanupStatus: string;
   disposition: string;
 };
 
 type UatFixture = {
   overall: P2zVisualUatOverallVerdict;
   commit: string;
+  namedTester: string;
+  verdictRecorder: string;
   boundaryVerdict: string;
   closeEligibility: string;
   automatedCandidate: string;
@@ -41,7 +51,7 @@ type UatFixture = {
   goLiveApproval: string;
   executions: ExecutionFixture[];
   findings: FindingFixture[];
-  checklist: Array<{ checked: boolean; label: string }>;
+  checklist: Array<{ label: string; status: string; disposition: string }>;
 };
 
 function completedExecution(
@@ -65,7 +75,8 @@ function completedExecution(
     "P2Z-UAT-03": "Transfer steps and impact remain clear",
     "P2Z-UAT-04": "Approval evidence and actions are clear",
     "P2Z-UAT-05": "Job and DLQ evidence is understandable",
-    "P2Z-UAT-06": "Exact audit lookup is understandable",
+    "P2Z-UAT-06":
+      "One exact correlation lookup and evidence timeline are visible",
     "P2Z-UAT-07": "Drawer and primary actions remain usable",
     "P2Z-UAT-08": "Workflow content remains fail-closed",
   };
@@ -80,7 +91,7 @@ function completedExecution(
       id === "P2Z-UAT-06"
         ? "Approval pending is displayed as observed"
         : `Observed result for ${id}`,
-    evidence: `[run](evidence/p2z-webui/runs/${testedCommit}/${id}.png)`,
+    evidence: `[run](https://github.com/user-attachments/assets/00000000-0000-4000-8000-0000000000${id.slice(-2)})`,
     verdict,
   };
 }
@@ -106,6 +117,14 @@ function cleanFinding(id: string): FindingFixture {
     issue: "not applicable",
     owner: "not applicable",
     scope: "not applicable",
+    actor: "not applicable",
+    tenantEnvironment: "not applicable",
+    subjectBinding: "not applicable",
+    routeViewport: "not applicable",
+    correlationId: "not applicable",
+    evidenceVersion: "not applicable",
+    evidence: "not applicable",
+    cleanupStatus: "not applicable",
     disposition: "not applicable",
   };
 }
@@ -121,7 +140,20 @@ function recordedFinding(
     issue: `#${issueNumber}`,
     owner: "@uat-owner",
     scope: "bounded visual UAT",
-    disposition: `${status} disposition recorded`,
+    actor: "HR operator",
+    tenantEnvironment: "repo_owned_synthetic_webui_non_production",
+    subjectBinding: `synthetic-subject-${issueNumber}`,
+    routeViewport: "/transfer @ 1440x900",
+    correlationId: `corr-${issueNumber}`,
+    evidenceVersion: "p2z-uat-v1",
+    evidence: `[finding](https://github.com/user-attachments/assets/10000000-0000-4000-8000-000000000${issueNumber})`,
+    cleanupStatus: "completed",
+    disposition:
+      status === "blocker"
+        ? "blocked"
+        : status === "must-fix"
+          ? "defect"
+          : "post-UAT backlog",
   };
 }
 
@@ -132,6 +164,14 @@ function pendingFinding(id: string): FindingFixture {
     issue: "Pending",
     owner: "Pending",
     scope: "Pending",
+    actor: "Pending",
+    tenantEnvironment: "Pending",
+    subjectBinding: "Pending",
+    routeViewport: "Pending",
+    correlationId: "Pending",
+    evidenceVersion: "Pending",
+    evidence: "Pending",
+    cleanupStatus: "Pending",
     disposition: "Pending",
   };
 }
@@ -142,14 +182,29 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
     productionReadiness: "Blocked",
     goLiveApproval: "Blocked",
   };
-  const checklist = p2zVisualUatChecklistItems.map((label) => ({
-    checked: overall !== "Pending human execution" && overall !== "Blocked",
+  const checklist = p2zVisualUatChecklistItems.map((label, index) => ({
     label,
+    status:
+      overall === "Pending human execution" ||
+      (overall === "Blocked" && index > 0)
+        ? "Pending"
+        : "Completed",
+    disposition:
+      overall === "Pending human execution" ||
+      (overall === "Blocked" && index > 0)
+        ? "Pending"
+        : overall === "Conditional" && index === 0
+          ? "defect"
+          : overall === "Blocked" && index === 0
+            ? "blocked"
+            : "completed",
   }));
   if (overall === "Pending human execution") {
     return {
       overall,
       commit: "Pending human execution",
+      namedTester: "Pending assignment",
+      verdictRecorder: "Pending assignment",
       boundaryVerdict: overall,
       closeEligibility: "Blocked pending the formal human verdict",
       ...permanentBoundary,
@@ -173,6 +228,8 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
     return {
       overall,
       commit: testedCommit,
+      namedTester: "Named Tester",
+      verdictRecorder: "Named Tester",
       boundaryVerdict: overall,
       closeEligibility: "Blocked pending named conditions",
       ...permanentBoundary,
@@ -199,6 +256,8 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
     return {
       overall,
       commit: testedCommit,
+      namedTester: "Named Tester",
+      verdictRecorder: "Named Tester",
       boundaryVerdict: overall,
       closeEligibility: "Blocked by the formal human verdict",
       ...permanentBoundary,
@@ -210,6 +269,8 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
   return {
     overall,
     commit: testedCommit,
+    namedTester: "Named Tester",
+    verdictRecorder: "Named Tester",
     boundaryVerdict: overall,
     closeEligibility: "Eligible after evidence linkage",
     ...permanentBoundary,
@@ -229,11 +290,13 @@ function renderFixture(input: UatFixture): string {
   const findingRows = input.findings
     .map(
       (row) =>
-        `| ${row.id} | ${row.status} | ${row.issue} | ${row.owner} | ${row.scope} | ${row.disposition} |`,
+        `| ${row.id} | ${row.status} | ${row.issue} | ${row.owner} | ${row.scope} | ${row.actor} | ${row.tenantEnvironment} | ${row.subjectBinding} | ${row.routeViewport} | ${row.correlationId} | ${row.evidenceVersion} | ${row.evidence} | ${row.cleanupStatus} | ${row.disposition} |`,
     )
     .join("\n");
   const checklist = input.checklist
-    .map((entry) => `- [${entry.checked ? "x" : " "}] ${entry.label}`)
+    .map(
+      (entry) => `| ${entry.label} | ${entry.status} | ${entry.disposition} |`,
+    )
     .join("\n");
   return `# Fixture
 
@@ -255,6 +318,8 @@ Fixture boundary.
 
 Overall human verdict: **${input.overall}**
 Tested commit: **${input.commit}**
+Named human tester: **${input.namedTester}**
+Overall verdict recorded by: **${input.verdictRecorder}**
 
 | ID | Human tester | Execution date | Viewport | Persona | Expected result | Actual result | Evidence | Scenario verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -262,12 +327,14 @@ ${executionRows}
 
 ## Scenario Finding Record
 
-| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Disposition |
-| --- | --- | --- | --- | --- | --- |
+| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Actor | Tenant/environment | Subject binding | Route and viewport | Correlation ID | Evidence version | Screenshot or trace | Cleanup status | Disposition |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${findingRows}
 
 ## Visual Review Checklist
 
+| Review item | Status | Disposition |
+| --- | --- | --- |
 ${checklist}
 
 ## Evidence Matrix
@@ -300,6 +367,12 @@ test("P2Z visual UAT record accepts literal pending UI copy in observations", ()
 test("P2Z visual UAT record accepts the tested commit before execution", () => {
   const input = fixture("Pending human execution");
   input.commit = testedCommit;
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
+test("P2Z visual UAT record accepts every application bounded persona", () => {
+  const input = fixture("Accepted");
+  input.executions[6]!.persona = "Bounded admin";
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
@@ -343,6 +416,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "evidence from another commit and scenario",
     input: wrongEvidenceBinding,
     expected: /must link evidence for this run and scenario/u,
+  });
+
+  const missingRepositoryEvidence = fixture("Accepted");
+  missingRepositoryEvidence.executions[0]!.evidence = `[run](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01.png)`;
+  cases.push({
+    name: "repository evidence that does not exist",
+    input: missingRepositoryEvidence,
+    expected: /must link an existing tracked evidence artifact/u,
   });
 
   const wrongViewport = fixture("Accepted");
@@ -418,6 +499,22 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must keep every scenario verdict pending/u,
   });
 
+  const mismatchedTester = fixture("Accepted");
+  mismatchedTester.executions[0]!.tester = "Another Tester";
+  cases.push({
+    name: "scenario completed by another tester",
+    input: mismatchedTester,
+    expected: /must use the named human tester/u,
+  });
+
+  const mismatchedVerdictRecorder = fixture("Accepted");
+  mismatchedVerdictRecorder.verdictRecorder = "Another Tester";
+  cases.push({
+    name: "overall verdict assigned by another tester",
+    input: mismatchedVerdictRecorder,
+    expected: /named human tester must record the overall verdict/u,
+  });
+
   const missingScenario = fixture("Accepted");
   missingScenario.executions.pop();
   cases.push({
@@ -435,7 +532,8 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   });
 
   const uncheckedAcceptance = fixture("Accepted");
-  uncheckedAcceptance.checklist[0]!.checked = false;
+  uncheckedAcceptance.checklist[0]!.status = "Pending";
+  uncheckedAcceptance.checklist[0]!.disposition = "Pending";
   cases.push({
     name: "unchecked accepted record",
     input: uncheckedAcceptance,
@@ -448,6 +546,51 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "recorded finding without owner",
     input: incompleteFinding,
     expected: /must include owner/u,
+  });
+
+  const incompleteEvidenceRecord = fixture("Conditional");
+  incompleteEvidenceRecord.findings[2]!.evidenceVersion = "not applicable";
+  cases.push({
+    name: "recorded finding without evidence version",
+    input: incompleteEvidenceRecord,
+    expected: /must include evidence version/u,
+  });
+
+  const missingFindingEvidence = fixture("Conditional");
+  missingFindingEvidence.findings[2]!.evidence = `[finding](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-03-finding-501.png)`;
+  cases.push({
+    name: "repository-backed finding evidence that does not exist",
+    input: missingFindingEvidence,
+    expected: /recorded finding must link an existing tracked evidence/u,
+  });
+
+  const reusedFindingEvidence = fixture("Conditional");
+  reusedFindingEvidence.findings[3]!.evidence =
+    reusedFindingEvidence.findings[2]!.evidence;
+  cases.push({
+    name: "repeated findings sharing one evidence artifact",
+    input: reusedFindingEvidence,
+    expected: /must not reuse an evidence artifact/u,
+  });
+
+  const earlierBlockerFinding = fixture("Blocked");
+  earlierBlockerFinding.findings[0] = recordedFinding(
+    "P2Z-UAT-01",
+    "blocker",
+    505,
+  );
+  cases.push({
+    name: "blocker finding before the blocked scenario",
+    input: earlierBlockerFinding,
+    expected: /blocker finding requires a Blocked scenario/u,
+  });
+
+  const conditionWithoutChecklistDisposition = fixture("Conditional");
+  conditionWithoutChecklistDisposition.checklist[0]!.disposition = "completed";
+  cases.push({
+    name: "conditional verdict without checklist disposition",
+    input: conditionWithoutChecklistDisposition,
+    expected: /requires a checklist disposition aligned with its finding/u,
   });
 
   for (const entry of cases) {

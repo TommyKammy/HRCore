@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 export const p2zVisualUatScenarioIds = [
   "P2Z-UAT-01",
   "P2Z-UAT-02",
@@ -48,7 +52,8 @@ const p2zVisualUatScenarioContracts: Record<
   "P2Z-UAT-06": {
     viewport: "1440x900",
     persona: "HR Ops/support",
-    expectedResult: "Exact audit lookup is understandable",
+    expectedResult:
+      "One exact correlation lookup and evidence timeline are visible",
   },
   "P2Z-UAT-07": {
     viewport: "390x844",
@@ -62,7 +67,14 @@ const p2zVisualUatScenarioContracts: Record<
   },
 };
 
-const boundedPersonas = new Set(["HR operator", "Approver", "HR Ops/support"]);
+const boundedPersonaLabels = new Set([
+  "HR operator",
+  "Approver",
+  "HR Ops/support",
+  "Bounded admin",
+]);
+
+const boundedTenantEnvironment = "repo_owned_synthetic_webui_non_production";
 
 const p2zVisualUatDecisionSurfaces = [
   "Automated visual UAT candidate",
@@ -122,10 +134,22 @@ type FindingRow = {
   linkedIssue: string;
   owner: string;
   scopeBoundary: string;
+  actor: string;
+  tenantEnvironment: string;
+  subjectBinding: string;
+  routeViewport: string;
+  correlationId: string;
+  evidenceVersion: string;
+  evidence: string;
+  cleanupStatus: string;
   disposition: string;
 };
 
-type ChecklistEntry = { checked: boolean; label: string | undefined };
+type ChecklistEntry = {
+  label: string | undefined;
+  status: string;
+  disposition: string;
+};
 
 const overallVerdicts = new Set<P2zVisualUatOverallVerdict>([
   "Pending human execution",
@@ -145,6 +169,14 @@ const completedFindingStatuses = new Set<P2zVisualUatFindingStatus>([
   "blocker",
   "must-fix",
   "post-UAT",
+]);
+
+const checklistDispositions = new Set([
+  "completed",
+  "blocked",
+  "workaround",
+  "defect",
+  "post-UAT backlog",
 ]);
 
 const closeEligibilityByVerdict = new Map<P2zVisualUatOverallVerdict, string>([
@@ -214,19 +246,34 @@ function parseFindingRows(record: string): FindingRow[] {
         linkedIssue: cells[2] ?? "",
         owner: cells[3] ?? "",
         scopeBoundary: cells[4] ?? "",
-        disposition: cells[5] ?? "",
+        actor: cells[5] ?? "",
+        tenantEnvironment: cells[6] ?? "",
+        subjectBinding: cells[7] ?? "",
+        routeViewport: cells[8] ?? "",
+        correlationId: cells[9] ?? "",
+        evidenceVersion: cells[10] ?? "",
+        evidence: cells[11] ?? "",
+        cleanupStatus: cells[12] ?? "",
+        disposition: cells[13] ?? "",
       };
     });
 }
 
 function parseChecklist(checklist: string): ChecklistEntry[] {
-  return Array.from(
-    checklist.replace(/\n {6}/gu, " ").matchAll(/^- \[([ xX])\] (.+)$/gmu),
-    (match) => ({
-      checked: /^x$/iu.test(match[1] ?? ""),
-      label: match[2],
-    }),
-  );
+  return checklist
+    .split("\n")
+    .filter((line) => /^\| .+ \| .+ \| .+ \|$/u.test(line))
+    .map((line) => markdownCells(line))
+    .filter(([label]) =>
+      p2zVisualUatChecklistItems.includes(
+        label as (typeof p2zVisualUatChecklistItems)[number],
+      ),
+    )
+    .map(([label, status, disposition]) => ({
+      label,
+      status: status ?? "",
+      disposition: disposition ?? "",
+    }));
 }
 
 function isIsoDate(value: string): boolean {
@@ -243,11 +290,31 @@ function isSubstantive(value: string): boolean {
   );
 }
 
+function isTrackedRepositoryArtifact(
+  rootDirectory: string,
+  target: string,
+): boolean {
+  const repositoryPath = path.posix.join("docs", target);
+  if (!existsSync(path.join(rootDirectory, ...repositoryPath.split("/")))) {
+    return false;
+  }
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", repositoryPath], {
+      cwd: rootDirectory,
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validateCompletedExecutionRow(
   row: ExecutionRow,
   testedCommit: string,
   evidenceTargets: Set<string>,
   issues: string[],
+  rootDirectory: string,
 ): void {
   const scenario =
     p2zVisualUatScenarioContracts[row.id as P2zVisualUatScenarioId];
@@ -265,7 +332,7 @@ function validateCompletedExecutionRow(
     issues.push(`${row.id} must record a valid ISO execution date`);
   }
   if (scenario.persona === "Any bounded persona") {
-    if (!boundedPersonas.has(row.persona)) {
+    if (!boundedPersonaLabels.has(row.persona)) {
       issues.push(`${row.id} must record a concrete bounded persona`);
     }
   } else if (row.persona !== scenario.persona) {
@@ -291,15 +358,22 @@ function validateCompletedExecutionRow(
     `^evidence/p2z-webui/runs/${testedCommit}/${row.id}\\.(?:png|jpe?g|webp|json|zip|txt|md)$`,
     "u",
   );
-  const artifact = links.find(
-    (target) =>
-      repositoryArtifact.test(target) ||
-      /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/u.test(
-        target,
-      ),
+  const repositoryTarget = links.find((target) =>
+    repositoryArtifact.test(target),
   );
+  const externalTarget = links.find((target) =>
+    /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/u.test(
+      target,
+    ),
+  );
+  const artifact = repositoryTarget ?? externalTarget;
   if (!artifact) {
     issues.push(`${row.id} must link evidence for this run and scenario`);
+  } else if (
+    repositoryTarget &&
+    !isTrackedRepositoryArtifact(rootDirectory, repositoryTarget)
+  ) {
+    issues.push(`${row.id} must link an existing tracked evidence artifact`);
   } else if (evidenceTargets.has(artifact)) {
     issues.push(
       `${row.id} must not reuse another scenario's evidence artifact`,
@@ -309,17 +383,18 @@ function validateCompletedExecutionRow(
   }
 }
 
-function validateCompletedFindingRow(row: FindingRow, issues: string[]): void {
+function validateCompletedFindingRow(
+  row: FindingRow,
+  testedCommit: string,
+  evidenceTargets: Set<string>,
+  issues: string[],
+  rootDirectory: string,
+): void {
   if (!completedFindingStatuses.has(row.status as P2zVisualUatFindingStatus)) {
     issues.push(`${row.id} must use a completed finding status`);
     return;
   }
-  const metadata = [
-    row.linkedIssue,
-    row.owner,
-    row.scopeBoundary,
-    row.disposition,
-  ];
+  const metadata = findingMetadata(row);
   if (row.status === "none observed") {
     if (metadata.some((value) => value !== "not applicable")) {
       issues.push(`${row.id} clean finding metadata must be not applicable`);
@@ -332,15 +407,86 @@ function validateCompletedFindingRow(row: FindingRow, issues: string[]): void {
   for (const [name, value] of [
     ["owner", row.owner],
     ["scope boundary", row.scopeBoundary],
-    ["disposition", row.disposition],
+    ["actor", row.actor],
+    ["subject binding", row.subjectBinding],
+    ["route and viewport", row.routeViewport],
+    ["evidence version", row.evidenceVersion],
   ] as const) {
     if (!isSubstantive(value)) {
       issues.push(`${row.id} recorded finding must include ${name}`);
     }
   }
+  if (row.tenantEnvironment !== boundedTenantEnvironment) {
+    issues.push(`${row.id} recorded finding must use the bounded environment`);
+  }
+  if (!boundedPersonaLabels.has(row.actor) && row.actor !== "No persona") {
+    issues.push(`${row.id} recorded finding must use a bounded actor`);
+  }
+  if (!/^\/\S+ @ (?:1440x900|390x844)$/u.test(row.routeViewport)) {
+    issues.push(`${row.id} recorded finding must bind route and viewport`);
+  }
+  if (
+    row.correlationId !== "not applicable" &&
+    !isSubstantive(row.correlationId)
+  ) {
+    issues.push(
+      `${row.id} recorded finding must include correlation ID or not applicable`,
+    );
+  }
+  const evidenceTarget = row.evidence.match(/\]\(([^)]+)\)/u)?.[1];
+  const repositoryEvidence = new RegExp(
+    `^evidence/p2z-webui/runs/${testedCommit}/${row.id}-finding-[a-z0-9-]+\\.(?:png|jpe?g|webp|json|zip|txt|md)$`,
+    "u",
+  );
+  const externalEvidence =
+    /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/u;
+  if (
+    !evidenceTarget ||
+    (!repositoryEvidence.test(evidenceTarget) &&
+      !externalEvidence.test(evidenceTarget))
+  ) {
+    issues.push(`${row.id} recorded finding must link its screenshot or trace`);
+  } else if (
+    repositoryEvidence.test(evidenceTarget) &&
+    !isTrackedRepositoryArtifact(rootDirectory, evidenceTarget)
+  ) {
+    issues.push(
+      `${row.id} recorded finding must link an existing tracked evidence artifact`,
+    );
+  } else if (evidenceTargets.has(evidenceTarget)) {
+    issues.push(`${row.id} findings must not reuse an evidence artifact`);
+  } else {
+    evidenceTargets.add(evidenceTarget);
+  }
+  if (!new Set(["completed", "not required"]).has(row.cleanupStatus)) {
+    issues.push(`${row.id} recorded finding must include cleanup status`);
+  }
+  if (!checklistDispositions.has(row.disposition)) {
+    issues.push(`${row.id} recorded finding must use a supported disposition`);
+  }
 }
 
-export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
+function findingMetadata(row: FindingRow): string[] {
+  return [
+    row.linkedIssue,
+    row.owner,
+    row.scopeBoundary,
+    row.actor,
+    row.tenantEnvironment,
+    row.subjectBinding,
+    row.routeViewport,
+    row.correlationId,
+    row.evidenceVersion,
+    row.evidence,
+    row.cleanupStatus,
+    row.disposition,
+  ];
+}
+
+export function collectP2zVisualUatRecordIssues(
+  markdown: string,
+  rootDirectory = process.cwd(),
+): string[] {
   const issues: string[] = [];
   const verdictSection = section(
     markdown,
@@ -377,6 +523,14 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
     /Tested commit: \*\*(Pending human execution|[0-9a-f]{40})\*\*/u,
   )?.[1];
   if (!testedCommit) issues.push("must record the tested commit");
+  const namedHumanTester = executionSection.match(
+    /Named human tester: \*\*(.+?)\*\*/u,
+  )?.[1];
+  if (!namedHumanTester) issues.push("must record the named human tester");
+  const verdictRecorder = executionSection.match(
+    /Overall verdict recorded by: \*\*(.+?)\*\*/u,
+  )?.[1];
+  if (!verdictRecorder) issues.push("must record who assigned the verdict");
 
   const verdictBoundaryRows = verdictSection
     .split("\n")
@@ -437,7 +591,7 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
     !findingSection
       .replace(/\s+/gu, " ")
       .includes(
-        "| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Disposition |",
+        "| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Actor | Tenant/environment | Subject binding | Route and viewport | Correlation ID | Evidence version | Screenshot or trace | Cleanup status | Disposition |",
       )
   ) {
     issues.push("must keep the scenario finding record schema");
@@ -452,13 +606,27 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
 
   const checklist = parseChecklist(checklistSection);
   if (
+    !checklistSection
+      .replace(/\s+/gu, " ")
+      .includes("| Review item | Status | Disposition |")
+  ) {
+    issues.push("must keep the visual checklist record schema");
+  }
+  if (
     JSON.stringify(checklist.map((entry) => entry.label)) !==
     JSON.stringify(p2zVisualUatChecklistItems)
   ) {
     issues.push("must keep every required visual checklist item");
   }
 
-  if (!overallVerdict || !testedCommit) return issues;
+  if (
+    !overallVerdict ||
+    !testedCommit ||
+    !namedHumanTester ||
+    !verdictRecorder
+  ) {
+    return issues;
+  }
   if (overallVerdict === "Pending human execution") {
     if (
       testedCommit !== "Pending human execution" &&
@@ -475,21 +643,39 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
       findingRows.some(
         (row) =>
           row.status !== "Pending" ||
-          [row.linkedIssue, row.owner, row.scopeBoundary, row.disposition].some(
-            (value) => value !== "Pending",
-          ),
+          findingMetadata(row).some((value) => value !== "Pending"),
       )
     ) {
       issues.push("pending UAT must keep every finding row pending");
     }
-    if (checklist.some((entry) => entry.checked)) {
+    if (
+      checklist.some(
+        (entry) =>
+          entry.status !== "Pending" || entry.disposition !== "Pending",
+      )
+    ) {
       issues.push("pending UAT must keep the checklist incomplete");
+    }
+    if (
+      namedHumanTester !== "Pending assignment" &&
+      !isSubstantive(namedHumanTester)
+    ) {
+      issues.push("pending UAT must identify a valid assigned human tester");
+    }
+    if (verdictRecorder !== "Pending assignment") {
+      issues.push("pending UAT must keep the verdict recorder pending");
     }
     return issues;
   }
   if (!/^[0-9a-f]{40}$/u.test(testedCommit)) {
     issues.push("completed UAT must bind to a 40-character tested commit");
     return issues;
+  }
+  if (!isSubstantive(namedHumanTester)) {
+    issues.push("completed UAT must identify the named human tester");
+  }
+  if (verdictRecorder !== namedHumanTester) {
+    issues.push("the named human tester must record the overall verdict");
   }
 
   const evidenceTargets = new Set<string>();
@@ -505,7 +691,16 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
       issues.push(`${row.id} cannot be pending before a blocker`);
       continue;
     }
-    validateCompletedExecutionRow(row, testedCommit, evidenceTargets, issues);
+    validateCompletedExecutionRow(
+      row,
+      testedCommit,
+      evidenceTargets,
+      issues,
+      rootDirectory,
+    );
+    if (row.humanTester !== namedHumanTester) {
+      issues.push(`${row.id} must use the named human tester`);
+    }
     if (row.verdict === "Blocked") blockedIndex = index;
   }
 
@@ -541,6 +736,7 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
       : executionRows.slice(blockedIndex + 1).map((row) => row.id),
   );
   const findingsByScenario = new Map<string, FindingRow[]>();
+  const findingEvidenceTargets = new Set<string>();
   for (const row of findingRows) {
     const rows = findingsByScenario.get(row.id) ?? [];
     rows.push(row);
@@ -548,15 +744,19 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
     if (unexecutedIds.has(row.id)) {
       if (
         row.status !== "Pending" ||
-        [row.linkedIssue, row.owner, row.scopeBoundary, row.disposition].some(
-          (value) => value !== "Pending",
-        )
+        findingMetadata(row).some((value) => value !== "Pending")
       ) {
         issues.push(`${row.id} finding must remain pending after the blocker`);
       }
       continue;
     }
-    validateCompletedFindingRow(row, issues);
+    validateCompletedFindingRow(
+      row,
+      testedCommit,
+      findingEvidenceTargets,
+      issues,
+      rootDirectory,
+    );
   }
 
   for (const [scenarioId, rows] of findingsByScenario) {
@@ -571,6 +771,24 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
   const completedFindings = findingRows.filter(
     (row) => !unexecutedIds.has(row.id),
   );
+  const executionVerdictByScenario = new Map(
+    executionRows.map((row) => [row.id, row.verdict]),
+  );
+  for (const finding of completedFindings) {
+    const scenarioVerdict = executionVerdictByScenario.get(finding.id);
+    if (finding.status === "blocker" && scenarioVerdict !== "Blocked") {
+      issues.push(`${finding.id} blocker finding requires a Blocked scenario`);
+    }
+    if (
+      finding.status === "must-fix" &&
+      scenarioVerdict !== "Conditional" &&
+      scenarioVerdict !== "Blocked"
+    ) {
+      issues.push(
+        `${finding.id} must-fix finding requires a Conditional or Blocked scenario`,
+      );
+    }
+  }
   if (overallVerdict === "Accepted") {
     if (
       completedFindings.some((row) =>
@@ -614,20 +832,63 @@ export function collectP2zVisualUatRecordIssues(markdown: string): string[] {
     }
   }
 
+  for (const entry of checklist) {
+    if (entry.status === "Pending") {
+      if (entry.disposition !== "Pending") {
+        issues.push(
+          "a pending checklist item must keep its disposition pending",
+        );
+      }
+    } else if (
+      entry.status !== "Completed" ||
+      !checklistDispositions.has(entry.disposition)
+    ) {
+      issues.push(
+        "a completed checklist item must use a supported disposition",
+      );
+    }
+  }
   if (
     (overallVerdict === "Accepted" || overallVerdict === "Conditional") &&
-    checklist.some((entry) => !entry.checked)
+    checklist.some((entry) => entry.status !== "Completed")
   ) {
     issues.push(
       `${overallVerdict} overall verdict requires a completed checklist`,
+    );
+  }
+  if (
+    overallVerdict === "Conditional" &&
+    !completedFindings.some(
+      (finding) =>
+        (finding.status === "must-fix" &&
+          checklist.some((entry) =>
+            new Set(["defect", "workaround"]).has(entry.disposition),
+          )) ||
+        (finding.status === "post-UAT" &&
+          checklist.some((entry) => entry.disposition === "post-UAT backlog")),
+    )
+  ) {
+    issues.push(
+      "Conditional overall verdict requires a checklist disposition aligned with its finding",
+    );
+  }
+  if (
+    overallVerdict === "Blocked" &&
+    !checklist.some((entry) => entry.disposition === "blocked")
+  ) {
+    issues.push(
+      "Blocked overall verdict requires a blocked checklist disposition",
     );
   }
 
   return issues;
 }
 
-export function validateP2zVisualUatRecord(markdown: string): void {
-  const issues = collectP2zVisualUatRecordIssues(markdown);
+export function validateP2zVisualUatRecord(
+  markdown: string,
+  rootDirectory = process.cwd(),
+): void {
+  const issues = collectP2zVisualUatRecordIssues(markdown, rootDirectory);
   if (issues.length > 0) {
     throw new Error(`Invalid P2Z visual UAT record:\n- ${issues.join("\n- ")}`);
   }
