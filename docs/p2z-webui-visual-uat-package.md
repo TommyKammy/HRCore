@@ -133,7 +133,10 @@ Keep exactly one rendered declaration for each package-level field above.
 Formal record headings, declarations, tables, and rows inside HTML comments,
 raw HTML blocks, fenced code blocks, or indented code blocks are not part of the
 UAT record. Each formal table must keep its header immediately followed by a
-valid Markdown delimiter row with the same number of columns.
+valid Markdown delimiter row with the same number of columns. The header,
+delimiter, and every contiguous visible data row must each start and end with
+`|`. Every visible row is part of the formal record, and later detached rows
+are invalid; the inventory rules below define where repetition is allowed.
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
@@ -148,11 +151,16 @@ screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must contain
 at least one non-empty scalar event value;
 empty containers such as `{}`, `[]`, and `{"events":[]}` are not evidence. Each
 text or Markdown trace must contain a meaningful rendered observation rather
-than a token, punctuation, markup, or placeholder alone. Each
-artifact must be a non-empty Git-tracked regular file under `docs/`; symbolic
-links and content that does not match its extension are invalid. One artifact
-path belongs to exactly one execution or finding row across both records and
-cannot be reused.
+than a token, punctuation, markup, or placeholder alone. A `.png` screenshot
+must use the repository capture geometry for the scenario's recorded and
+authoritative CSS viewport: width equals viewport width times the documented
+device scale factor (`1440px` for desktop and `1170px` for mobile), and height is
+at least viewport height times that factor (`900px` and `2532px` respectively).
+Taller full-page captures are valid; trace formats are not subject to this pixel
+dimension check. Each artifact must be a non-empty Git-tracked regular file
+under `docs/`; symbolic links and content that does not match its extension are
+invalid. One artifact path belongs to exactly one execution or finding row
+across both records and cannot be reused.
 Record the package-level tester before execution, use that exact identity in
 every completed scenario row, and allow only that tester to fill `Overall
 verdict recorded by`. Every scenario in the formal run shares the recorded
@@ -172,9 +180,11 @@ additional baseline captures.
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
 or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
-that resolves as a commit in this repository, and no `Pending` values in either
-record. Verify it with `git cat-file -e <tested-commit>^{commit}` before
-closeout. Every `Conditional` scenario requires its own `must-fix` finding,
+that resolves as a commit in this repository and is an ancestor of the
+validation `HEAD` (or `HEAD` itself), and no `Pending` values in either record.
+Verify it with `git cat-file -e <tested-commit>^{commit}` and
+`git merge-base --is-ancestor <tested-commit> HEAD` before closeout. Every
+`Conditional` scenario requires its own `must-fix` finding,
 including an executed Conditional scenario before a later blocker in a
 `Blocked` run; one finding cannot explain multiple scenario verdicts. `Blocked`
 requires the tested commit, a completed `Blocked` scenario, and its `blocker`
@@ -183,8 +193,8 @@ execution-specific and finding field in later rows must retain its original
 pending value rather than recording partial work after the stop point.
 Before execution, `Pending human execution` may use either the initial pending
 commit placeholder or the 40-character commit recorded in precondition 3. Its
-scenario verdicts, finding rows, and checklist remain pending until the formal
-verdict is recorded.
+recorded commit must satisfy the same ancestor-or-equal rule. Scenario verdicts,
+finding rows, and checklist remain pending until the formal verdict is recorded.
 
 | ID         | Human tester       | Execution date | Viewport | Persona                   | Route                   | Subject binding | Expected result                                                                           | Actual result           | Evidence                                                                                  | Scenario verdict |
 | ---------- | ------------------ | -------------- | -------- | ------------------------- | ----------------------- | --------------- | ----------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
@@ -214,8 +224,12 @@ For each `blocker`, `must-fix`, or `post-UAT` result, add a row, create or link 
 GitHub Issue, and complete every Evidence Record field in that same row before
 assigning the overall verdict. Repeated scenario IDs are allowed when one
 scenario has multiple findings, but each finding must retain its own evidence
-link and every scenario must have at least one row. Repository-backed finding
-evidence uses
+link and every scenario must have at least one row. A scenario without a
+recorded finding uses exactly one `Pending` or `none observed` marker row;
+marker rows cannot be duplicated or mixed with recorded findings. `Owner` must
+render as a meaningful identity, and every other recorded metadata field must
+render substantive visible text rather than empty HTML or punctuation alone.
+Repository-backed finding evidence uses
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>-finding-<slug>.<artifact-extension>`;
 the same validated `.png`, `.json`, `.txt`, and `.md` artifact contract applies.
 External attachment links remain supplemental and do not replace that tracked
@@ -239,6 +253,8 @@ applicable` is not valid for that scenario.
 For each review item, set `Status` to `Completed` and record one explicit
 `Disposition`: `completed`, `blocked`, `workaround`, `defect`, or
 `post-UAT backlog`. Pending records keep both fields `Pending`.
+Keep exactly the canonical checklist rows shown below, once each and in order;
+additional, duplicate, missing, or reordered rows are invalid.
 `Conditional` requires a named `must-fix` finding with a `defect` or
 `workaround` disposition; a cosmetic `post-UAT backlog` alone remains eligible
 for `Accepted`. `Blocked` requires a `blocked` disposition. Each `blocked`,

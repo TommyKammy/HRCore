@@ -11,6 +11,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
 
+import { PNG } from "pngjs";
+
 import {
   p2zVisualUatChecklistItems,
   p2zVisualUatScenarioIds,
@@ -18,12 +20,31 @@ import {
   validateP2zVisualUatRecord as validateRecord,
 } from "./test-helpers/p2z-webui-visual-uat-record.js";
 
-const validPng = Buffer.from(
+function createPng(width: number, height: number): Buffer {
+  const image = new PNG({ width, height });
+  image.data.fill(255);
+  image.data[0] = 0;
+  image.data[1] = 0;
+  image.data[2] = 0;
+  return PNG.sync.write(image);
+}
+
+const desktopPng = createPng(1440, 900);
+const desktopFullPagePng = createPng(1440, 1200);
+const mobilePng = createPng(1170, 2532);
+const tinyPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
 
-function createEvidenceRepository(): { root: string; commit: string } {
+function createEvidenceRepository({
+  includeFindingArtifacts = true,
+}: { includeFindingArtifacts?: boolean } = {}): {
+  root: string;
+  commit: string;
+  closeoutCommit: string;
+  unrelatedCommit: string;
+} {
   const root = mkdtempSync(path.join(tmpdir(), "hrcore-p2z-uat-"));
   execFileSync("git", ["init", "--quiet"], { cwd: root });
   writeFileSync(path.join(root, "README.md"), "fixture\n");
@@ -46,6 +67,28 @@ function createEvidenceRepository(): { root: string; commit: string } {
     cwd: root,
     encoding: "utf8",
   }).trim();
+  const emptyTree = execFileSync("git", ["mktree"], {
+    cwd: root,
+    encoding: "utf8",
+    input: "",
+  }).trim();
+  const unrelatedCommit = execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=UAT Fixture",
+      "-c",
+      "user.email=uat-fixture@example.invalid",
+      "commit-tree",
+      emptyTree,
+      "-m",
+      "unrelated fixture",
+    ],
+    { cwd: root, encoding: "utf8" },
+  ).trim();
+  execFileSync("git", ["update-ref", "refs/heads/unrelated", unrelatedCommit], {
+    cwd: root,
+  });
   const artifactDirectory = path.join(
     root,
     "docs",
@@ -56,19 +99,43 @@ function createEvidenceRepository(): { root: string; commit: string } {
   );
   mkdirSync(artifactDirectory, { recursive: true });
   for (const scenarioId of p2zVisualUatScenarioIds) {
-    writeFileSync(path.join(artifactDirectory, `${scenarioId}.png`), validPng);
-    for (let issueNumber = 500; issueNumber <= 520; issueNumber += 1) {
-      writeFileSync(
-        path.join(
-          artifactDirectory,
-          `${scenarioId}-finding-${issueNumber}.png`,
-        ),
-        validPng,
-      );
+    const screenshot = scenarioId === "P2Z-UAT-07" ? mobilePng : desktopPng;
+    writeFileSync(
+      path.join(artifactDirectory, `${scenarioId}.png`),
+      screenshot,
+    );
+    if (includeFindingArtifacts) {
+      for (let issueNumber = 500; issueNumber <= 520; issueNumber += 1) {
+        writeFileSync(
+          path.join(
+            artifactDirectory,
+            `${scenarioId}-finding-${issueNumber}.png`,
+          ),
+          screenshot,
+        );
+      }
     }
   }
   execFileSync("git", ["add", "docs/evidence"], { cwd: root });
-  return { root, commit };
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=UAT Fixture",
+      "-c",
+      "user.email=uat-fixture@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "record evidence",
+    ],
+    { cwd: root },
+  );
+  const closeoutCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  return { root, commit, closeoutCommit, unrelatedCommit };
 }
 
 const evidenceRepository = createEvidenceRepository();
@@ -533,6 +600,22 @@ test("P2Z visual UAT record requires canonical structure for every formal table"
       () => validateP2zVisualUatRecord(withoutDelimiter),
       table.expected,
     );
+
+    const detachedRow = table.delimiter.replaceAll("---", "rogue");
+    for (const malformedTable of [
+      accepted.replace(table.header, table.header.slice(1)),
+      accepted.replace(
+        `${table.header}\n${table.delimiter}`,
+        `${table.header}\n${table.delimiter.slice(1)}`,
+      ),
+      accepted.replace(table.header, `${detachedRow}\n${table.header}`),
+    ]) {
+      assert.notEqual(malformedTable, accepted);
+      assert.throws(
+        () => validateP2zVisualUatRecord(malformedTable),
+        table.expected,
+      );
+    }
   }
 
   for (const table of [
@@ -558,12 +641,118 @@ test("P2Z visual UAT record requires canonical structure for every formal table"
       line.startsWith(table.rowPrefix),
     );
     assert.notEqual(rowIndex, -1);
-    lines[rowIndex] = lines[rowIndex]!.replace(/\|$/u, "| unexpected |");
+    const canonicalRow = lines[rowIndex]!;
+    lines[rowIndex] = canonicalRow.replace(/\|$/u, "| unexpected |");
     assert.throws(
       () => validateP2zVisualUatRecord(lines.join("\n")),
       table.expected,
     );
+
+    for (const malformedRow of [
+      canonicalRow.slice(1),
+      canonicalRow.slice(0, -1),
+      canonicalRow.slice(1, -1),
+    ]) {
+      lines[rowIndex] = malformedRow;
+      assert.throws(
+        () => validateP2zVisualUatRecord(lines.join("\n")),
+        table.expected,
+      );
+    }
   }
+
+  const acceptedLines = accepted.split("\n");
+  const findingRow = acceptedLines.find((line) =>
+    line.startsWith("| P2Z-UAT-01 | none observed |"),
+  );
+  const finalFindingIndex = acceptedLines.findIndex((line) =>
+    line.startsWith("| P2Z-UAT-08 | none observed |"),
+  );
+  assert.ok(findingRow);
+  assert.notEqual(finalFindingIndex, -1);
+  for (const malformedSupplementalFinding of [
+    findingRow.slice(1),
+    findingRow.slice(0, -1),
+    findingRow.slice(1, -1),
+  ]) {
+    const lines = [...acceptedLines];
+    lines.splice(finalFindingIndex + 1, 0, malformedSupplementalFinding);
+    assert.throws(
+      () => validateP2zVisualUatRecord(lines.join("\n")),
+      /must keep the scenario finding record schema/u,
+    );
+  }
+  const detachedLines = [...acceptedLines];
+  detachedLines.splice(
+    finalFindingIndex + 1,
+    0,
+    "Detached explanatory text.",
+    findingRow.slice(1, -1),
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(detachedLines.join("\n")),
+    /must keep the scenario finding record schema/u,
+  );
+});
+
+test("P2Z visual UAT record validates every visible formal table row", () => {
+  const extraExecution = fixture("Accepted");
+  extraExecution.executions.push(completedExecution("P2Z-UAT-99"));
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(extraExecution)),
+    /must provide exactly one ordered execution row per scenario/u,
+  );
+
+  const extraFinding = fixture("Accepted");
+  extraFinding.findings.push(cleanFinding("P2Z-UAT-99"));
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(extraFinding)),
+    /must provide at least one finding row per scenario/u,
+  );
+
+  for (const input of [
+    fixture("Pending human execution"),
+    fixture("Accepted"),
+  ]) {
+    input.findings.splice(1, 0, { ...input.findings[0]! });
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(input)),
+      /must use exactly one pending or none observed marker, or only recorded findings/u,
+    );
+  }
+
+  const extraChecklist = fixture("Accepted");
+  extraChecklist.checklist.push({
+    label: "Unrecognized review item",
+    status: "Completed",
+    disposition: "defect",
+  });
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(extraChecklist)),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(
+        error.message,
+        /must keep exactly the ordered visual checklist inventory/u,
+      );
+      assert.match(
+        error.message,
+        /defect checklist disposition requires a matching must-fix finding/u,
+      );
+      return true;
+    },
+  );
+
+  const accepted = renderFixture(fixture("Accepted"));
+  const extraVerdictSurface = accepted.replace(
+    "| Go-live approval | Blocked |\n\n## Backend Integration Boundary",
+    "| Go-live approval | Blocked |\n| Unrecognized decision surface | Blocked |\n\n## Backend Integration Boundary",
+  );
+  assert.notEqual(extraVerdictSurface, accepted);
+  assert.throws(
+    () => validateP2zVisualUatRecord(extraVerdictSurface),
+    /must keep the exact ordered verdict boundary surfaces/u,
+  );
 });
 
 test("P2Z visual UAT record accepts a finding bound to the executed subject", () => {
@@ -631,9 +820,11 @@ test("P2Z visual UAT record requires unique package declarations", () => {
 });
 
 test("P2Z visual UAT record accepts the tested commit before execution", () => {
-  const input = fixture("Pending human execution");
-  input.commit = testedCommit;
-  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+  for (const commit of [testedCommit, evidenceRepository.closeoutCommit]) {
+    const input = fixture("Pending human execution");
+    input.commit = commit;
+    assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+  }
 });
 
 test("P2Z visual UAT record accepts every application bounded persona", () => {
@@ -659,7 +850,25 @@ test("P2Z visual UAT record accepts findings on both approval scenario legs", ()
 
 test("P2Z visual UAT record validates repository-backed artifact contents", (t) => {
   for (const artifact of [
-    { name: "valid PNG", extension: "png", contents: validPng, valid: true },
+    { name: "valid PNG", extension: "png", contents: desktopPng, valid: true },
+    {
+      name: "valid full-page PNG",
+      extension: "png",
+      contents: desktopFullPagePng,
+      valid: true,
+    },
+    {
+      name: "PNG from another viewport",
+      extension: "png",
+      contents: mobilePng,
+      valid: false,
+    },
+    {
+      name: "one-pixel PNG",
+      extension: "png",
+      contents: tinyPng,
+      valid: false,
+    },
     {
       name: "valid JSON trace",
       extension: "json",
@@ -711,12 +920,14 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
     {
       name: "symlink PNG",
       extension: "png",
-      contents: validPng,
+      contents: desktopPng,
       valid: false,
       symlink: true,
     },
   ]) {
-    const { root, commit } = createEvidenceRepository();
+    const { root, commit } = createEvidenceRepository({
+      includeFindingArtifacts: false,
+    });
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-01.${artifact.extension}`;
     const artifactPath = path.join(
@@ -749,6 +960,35 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       assert.throws(validate, /repository evidence must/u, artifact.name);
     }
   }
+});
+
+test("P2Z visual UAT record binds finding PNGs to the scenario viewport", (t) => {
+  const { root, commit } = createEvidenceRepository();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-07-finding-512.png`;
+  const artifactPath = path.join(root, "docs", ...relativeArtifact.split("/"));
+  const input = fixture("Accepted");
+  input.commit = commit;
+  bindExecutionEvidenceToCommit(input, commit);
+  const finding = recordedFinding("P2Z-UAT-07", "post-UAT", 512);
+  finding.subjectBinding = "synthetic-mobile-subject";
+  finding.routeViewport = "/transfer @ 390x844";
+  finding.evidence = `[finding](${relativeArtifact})`;
+  input.findings[6] = finding;
+  input.checklist[0]!.disposition = "post-UAT backlog";
+
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(renderFixture(input), root),
+  );
+
+  writeFileSync(artifactPath, desktopPng);
+  execFileSync("git", ["add", "--", path.relative(root, artifactPath)], {
+    cwd: root,
+  });
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(input), root),
+    /P2Z-UAT-07 recorded finding evidence must match the recorded 390x844 capture geometry/u,
+  );
 });
 
 test("P2Z visual UAT record rejects cross-state contradictions", () => {
@@ -809,6 +1049,16 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     input: nonexistentTestedCommit,
     expected: /tested commit must resolve to a repository commit/u,
   });
+
+  for (const overall of ["Pending human execution", "Accepted"] as const) {
+    const unrelatedTestedCommit = fixture(overall);
+    unrelatedTestedCommit.commit = evidenceRepository.unrelatedCommit;
+    cases.push({
+      name: `${overall} run bound to an unrelated repository commit`,
+      input: unrelatedTestedCommit,
+      expected: /tested commit must be an ancestor of repository HEAD/u,
+    });
+  }
 
   const missingRepositoryEvidence = fixture("Accepted");
   missingRepositoryEvidence.executions[0]!.evidence = `[run](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01.json)`;
@@ -999,7 +1249,7 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "missing checklist item",
     input: missingChecklistItem,
-    expected: /keep every required visual checklist item/u,
+    expected: /keep exactly the ordered visual checklist inventory/u,
   });
 
   const uncheckedAcceptance = fixture("Accepted");
@@ -1026,6 +1276,40 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     input: incompleteFinding,
     expected: /must include owner/u,
   });
+
+  for (const [field, label, expected] of [
+    ["owner", "owner", /must include owner as a visible identity/u],
+    ["scope", "scope boundary", /must include scope boundary as visible text/u],
+    ["actor", "actor", /must include actor as visible text/u],
+    [
+      "subjectBinding",
+      "subject binding",
+      /must include subject binding as visible text/u,
+    ],
+    [
+      "routeViewport",
+      "route and viewport",
+      /must include route and viewport as visible text/u,
+    ],
+    [
+      "evidenceVersion",
+      "evidence version",
+      /must include evidence version as visible text/u,
+    ],
+    [
+      "correlationId",
+      "correlation ID",
+      /must include correlation ID or not applicable as visible text/u,
+    ],
+  ] as const) {
+    const invisibleFindingMetadata = fixture("Conditional");
+    invisibleFindingMetadata.findings[2]![field] = "<span></span>";
+    cases.push({
+      name: `recorded finding with invisible ${label}`,
+      input: invisibleFindingMetadata,
+      expected,
+    });
+  }
 
   const auditFindingWithoutCorrelation = fixture("Accepted");
   auditFindingWithoutCorrelation.findings[5] = recordedFinding(

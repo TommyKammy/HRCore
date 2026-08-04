@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { PNG } from "pngjs";
 
+import { p2zVisualEvidenceProjects } from "../p2z-webui-visual-evidence-contract.js";
+
 export const p2zVisualUatScenarioIds = [
   "P2Z-UAT-01",
   "P2Z-UAT-02",
@@ -278,42 +280,103 @@ const fixedDecisionSurfaceVerdicts = new Map([
   ["Go-live approval", "Blocked"],
 ]);
 
+const verdictBoundaryHeader = ["Decision surface", "Current verdict"] as const;
+
+const executionRecordHeader = [
+  "ID",
+  "Human tester",
+  "Execution date",
+  "Viewport",
+  "Persona",
+  "Route",
+  "Subject binding",
+  "Expected result",
+  "Actual result",
+  "Evidence",
+  "Scenario verdict",
+] as const;
+
+const findingRecordHeader = [
+  "ID",
+  "Finding status",
+  "Linked GitHub Issue",
+  "Owner",
+  "Scope boundary",
+  "Actor",
+  "Tenant/environment",
+  "Subject binding",
+  "Route and viewport",
+  "Correlation ID",
+  "Evidence version",
+  "Screenshot or trace",
+  "Cleanup status",
+  "Disposition",
+] as const;
+
+const visualChecklistHeader = ["Review item", "Status", "Disposition"] as const;
+
 function markdownCells(line: string): string[] {
-  return line
-    .split(/(?<!\\)\|/u)
-    .slice(1, -1)
-    .map((cell) => cell.replace(/\\\|/gu, "|").trim());
+  const cells = line.split(/(?<!\\)\|/u);
+  if (line.startsWith("|")) cells.shift();
+  if (line.endsWith("|")) cells.pop();
+  return cells.map((cell) => cell.replace(/\\\|/gu, "|").trim());
 }
 
-function hasMarkdownTableSchema(
+function parseCanonicalMarkdownTable(
   markdownSection: string,
   expectedHeader: readonly string[],
-  minimumDataRows: number,
-): boolean {
+): string[][] | undefined {
   const lines = markdownSection.split("\n");
-  const headerIndex = lines.findIndex(
-    (line) =>
-      JSON.stringify(markdownCells(line)) === JSON.stringify(expectedHeader),
+  const headerIndexes = lines.flatMap((line, index) =>
+    line.startsWith("|") &&
+    line.endsWith("|") &&
+    JSON.stringify(markdownCells(line)) === JSON.stringify(expectedHeader)
+      ? [index]
+      : [],
   );
-  if (headerIndex < 0) return false;
-
-  const delimiter = markdownCells(lines[headerIndex + 1] ?? "");
+  if (headerIndexes.length !== 1) return undefined;
+  const headerIndex = headerIndexes[0]!;
+  const isTableShapedLine = (line: string): boolean =>
+    line.includes("|") && markdownCells(line).length === expectedHeader.length;
+  const linesBeforeHeader = lines.slice(0, headerIndex);
   if (
+    linesBeforeHeader.some(
+      (line) => line.startsWith("|") || isTableShapedLine(line),
+    )
+  ) {
+    return undefined;
+  }
+
+  const delimiterLine = lines[headerIndex + 1] ?? "";
+  const delimiter = markdownCells(delimiterLine);
+  if (
+    !delimiterLine.startsWith("|") ||
+    !delimiterLine.endsWith("|") ||
     delimiter.length !== expectedHeader.length ||
     !delimiter.every((cell) => /^:?-{3,}:?$/u.test(cell))
   ) {
-    return false;
+    return undefined;
   }
 
   const dataRows: string[][] = [];
-  for (const line of lines.slice(headerIndex + 2)) {
-    if (!line.startsWith("|")) break;
-    dataRows.push(markdownCells(line));
+  let nextLineIndex = headerIndex + 2;
+  while (lines[nextLineIndex]?.startsWith("|")) {
+    const row = lines[nextLineIndex] ?? "";
+    if (!row.endsWith("|")) return undefined;
+    const cells = markdownCells(row);
+    if (cells.length !== expectedHeader.length) return undefined;
+    dataRows.push(cells);
+    nextLineIndex += 1;
   }
-  return (
-    dataRows.length >= minimumDataRows &&
-    dataRows.every((cells) => cells.length === expectedHeader.length)
-  );
+  const linesAfterTable = lines.slice(nextLineIndex);
+  if (
+    linesAfterTable.some(
+      (line) => line.startsWith("|") || isTableShapedLine(line),
+    )
+  ) {
+    return undefined;
+  }
+  return dataRows;
 }
 
 const htmlVoidElements = new Set([
@@ -421,68 +484,47 @@ function singletonDeclaration(
   return matches[0]?.[1];
 }
 
-function parseExecutionRows(record: string): ExecutionRow[] {
-  return record
-    .split("\n")
-    .filter((line) => /^\| P2Z-UAT-\d{2} \|/u.test(line))
-    .map((line) => {
-      const cells = markdownCells(line);
-      return {
-        id: cells[0] ?? "",
-        humanTester: cells[1] ?? "",
-        executionDate: cells[2] ?? "",
-        viewport: cells[3] ?? "",
-        persona: cells[4] ?? "",
-        route: cells[5] ?? "",
-        subjectBinding: cells[6] ?? "",
-        expectedResult: cells[7] ?? "",
-        actualResult: cells[8] ?? "",
-        evidence: cells[9] ?? "",
-        verdict: cells[10] ?? "",
-      };
-    });
+function parseExecutionRows(rows: readonly string[][]): ExecutionRow[] {
+  return rows.map((cells) => ({
+    id: cells[0] ?? "",
+    humanTester: cells[1] ?? "",
+    executionDate: cells[2] ?? "",
+    viewport: cells[3] ?? "",
+    persona: cells[4] ?? "",
+    route: cells[5] ?? "",
+    subjectBinding: cells[6] ?? "",
+    expectedResult: cells[7] ?? "",
+    actualResult: cells[8] ?? "",
+    evidence: cells[9] ?? "",
+    verdict: cells[10] ?? "",
+  }));
 }
 
-function parseFindingRows(record: string): FindingRow[] {
-  return record
-    .split("\n")
-    .filter((line) => /^\| P2Z-UAT-\d{2} \|/u.test(line))
-    .map((line) => {
-      const cells = markdownCells(line);
-      return {
-        id: cells[0] ?? "",
-        status: cells[1] ?? "",
-        linkedIssue: cells[2] ?? "",
-        owner: cells[3] ?? "",
-        scopeBoundary: cells[4] ?? "",
-        actor: cells[5] ?? "",
-        tenantEnvironment: cells[6] ?? "",
-        subjectBinding: cells[7] ?? "",
-        routeViewport: cells[8] ?? "",
-        correlationId: cells[9] ?? "",
-        evidenceVersion: cells[10] ?? "",
-        evidence: cells[11] ?? "",
-        cleanupStatus: cells[12] ?? "",
-        disposition: cells[13] ?? "",
-      };
-    });
+function parseFindingRows(rows: readonly string[][]): FindingRow[] {
+  return rows.map((cells) => ({
+    id: cells[0] ?? "",
+    status: cells[1] ?? "",
+    linkedIssue: cells[2] ?? "",
+    owner: cells[3] ?? "",
+    scopeBoundary: cells[4] ?? "",
+    actor: cells[5] ?? "",
+    tenantEnvironment: cells[6] ?? "",
+    subjectBinding: cells[7] ?? "",
+    routeViewport: cells[8] ?? "",
+    correlationId: cells[9] ?? "",
+    evidenceVersion: cells[10] ?? "",
+    evidence: cells[11] ?? "",
+    cleanupStatus: cells[12] ?? "",
+    disposition: cells[13] ?? "",
+  }));
 }
 
-function parseChecklist(checklist: string): ChecklistEntry[] {
-  return checklist
-    .split("\n")
-    .filter((line) => /^\| .+ \| .+ \| .+ \|$/u.test(line))
-    .map((line) => markdownCells(line))
-    .filter(([label]) =>
-      p2zVisualUatChecklistItems.includes(
-        label as (typeof p2zVisualUatChecklistItems)[number],
-      ),
-    )
-    .map(([label, status, disposition]) => ({
-      label,
-      status: status ?? "",
-      disposition: disposition ?? "",
-    }));
+function parseChecklist(rows: readonly string[][]): ChecklistEntry[] {
+  return rows.map(([label, status, disposition]) => ({
+    label,
+    status: status ?? "",
+    disposition: disposition ?? "",
+  }));
 }
 
 function isIsoDate(value: string): boolean {
@@ -512,6 +554,11 @@ function renderedText(value: string): string {
     .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/giu, " ")
     .replace(/\s+/gu, " ")
     .trim();
+}
+
+function isVisibleSubstantive(value: string): boolean {
+  const visibleText = renderedText(value);
+  return isSubstantive(visibleText) && /[\p{L}\p{N}]/u.test(visibleText);
 }
 
 function isMeaningfulObservation(value: string): boolean {
@@ -546,6 +593,7 @@ function hasStructuredTraceContent(value: unknown): boolean {
 function trackedRepositoryArtifactIssue(
   rootDirectory: string,
   target: string,
+  expectedViewport?: string,
 ): string | undefined {
   const repositoryPath = path.posix.join("docs", target);
   const absolutePath = path.join(rootDirectory, ...repositoryPath.split("/"));
@@ -577,6 +625,26 @@ function trackedRepositoryArtifactIssue(
     if (extension === ".png") {
       const image = PNG.sync.read(contents);
       if (image.width < 1 || image.height < 1) throw new Error("empty image");
+      const captureContract = [
+        p2zVisualEvidenceProjects["desktop-chromium"],
+        p2zVisualEvidenceProjects["mobile-chromium"],
+      ].find(
+        ({ viewport }) =>
+          `${viewport.width}x${viewport.height}` === expectedViewport,
+      );
+      if (
+        captureContract &&
+        (image.width !==
+          captureContract.viewport.width * captureContract.deviceScaleFactor ||
+          image.height <
+            captureContract.viewport.height * captureContract.deviceScaleFactor)
+      ) {
+        const expectedPixelWidth =
+          captureContract.viewport.width * captureContract.deviceScaleFactor;
+        const minimumPixelHeight =
+          captureContract.viewport.height * captureContract.deviceScaleFactor;
+        return `must match the recorded ${expectedViewport} capture geometry (${expectedPixelWidth}px wide and at least ${minimumPixelHeight}px high)`;
+      }
     } else if (extension === ".json") {
       const value: unknown = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(contents),
@@ -600,16 +668,27 @@ function trackedRepositoryArtifactIssue(
   return undefined;
 }
 
-function isRepositoryCommit(rootDirectory: string, commit: string): boolean {
+function repositoryCommitIssue(
+  rootDirectory: string,
+  commit: string,
+): string | undefined {
   try {
     execFileSync("git", ["cat-file", "-e", `${commit}^{commit}`], {
       cwd: rootDirectory,
       stdio: "ignore",
     });
-    return true;
   } catch {
-    return false;
+    return "must resolve to a repository commit";
   }
+  try {
+    execFileSync("git", ["merge-base", "--is-ancestor", commit, "HEAD"], {
+      cwd: rootDirectory,
+      stdio: "ignore",
+    });
+  } catch {
+    return "must be an ancestor of repository HEAD";
+  }
+  return undefined;
 }
 
 function validatePendingExecutionRow(
@@ -735,6 +814,7 @@ function validateCompletedExecutionRow(
     const artifactIssue = trackedRepositoryArtifactIssue(
       rootDirectory,
       repositoryTarget,
+      row.viewport,
     );
     if (artifactIssue) {
       issues.push(`${row.id} repository evidence ${artifactIssue}`);
@@ -760,6 +840,8 @@ function validateCompletedFindingRow(
     return;
   }
   const metadata = findingMetadata(row);
+  const scenario =
+    p2zVisualUatScenarioContracts[row.id as P2zVisualUatScenarioId];
   if (row.status === "none observed") {
     if (metadata.some((value) => value !== "not applicable")) {
       issues.push(`${row.id} clean finding metadata must be not applicable`);
@@ -769,16 +851,22 @@ function validateCompletedFindingRow(
   if (!githubIssuePattern.test(row.linkedIssue)) {
     issues.push(`${row.id} recorded finding must link a GitHub Issue`);
   }
+  if (!isMeaningfulIdentity(row.owner)) {
+    issues.push(
+      `${row.id} recorded finding must include owner as a visible identity`,
+    );
+  }
   for (const [name, value] of [
-    ["owner", row.owner],
     ["scope boundary", row.scopeBoundary],
     ["actor", row.actor],
     ["subject binding", row.subjectBinding],
     ["route and viewport", row.routeViewport],
     ["evidence version", row.evidenceVersion],
   ] as const) {
-    if (!isSubstantive(value)) {
-      issues.push(`${row.id} recorded finding must include ${name}`);
+    if (!isVisibleSubstantive(value)) {
+      issues.push(
+        `${row.id} recorded finding must include ${name} as visible text`,
+      );
     }
   }
   if (row.tenantEnvironment !== boundedTenantEnvironment) {
@@ -787,19 +875,22 @@ function validateCompletedFindingRow(
   if (!boundedPersonaLabels.has(row.actor) && row.actor !== "No persona") {
     issues.push(`${row.id} recorded finding must use a bounded actor`);
   }
-  if (!/^\/\S+ @ (?:1440x900|390x844)$/u.test(row.routeViewport)) {
+  const routeViewport = row.routeViewport.match(
+    /^\/\S+ @ (1440x900|390x844)$/u,
+  );
+  if (!routeViewport) {
     issues.push(`${row.id} recorded finding must bind route and viewport`);
   }
-  if (row.id === "P2Z-UAT-06" && !isSubstantive(row.correlationId)) {
+  if (row.id === "P2Z-UAT-06" && !isVisibleSubstantive(row.correlationId)) {
     issues.push(
-      `${row.id} recorded finding must bind the Audit correlation ID`,
+      `${row.id} recorded finding must bind the Audit correlation ID as visible text`,
     );
   } else if (
     row.correlationId !== "not applicable" &&
-    !isSubstantive(row.correlationId)
+    !isVisibleSubstantive(row.correlationId)
   ) {
     issues.push(
-      `${row.id} recorded finding must include correlation ID or not applicable`,
+      `${row.id} recorded finding must include correlation ID or not applicable as visible text`,
     );
   }
   const repositoryEvidence = new RegExp(
@@ -818,6 +909,7 @@ function validateCompletedFindingRow(
     const artifactIssue = trackedRepositoryArtifactIssue(
       rootDirectory,
       repositoryTarget,
+      scenario?.viewport,
     );
     if (artifactIssue) {
       issues.push(`${row.id} recorded finding evidence ${artifactIssue}`);
@@ -976,21 +1068,12 @@ export function collectP2zVisualUatRecordIssues(
     );
   }
 
-  const verdictBoundaryRows = verdictSection
-    .split("\n")
-    .filter((line) => /^\| .+ \| .+ \|$/u.test(line))
-    .map((line) => markdownCells(line))
-    .filter(
-      ([surface]) =>
-        surface !== "Decision surface" && !/^:?-+:?$/u.test(surface ?? ""),
-    );
-  if (
-    !hasMarkdownTableSchema(
-      verdictSection,
-      ["Decision surface", "Current verdict"],
-      5,
-    )
-  ) {
+  const verdictBoundaryTable = parseCanonicalMarkdownTable(
+    verdictSection,
+    verdictBoundaryHeader,
+  );
+  const verdictBoundaryRows = verdictBoundaryTable ?? [];
+  if (!verdictBoundaryTable) {
     issues.push("must keep the verdict boundary table schema");
   }
   if (
@@ -1023,26 +1106,12 @@ export function collectP2zVisualUatRecordIssues(
     }
   }
 
-  const executionRows = parseExecutionRows(executionSection);
-  if (
-    !hasMarkdownTableSchema(
-      executionSection,
-      [
-        "ID",
-        "Human tester",
-        "Execution date",
-        "Viewport",
-        "Persona",
-        "Route",
-        "Subject binding",
-        "Expected result",
-        "Actual result",
-        "Evidence",
-        "Scenario verdict",
-      ],
-      p2zVisualUatScenarioIds.length,
-    )
-  ) {
+  const executionTable = parseCanonicalMarkdownTable(
+    executionSection,
+    executionRecordHeader,
+  );
+  const executionRows = parseExecutionRows(executionTable ?? []);
+  if (!executionTable) {
     issues.push("must keep the human execution record schema");
   }
   const executionIds = executionRows.map((row) => row.id);
@@ -1051,54 +1120,57 @@ export function collectP2zVisualUatRecordIssues(
   ) {
     issues.push("must provide exactly one ordered execution row per scenario");
   }
-  const findingRows = parseFindingRows(findingSection);
-  if (
-    !hasMarkdownTableSchema(
-      findingSection,
-      [
-        "ID",
-        "Finding status",
-        "Linked GitHub Issue",
-        "Owner",
-        "Scope boundary",
-        "Actor",
-        "Tenant/environment",
-        "Subject binding",
-        "Route and viewport",
-        "Correlation ID",
-        "Evidence version",
-        "Screenshot or trace",
-        "Cleanup status",
-        "Disposition",
-      ],
-      p2zVisualUatScenarioIds.length,
-    )
-  ) {
+  const findingTable = parseCanonicalMarkdownTable(
+    findingSection,
+    findingRecordHeader,
+  );
+  const findingRows = parseFindingRows(findingTable ?? []);
+  if (!findingTable) {
     issues.push("must keep the scenario finding record schema");
   }
-  const findingIds = [...new Set(findingRows.map((row) => row.id))].sort();
+  const findingsByScenario = new Map<string, FindingRow[]>();
+  for (const row of findingRows) {
+    const rows = findingsByScenario.get(row.id) ?? [];
+    rows.push(row);
+    findingsByScenario.set(row.id, rows);
+  }
+  const findingIds = [...findingsByScenario.keys()].sort();
   if (
     JSON.stringify(findingIds) !==
     JSON.stringify([...p2zVisualUatScenarioIds].sort())
   ) {
     issues.push("must provide at least one finding row per scenario");
   }
+  for (const [scenarioId, rows] of findingsByScenario) {
+    const statuses = new Set(rows.map((row) => row.status));
+    const markerRows = rows.filter((row) =>
+      ["Pending", "none observed"].includes(row.status),
+    );
+    if (markerRows.length > 0 && rows.length !== 1) {
+      issues.push(
+        `${scenarioId} must use exactly one pending or none observed marker, or only recorded findings`,
+      );
+    }
+    if (statuses.has("none observed") && statuses.size > 1) {
+      issues.push(
+        `${scenarioId} cannot mix none observed with recorded findings`,
+      );
+    }
+  }
 
-  const checklist = parseChecklist(checklistSection);
-  if (
-    !hasMarkdownTableSchema(
-      checklistSection,
-      ["Review item", "Status", "Disposition"],
-      p2zVisualUatChecklistItems.length,
-    )
-  ) {
+  const checklistTable = parseCanonicalMarkdownTable(
+    checklistSection,
+    visualChecklistHeader,
+  );
+  const checklist = parseChecklist(checklistTable ?? []);
+  if (!checklistTable) {
     issues.push("must keep the visual checklist record schema");
   }
   if (
     JSON.stringify(checklist.map((entry) => entry.label)) !==
     JSON.stringify(p2zVisualUatChecklistItems)
   ) {
-    issues.push("must keep every required visual checklist item");
+    issues.push("must keep exactly the ordered visual checklist inventory");
   }
 
   if (
@@ -1118,11 +1190,9 @@ export function collectP2zVisualUatRecordIssues(
         "pending UAT must use a pending or 40-character tested commit",
       );
     }
-    if (
-      /^[0-9a-f]{40}$/u.test(testedCommit) &&
-      !isRepositoryCommit(rootDirectory, testedCommit)
-    ) {
-      issues.push("tested commit must resolve to a repository commit");
+    if (/^[0-9a-f]{40}$/u.test(testedCommit)) {
+      const commitIssue = repositoryCommitIssue(rootDirectory, testedCommit);
+      if (commitIssue) issues.push(`tested commit ${commitIssue}`);
     }
     for (const row of executionRows) {
       validatePendingExecutionRow(
@@ -1163,9 +1233,8 @@ export function collectP2zVisualUatRecordIssues(
     issues.push("completed UAT must bind to a 40-character tested commit");
     return issues;
   }
-  if (!isRepositoryCommit(rootDirectory, testedCommit)) {
-    issues.push("tested commit must resolve to a repository commit");
-  }
+  const commitIssue = repositoryCommitIssue(rootDirectory, testedCommit);
+  if (commitIssue) issues.push(`tested commit ${commitIssue}`);
   if (!isMeaningfulIdentity(namedHumanTester)) {
     issues.push("completed UAT must identify the named human tester");
   }
@@ -1228,11 +1297,7 @@ export function collectP2zVisualUatRecordIssues(
       ? []
       : executionRows.slice(blockedIndex + 1).map((row) => row.id),
   );
-  const findingsByScenario = new Map<string, FindingRow[]>();
   for (const row of findingRows) {
-    const rows = findingsByScenario.get(row.id) ?? [];
-    rows.push(row);
-    findingsByScenario.set(row.id, rows);
     if (unexecutedIds.has(row.id)) {
       if (
         row.status !== "Pending" ||
@@ -1249,15 +1314,6 @@ export function collectP2zVisualUatRecordIssues(
       issues,
       rootDirectory,
     );
-  }
-
-  for (const [scenarioId, rows] of findingsByScenario) {
-    const statuses = new Set(rows.map((row) => row.status));
-    if (statuses.has("none observed") && statuses.size > 1) {
-      issues.push(
-        `${scenarioId} cannot mix none observed with recorded findings`,
-      );
-    }
   }
 
   const completedFindings = findingRows.filter(
