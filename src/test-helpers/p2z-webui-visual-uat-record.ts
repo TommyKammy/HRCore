@@ -20,49 +20,59 @@ const p2zVisualUatScenarioContracts: Record<
   {
     viewport: string;
     persona: string | "Any bounded persona";
+    route: string | "Any bounded route";
     expectedResult: string;
   }
 > = {
   "P2Z-UAT-01": {
     viewport: "1440x900",
     persona: "HR operator",
+    route: "/queue",
     expectedResult: "Dashboard structure is understandable",
   },
   "P2Z-UAT-02": {
     viewport: "1440x900",
     persona: "HR operator",
+    route: "/employee",
     expectedResult:
       "Masked profile, lifecycle timeline, and external IDs are visible",
   },
   "P2Z-UAT-03": {
     viewport: "1440x900",
     persona: "HR operator",
-    expectedResult: "Transfer steps and impact remain clear",
+    route: "/transfer",
+    expectedResult:
+      "Step 3/5, input, impact preview, validation, and request detail are visible",
   },
   "P2Z-UAT-04": {
     viewport: "1440x900",
     persona: "HR operator then Approver",
+    route: "/approvals",
     expectedResult: "Approval evidence and actions are clear",
   },
   "P2Z-UAT-05": {
     viewport: "1440x900",
     persona: "HR Ops/support",
+    route: "/ops",
     expectedResult: "Job and DLQ evidence is understandable",
   },
   "P2Z-UAT-06": {
     viewport: "1440x900",
     persona: "HR Ops/support",
+    route: "/audit",
     expectedResult:
       "One exact correlation lookup and evidence timeline are visible",
   },
   "P2Z-UAT-07": {
     viewport: "390x844",
     persona: "Any bounded persona",
+    route: "Any bounded route",
     expectedResult: "Drawer and primary actions remain usable",
   },
   "P2Z-UAT-08": {
     viewport: "1440x900",
     persona: "No persona",
+    route: "/queue",
     expectedResult: "Workflow content remains fail-closed",
   },
 };
@@ -74,7 +84,41 @@ const boundedPersonaLabels = new Set([
   "Bounded admin",
 ]);
 
+const boundedRoutesByPersona = new Map<string, ReadonlySet<string>>([
+  [
+    "HR operator",
+    new Set([
+      "/queue",
+      "/employees",
+      "/employee",
+      "/lifecycle",
+      "/onboarding",
+      "/transfer",
+      "/termination",
+      "/csv",
+    ]),
+  ],
+  ["Approver", new Set(["/queue", "/approvals", "/audit"])],
+  [
+    "HR Ops/support",
+    new Set([
+      "/queue",
+      "/employees",
+      "/employee",
+      "/lifecycle",
+      "/csv",
+      "/ops",
+      "/audit",
+      "/support",
+    ]),
+  ],
+  ["Bounded admin", new Set(["/queue", "/admin"])],
+]);
+
 const boundedTenantEnvironment = "repo_owned_synthetic_webui_non_production";
+
+const githubAttachmentPattern =
+  /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 const p2zVisualUatDecisionSurfaces = [
   "Automated visual UAT candidate",
@@ -194,9 +238,9 @@ const fixedDecisionSurfaceVerdicts = new Map([
 
 function markdownCells(line: string): string[] {
   return line
-    .split("|")
+    .split(/(?<!\\)\|/u)
     .slice(1, -1)
-    .map((cell) => cell.trim());
+    .map((cell) => cell.replace(/\\\|/gu, "|").trim());
 }
 
 function section(
@@ -362,9 +406,7 @@ function validateCompletedExecutionRow(
     repositoryArtifact.test(target),
   );
   const externalTarget = links.find((target) =>
-    /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/u.test(
-      target,
-    ),
+    githubAttachmentPattern.test(target),
   );
   const artifact = repositoryTarget ?? externalTarget;
   if (!artifact) {
@@ -438,12 +480,10 @@ function validateCompletedFindingRow(
     `^evidence/p2z-webui/runs/${testedCommit}/${row.id}-finding-[a-z0-9-]+\\.(?:png|jpe?g|webp|json|zip|txt|md)$`,
     "u",
   );
-  const externalEvidence =
-    /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f-]+$/u;
   if (
     !evidenceTarget ||
     (!repositoryEvidence.test(evidenceTarget) &&
-      !externalEvidence.test(evidenceTarget))
+      !githubAttachmentPattern.test(evidenceTarget))
   ) {
     issues.push(`${row.id} recorded finding must link its screenshot or trace`);
   } else if (
@@ -481,6 +521,41 @@ function findingMetadata(row: FindingRow): string[] {
     row.cleanupStatus,
     row.disposition,
   ];
+}
+
+function validateFindingScenarioBinding(
+  finding: FindingRow,
+  execution: ExecutionRow | undefined,
+  issues: string[],
+): void {
+  if (!execution || finding.status === "none observed") return;
+  const scenario =
+    p2zVisualUatScenarioContracts[finding.id as P2zVisualUatScenarioId];
+  if (!scenario) return;
+  const routeViewport = finding.routeViewport.match(/^(\/\S+) @ (\d+x\d+)$/u);
+  const route = routeViewport?.[1];
+  const viewport = routeViewport?.[2];
+  if (viewport && viewport !== execution.viewport) {
+    issues.push(`${finding.id} finding viewport must match its execution row`);
+  }
+
+  if (finding.id === "P2Z-UAT-04") {
+    if (!new Set(["HR operator", "Approver"]).has(finding.actor)) {
+      issues.push(`${finding.id} finding actor must be a scenario participant`);
+    }
+  } else if (finding.actor !== execution.persona) {
+    issues.push(`${finding.id} finding actor must match its execution row`);
+  }
+
+  if (scenario.route === "Any bounded route") {
+    if (!route || !boundedRoutesByPersona.get(execution.persona)?.has(route)) {
+      issues.push(
+        `${finding.id} finding route must be allowed for its persona`,
+      );
+    }
+  } else if (route && route !== scenario.route) {
+    issues.push(`${finding.id} finding route must match its scenario`);
+  }
 }
 
 export function collectP2zVisualUatRecordIssues(
@@ -774,8 +849,16 @@ export function collectP2zVisualUatRecordIssues(
   const executionVerdictByScenario = new Map(
     executionRows.map((row) => [row.id, row.verdict]),
   );
+  const executionByScenario = new Map(
+    executionRows.map((row) => [row.id, row]),
+  );
   for (const finding of completedFindings) {
     const scenarioVerdict = executionVerdictByScenario.get(finding.id);
+    validateFindingScenarioBinding(
+      finding,
+      executionByScenario.get(finding.id),
+      issues,
+    );
     if (finding.status === "blocker" && scenarioVerdict !== "Blocked") {
       issues.push(`${finding.id} blocker finding requires a Blocked scenario`);
     }
@@ -856,21 +939,47 @@ export function collectP2zVisualUatRecordIssues(
       `${overallVerdict} overall verdict requires a completed checklist`,
     );
   }
+  const findingStatuses = new Set(completedFindings.map((row) => row.status));
+  const checklistDispositionValues = new Set(
+    checklist.map((entry) => entry.disposition),
+  );
+  if (
+    overallVerdict === "Accepted" &&
+    checklist.some((entry) =>
+      new Set(["blocked", "defect", "workaround"]).has(entry.disposition),
+    )
+  ) {
+    issues.push("Accepted overall verdict cannot retain adverse dispositions");
+  }
   if (
     overallVerdict === "Conditional" &&
-    !completedFindings.some(
-      (finding) =>
-        (finding.status === "must-fix" &&
-          checklist.some((entry) =>
-            new Set(["defect", "workaround"]).has(entry.disposition),
-          )) ||
-        (finding.status === "post-UAT" &&
-          checklist.some((entry) => entry.disposition === "post-UAT backlog")),
+    checklistDispositionValues.has("blocked")
+  ) {
+    issues.push(
+      "Conditional overall verdict cannot retain blocked disposition",
+    );
+  }
+  if (
+    findingStatuses.has("must-fix") &&
+    !checklist.some((entry) =>
+      new Set(["defect", "workaround"]).has(entry.disposition),
     )
   ) {
     issues.push(
-      "Conditional overall verdict requires a checklist disposition aligned with its finding",
+      "must-fix findings require a defect or workaround checklist disposition",
     );
+  }
+  if (
+    findingStatuses.has("post-UAT") &&
+    !checklistDispositionValues.has("post-UAT backlog")
+  ) {
+    issues.push("post-UAT findings require a backlog checklist disposition");
+  }
+  if (
+    checklistDispositionValues.has("post-UAT backlog") &&
+    !findingStatuses.has("post-UAT")
+  ) {
+    issues.push("post-UAT backlog disposition requires a matching finding");
   }
   if (
     overallVerdict === "Blocked" &&

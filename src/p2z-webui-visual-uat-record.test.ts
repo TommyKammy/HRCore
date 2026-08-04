@@ -72,7 +72,8 @@ function completedExecution(
     "P2Z-UAT-01": "Dashboard structure is understandable",
     "P2Z-UAT-02":
       "Masked profile, lifecycle timeline, and external IDs are visible",
-    "P2Z-UAT-03": "Transfer steps and impact remain clear",
+    "P2Z-UAT-03":
+      "Step 3/5, input, impact preview, validation, and request detail are visible",
     "P2Z-UAT-04": "Approval evidence and actions are clear",
     "P2Z-UAT-05": "Job and DLQ evidence is understandable",
     "P2Z-UAT-06":
@@ -195,9 +196,11 @@ function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
         ? "Pending"
         : overall === "Conditional" && index === 0
           ? "defect"
-          : overall === "Blocked" && index === 0
-            ? "blocked"
-            : "completed",
+          : overall === "Conditional" && index === 1
+            ? "post-UAT backlog"
+            : overall === "Blocked" && index === 0
+              ? "blocked"
+              : "completed",
   }));
   if (overall === "Pending human execution") {
     return {
@@ -364,6 +367,12 @@ test("P2Z visual UAT record accepts literal pending UI copy in observations", ()
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record parses escaped pipes inside table cells", () => {
+  const input = fixture("Accepted");
+  input.executions[3]!.actual = "Approve \\| Return separation is visible";
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
 test("P2Z visual UAT record accepts the tested commit before execution", () => {
   const input = fixture("Pending human execution");
   input.commit = testedCommit;
@@ -418,6 +427,15 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must link evidence for this run and scenario/u,
   });
 
+  const malformedAttachment = fixture("Accepted");
+  malformedAttachment.executions[0]!.evidence =
+    "[run](https://github.com/user-attachments/assets/-)";
+  cases.push({
+    name: "malformed GitHub attachment identifier",
+    input: malformedAttachment,
+    expected: /must link evidence for this run and scenario/u,
+  });
+
   const missingRepositoryEvidence = fixture("Accepted");
   missingRepositoryEvidence.executions[0]!.evidence = `[run](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01.png)`;
   cases.push({
@@ -448,6 +466,19 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "mobile scenario without a bounded persona",
     input: missingBoundedPersona,
     expected: /must record a concrete bounded persona/u,
+  });
+
+  const mismatchedFindingScenario = fixture("Accepted");
+  mismatchedFindingScenario.findings[7] = recordedFinding(
+    "P2Z-UAT-08",
+    "post-UAT",
+    506,
+  );
+  mismatchedFindingScenario.checklist[0]!.disposition = "post-UAT backlog";
+  cases.push({
+    name: "finding metadata from another scenario",
+    input: mismatchedFindingScenario,
+    expected: /finding actor must match its execution row/u,
   });
 
   const changedExpectedResult = fixture("Accepted");
@@ -540,6 +571,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /requires a completed checklist/u,
   });
 
+  const adverseAcceptedDisposition = fixture("Accepted");
+  adverseAcceptedDisposition.checklist[0]!.disposition = "defect";
+  cases.push({
+    name: "accepted record with adverse checklist disposition",
+    input: adverseAcceptedDisposition,
+    expected: /cannot retain adverse dispositions/u,
+  });
+
   const incompleteFinding = fixture("Conditional");
   incompleteFinding.findings[2]!.owner = "not applicable";
   cases.push({
@@ -590,7 +629,7 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "conditional verdict without checklist disposition",
     input: conditionWithoutChecklistDisposition,
-    expected: /requires a checklist disposition aligned with its finding/u,
+    expected: /must-fix findings require a defect or workaround/u,
   });
 
   for (const entry of cases) {
