@@ -422,6 +422,58 @@ test("P2Z visual UAT record parses escaped pipes inside table cells", () => {
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record parses only rendered Markdown records", () => {
+  const accepted = renderFixture(fixture("Accepted"));
+  for (const hiddenRecord of [
+    `<!--\n${accepted}\n-->`,
+    `\`\`\`markdown\n${accepted}\n\`\`\``,
+  ]) {
+    assert.throws(
+      () => validateP2zVisualUatRecord(hiddenRecord),
+      /must keep exactly one ## Verdict Boundary/u,
+    );
+  }
+
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(
+      `${accepted}\n<!-- Overall human verdict: **Blocked** -->`,
+    ),
+  );
+});
+
+test("P2Z visual UAT record requires unique package declarations", () => {
+  const accepted = renderFixture(fixture("Accepted"));
+  const duplicates = [
+    {
+      declaration: "Overall human verdict: **Blocked**",
+      expected: /exactly one supported overall human verdict/u,
+    },
+    {
+      declaration: `Tested commit: **${testedCommit}**`,
+      expected: /exactly one tested commit/u,
+    },
+    {
+      declaration: "Named human tester: **Another Tester**",
+      expected: /exactly one named human tester/u,
+    },
+    {
+      declaration: "Overall verdict recorded by: **Another Tester**",
+      expected: /exactly one verdict recorder/u,
+    },
+    {
+      declaration: "Execution environment/dataset: **production**",
+      expected: /exactly one execution environment/u,
+    },
+  ];
+  for (const duplicate of duplicates) {
+    const record = accepted.replace(
+      "| ID | Human tester |",
+      `${duplicate.declaration}\n\n| ID | Human tester |`,
+    );
+    assert.throws(() => validateP2zVisualUatRecord(record), duplicate.expected);
+  }
+});
+
 test("P2Z visual UAT record accepts the tested commit before execution", () => {
   const input = fixture("Pending human execution");
   input.commit = testedCommit;
@@ -869,6 +921,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "blocker finding before the blocked scenario",
     input: earlierBlockerFinding,
     expected: /blocker finding requires a Blocked scenario/u,
+  });
+
+  const blockedWithUnexplainedCondition = fixture("Blocked");
+  blockedWithUnexplainedCondition.executions[0]!.verdict = "Conditional";
+  cases.push({
+    name: "Blocked run with an unexplained earlier Conditional scenario",
+    input: blockedWithUnexplainedCondition,
+    expected: /Conditional scenario requires its own must-fix finding/u,
   });
 
   const executedFieldsAfterBlocker = fixture("Blocked");

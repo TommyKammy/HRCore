@@ -225,13 +225,6 @@ type ChecklistEntry = {
   disposition: string;
 };
 
-const overallVerdicts = new Set<P2zVisualUatOverallVerdict>([
-  "Pending human execution",
-  "Accepted",
-  "Conditional",
-  "Blocked",
-]);
-
 const completedScenarioVerdicts = new Set<P2zVisualUatScenarioVerdict>([
   "Accepted",
   "Conditional",
@@ -282,19 +275,72 @@ function markdownCells(line: string): string[] {
     .map((cell) => cell.replace(/\\\|/gu, "|").trim());
 }
 
+function renderedMarkdown(markdown: string): string {
+  const withoutComments = markdown
+    .replaceAll("\r\n", "\n")
+    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) =>
+      comment.replace(/[^\n]/gu, " "),
+    );
+  let fence: { marker: string; length: number } | undefined;
+  return withoutComments
+    .split("\n")
+    .map((line) => {
+      const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+      if (fence) {
+        if (
+          marker?.[0] === fence.marker &&
+          marker.length >= fence.length &&
+          /^ {0,3}(?:`{3,}|~{3,})\s*$/u.test(line)
+        ) {
+          fence = undefined;
+        }
+        return "";
+      }
+      if (marker) {
+        fence = { marker: marker[0] ?? "", length: marker.length };
+        return "";
+      }
+      return /^(?: {4}|\t)/u.test(line) ? "" : line;
+    })
+    .join("\n");
+}
+
 function section(
   markdown: string,
   startHeading: string,
   endHeading: string,
   issues: string[],
 ): string {
-  const start = markdown.indexOf(startHeading);
-  const end = markdown.indexOf(endHeading);
-  if (start < 0 || end <= start) {
-    issues.push(`must keep ${startHeading} before ${endHeading}`);
+  const lines = markdown.split("\n");
+  const starts = lines.flatMap((line, index) =>
+    line === startHeading ? [index] : [],
+  );
+  const ends = lines.flatMap((line, index) =>
+    line === endHeading ? [index] : [],
+  );
+  const start = starts[0] ?? -1;
+  const end = ends[0] ?? -1;
+  if (starts.length !== 1 || ends.length !== 1 || end <= start) {
+    issues.push(
+      `must keep exactly one ${startHeading} before exactly one ${endHeading}`,
+    );
     return "";
   }
-  return markdown.slice(start, end);
+  return lines.slice(start, end).join("\n");
+}
+
+function singletonDeclaration(
+  record: string,
+  pattern: RegExp,
+  issue: string,
+  issues: string[],
+): string | undefined {
+  const matches = Array.from(record.matchAll(pattern));
+  if (matches.length !== 1) {
+    issues.push(issue);
+    return undefined;
+  }
+  return matches[0]?.[1];
 }
 
 function parseExecutionRows(record: string): ExecutionRow[] {
@@ -771,52 +817,62 @@ export function collectP2zVisualUatRecordIssues(
   rootDirectory = process.cwd(),
 ): string[] {
   const issues: string[] = [];
+  const renderedRecord = renderedMarkdown(markdown);
   const verdictSection = section(
-    markdown,
+    renderedRecord,
     "## Verdict Boundary",
     "## Backend Integration Boundary",
     issues,
   );
   const executionSection = section(
-    markdown,
+    renderedRecord,
     "## Human Execution Record",
     "## Scenario Finding Record",
     issues,
   );
   const findingSection = section(
-    markdown,
+    renderedRecord,
     "## Scenario Finding Record",
     "## Visual Review Checklist",
     issues,
   );
   const checklistSection = section(
-    markdown,
+    renderedRecord,
     "## Visual Review Checklist",
     "## Evidence Matrix",
     issues,
   );
 
-  const overallVerdict = executionSection.match(
-    /Overall human verdict: \*\*(Pending human execution|Accepted|Conditional|Blocked)\*\*/u,
-  )?.[1] as P2zVisualUatOverallVerdict | undefined;
-  if (!overallVerdict || !overallVerdicts.has(overallVerdict)) {
-    issues.push("must record a supported overall human verdict");
-  }
-  const testedCommit = executionSection.match(
-    /Tested commit: \*\*(Pending human execution|[0-9a-f]{40})\*\*/u,
-  )?.[1];
-  if (!testedCommit) issues.push("must record the tested commit");
-  const namedHumanTester = executionSection.match(
-    /Named human tester: \*\*(.+?)\*\*/u,
-  )?.[1];
-  if (!namedHumanTester) issues.push("must record the named human tester");
-  const verdictRecorder = executionSection.match(
-    /Overall verdict recorded by: \*\*(.+?)\*\*/u,
-  )?.[1];
-  if (!verdictRecorder) issues.push("must record who assigned the verdict");
-  const executionEnvironment = executionSection.match(
-    /Execution environment\/dataset: \*\*(.+?)\*\*/u,
-  )?.[1];
+  const overallVerdict = singletonDeclaration(
+    executionSection,
+    /^Overall human verdict: \*\*(Pending human execution|Accepted|Conditional|Blocked)\*\*$/gmu,
+    "must record exactly one supported overall human verdict",
+    issues,
+  ) as P2zVisualUatOverallVerdict | undefined;
+  const testedCommit = singletonDeclaration(
+    executionSection,
+    /^Tested commit: \*\*(Pending human execution|[0-9a-f]{40})\*\*$/gmu,
+    "must record exactly one tested commit",
+    issues,
+  );
+  const namedHumanTester = singletonDeclaration(
+    executionSection,
+    /^Named human tester: \*\*(.+?)\*\*$/gmu,
+    "must record exactly one named human tester",
+    issues,
+  );
+  const verdictRecorder = singletonDeclaration(
+    executionSection,
+    /^Overall verdict recorded by: \*\*(.+?)\*\*$/gmu,
+    "must record exactly one verdict recorder",
+    issues,
+  );
+  const executionEnvironment = singletonDeclaration(
+    executionSection,
+    /^Execution environment\/dataset: \*\*(.+?)\*\*$/gmu,
+    "must record exactly one execution environment",
+    issues,
+  );
   if (executionEnvironment !== boundedTenantEnvironment) {
     issues.push(
       "must bind the formal run to the bounded execution environment",
@@ -1107,23 +1163,23 @@ export function collectP2zVisualUatRecordIssues(
       issues.push("Accepted overall verdict cannot retain blocking findings");
     }
   }
-  if (overallVerdict === "Conditional") {
-    const conditionalIds = new Set(
-      executionRows
-        .filter((row) => row.verdict === "Conditional")
-        .map((row) => row.id),
-    );
-    for (const conditionalId of conditionalIds) {
-      if (
-        !completedFindings.some(
-          (row) => row.id === conditionalId && row.status === "must-fix",
-        )
-      ) {
-        issues.push(
-          `${conditionalId} Conditional scenario requires its own must-fix finding`,
-        );
-      }
+  const conditionalIds = new Set(
+    executionRows
+      .filter((row) => row.verdict === "Conditional")
+      .map((row) => row.id),
+  );
+  for (const conditionalId of conditionalIds) {
+    if (
+      !completedFindings.some(
+        (row) => row.id === conditionalId && row.status === "must-fix",
+      )
+    ) {
+      issues.push(
+        `${conditionalId} Conditional scenario requires its own must-fix finding`,
+      );
     }
+  }
+  if (overallVerdict === "Conditional") {
     if (completedFindings.some((row) => row.status === "blocker")) {
       issues.push(
         "Conditional overall verdict cannot retain a blocker finding",

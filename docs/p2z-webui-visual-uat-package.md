@@ -129,6 +129,10 @@ Named human tester: **Pending assignment**
 Overall verdict recorded by: **Pending assignment**
 Execution environment/dataset: **repo_owned_synthetic_webui_non_production**
 
+Keep exactly one rendered declaration for each package-level field above.
+Formal record headings, declarations, tables, and rows inside HTML comments,
+fenced code blocks, or indented code blocks are not part of the UAT record.
+
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
 observed with meaningful rendered text; one-token and Markdown-only values are
@@ -162,10 +166,11 @@ or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
 or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
 that resolves as a commit in this repository, and no `Pending` values in either
 record. Verify it with `git cat-file -e <tested-commit>^{commit}` before
-closeout. Every `Conditional` scenario requires its own `must-fix` finding;
-one finding cannot explain multiple scenario verdicts. `Blocked` requires the
-tested commit, a completed `Blocked` scenario, and its `blocker` finding.
-Because the run stops at the first blocker, every
+closeout. Every `Conditional` scenario requires its own `must-fix` finding,
+including an executed Conditional scenario before a later blocker in a
+`Blocked` run; one finding cannot explain multiple scenario verdicts. `Blocked`
+requires the tested commit, a completed `Blocked` scenario, and its `blocker`
+finding. Because the run stops at the first blocker, every
 execution-specific and finding field in later rows must retain its original
 pending value rather than recording partial work after the stop point.
 Before execution, `Pending human execution` may use either the initial pending
