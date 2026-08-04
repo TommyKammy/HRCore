@@ -131,7 +131,8 @@ Execution environment/dataset: **repo_owned_synthetic_webui_non_production**
 
 Keep exactly one rendered declaration for each package-level field above.
 Formal record headings, declarations, tables, and rows inside HTML comments,
-fenced code blocks, or indented code blocks are not part of the UAT record.
+raw HTML blocks, fenced code blocks, or indented code blocks are not part of the
+UAT record.
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
@@ -144,6 +145,8 @@ GitHub `user-attachments/assets` URL for each run artifact. Repository-backed
 artifacts support a decodable `.png` screenshot or a valid `.json`, `.txt`, or
 `.md` trace. A JSON trace must contain at least one non-empty scalar event value;
 empty containers such as `{}`, `[]`, and `{"events":[]}` are not evidence. Each
+text or Markdown trace must contain a meaningful rendered observation rather
+than a token, punctuation, markup, or placeholder alone. Each
 artifact must be a non-empty Git-tracked regular file under `docs/`; symbolic
 links and content that does not match its extension are invalid. One artifact
 path or attachment URL belongs to exactly one execution or finding row across
@@ -155,6 +158,9 @@ verdict recorded by`. Every scenario in the formal run shares the recorded
 dataset boundary. The execution date cannot be later than the validation date.
 Keep the documented route for fixed scenarios; for P2Z-UAT-07, replace
 `Pending actual route` with the concrete route allowed for the recorded persona.
+Keep each scenario's documented subject binding. P2Z-UAT-02 must attest that the
+tester looked up the bounded `EMP-000128` fixture; scenarios without a required
+subject use `not applicable`.
 
 The `evidence/p2z-webui/runs/` namespace is reserved for formal human-run
 artifacts and is excluded from the strict automated reference-image inventory.
@@ -178,16 +184,16 @@ commit placeholder or the 40-character commit recorded in precondition 3. Its
 scenario verdicts, finding rows, and checklist remain pending until the formal
 verdict is recorded.
 
-| ID         | Human tester       | Execution date | Viewport | Persona                   | Route                   | Expected result                                                                           | Actual result           | Evidence                                                                                  | Scenario verdict |
-| ---------- | ------------------ | -------------- | -------- | ------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
-| P2Z-UAT-01 | Pending assignment | Pending        | 1440x900 | HR operator               | /queue                  | KPI, seven-day work queue, integration health, and recent drafts are visible              | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending       | Pending          |
-| P2Z-UAT-02 | Pending assignment | Pending        | 1440x900 | HR operator               | /employee               | Masked profile, lifecycle timeline, and external IDs are visible                          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending | Pending          |
-| P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | /transfer               | Step 3/5, input, impact preview, validation, and request detail are visible               | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
-| P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | /transfer -> /approvals | Selected transfer evidence and separated reject/return/approve/cancel actions are visible | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
-| P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | /ops                    | Runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
-| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | /audit                  | One exact correlation lookup and evidence timeline are visible                            | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
-| P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Pending actual persona    | Pending actual route    | Drawer opens explicitly, closes after route selection, and no primary action is lost      | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
-| P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | /queue                  | Workflows remain hidden and the bounded reason is visible                                 | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
+| ID         | Human tester       | Execution date | Viewport | Persona                   | Route                   | Subject binding | Expected result                                                                           | Actual result           | Evidence                                                                                  | Scenario verdict |
+| ---------- | ------------------ | -------------- | -------- | ------------------------- | ----------------------- | --------------- | ----------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| P2Z-UAT-01 | Pending assignment | Pending        | 1440x900 | HR operator               | /queue                  | not applicable  | KPI, seven-day work queue, integration health, and recent drafts are visible              | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending       | Pending          |
+| P2Z-UAT-02 | Pending assignment | Pending        | 1440x900 | HR operator               | /employee               | EMP-000128      | Masked profile, lifecycle timeline, and external IDs are visible                          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending | Pending          |
+| P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | /transfer               | not applicable  | Step 3/5, input, impact preview, validation, and request detail are visible               | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
+| P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | /transfer -> /approvals | not applicable  | Selected transfer evidence and separated reject/return/approve/cancel actions are visible | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
+| P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | /ops                    | not applicable  | Runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
+| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | /audit                  | not applicable  | One exact correlation lookup and evidence timeline are visible                            | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
+| P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Pending actual persona    | Pending actual route    | not applicable  | Drawer opens explicitly, closes after route selection, and no primary action is lost      | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
+| P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | /queue                  | not applicable  | Workflows remain hidden and the bounded reason is visible                                 | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
 
 ## Scenario Finding Record
 

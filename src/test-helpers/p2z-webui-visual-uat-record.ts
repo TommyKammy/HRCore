@@ -23,6 +23,7 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: string;
     persona: string | "Any bounded persona";
     route: string | "Any bounded route";
+    subjectBinding?: string;
     expectedResult: string;
     pendingEvidence: string;
     findingRouteActors?: ReadonlyMap<string, ReadonlySet<string>>;
@@ -41,6 +42,7 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: "1440x900",
     persona: "HR operator",
     route: "/employee",
+    subjectBinding: "EMP-000128",
     expectedResult:
       "Masked profile, lifecycle timeline, and external IDs are visible",
     pendingEvidence:
@@ -196,6 +198,7 @@ type ExecutionRow = {
   viewport: string;
   persona: string;
   route: string;
+  subjectBinding: string;
   expectedResult: string;
   actualResult: string;
   evidence: string;
@@ -275,6 +278,23 @@ function markdownCells(line: string): string[] {
     .map((cell) => cell.replace(/\\\|/gu, "|").trim());
 }
 
+const htmlVoidElements = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
 function renderedMarkdown(markdown: string): string {
   const withoutComments = markdown
     .replaceAll("\r\n", "\n")
@@ -282,6 +302,7 @@ function renderedMarkdown(markdown: string): string {
       comment.replace(/[^\n]/gu, " "),
     );
   let fence: { marker: string; length: number } | undefined;
+  let htmlBlock: string | undefined;
   return withoutComments
     .split("\n")
     .map((line) => {
@@ -296,8 +317,27 @@ function renderedMarkdown(markdown: string): string {
         }
         return "";
       }
+      if (htmlBlock) {
+        if (line.toLowerCase().includes(`</${htmlBlock}>`)) {
+          htmlBlock = undefined;
+        }
+        return "";
+      }
       if (marker) {
         fence = { marker: marker[0] ?? "", length: marker.length };
+        return "";
+      }
+      const htmlOpening = line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
+      if (htmlOpening) {
+        const tag = htmlOpening[1]?.toLowerCase() ?? "";
+        if (
+          tag &&
+          !htmlVoidElements.has(tag) &&
+          !/\/>\s*$/u.test(line) &&
+          !line.toLowerCase().includes(`</${tag}>`)
+        ) {
+          htmlBlock = tag;
+        }
         return "";
       }
       return /^(?: {4}|\t)/u.test(line) ? "" : line;
@@ -356,10 +396,11 @@ function parseExecutionRows(record: string): ExecutionRow[] {
         viewport: cells[3] ?? "",
         persona: cells[4] ?? "",
         route: cells[5] ?? "",
-        expectedResult: cells[6] ?? "",
-        actualResult: cells[7] ?? "",
-        evidence: cells[8] ?? "",
-        verdict: cells[9] ?? "",
+        subjectBinding: cells[6] ?? "",
+        expectedResult: cells[7] ?? "",
+        actualResult: cells[8] ?? "",
+        evidence: cells[9] ?? "",
+        verdict: cells[10] ?? "",
       };
     });
 }
@@ -424,8 +465,8 @@ function isSubstantive(value: string): boolean {
   );
 }
 
-function isMeaningfulObservation(value: string): boolean {
-  const renderedText = value
+function renderedText(value: string): string {
+  return value
     .replace(/!\[[^\]]*\]\([^)]+\)/gu, " ")
     .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
     .replace(/<[^>]*>/gu, " ")
@@ -433,11 +474,25 @@ function isMeaningfulObservation(value: string): boolean {
     .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/giu, " ")
     .replace(/\s+/gu, " ")
     .trim();
-  const renderedCharacters = renderedText.match(/[\p{L}\p{N}]/gu) ?? [];
+}
+
+function isMeaningfulObservation(value: string): boolean {
+  const visibleText = renderedText(value);
+  const renderedCharacters = visibleText.match(/[\p{L}\p{N}]/gu) ?? [];
   return (
-    isSubstantive(renderedText) &&
-    /\p{L}/u.test(renderedText) &&
+    isSubstantive(visibleText) &&
+    /\p{L}/u.test(visibleText) &&
     renderedCharacters.length >= 8
+  );
+}
+
+function isMeaningfulIdentity(value: string): boolean {
+  const visibleText = renderedText(value);
+  const renderedCharacters = visibleText.match(/[\p{L}\p{N}]/gu) ?? [];
+  return (
+    isSubstantive(visibleText) &&
+    /\p{L}/u.test(visibleText) &&
+    renderedCharacters.length >= 2
   );
 }
 
@@ -497,7 +552,7 @@ function trackedRepositoryArtifactIssue(
       }
     } else if (extension === ".txt" || extension === ".md") {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(contents);
-      if (!isSubstantive(text)) throw new Error("empty trace");
+      if (!isMeaningfulObservation(text)) throw new Error("empty trace");
     } else {
       return "must use a validated png, json, txt, or md artifact";
     }
@@ -562,6 +617,10 @@ function validatePendingExecutionRow(
   if (row.route !== pendingRoute) {
     issues.push(`${row.id} must retain pending route ${pendingRoute}`);
   }
+  const subjectBinding = scenario.subjectBinding ?? "not applicable";
+  if (row.subjectBinding !== subjectBinding) {
+    issues.push(`${row.id} must retain subject binding ${subjectBinding}`);
+  }
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);
   }
@@ -583,7 +642,7 @@ function validateCompletedExecutionRow(
   if (row.viewport !== scenario.viewport) {
     issues.push(`${row.id} must use viewport ${scenario.viewport}`);
   }
-  if (!isSubstantive(row.humanTester)) {
+  if (!isMeaningfulIdentity(row.humanTester)) {
     issues.push(`${row.id} must identify the human tester`);
   }
   if (!isPastOrPresentIsoDate(row.executionDate)) {
@@ -602,6 +661,10 @@ function validateCompletedExecutionRow(
     }
   } else if (row.route !== scenario.route) {
     issues.push(`${row.id} must use route ${scenario.route}`);
+  }
+  const subjectBinding = scenario.subjectBinding ?? "not applicable";
+  if (row.subjectBinding !== subjectBinding) {
+    issues.push(`${row.id} must use subject binding ${subjectBinding}`);
   }
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);
@@ -922,7 +985,7 @@ export function collectP2zVisualUatRecordIssues(
     !executionSection
       .replace(/\s+/gu, " ")
       .includes(
-        "| ID | Human tester | Execution date | Viewport | Persona | Route | Expected result | Actual result | Evidence | Scenario verdict |",
+        "| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Expected result | Actual result | Evidence | Scenario verdict |",
       )
   ) {
     issues.push("must keep the human execution record schema");
@@ -1015,7 +1078,7 @@ export function collectP2zVisualUatRecordIssues(
     }
     if (
       namedHumanTester !== "Pending assignment" &&
-      !isSubstantive(namedHumanTester)
+      !isMeaningfulIdentity(namedHumanTester)
     ) {
       issues.push("pending UAT must identify a valid assigned human tester");
     }
@@ -1031,7 +1094,7 @@ export function collectP2zVisualUatRecordIssues(
   if (!isRepositoryCommit(rootDirectory, testedCommit)) {
     issues.push("tested commit must resolve to a repository commit");
   }
-  if (!isSubstantive(namedHumanTester)) {
+  if (!isMeaningfulIdentity(namedHumanTester)) {
     issues.push("completed UAT must identify the named human tester");
   }
   if (verdictRecorder !== namedHumanTester) {

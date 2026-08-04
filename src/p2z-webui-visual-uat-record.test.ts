@@ -29,6 +29,7 @@ type ExecutionFixture = {
   viewport: string;
   persona: string;
   route: string;
+  subjectBinding: string;
   expected: string;
   actual: string;
   evidence: string;
@@ -116,6 +117,7 @@ function completedExecution(
     viewport: id === "P2Z-UAT-07" ? "390x844" : "1440x900",
     persona: personaByScenario[id] ?? "",
     route: routeByScenario[id] ?? "",
+    subjectBinding: id === "P2Z-UAT-02" ? "EMP-000128" : "not applicable",
     expected: expectedResultByScenario[id] ?? "",
     actual:
       id === "P2Z-UAT-06"
@@ -151,6 +153,7 @@ function pendingExecution(id: string): ExecutionFixture {
     viewport: scenario.viewport,
     persona: id === "P2Z-UAT-07" ? "Pending actual persona" : scenario.persona,
     route: id === "P2Z-UAT-07" ? "Pending actual route" : scenario.route,
+    subjectBinding: scenario.subjectBinding,
     expected: scenario.expected,
     actual: "Pending human execution",
     evidence: pendingEvidenceByScenario[id] ?? "",
@@ -335,7 +338,7 @@ function renderFixture(input: UatFixture): string {
   const executionRows = input.executions
     .map(
       (row) =>
-        `| ${row.id} | ${row.tester} | ${row.date} | ${row.viewport} | ${row.persona} | ${row.route} | ${row.expected} | ${row.actual} | ${row.evidence} | ${row.verdict} |`,
+        `| ${row.id} | ${row.tester} | ${row.date} | ${row.viewport} | ${row.persona} | ${row.route} | ${row.subjectBinding} | ${row.expected} | ${row.actual} | ${row.evidence} | ${row.verdict} |`,
     )
     .join("\n");
   const findingRows = input.findings
@@ -373,8 +376,8 @@ Named human tester: **${input.namedTester}**
 Overall verdict recorded by: **${input.verdictRecorder}**
 Execution environment/dataset: **${input.environment}**
 
-| ID | Human tester | Execution date | Viewport | Persona | Route | Expected result | Actual result | Evidence | Scenario verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Expected result | Actual result | Evidence | Scenario verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${executionRows}
 
 ## Scenario Finding Record
@@ -427,6 +430,8 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
   for (const hiddenRecord of [
     `<!--\n${accepted}\n-->`,
     `\`\`\`markdown\n${accepted}\n\`\`\``,
+    `<pre>\n${accepted}\n</pre>`,
+    `<div>\n${accepted}\n</div>`,
   ]) {
     assert.throws(
       () => validateP2zVisualUatRecord(hiddenRecord),
@@ -537,6 +542,24 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       name: "nested empty JSON trace",
       extension: "json",
       contents: Buffer.from('{"events":[]}'),
+      valid: false,
+    },
+    {
+      name: "meaningful text trace",
+      extension: "txt",
+      contents: Buffer.from("Observed employee detail trace"),
+      valid: true,
+    },
+    {
+      name: "token-only text trace",
+      extension: "txt",
+      contents: Buffer.from("x"),
+      valid: false,
+    },
+    {
+      name: "empty rendered Markdown trace",
+      extension: "md",
+      contents: Buffer.from("<span></span>"),
       valid: false,
     },
     {
@@ -737,6 +760,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must retain its documented expected result/u,
   });
 
+  const wrongEmployeeSubject = fixture("Accepted");
+  wrongEmployeeSubject.executions[1]!.subjectBinding = "EMP-000999";
+  cases.push({
+    name: "employee detail executed against the wrong subject",
+    input: wrongEmployeeSubject,
+    expected: /P2Z-UAT-02 must use subject binding EMP-000128/u,
+  });
+
   const staleBoundary = fixture("Conditional");
   staleBoundary.closeEligibility = "Eligible after evidence linkage";
   cases.push({
@@ -792,6 +823,18 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "scenario completed by another tester",
     input: mismatchedTester,
     expected: /must use the named human tester/u,
+  });
+
+  const invisibleTester = fixture("Accepted");
+  invisibleTester.namedTester = "<span></span>";
+  invisibleTester.verdictRecorder = "<span></span>";
+  for (const execution of invisibleTester.executions) {
+    execution.tester = "<span></span>";
+  }
+  cases.push({
+    name: "completed run with a non-visible tester identity",
+    input: invisibleTester,
+    expected: /must identify the named human tester/u,
   });
 
   const mismatchedVerdictRecorder = fixture("Accepted");
