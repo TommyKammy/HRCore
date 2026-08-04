@@ -526,6 +526,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "CI must install Chromium before canonical verification",
   );
   assert.match(
+    ci,
+    /fetch-depth:\s*0/u,
+    "CI must fetch repository history before validating a tested commit",
+  );
+  assert.match(
     readme,
     /P2Z WebUI Visual Alignment Contract/u,
     "README must link the P2Z visual contract",
