@@ -138,8 +138,12 @@ repository path under
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>` or a
 GitHub `user-attachments/assets` URL for each run artifact. Repository-backed
 artifacts support a decodable `.png` screenshot or a valid `.json`, `.txt`, or
-`.md` trace. Each must be a non-empty Git-tracked regular file under `docs/`;
-symbolic links and content that does not match its extension are invalid.
+`.md` trace. A JSON trace must contain at least one non-empty scalar event value;
+empty containers such as `{}`, `[]`, and `{"events":[]}` are not evidence. Each
+artifact must be a non-empty Git-tracked regular file under `docs/`; symbolic
+links and content that does not match its extension are invalid. One artifact
+path or attachment URL belongs to exactly one execution or finding row across
+both records and cannot be reused.
 Record the package-level tester before execution, use that exact identity in
 every completed scenario row, and allow only that tester to fill `Overall
 verdict recorded by`. Every scenario in the formal run shares the recorded

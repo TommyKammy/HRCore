@@ -456,9 +456,44 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
   );
 
   for (const artifact of [
-    { name: "valid PNG", contents: validPng, valid: true },
-    { name: "empty PNG", contents: Buffer.alloc(0), valid: false },
-    { name: "symlink PNG", contents: validPng, valid: false, symlink: true },
+    { name: "valid PNG", extension: "png", contents: validPng, valid: true },
+    {
+      name: "valid JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"events":[{"type":"screenshot"}]}'),
+      valid: true,
+    },
+    {
+      name: "empty PNG",
+      extension: "png",
+      contents: Buffer.alloc(0),
+      valid: false,
+    },
+    {
+      name: "empty JSON object",
+      extension: "json",
+      contents: Buffer.from("{}"),
+      valid: false,
+    },
+    {
+      name: "empty JSON array",
+      extension: "json",
+      contents: Buffer.from("[]"),
+      valid: false,
+    },
+    {
+      name: "nested empty JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"events":[]}'),
+      valid: false,
+    },
+    {
+      name: "symlink PNG",
+      extension: "png",
+      contents: validPng,
+      valid: false,
+      symlink: true,
+    },
   ]) {
     const root = mkdtempSync(path.join(tmpdir(), "hrcore-p2z-uat-"));
     t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -483,7 +518,7 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       cwd: root,
       encoding: "utf8",
     }).trim();
-    const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-01.png`;
+    const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-01.${artifact.extension}`;
     const artifactPath = path.join(
       root,
       "docs",
@@ -813,6 +848,15 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "repeated findings sharing one evidence artifact",
     input: reusedFindingEvidence,
     expected: /must not reuse an evidence artifact/u,
+  });
+
+  const crossTableEvidenceReuse = fixture("Conditional");
+  crossTableEvidenceReuse.findings[2]!.evidence =
+    crossTableEvidenceReuse.executions[0]!.evidence;
+  cases.push({
+    name: "finding reusing another scenario's execution evidence",
+    input: crossTableEvidenceReuse,
+    expected: /findings must not reuse an evidence artifact/u,
   });
 
   const earlierBlockerFinding = fixture("Blocked");

@@ -395,6 +395,15 @@ function isMeaningfulObservation(value: string): boolean {
   );
 }
 
+function hasStructuredTraceContent(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasStructuredTraceContent);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).some(hasStructuredTraceContent);
+  }
+  if (typeof value === "string") return value.trim().length > 0;
+  return typeof value === "number" || typeof value === "boolean";
+}
+
 function trackedRepositoryArtifactIssue(
   rootDirectory: string,
   target: string,
@@ -433,8 +442,12 @@ function trackedRepositoryArtifactIssue(
       const value: unknown = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(contents),
       );
-      if (value === null || typeof value !== "object") {
-        throw new Error("trace must be structured");
+      if (
+        value === null ||
+        typeof value !== "object" ||
+        !hasStructuredTraceContent(value)
+      ) {
+        throw new Error("trace must contain structured events");
       }
     } else if (extension === ".txt" || extension === ".md") {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(contents);
@@ -1025,7 +1038,6 @@ export function collectP2zVisualUatRecordIssues(
       : executionRows.slice(blockedIndex + 1).map((row) => row.id),
   );
   const findingsByScenario = new Map<string, FindingRow[]>();
-  const findingEvidenceTargets = new Set<string>();
   for (const row of findingRows) {
     const rows = findingsByScenario.get(row.id) ?? [];
     rows.push(row);
@@ -1042,7 +1054,7 @@ export function collectP2zVisualUatRecordIssues(
     validateCompletedFindingRow(
       row,
       testedCommit,
-      findingEvidenceTargets,
+      evidenceTargets,
       issues,
       rootDirectory,
     );
