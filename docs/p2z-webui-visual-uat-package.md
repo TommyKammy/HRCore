@@ -127,20 +127,26 @@ Overall human verdict: **Pending human execution**
 Tested commit: **Pending human execution**
 Named human tester: **Pending assignment**
 Overall verdict recorded by: **Pending assignment**
+Execution environment/dataset: **repo_owned_synthetic_webui_non_production**
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
 observed with meaningful rendered text; one-token and Markdown-only values are
 not observations. `Evidence` must link the run-specific screenshot or trace
-rather than relying only on the automated reference image. Use either a repository path
-under `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`
-or a GitHub `user-attachments/assets` URL for each run artifact. A repository
-path must exist under `docs/` and be Git-tracked before closeout. Record the
-package-level tester before execution, use that exact identity in every
-completed scenario row, and allow only that tester to fill `Overall verdict
-recorded by`. The execution date cannot be later than the validation date. Keep
-the documented route for fixed scenarios; for P2Z-UAT-07, replace `Pending
-actual route` with the concrete route allowed for the recorded persona.
+rather than relying only on the automated reference image. Use either a
+repository path under
+`evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>` or a
+GitHub `user-attachments/assets` URL for each run artifact. Repository-backed
+artifacts support a decodable `.png` screenshot or a valid `.json`, `.txt`, or
+`.md` trace. Each must be a non-empty Git-tracked regular file under `docs/`;
+symbolic links and content that does not match its extension are invalid.
+Record the package-level tester before execution, use that exact identity in
+every completed scenario row, and allow only that tester to fill `Overall
+verdict recorded by`. Every scenario in the formal run shares the recorded
+`repo_owned_synthetic_webui_non_production` execution environment and generated
+dataset boundary. The execution date cannot be later than the validation date.
+Keep the documented route for fixed scenarios; for P2Z-UAT-07, replace
+`Pending actual route` with the concrete route allowed for the recorded persona.
 
 The `evidence/p2z-webui/runs/` namespace is reserved for formal human-run
 artifacts and is excluded from the strict automated reference-image inventory.
@@ -152,8 +158,10 @@ or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
 or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
 that resolves as a commit in this repository, and no `Pending` values in either
 record. Verify it with `git cat-file -e <tested-commit>^{commit}` before
-closeout. `Blocked` requires the tested commit, a completed `Blocked` scenario,
-and its `blocker` finding. Because the run stops at the first blocker, every
+closeout. Every `Conditional` scenario requires its own `must-fix` finding;
+one finding cannot explain multiple scenario verdicts. `Blocked` requires the
+tested commit, a completed `Blocked` scenario, and its `blocker` finding.
+Because the run stops at the first blocker, every
 execution-specific and finding field in later rows must retain its original
 pending value rather than recording partial work after the stop point.
 Before execution, `Pending human execution` may use either the initial pending
@@ -192,6 +200,7 @@ scenario has multiple findings, but each finding must retain its own evidence
 link and every scenario must have at least one row. Repository-backed finding
 evidence uses
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>-finding-<slug>.<artifact-extension>`;
+the same validated `.png`, `.json`, `.txt`, and `.md` artifact contract applies.
 GitHub `user-attachments/assets` links are also allowed. If no finding exists,
 record `none observed` in `Finding status` and `not applicable` in every
 remaining finding field; do not leave the finding status implicit.

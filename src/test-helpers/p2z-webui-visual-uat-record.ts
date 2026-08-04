@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
+
+import { PNG } from "pngjs";
 
 export const p2zVisualUatScenarioIds = [
   "P2Z-UAT-01",
@@ -393,23 +395,57 @@ function isMeaningfulObservation(value: string): boolean {
   );
 }
 
-function isTrackedRepositoryArtifact(
+function trackedRepositoryArtifactIssue(
   rootDirectory: string,
   target: string,
-): boolean {
+): string | undefined {
   const repositoryPath = path.posix.join("docs", target);
-  if (!existsSync(path.join(rootDirectory, ...repositoryPath.split("/")))) {
-    return false;
+  const absolutePath = path.join(rootDirectory, ...repositoryPath.split("/"));
+  try {
+    const stats = lstatSync(absolutePath);
+    if (stats.isSymbolicLink() || !stats.isFile()) {
+      return "must be a tracked regular file";
+    }
+  } catch {
+    return "must be an existing tracked regular file";
   }
   try {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", repositoryPath], {
       cwd: rootDirectory,
       stdio: "ignore",
     });
-    return true;
   } catch {
-    return false;
+    return "must be an existing tracked regular file";
   }
+
+  let contents: Buffer;
+  try {
+    contents = readFileSync(absolutePath);
+  } catch {
+    return "must be a readable tracked regular file";
+  }
+  const extension = path.posix.extname(target).toLowerCase();
+  try {
+    if (extension === ".png") {
+      const image = PNG.sync.read(contents);
+      if (image.width < 1 || image.height < 1) throw new Error("empty image");
+    } else if (extension === ".json") {
+      const value: unknown = JSON.parse(
+        new TextDecoder("utf-8", { fatal: true }).decode(contents),
+      );
+      if (value === null || typeof value !== "object") {
+        throw new Error("trace must be structured");
+      }
+    } else if (extension === ".txt" || extension === ".md") {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(contents);
+      if (!isSubstantive(text)) throw new Error("empty trace");
+    } else {
+      return "must use a validated png, json, txt, or md artifact";
+    }
+  } catch {
+    return `must contain valid ${extension.slice(1)} content`;
+  }
+  return undefined;
 }
 
 function isRepositoryCommit(rootDirectory: string, commit: string): boolean {
@@ -525,7 +561,7 @@ function validateCompletedExecutionRow(
     (match) => match[1] ?? "",
   );
   const repositoryArtifact = new RegExp(
-    `^evidence/p2z-webui/runs/${testedCommit}/${row.id}\\.(?:png|jpe?g|webp|json|zip|txt|md)$`,
+    `^evidence/p2z-webui/runs/${testedCommit}/${row.id}\\.(?:png|json|txt|md)$`,
     "u",
   );
   const repositoryTarget = links.find((target) =>
@@ -537,11 +573,20 @@ function validateCompletedExecutionRow(
   const artifact = repositoryTarget ?? externalTarget;
   if (!artifact) {
     issues.push(`${row.id} must link evidence for this run and scenario`);
-  } else if (
-    repositoryTarget &&
-    !isTrackedRepositoryArtifact(rootDirectory, repositoryTarget)
-  ) {
-    issues.push(`${row.id} must link an existing tracked evidence artifact`);
+  } else if (repositoryTarget) {
+    const artifactIssue = trackedRepositoryArtifactIssue(
+      rootDirectory,
+      repositoryTarget,
+    );
+    if (artifactIssue) {
+      issues.push(`${row.id} repository evidence ${artifactIssue}`);
+    } else if (evidenceTargets.has(repositoryTarget)) {
+      issues.push(
+        `${row.id} must not reuse another scenario's evidence artifact`,
+      );
+    } else {
+      evidenceTargets.add(repositoryTarget);
+    }
   } else if (evidenceTargets.has(artifact)) {
     issues.push(
       `${row.id} must not reuse another scenario's evidence artifact`,
@@ -607,7 +652,7 @@ function validateCompletedFindingRow(
   }
   const evidenceTarget = row.evidence.match(/\]\(([^)]+)\)/u)?.[1];
   const repositoryEvidence = new RegExp(
-    `^evidence/p2z-webui/runs/${testedCommit}/${row.id}-finding-[a-z0-9-]+\\.(?:png|jpe?g|webp|json|zip|txt|md)$`,
+    `^evidence/p2z-webui/runs/${testedCommit}/${row.id}-finding-[a-z0-9-]+\\.(?:png|json|txt|md)$`,
     "u",
   );
   if (
@@ -616,13 +661,18 @@ function validateCompletedFindingRow(
       !githubAttachmentPattern.test(evidenceTarget))
   ) {
     issues.push(`${row.id} recorded finding must link its screenshot or trace`);
-  } else if (
-    repositoryEvidence.test(evidenceTarget) &&
-    !isTrackedRepositoryArtifact(rootDirectory, evidenceTarget)
-  ) {
-    issues.push(
-      `${row.id} recorded finding must link an existing tracked evidence artifact`,
+  } else if (repositoryEvidence.test(evidenceTarget)) {
+    const artifactIssue = trackedRepositoryArtifactIssue(
+      rootDirectory,
+      evidenceTarget,
     );
+    if (artifactIssue) {
+      issues.push(`${row.id} recorded finding evidence ${artifactIssue}`);
+    } else if (evidenceTargets.has(evidenceTarget)) {
+      issues.push(`${row.id} findings must not reuse an evidence artifact`);
+    } else {
+      evidenceTargets.add(evidenceTarget);
+    }
   } else if (evidenceTargets.has(evidenceTarget)) {
     issues.push(`${row.id} findings must not reuse an evidence artifact`);
   } else {
@@ -751,6 +801,14 @@ export function collectP2zVisualUatRecordIssues(
     /Overall verdict recorded by: \*\*(.+?)\*\*/u,
   )?.[1];
   if (!verdictRecorder) issues.push("must record who assigned the verdict");
+  const executionEnvironment = executionSection.match(
+    /Execution environment\/dataset: \*\*(.+?)\*\*/u,
+  )?.[1];
+  if (executionEnvironment !== boundedTenantEnvironment) {
+    issues.push(
+      "must bind the formal run to the bounded execution environment",
+    );
+  }
 
   const verdictBoundaryRows = verdictSection
     .split("\n")
@@ -1043,14 +1101,16 @@ export function collectP2zVisualUatRecordIssues(
         .filter((row) => row.verdict === "Conditional")
         .map((row) => row.id),
     );
-    if (
-      !completedFindings.some(
-        (row) => conditionalIds.has(row.id) && row.status === "must-fix",
-      )
-    ) {
-      issues.push(
-        "Conditional overall verdict requires a named must-fix finding",
-      );
+    for (const conditionalId of conditionalIds) {
+      if (
+        !completedFindings.some(
+          (row) => row.id === conditionalId && row.status === "must-fix",
+        )
+      ) {
+        issues.push(
+          `${conditionalId} Conditional scenario requires its own must-fix finding`,
+        );
+      }
     }
     if (completedFindings.some((row) => row.status === "blocker")) {
       issues.push(

@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -48,6 +57,7 @@ type UatFixture = {
   commit: string;
   namedTester: string;
   verdictRecorder: string;
+  environment: string;
   boundaryVerdict: string;
   closeEligibility: string;
   automatedCandidate: string;
@@ -216,6 +226,7 @@ function pendingFinding(id: string): FindingFixture {
 
 function fixture(overall: P2zVisualUatOverallVerdict): UatFixture {
   const permanentBoundary = {
+    environment: "repo_owned_synthetic_webui_non_production",
     automatedCandidate: "Go",
     productionReadiness: "Blocked",
     goLiveApproval: "Blocked",
@@ -360,6 +371,7 @@ Overall human verdict: **${input.overall}**
 Tested commit: **${input.commit}**
 Named human tester: **${input.namedTester}**
 Overall verdict recorded by: **${input.verdictRecorder}**
+Execution environment/dataset: **${input.environment}**
 
 | ID | Human tester | Execution date | Viewport | Persona | Route | Expected result | Actual result | Evidence | Scenario verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -437,6 +449,71 @@ test("P2Z visual UAT record accepts findings on both approval scenario legs", ()
   }
 });
 
+test("P2Z visual UAT record validates repository-backed artifact contents", (t) => {
+  const validPng = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+
+  for (const artifact of [
+    { name: "valid PNG", contents: validPng, valid: true },
+    { name: "empty PNG", contents: Buffer.alloc(0), valid: false },
+    { name: "symlink PNG", contents: validPng, valid: false, symlink: true },
+  ]) {
+    const root = mkdtempSync(path.join(tmpdir(), "hrcore-p2z-uat-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    execFileSync("git", ["init", "--quiet"], { cwd: root });
+    writeFileSync(path.join(root, "README.md"), "fixture\n");
+    execFileSync("git", ["add", "README.md"], { cwd: root });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=UAT Fixture",
+        "-c",
+        "user.email=uat-fixture@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "initialize fixture",
+      ],
+      { cwd: root },
+    );
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-01.png`;
+    const artifactPath = path.join(
+      root,
+      "docs",
+      ...relativeArtifact.split("/"),
+    );
+    mkdirSync(path.dirname(artifactPath), { recursive: true });
+    if (artifact.symlink) {
+      const target = path.join(root, "artifact-target.png");
+      writeFileSync(target, artifact.contents);
+      symlinkSync(target, artifactPath);
+    } else {
+      writeFileSync(artifactPath, artifact.contents);
+    }
+    execFileSync("git", ["add", "--", path.relative(root, artifactPath)], {
+      cwd: root,
+    });
+
+    const input = fixture("Accepted");
+    input.commit = commit;
+    input.executions[0]!.evidence = `[run](${relativeArtifact})`;
+    const validate = () =>
+      validateP2zVisualUatRecord(renderFixture(input), root);
+    if (artifact.valid) {
+      assert.doesNotThrow(validate, artifact.name);
+    } else {
+      assert.throws(validate, /repository evidence must/u, artifact.name);
+    }
+  }
+});
+
 test("P2Z visual UAT record rejects cross-state contradictions", () => {
   const cases: Array<{
     name: string;
@@ -501,7 +578,7 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "repository evidence that does not exist",
     input: missingRepositoryEvidence,
-    expected: /must link an existing tracked evidence artifact/u,
+    expected: /repository evidence must be an existing tracked regular file/u,
   });
 
   const wrongViewport = fixture("Accepted");
@@ -579,6 +656,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "stale verdict boundary",
     input: staleBoundary,
     expected: /close eligibility must match/u,
+  });
+
+  const unboundedEnvironment = fixture("Accepted");
+  unboundedEnvironment.environment = "production";
+  cases.push({
+    name: "completed run without its bounded environment binding",
+    input: unboundedEnvironment,
+    expected: /must bind the formal run to the bounded execution environment/u,
   });
 
   const promotedReadiness = fixture("Accepted");
@@ -717,7 +802,8 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "repository-backed finding evidence that does not exist",
     input: missingFindingEvidence,
-    expected: /recorded finding must link an existing tracked evidence/u,
+    expected:
+      /recorded finding evidence must be an existing tracked regular file/u,
   });
 
   const reusedFindingEvidence = fixture("Conditional");
@@ -763,7 +849,16 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "conditional verdict supported only by post-UAT backlog",
     input: postUatOnlyCondition,
-    expected: /requires a named must-fix finding/u,
+    expected: /Conditional scenario requires its own must-fix finding/u,
+  });
+
+  const unexplainedConditionalScenario = fixture("Conditional");
+  unexplainedConditionalScenario.executions[3]!.verdict = "Conditional";
+  cases.push({
+    name: "second Conditional scenario without its own finding",
+    input: unexplainedConditionalScenario,
+    expected:
+      /P2Z-UAT-04 Conditional scenario requires its own must-fix finding/u,
   });
 
   const conditionWithoutChecklistDisposition = fixture("Conditional");
