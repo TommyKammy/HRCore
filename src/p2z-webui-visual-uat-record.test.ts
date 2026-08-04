@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 import {
@@ -8,7 +9,9 @@ import {
   validateP2zVisualUatRecord,
 } from "./test-helpers/p2z-webui-visual-uat-record.js";
 
-const testedCommit = "a".repeat(40);
+const testedCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+  encoding: "utf8",
+}).trim();
 
 type ExecutionFixture = {
   id: string;
@@ -98,15 +101,32 @@ function completedExecution(
 }
 
 function pendingExecution(id: string): ExecutionFixture {
+  const scenario = completedExecution(id);
+  const pendingEvidenceByScenario: Record<string, string> = {
+    "P2Z-UAT-01":
+      "[reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending",
+    "P2Z-UAT-02":
+      "[reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending",
+    "P2Z-UAT-03":
+      "[reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending",
+    "P2Z-UAT-04":
+      "[reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending",
+    "P2Z-UAT-05":
+      "[reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending",
+    "P2Z-UAT-06": "Run-specific Audit capture pending",
+    "P2Z-UAT-07":
+      "[mobile references](evidence/p2z-webui/README.md); run capture pending",
+    "P2Z-UAT-08": "Run-specific fail-closed entry capture pending",
+  };
   return {
     id,
     tester: "Pending assignment",
     date: "Pending",
-    viewport: id === "P2Z-UAT-07" ? "390x844" : "1440x900",
-    persona: id === "P2Z-UAT-07" ? "Pending actual persona" : "HR operator",
-    expected: `Expected result for ${id}`,
+    viewport: scenario.viewport,
+    persona: id === "P2Z-UAT-07" ? "Pending actual persona" : scenario.persona,
+    expected: scenario.expected,
     actual: "Pending human execution",
-    evidence: "Run-specific capture pending",
+    evidence: pendingEvidenceByScenario[id] ?? "",
     verdict: "Pending",
   };
 }
@@ -385,6 +405,20 @@ test("P2Z visual UAT record accepts every application bounded persona", () => {
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record accepts findings on both approval scenario legs", () => {
+  for (const [actor, route, issueNumber] of [
+    ["HR operator", "/transfer", 507],
+    ["Approver", "/approvals", 508],
+  ] as const) {
+    const input = fixture("Accepted");
+    input.findings[3] = recordedFinding("P2Z-UAT-04", "post-UAT", issueNumber);
+    input.findings[3]!.actor = actor;
+    input.findings[3]!.routeViewport = `${route} @ 1440x900`;
+    input.checklist[0]!.disposition = "post-UAT backlog";
+    assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+  }
+});
+
 test("P2Z visual UAT record rejects cross-state contradictions", () => {
   const cases: Array<{
     name: string;
@@ -434,6 +468,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "malformed GitHub attachment identifier",
     input: malformedAttachment,
     expected: /must link evidence for this run and scenario/u,
+  });
+
+  const nonexistentTestedCommit = fixture("Accepted");
+  nonexistentTestedCommit.commit = "0".repeat(40);
+  cases.push({
+    name: "completed run bound to a nonexistent commit",
+    input: nonexistentTestedCommit,
+    expected: /tested commit must resolve to a repository commit/u,
   });
 
   const missingRepositoryEvidence = fixture("Accepted");
@@ -527,7 +569,7 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "completed scenario under a pending overall verdict",
     input: mixedPendingState,
-    expected: /must keep every scenario verdict pending/u,
+    expected: /must remain pending under a pending overall verdict/u,
   });
 
   const mismatchedTester = fixture("Accepted");
@@ -587,6 +629,22 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must include owner/u,
   });
 
+  const externalIssueLink = fixture("Conditional");
+  externalIssueLink.findings[2]!.issue = "https://example.com/issues/501";
+  cases.push({
+    name: "finding linked outside the HRCore GitHub repository",
+    input: externalIssueLink,
+    expected: /must link a GitHub Issue/u,
+  });
+
+  const mismatchedFindingDisposition = fixture("Conditional");
+  mismatchedFindingDisposition.findings[2]!.disposition = "post-UAT backlog";
+  cases.push({
+    name: "must-fix finding recorded as post-UAT backlog",
+    input: mismatchedFindingDisposition,
+    expected: /must-fix finding must use its matching disposition/u,
+  });
+
   const incompleteEvidenceRecord = fixture("Conditional");
   incompleteEvidenceRecord.findings[2]!.evidenceVersion = "not applicable";
   cases.push({
@@ -622,6 +680,31 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "blocker finding before the blocked scenario",
     input: earlierBlockerFinding,
     expected: /blocker finding requires a Blocked scenario/u,
+  });
+
+  const executedFieldsAfterBlocker = fixture("Blocked");
+  executedFieldsAfterBlocker.executions[3]!.tester = "Named Tester";
+  executedFieldsAfterBlocker.executions[3]!.date = "2026-08-03";
+  executedFieldsAfterBlocker.executions[3]!.actual = "Observed after blocker";
+  executedFieldsAfterBlocker.executions[3]!.evidence =
+    completedExecution("P2Z-UAT-04").evidence;
+  cases.push({
+    name: "execution details recorded after the first blocker",
+    input: executedFieldsAfterBlocker,
+    expected: /human tester must remain pending after the first blocker/u,
+  });
+
+  const postUatOnlyCondition = fixture("Conditional");
+  postUatOnlyCondition.findings.splice(
+    2,
+    2,
+    recordedFinding("P2Z-UAT-03", "post-UAT", 509),
+  );
+  postUatOnlyCondition.checklist[0]!.disposition = "completed";
+  cases.push({
+    name: "conditional verdict supported only by post-UAT backlog",
+    input: postUatOnlyCondition,
+    expected: /requires a named must-fix finding/u,
   });
 
   const conditionWithoutChecklistDisposition = fixture("Conditional");

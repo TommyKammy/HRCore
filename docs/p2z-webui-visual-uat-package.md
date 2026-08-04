@@ -142,9 +142,12 @@ recorded by`.
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
 or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
-and no `Pending` values in either record. `Blocked` requires the tested commit,
-a completed `Blocked` scenario, and its `blocker` finding; later scenario and
-finding rows may remain pending because the run stops at that blocker.
+that resolves as a commit in this repository, and no `Pending` values in either
+record. Verify it with `git cat-file -e <tested-commit>^{commit}` before
+closeout. `Blocked` requires the tested commit, a completed `Blocked` scenario,
+and its `blocker` finding. Because the run stops at the first blocker, every
+execution-specific and finding field in later rows must retain its original
+pending value rather than recording partial work after the stop point.
 Before execution, `Pending human execution` may use either the initial pending
 commit placeholder or the 40-character commit recorded in precondition 3. Its
 scenario verdicts, finding rows, and checklist remain pending until the formal
@@ -185,13 +188,21 @@ GitHub `user-attachments/assets` links are also allowed. If no finding exists,
 record `none observed` in `Finding status` and `not applicable` in every
 remaining finding field; do not leave the finding status implicit.
 
+The linked Issue must use `#<number>` or the exact
+`https://github.com/TommyKammy/HRCore/issues/<number>` form. Match finding status
+to disposition in the same row: `blocker` to `blocked`, `must-fix` to `defect`
+or `workaround`, and `post-UAT` to `post-UAT backlog`. For P2Z-UAT-04, bind a
+finding from the request-creation leg to `HR operator` on `/transfer`, or a
+finding from the decision leg to `Approver` on `/approvals`.
+
 ## Visual Review Checklist
 
 For each review item, set `Status` to `Completed` and record one explicit
 `Disposition`: `completed`, `blocked`, `workaround`, `defect`, or
 `post-UAT backlog`. Pending records keep both fields `Pending`.
-`Conditional` requires at least one non-clean disposition, and `Blocked`
-requires a `blocked` disposition.
+`Conditional` requires a named `must-fix` finding with a `defect` or
+`workaround` disposition; a cosmetic `post-UAT backlog` alone remains eligible
+for `Accepted`. `Blocked` requires a `blocked` disposition.
 
 | Review item                                                                                         | Status  | Disposition |
 | --------------------------------------------------------------------------------------------------- | ------- | ----------- |
