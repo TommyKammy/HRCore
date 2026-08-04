@@ -9,18 +9,78 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
 import {
   p2zVisualUatChecklistItems,
   p2zVisualUatScenarioIds,
   type P2zVisualUatOverallVerdict,
-  validateP2zVisualUatRecord,
+  validateP2zVisualUatRecord as validateRecord,
 } from "./test-helpers/p2z-webui-visual-uat-record.js";
 
-const testedCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-  encoding: "utf8",
-}).trim();
+const validPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+function createEvidenceRepository(): { root: string; commit: string } {
+  const root = mkdtempSync(path.join(tmpdir(), "hrcore-p2z-uat-"));
+  execFileSync("git", ["init", "--quiet"], { cwd: root });
+  writeFileSync(path.join(root, "README.md"), "fixture\n");
+  execFileSync("git", ["add", "README.md"], { cwd: root });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=UAT Fixture",
+      "-c",
+      "user.email=uat-fixture@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "initialize fixture",
+    ],
+    { cwd: root },
+  );
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  const artifactDirectory = path.join(
+    root,
+    "docs",
+    "evidence",
+    "p2z-webui",
+    "runs",
+    commit,
+  );
+  mkdirSync(artifactDirectory, { recursive: true });
+  for (const scenarioId of p2zVisualUatScenarioIds) {
+    writeFileSync(path.join(artifactDirectory, `${scenarioId}.png`), validPng);
+    for (let issueNumber = 500; issueNumber <= 520; issueNumber += 1) {
+      writeFileSync(
+        path.join(
+          artifactDirectory,
+          `${scenarioId}-finding-${issueNumber}.png`,
+        ),
+        validPng,
+      );
+    }
+  }
+  execFileSync("git", ["add", "docs/evidence"], { cwd: root });
+  return { root, commit };
+}
+
+const evidenceRepository = createEvidenceRepository();
+const testedCommit = evidenceRepository.commit;
+after(() => rmSync(evidenceRepository.root, { recursive: true, force: true }));
+
+function validateP2zVisualUatRecord(
+  markdown: string,
+  rootDirectory = evidenceRepository.root,
+): void {
+  validateRecord(markdown, rootDirectory);
+}
 
 type ExecutionFixture = {
   id: string;
@@ -68,6 +128,17 @@ type UatFixture = {
   findings: FindingFixture[];
   checklist: Array<{ label: string; status: string; disposition: string }>;
 };
+
+function bindExecutionEvidenceToCommit(
+  input: UatFixture,
+  commit: string,
+): void {
+  for (const execution of input.executions) {
+    if (execution.verdict !== "Pending") {
+      execution.evidence = `[run](evidence/p2z-webui/runs/${commit}/${execution.id}.png)`;
+    }
+  }
+}
 
 function completedExecution(
   id: string,
@@ -123,7 +194,7 @@ function completedExecution(
       id === "P2Z-UAT-06"
         ? "Approval pending is displayed as observed"
         : `Observed result for ${id}`,
-    evidence: `[run](https://github.com/user-attachments/assets/00000000-0000-4000-8000-0000000000${id.slice(-2)})`,
+    evidence: `[run](evidence/p2z-webui/runs/${testedCommit}/${id}.png)`,
     verdict,
   };
 }
@@ -197,7 +268,7 @@ function recordedFinding(
     routeViewport: "/transfer @ 1440x900",
     correlationId: `corr-${issueNumber}`,
     evidenceVersion: "p2z-uat-v1",
-    evidence: `[finding](https://github.com/user-attachments/assets/10000000-0000-4000-8000-000000000${issueNumber})`,
+    evidence: `[finding](evidence/p2z-webui/runs/${testedCommit}/${id}-finding-${issueNumber}.png)`,
     cleanupStatus: "completed",
     disposition:
       status === "blocker"
@@ -425,6 +496,86 @@ test("P2Z visual UAT record parses escaped pipes inside table cells", () => {
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record requires canonical structure for every formal table", () => {
+  const accepted = renderFixture(fixture("Accepted"));
+  for (const table of [
+    {
+      header: "| Decision surface | Current verdict |",
+      delimiter: "| --- | --- |",
+      expected: /must keep the verdict boundary table schema/u,
+    },
+    {
+      header:
+        "| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Expected result | Actual result | Evidence | Scenario verdict |",
+      delimiter:
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      expected: /must keep the human execution record schema/u,
+    },
+    {
+      header:
+        "| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Actor | Tenant/environment | Subject binding | Route and viewport | Correlation ID | Evidence version | Screenshot or trace | Cleanup status | Disposition |",
+      delimiter:
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      expected: /must keep the scenario finding record schema/u,
+    },
+    {
+      header: "| Review item | Status | Disposition |",
+      delimiter: "| --- | --- | --- |",
+      expected: /must keep the visual checklist record schema/u,
+    },
+  ]) {
+    const withoutDelimiter = accepted.replace(
+      `${table.header}\n${table.delimiter}`,
+      table.header,
+    );
+    assert.notEqual(withoutDelimiter, accepted);
+    assert.throws(
+      () => validateP2zVisualUatRecord(withoutDelimiter),
+      table.expected,
+    );
+  }
+
+  for (const table of [
+    {
+      rowPrefix: "| Automated visual UAT candidate |",
+      expected: /must keep the verdict boundary table schema/u,
+    },
+    {
+      rowPrefix: "| P2Z-UAT-01 | Named Tester |",
+      expected: /must keep the human execution record schema/u,
+    },
+    {
+      rowPrefix: "| P2Z-UAT-01 | none observed |",
+      expected: /must keep the scenario finding record schema/u,
+    },
+    {
+      rowPrefix: "| Navigation, page heading",
+      expected: /must keep the visual checklist record schema/u,
+    },
+  ]) {
+    const lines = accepted.split("\n");
+    const rowIndex = lines.findIndex((line) =>
+      line.startsWith(table.rowPrefix),
+    );
+    assert.notEqual(rowIndex, -1);
+    lines[rowIndex] = lines[rowIndex]!.replace(/\|$/u, "| unexpected |");
+    assert.throws(
+      () => validateP2zVisualUatRecord(lines.join("\n")),
+      table.expected,
+    );
+  }
+});
+
+test("P2Z visual UAT record accepts a finding bound to the executed subject", () => {
+  const input = fixture("Accepted");
+  input.findings[1] = recordedFinding("P2Z-UAT-02", "post-UAT", 511);
+  input.findings[1]!.subjectBinding = "EMP-000128";
+  input.findings[1]!.routeViewport = "/employee @ 1440x900";
+  input.findings[1]!.evidence = `[supplemental](https://github.com/user-attachments/assets/00000000-0000-4000-8000-000000000001); ${input.findings[1]!.evidence}`;
+  input.checklist[0]!.disposition = "post-UAT backlog";
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
 test("P2Z visual UAT record parses only rendered Markdown records", () => {
   const accepted = renderFixture(fixture("Accepted"));
   for (const hiddenRecord of [
@@ -507,11 +658,6 @@ test("P2Z visual UAT record accepts findings on both approval scenario legs", ()
 });
 
 test("P2Z visual UAT record validates repository-backed artifact contents", (t) => {
-  const validPng = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-    "base64",
-  );
-
   for (const artifact of [
     { name: "valid PNG", extension: "png", contents: validPng, valid: true },
     {
@@ -570,29 +716,8 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       symlink: true,
     },
   ]) {
-    const root = mkdtempSync(path.join(tmpdir(), "hrcore-p2z-uat-"));
+    const { root, commit } = createEvidenceRepository();
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    execFileSync("git", ["init", "--quiet"], { cwd: root });
-    writeFileSync(path.join(root, "README.md"), "fixture\n");
-    execFileSync("git", ["add", "README.md"], { cwd: root });
-    execFileSync(
-      "git",
-      [
-        "-c",
-        "user.name=UAT Fixture",
-        "-c",
-        "user.email=uat-fixture@example.invalid",
-        "commit",
-        "--quiet",
-        "-m",
-        "initialize fixture",
-      ],
-      { cwd: root },
-    );
-    const commit = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: root,
-      encoding: "utf8",
-    }).trim();
     const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-01.${artifact.extension}`;
     const artifactPath = path.join(
       root,
@@ -603,6 +728,7 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
     if (artifact.symlink) {
       const target = path.join(root, "artifact-target.png");
       writeFileSync(target, artifact.contents);
+      rmSync(artifactPath, { force: true });
       symlinkSync(target, artifactPath);
     } else {
       writeFileSync(artifactPath, artifact.contents);
@@ -613,6 +739,7 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
 
     const input = fixture("Accepted");
     input.commit = commit;
+    bindExecutionEvidenceToCommit(input, commit);
     input.executions[0]!.evidence = `[run](${relativeArtifact})`;
     const validate = () =>
       validateP2zVisualUatRecord(renderFixture(input), root);
@@ -663,16 +790,16 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "evidence from another commit and scenario",
     input: wrongEvidenceBinding,
-    expected: /must link evidence for this run and scenario/u,
+    expected: /must link repository evidence for this run and scenario/u,
   });
 
-  const malformedAttachment = fixture("Accepted");
-  malformedAttachment.executions[0]!.evidence =
-    "[run](https://github.com/user-attachments/assets/-)";
+  const externalAttachment = fixture("Accepted");
+  externalAttachment.executions[0]!.evidence =
+    "[run](https://github.com/user-attachments/assets/00000000-0000-4000-8000-000000000001)";
   cases.push({
-    name: "malformed GitHub attachment identifier",
-    input: malformedAttachment,
-    expected: /must link evidence for this run and scenario/u,
+    name: "external attachment without repository evidence",
+    input: externalAttachment,
+    expected: /must link repository evidence for this run and scenario/u,
   });
 
   const nonexistentTestedCommit = fixture("Accepted");
@@ -684,7 +811,7 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   });
 
   const missingRepositoryEvidence = fixture("Accepted");
-  missingRepositoryEvidence.executions[0]!.evidence = `[run](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01.png)`;
+  missingRepositoryEvidence.executions[0]!.evidence = `[run](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01.json)`;
   cases.push({
     name: "repository evidence that does not exist",
     input: missingRepositoryEvidence,
@@ -766,6 +893,20 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "employee detail executed against the wrong subject",
     input: wrongEmployeeSubject,
     expected: /P2Z-UAT-02 must use subject binding EMP-000128/u,
+  });
+
+  const mismatchedFindingSubject = fixture("Accepted");
+  mismatchedFindingSubject.findings[1] = recordedFinding(
+    "P2Z-UAT-02",
+    "post-UAT",
+    511,
+  );
+  mismatchedFindingSubject.findings[1]!.routeViewport = "/employee @ 1440x900";
+  mismatchedFindingSubject.checklist[0]!.disposition = "post-UAT backlog";
+  cases.push({
+    name: "employee finding bound to another subject",
+    input: mismatchedFindingSubject,
+    expected: /finding subject must match its execution row/u,
   });
 
   const staleBoundary = fixture("Conditional");
@@ -927,8 +1068,17 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must include evidence version/u,
   });
 
+  const externalFindingEvidence = fixture("Conditional");
+  externalFindingEvidence.findings[2]!.evidence =
+    "[finding](https://github.com/user-attachments/assets/00000000-0000-4000-8000-000000000001)";
+  cases.push({
+    name: "external finding attachment without repository evidence",
+    input: externalFindingEvidence,
+    expected: /must link its repository-backed screenshot or trace/u,
+  });
+
   const missingFindingEvidence = fixture("Conditional");
-  missingFindingEvidence.findings[2]!.evidence = `[finding](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-03-finding-501.png)`;
+  missingFindingEvidence.findings[2]!.evidence = `[finding](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-03-finding-missing.png)`;
   cases.push({
     name: "repository-backed finding evidence that does not exist",
     input: missingFindingEvidence,
@@ -949,9 +1099,9 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   crossTableEvidenceReuse.findings[2]!.evidence =
     crossTableEvidenceReuse.executions[0]!.evidence;
   cases.push({
-    name: "finding reusing another scenario's execution evidence",
+    name: "finding using the execution artifact namespace",
     input: crossTableEvidenceReuse,
-    expected: /findings must not reuse an evidence artifact/u,
+    expected: /must link its repository-backed screenshot or trace/u,
   });
 
   const earlierBlockerFinding = fixture("Blocked");
@@ -1013,8 +1163,22 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "conditional verdict without checklist disposition",
     input: conditionWithoutChecklistDisposition,
-    expected: /must-fix findings require a defect or workaround/u,
+    expected: /must-fix findings require a matching checklist disposition/u,
   });
+
+  for (const disposition of ["defect", "workaround"] as const) {
+    const dispositionWithoutMustFixFinding = fixture("Blocked");
+    dispositionWithoutMustFixFinding.checklist[1]!.status = "Completed";
+    dispositionWithoutMustFixFinding.checklist[1]!.disposition = disposition;
+    cases.push({
+      name: `${disposition} checklist disposition without a must-fix finding`,
+      input: dispositionWithoutMustFixFinding,
+      expected: new RegExp(
+        `${disposition} checklist disposition requires a matching must-fix finding`,
+        "u",
+      ),
+    });
+  }
 
   for (const entry of cases) {
     assert.throws(

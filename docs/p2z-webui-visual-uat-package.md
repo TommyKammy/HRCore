@@ -132,25 +132,27 @@ Execution environment/dataset: **repo_owned_synthetic_webui_non_production**
 Keep exactly one rendered declaration for each package-level field above.
 Formal record headings, declarations, tables, and rows inside HTML comments,
 raw HTML blocks, fenced code blocks, or indented code blocks are not part of the
-UAT record.
+UAT record. Each formal table must keep its header immediately followed by a
+valid Markdown delimiter row with the same number of columns.
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
 observed with meaningful rendered text; one-token and Markdown-only values are
 not observations. `Evidence` must link the run-specific screenshot or trace
-rather than relying only on the automated reference image. Use either a
-repository path under
-`evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>` or a
-GitHub `user-attachments/assets` URL for each run artifact. Repository-backed
-artifacts support a decodable `.png` screenshot or a valid `.json`, `.txt`, or
-`.md` trace. A JSON trace must contain at least one non-empty scalar event value;
+rather than relying only on the automated reference image. Formal closeout
+evidence must use the repository path
+`evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`.
+External attachment links may be supplemental, but do not satisfy the formal
+evidence requirement. Repository-backed artifacts support a decodable `.png`
+screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must contain
+at least one non-empty scalar event value;
 empty containers such as `{}`, `[]`, and `{"events":[]}` are not evidence. Each
 text or Markdown trace must contain a meaningful rendered observation rather
 than a token, punctuation, markup, or placeholder alone. Each
 artifact must be a non-empty Git-tracked regular file under `docs/`; symbolic
 links and content that does not match its extension are invalid. One artifact
-path or attachment URL belongs to exactly one execution or finding row across
-both records and cannot be reused.
+path belongs to exactly one execution or finding row across both records and
+cannot be reused.
 Record the package-level tester before execution, use that exact identity in
 every completed scenario row, and allow only that tester to fill `Overall
 verdict recorded by`. Every scenario in the formal run shares the recorded
@@ -216,15 +218,18 @@ link and every scenario must have at least one row. Repository-backed finding
 evidence uses
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>-finding-<slug>.<artifact-extension>`;
 the same validated `.png`, `.json`, `.txt`, and `.md` artifact contract applies.
-GitHub `user-attachments/assets` links are also allowed. If no finding exists,
-record `none observed` in `Finding status` and `not applicable` in every
-remaining finding field; do not leave the finding status implicit.
+External attachment links remain supplemental and do not replace that tracked
+artifact. If no finding exists, record `none observed` in `Finding status` and
+`not applicable` in every remaining finding field; do not leave the finding
+status implicit.
 
 The linked Issue must use `#<number>` or the exact
 `https://github.com/TommyKammy/HRCore/issues/<number>` form. Match finding status
 to disposition in the same row: `blocker` to `blocked`, `must-fix` to `defect`
-or `workaround`, and `post-UAT` to `post-UAT backlog`. For P2Z-UAT-04, bind a
-finding from the request-creation leg to `HR operator` on `/transfer`, or a
+or `workaround`, and `post-UAT` to `post-UAT backlog`. When an execution row has
+a concrete subject binding, every finding for that scenario must repeat the
+same subject. For P2Z-UAT-04, bind a finding from the request-creation leg to
+`HR operator` on `/transfer`, or a
 finding from the decision leg to `Approver` on `/approvals`. P2Z-UAT-06 always
 records the exact Audit lookup correlation ID when it has a finding; `not
 applicable` is not valid for that scenario.
@@ -236,7 +241,10 @@ For each review item, set `Status` to `Completed` and record one explicit
 `post-UAT backlog`. Pending records keep both fields `Pending`.
 `Conditional` requires a named `must-fix` finding with a `defect` or
 `workaround` disposition; a cosmetic `post-UAT backlog` alone remains eligible
-for `Accepted`. `Blocked` requires a `blocked` disposition.
+for `Accepted`. `Blocked` requires a `blocked` disposition. Each `blocked`,
+`defect`, `workaround`, or `post-UAT backlog` checklist disposition also requires
+its matching `blocker`, `must-fix`, or `post-UAT` finding, and each such finding
+requires a matching checklist disposition.
 
 | Review item                                                                                         | Status  | Disposition |
 | --------------------------------------------------------------------------------------------------- | ------- | ----------- |

@@ -145,9 +145,6 @@ const boundedRoutesByPersona = new Map<string, ReadonlySet<string>>([
 
 const boundedTenantEnvironment = "repo_owned_synthetic_webui_non_production";
 
-const githubAttachmentPattern =
-  /^https:\/\/github\.com\/user-attachments\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
 const githubIssuePattern =
   /^(?:#[1-9]\d*|https:\/\/github\.com\/TommyKammy\/HRCore\/issues\/[1-9]\d*)$/iu;
 
@@ -258,6 +255,16 @@ const findingDispositionsByStatus = new Map<
   ["post-UAT", new Set(["post-UAT backlog"])],
 ]);
 
+const findingStatusByChecklistDisposition = new Map<
+  string,
+  Exclude<P2zVisualUatFindingStatus, "Pending" | "none observed">
+>([
+  ["blocked", "blocker"],
+  ["defect", "must-fix"],
+  ["workaround", "must-fix"],
+  ["post-UAT backlog", "post-UAT"],
+]);
+
 const closeEligibilityByVerdict = new Map<P2zVisualUatOverallVerdict, string>([
   ["Pending human execution", "Blocked pending the formal human verdict"],
   ["Accepted", "Eligible after evidence linkage"],
@@ -276,6 +283,37 @@ function markdownCells(line: string): string[] {
     .split(/(?<!\\)\|/u)
     .slice(1, -1)
     .map((cell) => cell.replace(/\\\|/gu, "|").trim());
+}
+
+function hasMarkdownTableSchema(
+  markdownSection: string,
+  expectedHeader: readonly string[],
+  minimumDataRows: number,
+): boolean {
+  const lines = markdownSection.split("\n");
+  const headerIndex = lines.findIndex(
+    (line) =>
+      JSON.stringify(markdownCells(line)) === JSON.stringify(expectedHeader),
+  );
+  if (headerIndex < 0) return false;
+
+  const delimiter = markdownCells(lines[headerIndex + 1] ?? "");
+  if (
+    delimiter.length !== expectedHeader.length ||
+    !delimiter.every((cell) => /^:?-{3,}:?$/u.test(cell))
+  ) {
+    return false;
+  }
+
+  const dataRows: string[][] = [];
+  for (const line of lines.slice(headerIndex + 2)) {
+    if (!line.startsWith("|")) break;
+    dataRows.push(markdownCells(line));
+  }
+  return (
+    dataRows.length >= minimumDataRows &&
+    dataRows.every((cells) => cells.length === expectedHeader.length)
+  );
 }
 
 const htmlVoidElements = new Set([
@@ -689,13 +727,11 @@ function validateCompletedExecutionRow(
   const repositoryTarget = links.find((target) =>
     repositoryArtifact.test(target),
   );
-  const externalTarget = links.find((target) =>
-    githubAttachmentPattern.test(target),
-  );
-  const artifact = repositoryTarget ?? externalTarget;
-  if (!artifact) {
-    issues.push(`${row.id} must link evidence for this run and scenario`);
-  } else if (repositoryTarget) {
+  if (!repositoryTarget) {
+    issues.push(
+      `${row.id} must link repository evidence for this run and scenario`,
+    );
+  } else {
     const artifactIssue = trackedRepositoryArtifactIssue(
       rootDirectory,
       repositoryTarget,
@@ -709,12 +745,6 @@ function validateCompletedExecutionRow(
     } else {
       evidenceTargets.add(repositoryTarget);
     }
-  } else if (evidenceTargets.has(artifact)) {
-    issues.push(
-      `${row.id} must not reuse another scenario's evidence artifact`,
-    );
-  } else {
-    evidenceTargets.add(artifact);
   }
 }
 
@@ -772,33 +802,30 @@ function validateCompletedFindingRow(
       `${row.id} recorded finding must include correlation ID or not applicable`,
     );
   }
-  const evidenceTarget = row.evidence.match(/\]\(([^)]+)\)/u)?.[1];
   const repositoryEvidence = new RegExp(
     `^evidence/p2z-webui/runs/${testedCommit}/${row.id}-finding-[a-z0-9-]+\\.(?:png|json|txt|md)$`,
     "u",
   );
-  if (
-    !evidenceTarget ||
-    (!repositoryEvidence.test(evidenceTarget) &&
-      !githubAttachmentPattern.test(evidenceTarget))
-  ) {
-    issues.push(`${row.id} recorded finding must link its screenshot or trace`);
-  } else if (repositoryEvidence.test(evidenceTarget)) {
+  const repositoryTarget = Array.from(
+    row.evidence.matchAll(/\]\(([^)]+)\)/gu),
+    (match) => match[1] ?? "",
+  ).find((target) => repositoryEvidence.test(target));
+  if (!repositoryTarget) {
+    issues.push(
+      `${row.id} recorded finding must link its repository-backed screenshot or trace`,
+    );
+  } else {
     const artifactIssue = trackedRepositoryArtifactIssue(
       rootDirectory,
-      evidenceTarget,
+      repositoryTarget,
     );
     if (artifactIssue) {
       issues.push(`${row.id} recorded finding evidence ${artifactIssue}`);
-    } else if (evidenceTargets.has(evidenceTarget)) {
+    } else if (evidenceTargets.has(repositoryTarget)) {
       issues.push(`${row.id} findings must not reuse an evidence artifact`);
     } else {
-      evidenceTargets.add(evidenceTarget);
+      evidenceTargets.add(repositoryTarget);
     }
-  } else if (evidenceTargets.has(evidenceTarget)) {
-    issues.push(`${row.id} findings must not reuse an evidence artifact`);
-  } else {
-    evidenceTargets.add(evidenceTarget);
   }
   if (!new Set(["completed", "not required"]).has(row.cleanupStatus)) {
     issues.push(`${row.id} recorded finding must include cleanup status`);
@@ -851,6 +878,13 @@ function validateFindingScenarioBinding(
   const viewport = routeViewport?.[2];
   if (viewport && viewport !== execution.viewport) {
     issues.push(`${finding.id} finding viewport must match its execution row`);
+  }
+
+  if (
+    execution.subjectBinding !== "not applicable" &&
+    finding.subjectBinding !== execution.subjectBinding
+  ) {
+    issues.push(`${finding.id} finding subject must match its execution row`);
   }
 
   if (!scenario.findingRouteActors && finding.actor !== execution.persona) {
@@ -951,6 +985,15 @@ export function collectP2zVisualUatRecordIssues(
         surface !== "Decision surface" && !/^:?-+:?$/u.test(surface ?? ""),
     );
   if (
+    !hasMarkdownTableSchema(
+      verdictSection,
+      ["Decision surface", "Current verdict"],
+      5,
+    )
+  ) {
+    issues.push("must keep the verdict boundary table schema");
+  }
+  if (
     JSON.stringify(verdictBoundaryRows.map(([surface]) => surface)) !==
     JSON.stringify(p2zVisualUatDecisionSurfaces)
   ) {
@@ -982,11 +1025,23 @@ export function collectP2zVisualUatRecordIssues(
 
   const executionRows = parseExecutionRows(executionSection);
   if (
-    !executionSection
-      .replace(/\s+/gu, " ")
-      .includes(
-        "| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Expected result | Actual result | Evidence | Scenario verdict |",
-      )
+    !hasMarkdownTableSchema(
+      executionSection,
+      [
+        "ID",
+        "Human tester",
+        "Execution date",
+        "Viewport",
+        "Persona",
+        "Route",
+        "Subject binding",
+        "Expected result",
+        "Actual result",
+        "Evidence",
+        "Scenario verdict",
+      ],
+      p2zVisualUatScenarioIds.length,
+    )
   ) {
     issues.push("must keep the human execution record schema");
   }
@@ -998,11 +1053,26 @@ export function collectP2zVisualUatRecordIssues(
   }
   const findingRows = parseFindingRows(findingSection);
   if (
-    !findingSection
-      .replace(/\s+/gu, " ")
-      .includes(
-        "| ID | Finding status | Linked GitHub Issue | Owner | Scope boundary | Actor | Tenant/environment | Subject binding | Route and viewport | Correlation ID | Evidence version | Screenshot or trace | Cleanup status | Disposition |",
-      )
+    !hasMarkdownTableSchema(
+      findingSection,
+      [
+        "ID",
+        "Finding status",
+        "Linked GitHub Issue",
+        "Owner",
+        "Scope boundary",
+        "Actor",
+        "Tenant/environment",
+        "Subject binding",
+        "Route and viewport",
+        "Correlation ID",
+        "Evidence version",
+        "Screenshot or trace",
+        "Cleanup status",
+        "Disposition",
+      ],
+      p2zVisualUatScenarioIds.length,
+    )
   ) {
     issues.push("must keep the scenario finding record schema");
   }
@@ -1016,9 +1086,11 @@ export function collectP2zVisualUatRecordIssues(
 
   const checklist = parseChecklist(checklistSection);
   if (
-    !checklistSection
-      .replace(/\s+/gu, " ")
-      .includes("| Review item | Status | Disposition |")
+    !hasMarkdownTableSchema(
+      checklistSection,
+      ["Review item", "Status", "Disposition"],
+      p2zVisualUatChecklistItems.length,
+    )
   ) {
     issues.push("must keep the visual checklist record schema");
   }
@@ -1306,27 +1378,26 @@ export function collectP2zVisualUatRecordIssues(
       "Conditional overall verdict cannot retain blocked disposition",
     );
   }
-  if (
-    findingStatuses.has("must-fix") &&
-    !checklist.some((entry) =>
-      new Set(["defect", "workaround"]).has(entry.disposition),
-    )
-  ) {
-    issues.push(
-      "must-fix findings require a defect or workaround checklist disposition",
-    );
+  for (const [findingStatus, dispositions] of findingDispositionsByStatus) {
+    if (
+      findingStatuses.has(findingStatus) &&
+      ![...dispositions].some((disposition) =>
+        checklistDispositionValues.has(disposition),
+      )
+    ) {
+      issues.push(
+        `${findingStatus} findings require a matching checklist disposition`,
+      );
+    }
   }
-  if (
-    findingStatuses.has("post-UAT") &&
-    !checklistDispositionValues.has("post-UAT backlog")
-  ) {
-    issues.push("post-UAT findings require a backlog checklist disposition");
-  }
-  if (
-    checklistDispositionValues.has("post-UAT backlog") &&
-    !findingStatuses.has("post-UAT")
-  ) {
-    issues.push("post-UAT backlog disposition requires a matching finding");
+  for (const disposition of checklistDispositionValues) {
+    const requiredFindingStatus =
+      findingStatusByChecklistDisposition.get(disposition);
+    if (requiredFindingStatus && !findingStatuses.has(requiredFindingStatus)) {
+      issues.push(
+        `${disposition} checklist disposition requires a matching ${requiredFindingStatus} finding`,
+      );
+    }
   }
   if (
     overallVerdict === "Blocked" &&
