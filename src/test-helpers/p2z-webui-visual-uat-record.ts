@@ -30,7 +30,8 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: "1440x900",
     persona: "HR operator",
     route: "/queue",
-    expectedResult: "Dashboard structure is understandable",
+    expectedResult:
+      "KPI, seven-day work queue, integration health, and recent drafts are visible",
     pendingEvidence:
       "[reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending",
   },
@@ -55,8 +56,9 @@ const p2zVisualUatScenarioContracts: Record<
   "P2Z-UAT-04": {
     viewport: "1440x900",
     persona: "HR operator then Approver",
-    route: "/approvals",
-    expectedResult: "Approval evidence and actions are clear",
+    route: "/transfer -> /approvals",
+    expectedResult:
+      "Selected transfer evidence and separated reject/return/approve/cancel actions are visible",
     pendingEvidence:
       "[reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending",
     findingRouteActors: new Map([
@@ -68,7 +70,8 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: "1440x900",
     persona: "HR Ops/support",
     route: "/ops",
-    expectedResult: "Job and DLQ evidence is understandable",
+    expectedResult:
+      "Runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible",
     pendingEvidence:
       "[reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending",
   },
@@ -84,7 +87,8 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: "390x844",
     persona: "Any bounded persona",
     route: "Any bounded route",
-    expectedResult: "Drawer and primary actions remain usable",
+    expectedResult:
+      "Drawer opens explicitly, closes after route selection, and no primary action is lost",
     pendingEvidence:
       "[mobile references](evidence/p2z-webui/README.md); run capture pending",
   },
@@ -92,7 +96,7 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: "1440x900",
     persona: "No persona",
     route: "/queue",
-    expectedResult: "Workflow content remains fail-closed",
+    expectedResult: "Workflows remain hidden and the bounded reason is visible",
     pendingEvidence: "Run-specific fail-closed entry capture pending",
   },
 };
@@ -189,6 +193,7 @@ type ExecutionRow = {
   executionDate: string;
   viewport: string;
   persona: string;
+  route: string;
   expectedResult: string;
   actualResult: string;
   evidence: string;
@@ -302,10 +307,11 @@ function parseExecutionRows(record: string): ExecutionRow[] {
         executionDate: cells[2] ?? "",
         viewport: cells[3] ?? "",
         persona: cells[4] ?? "",
-        expectedResult: cells[5] ?? "",
-        actualResult: cells[6] ?? "",
-        evidence: cells[7] ?? "",
-        verdict: cells[8] ?? "",
+        route: cells[5] ?? "",
+        expectedResult: cells[6] ?? "",
+        actualResult: cells[7] ?? "",
+        evidence: cells[8] ?? "",
+        verdict: cells[9] ?? "",
       };
     });
 }
@@ -358,6 +364,10 @@ function isIsoDate(value: string): boolean {
   return (
     !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value
   );
+}
+
+function isPastOrPresentIsoDate(value: string): boolean {
+  return isIsoDate(value) && value <= new Date().toISOString().slice(0, 10);
 }
 
 function isSubstantive(value: string): boolean {
@@ -433,6 +443,13 @@ function validatePendingExecutionRow(
   if (row.persona !== pendingPersona) {
     issues.push(`${row.id} must retain pending persona ${pendingPersona}`);
   }
+  const pendingRoute =
+    scenario.route === "Any bounded route"
+      ? "Pending actual route"
+      : scenario.route;
+  if (row.route !== pendingRoute) {
+    issues.push(`${row.id} must retain pending route ${pendingRoute}`);
+  }
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);
   }
@@ -457,8 +474,8 @@ function validateCompletedExecutionRow(
   if (!isSubstantive(row.humanTester)) {
     issues.push(`${row.id} must identify the human tester`);
   }
-  if (!isIsoDate(row.executionDate)) {
-    issues.push(`${row.id} must record a valid ISO execution date`);
+  if (!isPastOrPresentIsoDate(row.executionDate)) {
+    issues.push(`${row.id} must record a valid non-future ISO execution date`);
   }
   if (scenario.persona === "Any bounded persona") {
     if (!boundedPersonaLabels.has(row.persona)) {
@@ -466,6 +483,13 @@ function validateCompletedExecutionRow(
     }
   } else if (row.persona !== scenario.persona) {
     issues.push(`${row.id} must use persona ${scenario.persona}`);
+  }
+  if (scenario.route === "Any bounded route") {
+    if (!boundedRoutesByPersona.get(row.persona)?.has(row.route)) {
+      issues.push(`${row.id} must record a route allowed for its persona`);
+    }
+  } else if (row.route !== scenario.route) {
+    issues.push(`${row.id} must use route ${scenario.route}`);
   }
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);
@@ -552,7 +576,11 @@ function validateCompletedFindingRow(
   if (!/^\/\S+ @ (?:1440x900|390x844)$/u.test(row.routeViewport)) {
     issues.push(`${row.id} recorded finding must bind route and viewport`);
   }
-  if (
+  if (row.id === "P2Z-UAT-06" && !isSubstantive(row.correlationId)) {
+    issues.push(
+      `${row.id} recorded finding must bind the Audit correlation ID`,
+    );
+  } else if (
     row.correlationId !== "not applicable" &&
     !isSubstantive(row.correlationId)
   ) {
@@ -650,10 +678,8 @@ function validateFindingScenarioBinding(
       );
     }
   } else if (scenario.route === "Any bounded route") {
-    if (!route || !boundedRoutesByPersona.get(execution.persona)?.has(route)) {
-      issues.push(
-        `${finding.id} finding route must be allowed for its persona`,
-      );
+    if (route !== execution.route) {
+      issues.push(`${finding.id} finding route must match its execution row`);
     }
   } else if (route && route !== scenario.route) {
     issues.push(`${finding.id} finding route must match its scenario`);
@@ -752,7 +778,7 @@ export function collectP2zVisualUatRecordIssues(
     !executionSection
       .replace(/\s+/gu, " ")
       .includes(
-        "| ID | Human tester | Execution date | Viewport | Persona | Expected result | Actual result | Evidence | Scenario verdict |",
+        "| ID | Human tester | Execution date | Viewport | Persona | Route | Expected result | Actual result | Evidence | Scenario verdict |",
       )
   ) {
     issues.push("must keep the human execution record schema");

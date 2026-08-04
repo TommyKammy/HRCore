@@ -19,6 +19,7 @@ type ExecutionFixture = {
   date: string;
   viewport: string;
   persona: string;
+  route: string;
   expected: string;
   actual: string;
   evidence: string;
@@ -72,17 +73,31 @@ function completedExecution(
     "P2Z-UAT-08": "No persona",
   };
   const expectedResultByScenario: Record<string, string> = {
-    "P2Z-UAT-01": "Dashboard structure is understandable",
+    "P2Z-UAT-01":
+      "KPI, seven-day work queue, integration health, and recent drafts are visible",
     "P2Z-UAT-02":
       "Masked profile, lifecycle timeline, and external IDs are visible",
     "P2Z-UAT-03":
       "Step 3/5, input, impact preview, validation, and request detail are visible",
-    "P2Z-UAT-04": "Approval evidence and actions are clear",
-    "P2Z-UAT-05": "Job and DLQ evidence is understandable",
+    "P2Z-UAT-04":
+      "Selected transfer evidence and separated reject/return/approve/cancel actions are visible",
+    "P2Z-UAT-05":
+      "Runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible",
     "P2Z-UAT-06":
       "One exact correlation lookup and evidence timeline are visible",
-    "P2Z-UAT-07": "Drawer and primary actions remain usable",
-    "P2Z-UAT-08": "Workflow content remains fail-closed",
+    "P2Z-UAT-07":
+      "Drawer opens explicitly, closes after route selection, and no primary action is lost",
+    "P2Z-UAT-08": "Workflows remain hidden and the bounded reason is visible",
+  };
+  const routeByScenario: Record<string, string> = {
+    "P2Z-UAT-01": "/queue",
+    "P2Z-UAT-02": "/employee",
+    "P2Z-UAT-03": "/transfer",
+    "P2Z-UAT-04": "/transfer -> /approvals",
+    "P2Z-UAT-05": "/ops",
+    "P2Z-UAT-06": "/audit",
+    "P2Z-UAT-07": "/transfer",
+    "P2Z-UAT-08": "/queue",
   };
   return {
     id,
@@ -90,6 +105,7 @@ function completedExecution(
     date: "2026-08-03",
     viewport: id === "P2Z-UAT-07" ? "390x844" : "1440x900",
     persona: personaByScenario[id] ?? "",
+    route: routeByScenario[id] ?? "",
     expected: expectedResultByScenario[id] ?? "",
     actual:
       id === "P2Z-UAT-06"
@@ -124,6 +140,7 @@ function pendingExecution(id: string): ExecutionFixture {
     date: "Pending",
     viewport: scenario.viewport,
     persona: id === "P2Z-UAT-07" ? "Pending actual persona" : scenario.persona,
+    route: id === "P2Z-UAT-07" ? "Pending actual route" : scenario.route,
     expected: scenario.expected,
     actual: "Pending human execution",
     evidence: pendingEvidenceByScenario[id] ?? "",
@@ -307,7 +324,7 @@ function renderFixture(input: UatFixture): string {
   const executionRows = input.executions
     .map(
       (row) =>
-        `| ${row.id} | ${row.tester} | ${row.date} | ${row.viewport} | ${row.persona} | ${row.expected} | ${row.actual} | ${row.evidence} | ${row.verdict} |`,
+        `| ${row.id} | ${row.tester} | ${row.date} | ${row.viewport} | ${row.persona} | ${row.route} | ${row.expected} | ${row.actual} | ${row.evidence} | ${row.verdict} |`,
     )
     .join("\n");
   const findingRows = input.findings
@@ -344,8 +361,8 @@ Tested commit: **${input.commit}**
 Named human tester: **${input.namedTester}**
 Overall verdict recorded by: **${input.verdictRecorder}**
 
-| ID | Human tester | Execution date | Viewport | Persona | Expected result | Actual result | Evidence | Scenario verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ID | Human tester | Execution date | Viewport | Persona | Route | Expected result | Actual result | Evidence | Scenario verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${executionRows}
 
 ## Scenario Finding Record
@@ -402,6 +419,7 @@ test("P2Z visual UAT record accepts the tested commit before execution", () => {
 test("P2Z visual UAT record accepts every application bounded persona", () => {
   const input = fixture("Accepted");
   input.executions[6]!.persona = "Bounded admin";
+  input.executions[6]!.route = "/admin";
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
@@ -492,6 +510,22 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "mobile scenario at desktop viewport",
     input: wrongViewport,
     expected: /must use viewport 390x844/u,
+  });
+
+  const futureExecutionDate = fixture("Accepted");
+  futureExecutionDate.executions[0]!.date = "2999-01-01";
+  cases.push({
+    name: "completed scenario dated in the future",
+    input: futureExecutionDate,
+    expected: /must record a valid non-future ISO execution date/u,
+  });
+
+  const disallowedMobileRoute = fixture("Accepted");
+  disallowedMobileRoute.executions[6]!.route = "/admin";
+  cases.push({
+    name: "mobile scenario route outside the persona allowlist",
+    input: disallowedMobileRoute,
+    expected: /must record a route allowed for its persona/u,
   });
 
   const wrongFixedPersona = fixture("Accepted");
@@ -627,6 +661,23 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "recorded finding without owner",
     input: incompleteFinding,
     expected: /must include owner/u,
+  });
+
+  const auditFindingWithoutCorrelation = fixture("Accepted");
+  auditFindingWithoutCorrelation.findings[5] = recordedFinding(
+    "P2Z-UAT-06",
+    "post-UAT",
+    510,
+  );
+  auditFindingWithoutCorrelation.findings[5]!.actor = "HR Ops/support";
+  auditFindingWithoutCorrelation.findings[5]!.routeViewport =
+    "/audit @ 1440x900";
+  auditFindingWithoutCorrelation.findings[5]!.correlationId = "not applicable";
+  auditFindingWithoutCorrelation.checklist[0]!.disposition = "post-UAT backlog";
+  cases.push({
+    name: "Audit finding without its exact correlation ID",
+    input: auditFindingWithoutCorrelation,
+    expected: /must bind the Audit correlation ID/u,
   });
 
   const externalIssueLink = fixture("Conditional");
