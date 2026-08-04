@@ -520,6 +520,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must record a valid non-future ISO execution date/u,
   });
 
+  const tokenOnlyObservation = fixture("Accepted");
+  tokenOnlyObservation.executions[0]!.actual = "x";
+  cases.push({
+    name: "completed scenario with a token-only observation",
+    input: tokenOnlyObservation,
+    expected: /must record a meaningful actual observation/u,
+  });
+
   const disallowedMobileRoute = fixture("Accepted");
   disallowedMobileRoute.executions[6]!.route = "/admin";
   cases.push({

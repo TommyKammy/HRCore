@@ -376,6 +376,23 @@ function isSubstantive(value: string): boolean {
   );
 }
 
+function isMeaningfulObservation(value: string): boolean {
+  const renderedText = value
+    .replace(/!\[[^\]]*\]\([^)]+\)/gu, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/[`*_~>#|\\-]/gu, " ")
+    .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/giu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const renderedCharacters = renderedText.match(/[\p{L}\p{N}]/gu) ?? [];
+  return (
+    isSubstantive(renderedText) &&
+    /\p{L}/u.test(renderedText) &&
+    renderedCharacters.length >= 8
+  );
+}
+
 function isTrackedRepositoryArtifact(
   rootDirectory: string,
   target: string,
@@ -494,8 +511,8 @@ function validateCompletedExecutionRow(
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);
   }
-  if (!isSubstantive(row.actualResult)) {
-    issues.push(`${row.id} must record the actual result`);
+  if (!isMeaningfulObservation(row.actualResult)) {
+    issues.push(`${row.id} must record a meaningful actual observation`);
   }
   if (
     !completedScenarioVerdicts.has(row.verdict as P2zVisualUatScenarioVerdict)

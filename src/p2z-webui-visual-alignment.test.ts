@@ -758,13 +758,16 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   );
 });
 
-test("P2Z capture setup invalidates all projects and finds nested PNG evidence", async (t) => {
+test("P2Z capture setup isolates run artifacts from nested reference evidence", async (t) => {
   const rootDirectory = await mkdtemp(
     path.join(tmpdir(), "hrcore-p2z-evidence-"),
   );
   t.after(() => rm(rootDirectory, { recursive: true, force: true }));
   const evidenceDirectory = path.join(rootDirectory, evidencePath);
   await mkdir(path.join(evidenceDirectory, "archive"), { recursive: true });
+  await mkdir(path.join(evidenceDirectory, "runs", "tested-commit"), {
+    recursive: true,
+  });
   await Promise.all(
     p2zVisualEvidenceProjectNames.map((project) =>
       writeFile(
@@ -779,6 +782,10 @@ test("P2Z capture setup invalidates all projects and finds nested PNG evidence",
   await writeFile(path.join(evidenceDirectory, "root.png"), "");
   await writeFile(
     path.join(evidenceDirectory, "archive", "comparison.PNG"),
+    "",
+  );
+  await writeFile(
+    path.join(evidenceDirectory, "runs", "tested-commit", "P2Z-UAT-01.png"),
     "",
   );
 

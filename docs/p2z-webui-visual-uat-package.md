@@ -130,8 +130,9 @@ Overall verdict recorded by: **Pending assignment**
 
 The named human tester must replace every pending field during one formal run
 against a recorded commit. `Actual result` must describe what the tester
-observed; `Evidence` must link the run-specific screenshot or trace rather than
-relying only on the automated reference image. Use either a repository path
+observed with meaningful rendered text; one-token and Markdown-only values are
+not observations. `Evidence` must link the run-specific screenshot or trace
+rather than relying only on the automated reference image. Use either a repository path
 under `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`
 or a GitHub `user-attachments/assets` URL for each run artifact. A repository
 path must exist under `docs/` and be Git-tracked before closeout. Record the
@@ -140,6 +141,11 @@ completed scenario row, and allow only that tester to fill `Overall verdict
 recorded by`. The execution date cannot be later than the validation date. Keep
 the documented route for fixed scenarios; for P2Z-UAT-07, replace `Pending
 actual route` with the concrete route allowed for the recorded persona.
+
+The `evidence/p2z-webui/runs/` namespace is reserved for formal human-run
+artifacts and is excluded from the strict automated reference-image inventory.
+Run screenshots therefore remain provenance-bound without being treated as
+additional baseline captures.
 
 The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
 or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
