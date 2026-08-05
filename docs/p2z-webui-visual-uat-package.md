@@ -147,9 +147,11 @@ evidence must use the repository path
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`.
 External attachment links may be supplemental, but do not satisfy the formal
 evidence requirement. Repository-backed artifacts support a decodable `.png`
-screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must contain
-at least one non-empty scalar event value;
-empty containers such as `{}`, `[]`, and `{"events":[]}` are not evidence. Each
+screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must be an
+object with a non-empty `events` array. Every entry in that array must be an
+object with a substantive string `type` or `eventType` discriminator. Root-level
+metadata may accompany the events but is not evidence by itself; empty,
+metadata-only, scalar, or mixed valid/invalid event arrays are rejected. Each
 text or Markdown trace must contain a meaningful rendered observation rather
 than a token, punctuation, markup, or placeholder alone. A `.png` screenshot
 must use the repository capture geometry for the scenario's recorded and
@@ -228,7 +230,9 @@ link and every scenario must have at least one row. A scenario without a
 recorded finding uses exactly one `Pending` or `none observed` marker row;
 marker rows cannot be duplicated or mixed with recorded findings. `Owner` must
 render as a meaningful identity, and every other recorded metadata field must
-render substantive visible text rather than empty HTML or punctuation alone.
+render substantive visible text rather than empty HTML or punctuation alone,
+except for the canonical `not applicable` subject and correlation sentinels
+described below.
 Repository-backed finding evidence uses
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>-finding-<slug>.<artifact-extension>`;
 the same validated `.png`, `.json`, `.txt`, and `.md` artifact contract applies.
@@ -237,13 +241,36 @@ artifact. If no finding exists, record `none observed` in `Finding status` and
 `not applicable` in every remaining finding field; do not leave the finding
 status implicit.
 
+After creating every linked Issue and before assigning the overall verdict,
+generate the run-scoped Issue snapshot from GitHub:
+
+```sh
+npm run update:p2z:uat-issue-registry -- --issue <finding-issue-number>
+```
+
+This explicit network step requires an authenticated GitHub CLI session. The
+updater reads the 40-character `Tested commit` above, queries GraphQL
+`repository.issue` for each number, and atomically writes the snapshot. Repeat
+`--issue <finding-issue-number>` for every distinct linked finding Issue. The
+output path is
+`docs/evidence/p2z-webui/runs/<tested-commit>/finding-issues.json`. It refuses a
+missing number or a pull request, even though the REST Issues endpoint exposes
+pull requests. Stage the printed snapshot path with the rest of the run
+evidence. Canonical verification remains offline and requires that tracked,
+non-symlink snapshot to contain every linked finding Issue. Closed Issues still
+prove existence; their workflow state is not a visual-UAT gate. A run containing
+only `Pending` or `none observed` finding rows does not need a snapshot.
+
 The linked Issue must use `#<number>` or the exact
 `https://github.com/TommyKammy/HRCore/issues/<number>` form. Match finding status
 to disposition in the same row: `blocker` to `blocked`, `must-fix` to `defect`
 or `workaround`, and `post-UAT` to `post-UAT backlog`. When an execution row has
 a concrete subject binding, every finding for that scenario must repeat the
-same subject. For P2Z-UAT-04, bind a finding from the request-creation leg to
-`HR operator` on `/transfer`, or a
+same subject. When the execution subject is `not applicable`, use that exact
+sentinel unless the finding itself has a concrete, substantive subject to
+record; placeholders such as `N/A`, `Pending`, or empty markup are invalid. For
+P2Z-UAT-04, bind a finding from the request-creation leg to `HR operator` on
+`/transfer`, or a
 finding from the decision leg to `Approver` on `/approvals`. P2Z-UAT-06 always
 records the exact Audit lookup correlation ID when it has a finding; `not
 applicable` is not valid for that scenario.

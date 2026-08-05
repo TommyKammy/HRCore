@@ -323,6 +323,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     playwrightConfig,
     packageJson,
     captureScript,
+    issueRegistryUpdater,
     ci,
     readme,
   ] = await Promise.all([
@@ -337,6 +338,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     readRepoFile("playwright.config.ts"),
     readRepoFile("package.json"),
     readRepoFile("scripts/capture-p2z-web-evidence.ts"),
+    readRepoFile("scripts/update-p2z-uat-issue-registry.ts"),
     readRepoFile(".github/workflows/ci.yml"),
     readRepoFile("README.md"),
   ]);
@@ -386,6 +388,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "end-to-end workflow API integration",
     "git rev-parse HEAD",
     "npm run setup:p2list:uat",
+    "npm run update:p2z:uat-issue-registry",
     "source .local/p2list-uat/api-environment.sh",
     "source .local/p2list-uat/web-environment.sh",
   ] as const) {
@@ -550,6 +553,21 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     /"update:p2z:evidence-manifest":\s*"tsx scripts\/update-p2z-evidence-manifest\.ts"/u,
     "package scripts must expose deterministic manifest regeneration",
   );
+  assert.match(
+    packageJson,
+    /"update:p2z:uat-issue-registry":\s*"tsx scripts\/update-p2z-uat-issue-registry\.ts"/u,
+    "package scripts must expose explicit finding Issue verification",
+  );
+  for (const updaterSignal of [
+    'execFileSync("gh", ["api", "graphql"',
+    "p2zVisualUatFindingIssueSnapshotFromGraphql",
+    "rename(temporaryPath, absoluteRegistryPath)",
+  ] as const) {
+    assert.ok(
+      issueRegistryUpdater.includes(updaterSignal),
+      `finding Issue updater must preserve verification signal: ${updaterSignal}`,
+    );
+  }
   assert.ok(
     contract.includes(
       `Evidence contract version: \`${p2zVisualEvidenceContractVersion}\``,

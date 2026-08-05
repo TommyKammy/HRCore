@@ -4,6 +4,11 @@ import path from "node:path";
 
 import { PNG } from "pngjs";
 
+import {
+  parseP2zVisualUatFindingIssueReference,
+  p2zVisualUatFindingIssueRegistryPath,
+  validateP2zVisualUatFindingIssueRegistry,
+} from "./p2z-webui-visual-uat-issue-registry.js";
 import { p2zVisualEvidenceProjects } from "../p2z-webui-visual-evidence-contract.js";
 
 export const p2zVisualUatScenarioIds = [
@@ -146,9 +151,6 @@ const boundedRoutesByPersona = new Map<string, ReadonlySet<string>>([
 ]);
 
 const boundedTenantEnvironment = "repo_owned_synthetic_webui_non_production";
-
-const githubIssuePattern =
-  /^(?:#[1-9]\d*|https:\/\/github\.com\/TommyKammy\/HRCore\/issues\/[1-9]\d*)$/iu;
 
 const p2zVisualUatDecisionSurfaces = [
   "Automated visual UAT candidate",
@@ -484,6 +486,27 @@ function singletonDeclaration(
   return matches[0]?.[1];
 }
 
+export function p2zVisualUatTestedCommitFromRecord(
+  markdown: string,
+): string | undefined {
+  const issues: string[] = [];
+  const executionSection = section(
+    renderedMarkdown(markdown),
+    "## Human Execution Record",
+    "## Scenario Finding Record",
+    issues,
+  );
+  const testedCommit = singletonDeclaration(
+    executionSection,
+    /^Tested commit: \*\*(Pending human execution|[0-9a-f]{40})\*\*$/gmu,
+    "must record exactly one tested commit",
+    issues,
+  );
+  return issues.length === 0 && /^[0-9a-f]{40}$/u.test(testedCommit ?? "")
+    ? testedCommit
+    : undefined;
+}
+
 function parseExecutionRows(rows: readonly string[][]): ExecutionRow[] {
   return rows.map((cells) => ({
     id: cells[0] ?? "",
@@ -561,6 +584,16 @@ function isVisibleSubstantive(value: string): boolean {
   return isSubstantive(visibleText) && /[\p{L}\p{N}]/u.test(visibleText);
 }
 
+function isVisibleConcreteSubject(value: string): boolean {
+  const visibleText = renderedText(value);
+  const withoutBoundaryPunctuation = visibleText
+    .replace(/^[\p{P}\p{S}\s]+|[\p{P}\p{S}\s]+$/gu, "")
+    .trim();
+  return (
+    isVisibleSubstantive(value) && isSubstantive(withoutBoundaryPunctuation)
+  );
+}
+
 function isMeaningfulObservation(value: string): boolean {
   const visibleText = renderedText(value);
   const renderedCharacters = visibleText.match(/[\p{L}\p{N}]/gu) ?? [];
@@ -581,13 +614,53 @@ function isMeaningfulIdentity(value: string): boolean {
   );
 }
 
-function hasStructuredTraceContent(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(hasStructuredTraceContent);
-  if (value !== null && typeof value === "object") {
-    return Object.values(value).some(hasStructuredTraceContent);
+function hasStructuredTraceEvents(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
   }
-  if (typeof value === "string") return value.trim().length > 0;
-  return typeof value === "number" || typeof value === "boolean";
+  const events = (value as Record<string, unknown>).events;
+  if (!Array.isArray(events) || events.length === 0) return false;
+  return events.every((event) => {
+    if (event === null || typeof event !== "object" || Array.isArray(event)) {
+      return false;
+    }
+    const eventRecord = event as Record<string, unknown>;
+    return [eventRecord.type, eventRecord.eventType].some(
+      (discriminator) =>
+        typeof discriminator === "string" &&
+        isVisibleSubstantive(discriminator),
+    );
+  });
+}
+
+type TrackedRepositoryFileResult = { contents: Buffer } | { issue: string };
+
+function readTrackedRegularRepositoryFile(
+  rootDirectory: string,
+  repositoryPath: string,
+): TrackedRepositoryFileResult {
+  const absolutePath = path.join(rootDirectory, ...repositoryPath.split("/"));
+  try {
+    const stats = lstatSync(absolutePath);
+    if (stats.isSymbolicLink() || !stats.isFile()) {
+      return { issue: "must be a tracked regular file" };
+    }
+  } catch {
+    return { issue: "must be an existing tracked regular file" };
+  }
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", repositoryPath], {
+      cwd: rootDirectory,
+      stdio: "ignore",
+    });
+  } catch {
+    return { issue: "must be an existing tracked regular file" };
+  }
+  try {
+    return { contents: readFileSync(absolutePath) };
+  } catch {
+    return { issue: "must be a readable tracked regular file" };
+  }
 }
 
 function trackedRepositoryArtifactIssue(
@@ -596,30 +669,12 @@ function trackedRepositoryArtifactIssue(
   expectedViewport?: string,
 ): string | undefined {
   const repositoryPath = path.posix.join("docs", target);
-  const absolutePath = path.join(rootDirectory, ...repositoryPath.split("/"));
-  try {
-    const stats = lstatSync(absolutePath);
-    if (stats.isSymbolicLink() || !stats.isFile()) {
-      return "must be a tracked regular file";
-    }
-  } catch {
-    return "must be an existing tracked regular file";
-  }
-  try {
-    execFileSync("git", ["ls-files", "--error-unmatch", "--", repositoryPath], {
-      cwd: rootDirectory,
-      stdio: "ignore",
-    });
-  } catch {
-    return "must be an existing tracked regular file";
-  }
-
-  let contents: Buffer;
-  try {
-    contents = readFileSync(absolutePath);
-  } catch {
-    return "must be a readable tracked regular file";
-  }
+  const trackedFile = readTrackedRegularRepositoryFile(
+    rootDirectory,
+    repositoryPath,
+  );
+  if ("issue" in trackedFile) return trackedFile.issue;
+  const { contents } = trackedFile;
   const extension = path.posix.extname(target).toLowerCase();
   try {
     if (extension === ".png") {
@@ -649,11 +704,7 @@ function trackedRepositoryArtifactIssue(
       const value: unknown = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(contents),
       );
-      if (
-        value === null ||
-        typeof value !== "object" ||
-        !hasStructuredTraceContent(value)
-      ) {
+      if (!hasStructuredTraceEvents(value)) {
         throw new Error("trace must contain structured events");
       }
     } else if (extension === ".txt" || extension === ".md") {
@@ -848,7 +899,7 @@ function validateCompletedFindingRow(
     }
     return;
   }
-  if (!githubIssuePattern.test(row.linkedIssue)) {
+  if (parseP2zVisualUatFindingIssueReference(row.linkedIssue) === undefined) {
     issues.push(`${row.id} recorded finding must link a GitHub Issue`);
   }
   if (!isMeaningfulIdentity(row.owner)) {
@@ -859,7 +910,6 @@ function validateCompletedFindingRow(
   for (const [name, value] of [
     ["scope boundary", row.scopeBoundary],
     ["actor", row.actor],
-    ["subject binding", row.subjectBinding],
     ["route and viewport", row.routeViewport],
     ["evidence version", row.evidenceVersion],
   ] as const) {
@@ -972,10 +1022,16 @@ function validateFindingScenarioBinding(
     issues.push(`${finding.id} finding viewport must match its execution row`);
   }
 
-  if (
-    execution.subjectBinding !== "not applicable" &&
-    finding.subjectBinding !== execution.subjectBinding
-  ) {
+  if (execution.subjectBinding === "not applicable") {
+    if (
+      finding.subjectBinding !== "not applicable" &&
+      !isVisibleConcreteSubject(finding.subjectBinding)
+    ) {
+      issues.push(
+        `${finding.id} recorded finding must include subject binding as visible text or use not applicable`,
+      );
+    }
+  } else if (finding.subjectBinding !== execution.subjectBinding) {
     issues.push(`${finding.id} finding subject must match its execution row`);
   }
 
@@ -999,6 +1055,54 @@ function validateFindingScenarioBinding(
   } else if (route && route !== scenario.route) {
     issues.push(`${finding.id} finding route must match its scenario`);
   }
+}
+
+function validateFindingIssueRegistry(
+  rootDirectory: string,
+  testedCommit: string,
+  findings: readonly FindingRow[],
+  issues: string[],
+): void {
+  const requiredIssueNumbers = new Set<number>();
+  for (const finding of findings) {
+    if (
+      !completedFindingStatuses.has(finding.status as P2zVisualUatFindingStatus)
+    ) {
+      continue;
+    }
+    const issueNumber = parseP2zVisualUatFindingIssueReference(
+      finding.linkedIssue,
+    );
+    if (issueNumber !== undefined) requiredIssueNumbers.add(issueNumber);
+  }
+  if (requiredIssueNumbers.size === 0) return;
+
+  const repositoryPath = p2zVisualUatFindingIssueRegistryPath(testedCommit);
+  const trackedFile = readTrackedRegularRepositoryFile(
+    rootDirectory,
+    repositoryPath,
+  );
+  if ("issue" in trackedFile) {
+    issues.push(`finding Issue registry ${trackedFile.issue}`);
+    return;
+  }
+
+  let registry: unknown;
+  try {
+    registry = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(trackedFile.contents),
+    );
+  } catch {
+    issues.push("finding Issue registry must contain valid JSON");
+    return;
+  }
+  issues.push(
+    ...validateP2zVisualUatFindingIssueRegistry(
+      registry,
+      testedCommit,
+      requiredIssueNumbers,
+    ),
+  );
 }
 
 export function collectP2zVisualUatRecordIssues(
@@ -1318,6 +1422,12 @@ export function collectP2zVisualUatRecordIssues(
 
   const completedFindings = findingRows.filter(
     (row) => !unexecutedIds.has(row.id),
+  );
+  validateFindingIssueRegistry(
+    rootDirectory,
+    testedCommit,
+    completedFindings,
+    issues,
   );
   const executionVerdictByScenario = new Map(
     executionRows.map((row) => [row.id, row.verdict]),

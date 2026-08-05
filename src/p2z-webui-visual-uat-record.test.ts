@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -14,8 +15,14 @@ import test, { after } from "node:test";
 import { PNG } from "pngjs";
 
 import {
+  createP2zVisualUatFindingIssueRegistry,
+  p2zVisualUatFindingIssueRegistryPath,
+  p2zVisualUatFindingIssueUrl,
+} from "./test-helpers/p2z-webui-visual-uat-issue-registry.js";
+import {
   p2zVisualUatChecklistItems,
   p2zVisualUatScenarioIds,
+  p2zVisualUatTestedCommitFromRecord,
   type P2zVisualUatOverallVerdict,
   validateP2zVisualUatRecord as validateRecord,
 } from "./test-helpers/p2z-webui-visual-uat-record.js";
@@ -37,9 +44,34 @@ const tinyPng = Buffer.from(
   "base64",
 );
 
+function writeFindingIssueRegistry(
+  root: string,
+  commit: string,
+  issueNumbers: readonly number[],
+): string {
+  const repositoryPath = p2zVisualUatFindingIssueRegistryPath(commit);
+  const absolutePath = path.join(root, ...repositoryPath.split("/"));
+  const registry = createP2zVisualUatFindingIssueRegistry(
+    commit,
+    "2026-08-05T00:00:00.000Z",
+    issueNumbers.map((issueNumber) => ({
+      number: issueNumber,
+      nodeId: `I_fixture_${issueNumber}`,
+      url: p2zVisualUatFindingIssueUrl(issueNumber),
+    })),
+  );
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, `${JSON.stringify(registry, null, 2)}\n`);
+  return absolutePath;
+}
+
 function createEvidenceRepository({
   includeFindingArtifacts = true,
-}: { includeFindingArtifacts?: boolean } = {}): {
+  includeFindingIssueRegistry = true,
+}: {
+  includeFindingArtifacts?: boolean;
+  includeFindingIssueRegistry?: boolean;
+} = {}): {
   root: string;
   commit: string;
   closeoutCommit: string;
@@ -115,6 +147,13 @@ function createEvidenceRepository({
         );
       }
     }
+  }
+  if (includeFindingIssueRegistry) {
+    writeFindingIssueRegistry(
+      root,
+      commit,
+      Array.from({ length: 21 }, (_, index) => 500 + index),
+    );
   }
   execFileSync("git", ["add", "docs/evidence"], { cwd: root });
   execFileSync(
@@ -765,6 +804,62 @@ test("P2Z visual UAT record accepts a finding bound to the executed subject", ()
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record accepts canonical subjectless finding bindings", () => {
+  const input = fixture("Accepted");
+  input.findings[0] = recordedFinding("P2Z-UAT-01", "post-UAT", 513);
+  input.findings[0]!.issue = p2zVisualUatFindingIssueUrl(513);
+  input.findings[0]!.subjectBinding = "not applicable";
+  input.findings[0]!.routeViewport = "/queue @ 1440x900";
+  input.checklist[0]!.disposition = "post-UAT backlog";
+
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
+test("P2Z visual UAT record rejects non-canonical subjectless placeholders", () => {
+  for (const placeholder of [
+    "N/A",
+    "N/A.",
+    "not applicable.",
+    "(not applicable)",
+    "Pending.",
+  ]) {
+    const input = fixture("Accepted");
+    input.findings[0] = recordedFinding("P2Z-UAT-01", "post-UAT", 513);
+    input.findings[0]!.subjectBinding = placeholder;
+    input.findings[0]!.routeViewport = "/queue @ 1440x900";
+    input.checklist[0]!.disposition = "post-UAT backlog";
+
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(input)),
+      /must include subject binding as visible text or use not applicable/u,
+      placeholder,
+    );
+  }
+});
+
+test("P2Z visual UAT record accepts a finding-specific subject on a subjectless scenario", () => {
+  const input = fixture("Accepted");
+  input.findings[0] = recordedFinding("P2Z-UAT-01", "post-UAT", 514);
+  input.findings[0]!.subjectBinding = "queue item HR-000514";
+  input.findings[0]!.routeViewport = "/queue @ 1440x900";
+  input.checklist[0]!.disposition = "post-UAT backlog";
+
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
+test("P2Z visual UAT record does not substitute not applicable for a concrete subject", () => {
+  const input = fixture("Accepted");
+  input.findings[1] = recordedFinding("P2Z-UAT-02", "post-UAT", 511);
+  input.findings[1]!.subjectBinding = "not applicable";
+  input.findings[1]!.routeViewport = "/employee @ 1440x900";
+  input.checklist[0]!.disposition = "post-UAT backlog";
+
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(input)),
+    /finding subject must match its execution row/u,
+  );
+});
+
 test("P2Z visual UAT record parses only rendered Markdown records", () => {
   const accepted = renderFixture(fixture("Accepted"));
   for (const hiddenRecord of [
@@ -827,6 +922,33 @@ test("P2Z visual UAT record accepts the tested commit before execution", () => {
   }
 });
 
+test("P2Z visual UAT updater reads the tested commit only from the rendered execution record", () => {
+  const accepted = renderFixture(fixture("Accepted"));
+  assert.equal(p2zVisualUatTestedCommitFromRecord(accepted), testedCommit);
+
+  const pending = renderFixture(fixture("Pending human execution"));
+  for (const hiddenOrDetachedCommit of [
+    `${pending}\n<!-- Tested commit: **${testedCommit}** -->`,
+    `${pending}\n\`\`\`markdown\nTested commit: **${testedCommit}**\n\`\`\``,
+    `${pending}\n<pre>\nTested commit: **${testedCommit}**\n</pre>`,
+    `Tested commit: **${testedCommit}**\n\n${pending}`,
+  ]) {
+    assert.equal(
+      p2zVisualUatTestedCommitFromRecord(hiddenOrDetachedCommit),
+      undefined,
+    );
+  }
+
+  const duplicateVisibleCommit = accepted.replace(
+    "| ID | Human tester |",
+    `Tested commit: **${testedCommit}**\n\n| ID | Human tester |`,
+  );
+  assert.equal(
+    p2zVisualUatTestedCommitFromRecord(duplicateVisibleCommit),
+    undefined,
+  );
+});
+
 test("P2Z visual UAT record accepts every application bounded persona", () => {
   const input = fixture("Accepted");
   input.executions[6]!.persona = "Bounded admin";
@@ -876,6 +998,14 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       valid: true,
     },
     {
+      name: "valid eventType JSON trace with root metadata",
+      extension: "json",
+      contents: Buffer.from(
+        '{"schemaVersion":1,"events":[{"eventType":"visual.capture"}]}',
+      ),
+      valid: true,
+    },
+    {
       name: "empty PNG",
       extension: "png",
       contents: Buffer.alloc(0),
@@ -897,6 +1027,50 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       name: "nested empty JSON trace",
       extension: "json",
       contents: Buffer.from('{"events":[]}'),
+      valid: false,
+    },
+    {
+      name: "metadata-only JSON trace with empty events",
+      extension: "json",
+      contents: Buffer.from('{"events":[],"schemaVersion":1}'),
+      valid: false,
+    },
+    {
+      name: "root-metadata-only JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"schemaVersion":1}'),
+      valid: false,
+    },
+    {
+      name: "empty event object JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"events":[{}]}'),
+      valid: false,
+    },
+    {
+      name: "event-metadata-only JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"events":[{"schemaVersion":1}]}'),
+      valid: false,
+    },
+    {
+      name: "scalar event JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"events":[1]}'),
+      valid: false,
+    },
+    {
+      name: "blank event type JSON trace",
+      extension: "json",
+      contents: Buffer.from('{"events":[{"type":"   "}]}'),
+      valid: false,
+    },
+    {
+      name: "mixed valid and invalid event JSON trace",
+      extension: "json",
+      contents: Buffer.from(
+        '{"events":[{"type":"screenshot"},{"schemaVersion":1}]}',
+      ),
       valid: false,
     },
     {
@@ -960,6 +1134,109 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       assert.throws(validate, /repository evidence must/u, artifact.name);
     }
   }
+});
+
+test("P2Z visual UAT record accepts a provenance-bound subjectless JSON finding", (t) => {
+  const { root, commit } = createEvidenceRepository();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const relativeArtifact = `evidence/p2z-webui/runs/${commit}/P2Z-UAT-01.json`;
+  const artifactPath = path.join(root, "docs", ...relativeArtifact.split("/"));
+  writeFileSync(
+    artifactPath,
+    '{"schemaVersion":1,"events":[{"eventType":"visual.capture"}]}',
+  );
+  execFileSync("git", ["add", "--", path.relative(root, artifactPath)], {
+    cwd: root,
+  });
+
+  const input = fixture("Accepted");
+  input.commit = commit;
+  bindExecutionEvidenceToCommit(input, commit);
+  input.executions[0]!.evidence = `[run](${relativeArtifact})`;
+  input.findings[0] = recordedFinding("P2Z-UAT-01", "post-UAT", 513);
+  input.findings[0]!.issue = p2zVisualUatFindingIssueUrl(513);
+  input.findings[0]!.subjectBinding = "not applicable";
+  input.findings[0]!.routeViewport = "/queue @ 1440x900";
+  input.findings[0]!.evidence = `[finding](evidence/p2z-webui/runs/${commit}/P2Z-UAT-01-finding-513.png)`;
+  input.checklist[0]!.disposition = "post-UAT backlog";
+
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(renderFixture(input), root),
+  );
+});
+
+test("P2Z visual UAT record does not require an Issue registry for clean findings", (t) => {
+  const { root, commit } = createEvidenceRepository({
+    includeFindingIssueRegistry: false,
+  });
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const input = fixture("Accepted");
+  input.commit = commit;
+  bindExecutionEvidenceToCommit(input, commit);
+
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(renderFixture(input), root),
+  );
+});
+
+test("P2Z visual UAT record requires a tracked regular finding Issue registry", (t) => {
+  for (const registryState of [
+    "missing",
+    "untracked",
+    "symlink",
+    "invalid JSON",
+  ] as const) {
+    const { root, commit } = createEvidenceRepository({
+      includeFindingIssueRegistry: false,
+    });
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const repositoryPath = p2zVisualUatFindingIssueRegistryPath(commit);
+    const registryPath = path.join(root, ...repositoryPath.split("/"));
+    if (registryState === "untracked") {
+      writeFindingIssueRegistry(root, commit, [513]);
+    } else if (registryState === "symlink") {
+      writeFindingIssueRegistry(root, commit, [513]);
+      const target = path.join(root, "finding-issues-target.json");
+      renameSync(registryPath, target);
+      symlinkSync(target, registryPath);
+      execFileSync("git", ["add", "--", repositoryPath], { cwd: root });
+    } else if (registryState === "invalid JSON") {
+      writeFileSync(registryPath, "{");
+      execFileSync("git", ["add", "--", repositoryPath], { cwd: root });
+    }
+
+    const input = fixture("Accepted");
+    input.commit = commit;
+    bindExecutionEvidenceToCommit(input, commit);
+    input.findings[0] = recordedFinding("P2Z-UAT-01", "post-UAT", 513);
+    input.findings[0]!.subjectBinding = "not applicable";
+    input.findings[0]!.routeViewport = "/queue @ 1440x900";
+    input.checklist[0]!.disposition = "post-UAT backlog";
+
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(input), root),
+      registryState === "symlink"
+        ? /finding Issue registry must be a tracked regular file/u
+        : registryState === "invalid JSON"
+          ? /finding Issue registry must contain valid JSON/u
+          : /finding Issue registry must be an existing tracked regular file/u,
+      registryState,
+    );
+  }
+});
+
+test("P2Z visual UAT record rejects an unverified finding Issue reference", () => {
+  const input = fixture("Accepted");
+  input.findings[0] = recordedFinding("P2Z-UAT-01", "post-UAT", 999_999_999);
+  input.findings[0]!.subjectBinding = "not applicable";
+  input.findings[0]!.routeViewport = "/queue @ 1440x900";
+  input.findings[0]!.evidence = `[finding](evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01-finding-513.png)`;
+  input.checklist[0]!.disposition = "post-UAT backlog";
+
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(input)),
+    /finding Issue registry must include required Issue #999999999/u,
+  );
 });
 
 test("P2Z visual UAT record binds finding PNGs to the scenario viewport", (t) => {
