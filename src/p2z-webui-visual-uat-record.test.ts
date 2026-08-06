@@ -878,6 +878,9 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     `\`\`\`markdown\n${accepted}\n\`\`\``,
     `<pre>\n${accepted}\n</pre>`,
     `<div>\n${accepted}\n</div>`,
+    `<?uat\n${accepted}\n?>`,
+    `<!UAT\n${accepted}\n>`,
+    `<![CDATA[\n${accepted}\n]]>`,
   ]) {
     assert.throws(
       () => validateP2zVisualUatRecord(hiddenRecord),

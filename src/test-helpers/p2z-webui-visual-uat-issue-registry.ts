@@ -153,6 +153,8 @@ export function validateP2zVisualUatFindingIssueRegistry(
     errors.push(
       "finding Issue registry verifiedAt must be a canonical ISO timestamp",
     );
+  } else if (Date.parse(value.verifiedAt) > Date.now()) {
+    errors.push("finding Issue registry verifiedAt must not be in the future");
   }
   if (!Array.isArray(value.issues)) {
     errors.push("finding Issue registry issues must be an array");

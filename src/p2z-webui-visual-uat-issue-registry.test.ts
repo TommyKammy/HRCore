@@ -151,6 +151,14 @@ test("P2Z finding Issue registry rejects root provenance drift", () => {
       expected: /verifiedAt must be a canonical ISO timestamp/u,
     },
     {
+      name: "future verification time",
+      value: {
+        ...validRegistry(),
+        verifiedAt: "2999-01-01T00:00:00.000Z",
+      },
+      expected: /verifiedAt must not be in the future/u,
+    },
+    {
       name: "malformed issues collection",
       value: { ...validRegistry(), issues: {} },
       expected: /issues must be an array/u,

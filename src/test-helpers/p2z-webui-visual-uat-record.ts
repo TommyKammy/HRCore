@@ -449,7 +449,7 @@ function renderedMarkdown(markdown: string): string {
       comment.replace(/[^\n]/gu, " "),
     );
   let fence: { marker: string; length: number } | undefined;
-  let htmlBlock: string | undefined;
+  let htmlBlockClosingToken: string | undefined;
   const lines = withoutComments.split("\n");
   const renderedLines: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -466,15 +466,29 @@ function renderedMarkdown(markdown: string): string {
       renderedLines.push("");
       continue;
     }
-    if (htmlBlock) {
-      if (line.toLowerCase().includes(`</${htmlBlock}>`)) {
-        htmlBlock = undefined;
+    if (htmlBlockClosingToken) {
+      if (line.toLowerCase().includes(htmlBlockClosingToken)) {
+        htmlBlockClosingToken = undefined;
       }
       renderedLines.push("");
       continue;
     }
     if (marker) {
       fence = { marker: marker[0] ?? "", length: marker.length };
+      renderedLines.push("");
+      continue;
+    }
+    const rawHtmlBlockClosingToken = /^ {0,3}<\?/u.test(line)
+      ? "?>"
+      : /^ {0,3}<!\[CDATA\[/u.test(line)
+        ? "]]>"
+        : /^ {0,3}<![A-Z]/u.test(line)
+          ? ">"
+          : undefined;
+    if (rawHtmlBlockClosingToken) {
+      if (!line.includes(rawHtmlBlockClosingToken)) {
+        htmlBlockClosingToken = rawHtmlBlockClosingToken;
+      }
       renderedLines.push("");
       continue;
     }
@@ -487,7 +501,7 @@ function renderedMarkdown(markdown: string): string {
         !/\/>\s*$/u.test(line) &&
         !line.toLowerCase().includes(`</${tag}>`)
       ) {
-        htmlBlock = tag;
+        htmlBlockClosingToken = `</${tag}>`;
       }
       renderedLines.push("");
       continue;
