@@ -732,6 +732,17 @@ test("P2Z visual UAT record requires canonical structure for every formal table"
     () => validateP2zVisualUatRecord(detachedLines.join("\n")),
     /must keep the scenario finding record schema/u,
   );
+
+  const indentedFindingLines = [...acceptedLines];
+  indentedFindingLines.splice(
+    finalFindingIndex + 1,
+    0,
+    `   ${findingRow.replace("P2Z-UAT-01", "P2Z-UAT-99")}`,
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(indentedFindingLines.join("\n")),
+    /must provide at least one finding row per scenario/u,
+  );
 });
 
 test("P2Z visual UAT record validates every visible formal table row", () => {
@@ -879,6 +890,21 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
       `${accepted}\n<!-- Overall human verdict: **Blocked** -->`,
     ),
   );
+
+  for (const renderedEquivalentHeading of [
+    "## Human Execution Record ##",
+    "## Human Execution Record  ",
+    "  ## Human Execution Record",
+  ]) {
+    const duplicateSection = accepted.replace(
+      "## Human Execution Record",
+      `${renderedEquivalentHeading}\n\nContradictory execution record.\n\n## Human Execution Record`,
+    );
+    assert.throws(
+      () => validateP2zVisualUatRecord(duplicateSection),
+      /must keep exactly one ## Human Execution Record/u,
+    );
+  }
 });
 
 test("P2Z visual UAT record requires unique package declarations", () => {
@@ -1089,6 +1115,22 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       name: "empty rendered Markdown trace",
       extension: "md",
       contents: Buffer.from("<span></span>"),
+      valid: false,
+    },
+    {
+      name: "reference-only Markdown trace",
+      extension: "md",
+      contents: Buffer.from(
+        "[obs]: https://example.invalid/observed-run-details",
+      ),
+      valid: false,
+    },
+    {
+      name: "multiline reference-only Markdown trace",
+      extension: "md",
+      contents: Buffer.from(
+        '[obs]:\n  https://example.invalid/observed-run-details\n  "Observed run details"',
+      ),
       valid: false,
     },
     {

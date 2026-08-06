@@ -398,6 +398,50 @@ const htmlVoidElements = new Set([
   "wbr",
 ]);
 
+function canonicalRenderedMarkdownLine(line: string): string {
+  const tableLine = line.match(/^ {0,3}(\|.*)$/u)?.[1];
+  if (tableLine) return tableLine;
+
+  const heading = line.match(/^ {0,3}(#{1,6})(?:[\t ]+(.*)|[\t ]*)$/u);
+  if (!heading) return line;
+  const marker = heading[1] ?? "";
+  const label = (heading[2] ?? "").replace(/[\t ]+#+[\t ]*$/u, "").trim();
+  return label ? `${marker} ${label}` : marker;
+}
+
+function hiddenMarkdownReferenceDefinitionLineCount(
+  lines: readonly string[],
+  startIndex: number,
+): number {
+  const definition = lines[startIndex]?.match(
+    /^ {0,3}\[(?!\^)(?:\\.|[^\]\\])+\]:[\t ]*(.*)$/u,
+  );
+  if (!definition) return 0;
+
+  const destinationAndTitle =
+    /^(?:<[^<>\n]*>|[^\s]+)(?:[\t ]+(?:"[^"\n]*"|'[^'\n]*'|\([^\n)]*\)))?$/u;
+  let consumedLines = 1;
+  const inlineDestination = definition[1]?.trim() ?? "";
+  if (inlineDestination) {
+    if (!destinationAndTitle.test(inlineDestination)) return 0;
+  } else {
+    const continuedDestination =
+      lines[startIndex + 1]?.match(/^ {0,3}(\S.*)$/u)?.[1];
+    if (
+      !continuedDestination ||
+      !destinationAndTitle.test(continuedDestination.trim())
+    ) {
+      return 0;
+    }
+    consumedLines += 1;
+  }
+
+  const possibleTitle = lines[startIndex + consumedLines]?.match(
+    /^ {0,3}("[^"\n]*"|'[^'\n]*'|\([^\n)]*\))[\t ]*$/u,
+  );
+  return consumedLines + (possibleTitle ? 1 : 0);
+}
+
 function renderedMarkdown(markdown: string): string {
   const withoutComments = markdown
     .replaceAll("\r\n", "\n")
@@ -406,46 +450,62 @@ function renderedMarkdown(markdown: string): string {
     );
   let fence: { marker: string; length: number } | undefined;
   let htmlBlock: string | undefined;
-  return withoutComments
-    .split("\n")
-    .map((line) => {
-      const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
-      if (fence) {
-        if (
-          marker?.[0] === fence.marker &&
-          marker.length >= fence.length &&
-          /^ {0,3}(?:`{3,}|~{3,})\s*$/u.test(line)
-        ) {
-          fence = undefined;
-        }
-        return "";
+  const lines = withoutComments.split("\n");
+  const renderedLines: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+    if (fence) {
+      if (
+        marker?.[0] === fence.marker &&
+        marker.length >= fence.length &&
+        /^ {0,3}(?:`{3,}|~{3,})\s*$/u.test(line)
+      ) {
+        fence = undefined;
       }
-      if (htmlBlock) {
-        if (line.toLowerCase().includes(`</${htmlBlock}>`)) {
-          htmlBlock = undefined;
-        }
-        return "";
+      renderedLines.push("");
+      continue;
+    }
+    if (htmlBlock) {
+      if (line.toLowerCase().includes(`</${htmlBlock}>`)) {
+        htmlBlock = undefined;
       }
-      if (marker) {
-        fence = { marker: marker[0] ?? "", length: marker.length };
-        return "";
+      renderedLines.push("");
+      continue;
+    }
+    if (marker) {
+      fence = { marker: marker[0] ?? "", length: marker.length };
+      renderedLines.push("");
+      continue;
+    }
+    const htmlOpening = line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
+    if (htmlOpening) {
+      const tag = htmlOpening[1]?.toLowerCase() ?? "";
+      if (
+        tag &&
+        !htmlVoidElements.has(tag) &&
+        !/\/>\s*$/u.test(line) &&
+        !line.toLowerCase().includes(`</${tag}>`)
+      ) {
+        htmlBlock = tag;
       }
-      const htmlOpening = line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
-      if (htmlOpening) {
-        const tag = htmlOpening[1]?.toLowerCase() ?? "";
-        if (
-          tag &&
-          !htmlVoidElements.has(tag) &&
-          !/\/>\s*$/u.test(line) &&
-          !line.toLowerCase().includes(`</${tag}>`)
-        ) {
-          htmlBlock = tag;
-        }
-        return "";
-      }
-      return /^(?: {4}|\t)/u.test(line) ? "" : line;
-    })
-    .join("\n");
+      renderedLines.push("");
+      continue;
+    }
+    const referenceDefinitionLines = hiddenMarkdownReferenceDefinitionLineCount(
+      lines,
+      index,
+    );
+    if (referenceDefinitionLines > 0) {
+      renderedLines.push(...Array<string>(referenceDefinitionLines).fill(""));
+      index += referenceDefinitionLines - 1;
+      continue;
+    }
+    renderedLines.push(
+      /^(?: {4}|\t)/u.test(line) ? "" : canonicalRenderedMarkdownLine(line),
+    );
+  }
+  return renderedLines.join("\n");
 }
 
 function section(
@@ -709,7 +769,10 @@ function trackedRepositoryArtifactIssue(
       }
     } else if (extension === ".txt" || extension === ".md") {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(contents);
-      if (!isMeaningfulObservation(text)) throw new Error("empty trace");
+      const visibleText = extension === ".md" ? renderedMarkdown(text) : text;
+      if (!isMeaningfulObservation(visibleText)) {
+        throw new Error("empty trace");
+      }
     } else {
       return "must use a validated png, json, txt, or md artifact";
     }
