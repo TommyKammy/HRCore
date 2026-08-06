@@ -145,6 +145,10 @@ not observations. `Evidence` must link the run-specific screenshot or trace
 rather than relying only on the automated reference image. Formal closeout
 evidence must use the repository path
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`.
+Evidence paths must use inline Markdown link syntax such as
+`[run](evidence/p2z-webui/runs/<tested-commit>/<scenario>.png)`; reference-style
+links are outside this record contract. A run screenshot whose content is
+identical to an automated reference screenshot is also invalid.
 External attachment links may be supplemental, but do not satisfy the formal
 evidence requirement. Repository-backed artifacts support a decodable `.png`
 screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must be an

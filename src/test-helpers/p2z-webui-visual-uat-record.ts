@@ -737,6 +737,34 @@ function readTrackedRegularRepositoryFile(
   }
 }
 
+function duplicatesAutomatedReferencePng(
+  rootDirectory: string,
+  contents: Buffer,
+): boolean {
+  let trackedPaths: string[];
+  try {
+    trackedPaths = execFileSync(
+      "git",
+      ["ls-files", "-z", "--", "docs/evidence/p2z-webui"],
+      { cwd: rootDirectory, encoding: "utf8" },
+    )
+      .split("\0")
+      .filter((repositoryPath) =>
+        /^docs\/evidence\/p2z-webui\/[^/]+\.png$/u.test(repositoryPath),
+      );
+  } catch {
+    return false;
+  }
+
+  return trackedPaths.some((repositoryPath) => {
+    const reference = readTrackedRegularRepositoryFile(
+      rootDirectory,
+      repositoryPath,
+    );
+    return !("issue" in reference) && contents.equals(reference.contents);
+  });
+}
+
 function trackedRepositoryArtifactIssue(
   rootDirectory: string,
   target: string,
@@ -754,6 +782,9 @@ function trackedRepositoryArtifactIssue(
     if (extension === ".png") {
       const image = PNG.sync.read(contents);
       if (image.width < 1 || image.height < 1) throw new Error("empty image");
+      if (duplicatesAutomatedReferencePng(rootDirectory, contents)) {
+        return "must not duplicate an automated reference screenshot";
+      }
       const captureContract = [
         p2zVisualEvidenceProjects["desktop-chromium"],
         p2zVisualEvidenceProjects["mobile-chromium"],

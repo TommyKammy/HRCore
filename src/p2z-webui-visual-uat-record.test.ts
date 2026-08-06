@@ -27,12 +27,12 @@ import {
   validateP2zVisualUatRecord as validateRecord,
 } from "./test-helpers/p2z-webui-visual-uat-record.js";
 
-function createPng(width: number, height: number): Buffer {
+function createPng(width: number, height: number, marker = 0): Buffer {
   const image = new PNG({ width, height });
   image.data.fill(255);
-  image.data[0] = 0;
-  image.data[1] = 0;
-  image.data[2] = 0;
+  image.data[0] = marker;
+  image.data[1] = marker;
+  image.data[2] = marker;
   return PNG.sync.write(image);
 }
 
@@ -594,6 +594,58 @@ test("P2Z visual UAT record accepts literal pending UI copy in observations", ()
   const input = fixture("Accepted");
   input.executions[5]!.actual = "Approval pending is displayed as observed";
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
+test("P2Z visual UAT record rejects automated reference copies as run evidence", () => {
+  const repository = createEvidenceRepository();
+  try {
+    const copiedReference = createPng(1440, 900, 1);
+    const referencePath = path.join(
+      repository.root,
+      "docs",
+      "evidence",
+      "p2z-webui",
+      "desktop-chromium-dashboard.png",
+    );
+    const runPath = path.join(
+      repository.root,
+      "docs",
+      "evidence",
+      "p2z-webui",
+      "runs",
+      repository.commit,
+      "P2Z-UAT-01.png",
+    );
+    writeFileSync(referencePath, copiedReference);
+    writeFileSync(runPath, copiedReference);
+    execFileSync("git", ["add", "docs/evidence"], {
+      cwd: repository.root,
+    });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=UAT Fixture",
+        "-c",
+        "user.email=uat-fixture@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "copy automated reference",
+      ],
+      { cwd: repository.root },
+    );
+
+    const input = fixture("Accepted");
+    input.commit = repository.commit;
+    bindExecutionEvidenceToCommit(input, repository.commit);
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(input), repository.root),
+      /must not duplicate an automated reference screenshot/u,
+    );
+  } finally {
+    rmSync(repository.root, { recursive: true, force: true });
+  }
 });
 
 test("P2Z visual UAT record parses escaped pipes inside table cells", () => {
