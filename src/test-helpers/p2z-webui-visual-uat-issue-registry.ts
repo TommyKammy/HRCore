@@ -304,3 +304,50 @@ export function p2zVisualUatFindingIssueSnapshotFromGraphql(
     url: expectedUrl,
   };
 }
+
+export function validateP2zVisualUatFindingIssueRegistryAgainstGraphql(
+  registry: P2zVisualUatFindingIssueRegistry,
+  value: unknown,
+): string[] {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    return ["authenticated GitHub Issue registry lookup must include data"];
+  }
+  const repository = value.data.repository;
+  if (!isRecord(repository)) {
+    return [
+      `authenticated GitHub repository ${p2zVisualUatFindingIssueRepository} was not found`,
+    ];
+  }
+
+  const errors: string[] = [];
+  for (const [index, snapshot] of registry.issues.entries()) {
+    let authenticated: P2zVisualUatFindingIssueSnapshot;
+    try {
+      authenticated = p2zVisualUatFindingIssueSnapshotFromGraphql(
+        snapshot.number,
+        {
+          data: {
+            repository: { issue: repository[`issue${index}`] },
+          },
+        },
+      );
+    } catch (error) {
+      errors.push(
+        error instanceof Error
+          ? error.message
+          : `GitHub Issue #${snapshot.number} lookup failed`,
+      );
+      continue;
+    }
+    if (
+      snapshot.number !== authenticated.number ||
+      snapshot.nodeId !== authenticated.nodeId ||
+      snapshot.url !== authenticated.url
+    ) {
+      errors.push(
+        `finding Issue registry Issue #${snapshot.number} snapshot must match authenticated GitHub data`,
+      );
+    }
+  }
+  return errors;
+}

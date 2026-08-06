@@ -737,6 +737,37 @@ function readTrackedRegularRepositoryFile(
   }
 }
 
+const pngSignature = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+const maximumPngDimension = 16_384;
+const maximumPngPixels = 16_777_216;
+
+function boundedPngHeaderDimensions(
+  contents: Buffer,
+): { width: number; height: number } | undefined {
+  if (
+    contents.length < 24 ||
+    !contents.subarray(0, pngSignature.length).equals(pngSignature) ||
+    contents.readUInt32BE(8) !== 13 ||
+    contents.toString("ascii", 12, 16) !== "IHDR"
+  ) {
+    return undefined;
+  }
+  const width = contents.readUInt32BE(16);
+  const height = contents.readUInt32BE(20);
+  if (
+    width < 1 ||
+    height < 1 ||
+    width > maximumPngDimension ||
+    height > maximumPngDimension ||
+    width * height > maximumPngPixels
+  ) {
+    return undefined;
+  }
+  return { width, height };
+}
+
 function duplicatesAutomatedReferencePng(
   rootDirectory: string,
   contents: Buffer,
@@ -780,8 +811,10 @@ function trackedRepositoryArtifactIssue(
   const extension = path.posix.extname(target).toLowerCase();
   try {
     if (extension === ".png") {
-      const image = PNG.sync.read(contents);
-      if (image.width < 1 || image.height < 1) throw new Error("empty image");
+      const dimensions = boundedPngHeaderDimensions(contents);
+      if (!dimensions) {
+        return `must stay within safe decode bounds (${maximumPngDimension}px per side and ${maximumPngPixels} total pixels)`;
+      }
       if (duplicatesAutomatedReferencePng(rootDirectory, contents)) {
         return "must not duplicate an automated reference screenshot";
       }
@@ -794,9 +827,9 @@ function trackedRepositoryArtifactIssue(
       );
       if (
         captureContract &&
-        (image.width !==
+        (dimensions.width !==
           captureContract.viewport.width * captureContract.deviceScaleFactor ||
-          image.height <
+          dimensions.height <
             captureContract.viewport.height * captureContract.deviceScaleFactor)
       ) {
         const expectedPixelWidth =
@@ -805,6 +838,7 @@ function trackedRepositoryArtifactIssue(
           captureContract.viewport.height * captureContract.deviceScaleFactor;
         return `must match the recorded ${expectedViewport} capture geometry (${expectedPixelWidth}px wide and at least ${minimumPixelHeight}px high)`;
       }
+      PNG.sync.read(contents);
     } else if (extension === ".json") {
       const value: unknown = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(contents),

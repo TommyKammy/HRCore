@@ -39,6 +39,7 @@ function createPng(width: number, height: number, marker = 0): Buffer {
 const desktopPng = createPng(1440, 900);
 const desktopFullPagePng = createPng(1440, 1200);
 const mobilePng = createPng(1170, 2532);
+const oversizedPng = createPng(16_385, 1);
 const tinyPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -1073,6 +1074,13 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       valid: false,
     },
     {
+      name: "PNG outside safe decode bounds",
+      extension: "png",
+      contents: oversizedPng,
+      valid: false,
+      expected: /must stay within safe decode bounds/u,
+    },
+    {
       name: "valid JSON trace",
       extension: "json",
       contents: Buffer.from('{"events":[{"type":"screenshot"}]}'),
@@ -1228,7 +1236,11 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
     if (artifact.valid) {
       assert.doesNotThrow(validate, artifact.name);
     } else {
-      assert.throws(validate, /repository evidence must/u, artifact.name);
+      assert.throws(
+        validate,
+        artifact.expected ?? /repository evidence must/u,
+        artifact.name,
+      );
     }
   }
 });

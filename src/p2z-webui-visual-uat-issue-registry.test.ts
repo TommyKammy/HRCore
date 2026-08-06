@@ -9,6 +9,7 @@ import {
   p2zVisualUatFindingIssueUrl,
   type P2zVisualUatFindingIssueRegistry,
   validateP2zVisualUatFindingIssueRegistry,
+  validateP2zVisualUatFindingIssueRegistryAgainstGraphql,
 } from "./test-helpers/p2z-webui-visual-uat-issue-registry.js";
 
 const testedCommit = "a".repeat(40);
@@ -286,6 +287,45 @@ test("P2Z finding Issue GraphQL lookup creates an immutable snapshot", () => {
     nodeId: "I_kwDOSfC_1M8AAAABJtU0ew",
     url: p2zVisualUatFindingIssueUrl(406),
   });
+});
+
+test("P2Z finding Issue registry authenticates every snapshot against GitHub", () => {
+  const registry = validRegistry();
+  const lookup = {
+    data: {
+      repository: {
+        issue0: {
+          __typename: "Issue",
+          id: registry.issues[0]!.nodeId,
+          number: registry.issues[0]!.number,
+          url: registry.issues[0]!.url,
+        },
+        issue1: {
+          __typename: "Issue",
+          id: registry.issues[1]!.nodeId,
+          number: registry.issues[1]!.number,
+          url: registry.issues[1]!.url,
+        },
+      },
+    },
+  };
+  assert.deepEqual(
+    validateP2zVisualUatFindingIssueRegistryAgainstGraphql(registry, lookup),
+    [],
+  );
+
+  const forged = {
+    ...registry,
+    issues: registry.issues.map((issue) =>
+      issue.number === 406 ? { ...issue, nodeId: "I_fake_406" } : issue,
+    ),
+  };
+  assert.match(
+    validateP2zVisualUatFindingIssueRegistryAgainstGraphql(forged, lookup).join(
+      "\n",
+    ),
+    /Issue #406 snapshot must match authenticated GitHub data/u,
+  );
 });
 
 test("P2Z finding Issue GraphQL lookup rejects missing Issues and pull requests", () => {

@@ -324,6 +324,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     packageJson,
     captureScript,
     issueRegistryUpdater,
+    issueRegistryVerifier,
     ci,
     readme,
   ] = await Promise.all([
@@ -339,6 +340,7 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     readRepoFile("package.json"),
     readRepoFile("scripts/capture-p2z-web-evidence.ts"),
     readRepoFile("scripts/update-p2z-uat-issue-registry.ts"),
+    readRepoFile("scripts/verify-p2z-uat-issue-registry.ts"),
     readRepoFile(".github/workflows/ci.yml"),
     readRepoFile("README.md"),
   ]);
@@ -568,6 +570,30 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
       `finding Issue updater must preserve verification signal: ${updaterSignal}`,
     );
   }
+  for (const verifierSignal of [
+    'execFileSync("gh", ["api", "graphql"',
+    "validateP2zVisualUatFindingIssueRegistryAgainstGraphql",
+  ] as const) {
+    assert.ok(
+      issueRegistryVerifier.includes(verifierSignal),
+      `finding Issue verifier must preserve authentication signal: ${verifierSignal}`,
+    );
+  }
+  assert.match(
+    ci,
+    /run:\s*npx tsx scripts\/verify-p2z-uat-issue-registry\.ts/u,
+    "CI must run authenticated finding Issue verification",
+  );
+  assert.match(
+    ci,
+    /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/u,
+    "CI must authenticate live finding Issue verification",
+  );
+  assert.match(
+    ci,
+    /^\s+issues: read$/mu,
+    "CI token must have read-only Issue access for live verification",
+  );
   assert.ok(
     contract.includes(
       `Evidence contract version: \`${p2zVisualEvidenceContractVersion}\``,

@@ -162,11 +162,12 @@ must use the repository capture geometry for the scenario's recorded and
 authoritative CSS viewport: width equals viewport width times the documented
 device scale factor (`1440px` for desktop and `1170px` for mobile), and height is
 at least viewport height times that factor (`900px` and `2532px` respectively).
-Taller full-page captures are valid; trace formats are not subject to this pixel
-dimension check. Each artifact must be a non-empty Git-tracked regular file
-under `docs/`; symbolic links and content that does not match its extension are
-invalid. One artifact path belongs to exactly one execution or finding row
-across both records and cannot be reused.
+Taller full-page captures are valid within the pre-decode safety limit of
+`16384px` per side and `16777216` total pixels; trace formats are not subject to
+this pixel dimension check. Each artifact must be a non-empty Git-tracked
+regular file under `docs/`; symbolic links and content that does not match its
+extension are invalid. One artifact path belongs to exactly one execution or
+finding row across both records and cannot be reused.
 Record the package-level tester before execution, use that exact identity in
 every completed scenario row, and allow only that tester to fill `Overall
 verdict recorded by`. Every scenario in the formal run shares the recorded
@@ -260,10 +261,12 @@ output path is
 `docs/evidence/p2z-webui/runs/<tested-commit>/finding-issues.json`. It refuses a
 missing number or a pull request, even though the REST Issues endpoint exposes
 pull requests. Stage the printed snapshot path with the rest of the run
-evidence. Canonical verification remains offline and requires that tracked,
-non-symlink snapshot to contain every linked finding Issue. Closed Issues still
-prove existence; their workflow state is not a visual-UAT gate. A run containing
-only `Pending` or `none observed` finding rows does not need a snapshot.
+evidence. Canonical verification re-queries GitHub with the CI-provided token
+and requires every tracked snapshot number, node ID, and URL to match the
+authenticated response; a manually shaped snapshot is not accepted. Closed
+Issues still prove existence; their workflow state is not a visual-UAT gate. A
+run containing only `Pending` or `none observed` finding rows does not need a
+snapshot.
 
 The linked Issue must use `#<number>` or the exact
 `https://github.com/TommyKammy/HRCore/issues/<number>` form. Match finding status
