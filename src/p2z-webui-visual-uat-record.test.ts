@@ -1734,6 +1734,25 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     expected: /must bind the Audit correlation ID/u,
   });
 
+  const auditFindingWithDifferentCorrelation = fixture("Accepted");
+  auditFindingWithDifferentCorrelation.findings[5] = recordedFinding(
+    "P2Z-UAT-06",
+    "post-UAT",
+    510,
+  );
+  auditFindingWithDifferentCorrelation.findings[5]!.actor = "HR Ops/support";
+  auditFindingWithDifferentCorrelation.findings[5]!.routeViewport =
+    "/audit @ 1440x900";
+  auditFindingWithDifferentCorrelation.findings[5]!.correlationId =
+    "different-correlation";
+  auditFindingWithDifferentCorrelation.checklist[0]!.disposition =
+    "post-UAT backlog";
+  cases.push({
+    name: "Audit finding bound to another executed correlation ID",
+    input: auditFindingWithDifferentCorrelation,
+    expected: /finding correlation ID must match its execution row/u,
+  });
+
   const externalIssueLink = fixture("Conditional");
   externalIssueLink.findings[2]!.issue = "https://example.com/issues/501";
   cases.push({

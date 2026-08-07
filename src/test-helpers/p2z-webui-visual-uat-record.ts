@@ -1192,6 +1192,15 @@ function validateFindingScenarioBinding(
     issues.push(`${finding.id} finding subject must match its execution row`);
   }
 
+  if (
+    scenario.requiresCorrelationId &&
+    finding.correlationId !== execution.correlationId
+  ) {
+    issues.push(
+      `${finding.id} finding correlation ID must match its execution row`,
+    );
+  }
+
   if (!scenario.findingRouteActors && finding.actor !== execution.persona) {
     issues.push(`${finding.id} finding actor must match its execution row`);
   }
