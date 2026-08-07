@@ -31,6 +31,7 @@ const p2zVisualUatScenarioContracts: Record<
     persona: string | "Any bounded persona";
     route: string | "Any bounded route";
     subjectBinding?: string;
+    requiresCorrelationId?: boolean;
     expectedResult: string;
     pendingEvidence: string;
     findingRouteActors?: ReadonlyMap<string, ReadonlySet<string>>;
@@ -90,6 +91,7 @@ const p2zVisualUatScenarioContracts: Record<
     viewport: "1440x900",
     persona: "HR Ops/support",
     route: "/audit",
+    requiresCorrelationId: true,
     expectedResult:
       "One exact correlation lookup and evidence timeline are visible",
     pendingEvidence: "Run-specific Audit capture pending",
@@ -200,6 +202,7 @@ type ExecutionRow = {
   persona: string;
   route: string;
   subjectBinding: string;
+  correlationId: string;
   expectedResult: string;
   actualResult: string;
   evidence: string;
@@ -292,6 +295,7 @@ const executionRecordHeader = [
   "Persona",
   "Route",
   "Subject binding",
+  "Correlation ID",
   "Expected result",
   "Actual result",
   "Evidence",
@@ -381,21 +385,11 @@ function parseCanonicalMarkdownTable(
   return dataRows;
 }
 
-const htmlVoidElements = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
+const htmlRawClosingTagElements = new Set([
+  "pre",
+  "script",
+  "style",
+  "textarea",
 ]);
 
 function canonicalRenderedMarkdownLine(line: string): string {
@@ -450,6 +444,7 @@ function renderedMarkdown(markdown: string): string {
     );
   let fence: { marker: string; length: number } | undefined;
   let htmlBlockClosingToken: string | undefined;
+  let htmlBlockEndsAtBlankLine = false;
   const lines = withoutComments.split("\n");
   const renderedLines: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -469,6 +464,13 @@ function renderedMarkdown(markdown: string): string {
     if (htmlBlockClosingToken) {
       if (line.toLowerCase().includes(htmlBlockClosingToken)) {
         htmlBlockClosingToken = undefined;
+      }
+      renderedLines.push("");
+      continue;
+    }
+    if (htmlBlockEndsAtBlankLine) {
+      if (line.trim() === "") {
+        htmlBlockEndsAtBlankLine = false;
       }
       renderedLines.push("");
       continue;
@@ -495,13 +497,12 @@ function renderedMarkdown(markdown: string): string {
     const htmlOpening = line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
     if (htmlOpening) {
       const tag = htmlOpening[1]?.toLowerCase() ?? "";
-      if (
-        tag &&
-        !htmlVoidElements.has(tag) &&
-        !/\/>\s*$/u.test(line) &&
-        !line.toLowerCase().includes(`</${tag}>`)
-      ) {
-        htmlBlockClosingToken = `</${tag}>`;
+      if (htmlRawClosingTagElements.has(tag)) {
+        if (!line.toLowerCase().includes(`</${tag}>`)) {
+          htmlBlockClosingToken = `</${tag}>`;
+        }
+      } else {
+        htmlBlockEndsAtBlankLine = true;
       }
       renderedLines.push("");
       continue;
@@ -590,10 +591,11 @@ function parseExecutionRows(rows: readonly string[][]): ExecutionRow[] {
     persona: cells[4] ?? "",
     route: cells[5] ?? "",
     subjectBinding: cells[6] ?? "",
-    expectedResult: cells[7] ?? "",
-    actualResult: cells[8] ?? "",
-    evidence: cells[9] ?? "",
-    verdict: cells[10] ?? "",
+    correlationId: cells[7] ?? "",
+    expectedResult: cells[8] ?? "",
+    actualResult: cells[9] ?? "",
+    evidence: cells[10] ?? "",
+    verdict: cells[11] ?? "",
   }));
 }
 
@@ -931,6 +933,12 @@ function validatePendingExecutionRow(
   if (row.subjectBinding !== subjectBinding) {
     issues.push(`${row.id} must retain subject binding ${subjectBinding}`);
   }
+  const pendingCorrelationId = scenario.requiresCorrelationId
+    ? "Pending exact correlation ID"
+    : "not applicable";
+  if (row.correlationId !== pendingCorrelationId) {
+    issues.push(`${row.id} must retain correlation ID ${pendingCorrelationId}`);
+  }
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);
   }
@@ -975,6 +983,13 @@ function validateCompletedExecutionRow(
   const subjectBinding = scenario.subjectBinding ?? "not applicable";
   if (row.subjectBinding !== subjectBinding) {
     issues.push(`${row.id} must use subject binding ${subjectBinding}`);
+  }
+  if (scenario.requiresCorrelationId) {
+    if (!isMeaningfulIdentity(row.correlationId)) {
+      issues.push(`${row.id} must record an exact correlation ID`);
+    }
+  } else if (row.correlationId !== "not applicable") {
+    issues.push(`${row.id} must use correlation ID not applicable`);
   }
   if (row.expectedResult !== scenario.expectedResult) {
     issues.push(`${row.id} must retain its documented expected result`);

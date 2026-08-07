@@ -197,6 +197,7 @@ type ExecutionFixture = {
   persona: string;
   route: string;
   subjectBinding: string;
+  correlationId: string;
   expected: string;
   actual: string;
   evidence: string;
@@ -296,6 +297,7 @@ function completedExecution(
     persona: personaByScenario[id] ?? "",
     route: routeByScenario[id] ?? "",
     subjectBinding: id === "P2Z-UAT-02" ? "EMP-000128" : "not applicable",
+    correlationId: id === "P2Z-UAT-06" ? "corr-p2z-uat-06" : "not applicable",
     expected: expectedResultByScenario[id] ?? "",
     actual:
       id === "P2Z-UAT-06"
@@ -332,6 +334,8 @@ function pendingExecution(id: string): ExecutionFixture {
     persona: id === "P2Z-UAT-07" ? "Pending actual persona" : scenario.persona,
     route: id === "P2Z-UAT-07" ? "Pending actual route" : scenario.route,
     subjectBinding: scenario.subjectBinding,
+    correlationId:
+      id === "P2Z-UAT-06" ? "Pending exact correlation ID" : "not applicable",
     expected: scenario.expected,
     actual: "Pending human execution",
     evidence: pendingEvidenceByScenario[id] ?? "",
@@ -516,7 +520,7 @@ function renderFixture(input: UatFixture): string {
   const executionRows = input.executions
     .map(
       (row) =>
-        `| ${row.id} | ${row.tester} | ${row.date} | ${row.viewport} | ${row.persona} | ${row.route} | ${row.subjectBinding} | ${row.expected} | ${row.actual} | ${row.evidence} | ${row.verdict} |`,
+        `| ${row.id} | ${row.tester} | ${row.date} | ${row.viewport} | ${row.persona} | ${row.route} | ${row.subjectBinding} | ${row.correlationId} | ${row.expected} | ${row.actual} | ${row.evidence} | ${row.verdict} |`,
     )
     .join("\n");
   const findingRows = input.findings
@@ -554,8 +558,8 @@ Named human tester: **${input.namedTester}**
 Overall verdict recorded by: **${input.verdictRecorder}**
 Execution environment/dataset: **${input.environment}**
 
-| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Expected result | Actual result | Evidence | Scenario verdict |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Correlation ID | Expected result | Actual result | Evidence | Scenario verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 ${executionRows}
 
 ## Scenario Finding Record
@@ -595,6 +599,15 @@ test("P2Z visual UAT record accepts literal pending UI copy in observations", ()
   const input = fixture("Accepted");
   input.executions[5]!.actual = "Approval pending is displayed as observed";
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
+test("P2Z visual UAT record requires an execution-level Audit correlation ID", () => {
+  const input = fixture("Accepted");
+  input.executions[5]!.correlationId = "not applicable";
+  assert.throws(
+    () => validateP2zVisualUatRecord(renderFixture(input)),
+    /P2Z-UAT-06 must record an exact correlation ID/u,
+  );
 });
 
 test("P2Z visual UAT record rejects automated reference copies as run evidence", () => {
@@ -665,9 +678,9 @@ test("P2Z visual UAT record requires canonical structure for every formal table"
     },
     {
       header:
-        "| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Expected result | Actual result | Evidence | Scenario verdict |",
+        "| ID | Human tester | Execution date | Viewport | Persona | Route | Subject binding | Correlation ID | Expected result | Actual result | Evidence | Scenario verdict |",
       delimiter:
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
       expected: /must keep the human execution record schema/u,
     },
     {
@@ -930,7 +943,8 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     `<!--\n${accepted}\n-->`,
     `\`\`\`markdown\n${accepted}\n\`\`\``,
     `<pre>\n${accepted}\n</pre>`,
-    `<div>\n${accepted}\n</div>`,
+    `<div>\n${accepted.replace("# Fixture\n\n", "# Fixture\n")}\n</div>`,
+    `<div></div>\n${accepted.replace("# Fixture\n\n", "# Fixture\n")}`,
     `<?uat\n${accepted}\n?>`,
     `<!UAT\n${accepted}\n>`,
     `<![CDATA[\n${accepted}\n]]>`,
@@ -940,6 +954,12 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
       /must keep exactly one ## Verdict Boundary/u,
     );
   }
+
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(
+      `<div></div>\n## Verdict Boundary\n\n${accepted}`,
+    ),
+  );
 
   assert.doesNotThrow(() =>
     validateP2zVisualUatRecord(
