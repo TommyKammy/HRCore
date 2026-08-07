@@ -971,6 +971,7 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     "## Human Execution Record ##",
     "## Human Execution Record  ",
     "  ## Human Execution Record",
+    "Human Execution Record\n---",
   ]) {
     const duplicateSection = accepted.replace(
       "## Human Execution Record",

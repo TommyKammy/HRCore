@@ -392,6 +392,15 @@ const htmlRawClosingTagElements = new Set([
   "textarea",
 ]);
 
+const formalSectionLabels = new Set([
+  "Verdict Boundary",
+  "Backend Integration Boundary",
+  "Human Execution Record",
+  "Scenario Finding Record",
+  "Visual Review Checklist",
+  "Evidence Matrix",
+]);
+
 function canonicalRenderedMarkdownLine(line: string): string {
   const tableLine = line.match(/^ {0,3}(\|.*)$/u)?.[1];
   if (tableLine) return tableLine;
@@ -514,6 +523,17 @@ function renderedMarkdown(markdown: string): string {
     if (referenceDefinitionLines > 0) {
       renderedLines.push(...Array<string>(referenceDefinitionLines).fill(""));
       index += referenceDefinitionLines - 1;
+      continue;
+    }
+    const setextUnderline = lines[index + 1]?.match(/^ {0,3}-+[\t ]*$/u);
+    const setextLabel = line.trim();
+    if (
+      setextUnderline &&
+      !/^(?: {4}|\t)/u.test(line) &&
+      formalSectionLabels.has(setextLabel)
+    ) {
+      renderedLines.push(`## ${setextLabel}`, "");
+      index += 1;
       continue;
     }
     renderedLines.push(
