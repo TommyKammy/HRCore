@@ -686,10 +686,15 @@ test("P2Z visual UAT record requires an execution-level Audit correlation ID", (
   );
 });
 
-test("P2Z visual UAT record rejects automated reference copies as run evidence", () => {
+test("P2Z visual UAT record rejects pixel-identical automated references as run evidence", () => {
   const repository = createEvidenceRepository();
   try {
     const copiedReference = createPng(1440, 900, 1);
+    const reencodedReference = PNG.sync.write(PNG.sync.read(copiedReference), {
+      deflateLevel: 0,
+      deflateStrategy: 0,
+    });
+    assert.equal(reencodedReference.equals(copiedReference), false);
     const referencePath = path.join(
       repository.root,
       "docs",
@@ -707,7 +712,7 @@ test("P2Z visual UAT record rejects automated reference copies as run evidence",
       "P2Z-UAT-01.png",
     );
     writeFileSync(referencePath, copiedReference);
-    writeFileSync(runPath, copiedReference);
+    writeFileSync(runPath, reencodedReference);
     execFileSync("git", ["add", "docs/evidence"], {
       cwd: repository.root,
     });
@@ -1178,6 +1183,63 @@ test("P2Z visual UAT record accepts the tested commit before execution", () => {
     const input = fixture("Pending human execution");
     input.commit = commit;
     assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+  }
+});
+
+test("P2Z visual UAT record accepts canonical inline link destination variants", () => {
+  const target = `evidence/p2z-webui/runs/${testedCommit}/P2Z-UAT-01.png`;
+  for (const destination of [
+    `<${target}>`,
+    `${target} "run evidence"`,
+    `${target} 'run evidence'`,
+  ]) {
+    const input = fixture("Accepted");
+    input.executions[0]!.evidence = `[run](${destination})`;
+    assert.doesNotThrow(
+      () => validateP2zVisualUatRecord(renderFixture(input)),
+      destination,
+    );
+  }
+});
+
+test("P2Z visual UAT record rejects product changes after the tested commit", () => {
+  const repository = createEvidenceRepository();
+  try {
+    const productPath = path.join(
+      repository.root,
+      "web",
+      "src",
+      "post-test.ts",
+    );
+    mkdirSync(path.dirname(productPath), { recursive: true });
+    writeFileSync(productPath, "export const changedAfterUat = true;\n");
+    execFileSync("git", ["add", "web/src/post-test.ts"], {
+      cwd: repository.root,
+    });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=UAT Fixture",
+        "-c",
+        "user.email=uat-fixture@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "change product after UAT",
+      ],
+      { cwd: repository.root },
+    );
+
+    const input = fixture("Accepted");
+    input.commit = repository.commit;
+    bindExecutionEvidenceToCommit(input, repository.commit);
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(input), repository.root),
+      /tested commit must remain product-current/u,
+    );
+  } finally {
+    rmSync(repository.root, { recursive: true, force: true });
   }
 });
 

@@ -825,6 +825,18 @@ const pngSignature = Buffer.from([
 const maximumPngDimension = 16_384;
 const maximumPngPixels = 16_777_216;
 
+function pngPixelDigest(contents: Buffer): string | undefined {
+  try {
+    const image = PNG.sync.read(contents);
+    return createHash("sha256")
+      .update(`${image.width}x${image.height}\0`)
+      .update(image.data)
+      .digest("hex");
+  } catch {
+    return undefined;
+  }
+}
+
 function boundedPngHeaderDimensions(
   contents: Buffer,
 ): { width: number; height: number } | undefined {
@@ -854,6 +866,9 @@ function duplicatesAutomatedReferencePng(
   rootDirectory: string,
   contents: Buffer,
 ): boolean {
+  const candidateDigest = pngPixelDigest(contents);
+  if (!candidateDigest) return false;
+
   let trackedPaths: string[];
   try {
     trackedPaths = execFileSync(
@@ -874,7 +889,10 @@ function duplicatesAutomatedReferencePng(
       rootDirectory,
       repositoryPath,
     );
-    return !("issue" in reference) && contents.equals(reference.contents);
+    return (
+      !("issue" in reference) &&
+      pngPixelDigest(reference.contents) === candidateDigest
+    );
   });
 }
 
@@ -985,13 +1003,7 @@ function trackedRepositoryArtifactDigest(
   if ("issue" in trackedFile) return undefined;
   const hash = createHash("sha256");
   if (path.posix.extname(target).toLowerCase() === ".png") {
-    try {
-      const image = PNG.sync.read(trackedFile.contents);
-      hash.update(`${image.width}x${image.height}\0`);
-      hash.update(image.data);
-    } catch {
-      return undefined;
-    }
+    return pngPixelDigest(trackedFile.contents);
   } else {
     hash.update(trackedFile.contents);
   }
@@ -1015,8 +1027,10 @@ function evidenceReuseKind(
 function renderedMarkdownLinkTargets(value: string): string[] {
   const withoutCodeSpans = value.replace(/(`+)([\s\S]*?)\1/gu, "");
   return Array.from(
-    withoutCodeSpans.matchAll(/\]\(([^)]+)\)/gu),
-    (match) => match[1] ?? "",
+    withoutCodeSpans.matchAll(
+      /\]\([\t ]*(?:<((?:\\.|[^<>\n\\])*)>|((?:\\.|[^\s()\\])+))(?:[\t ]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?[\t ]*\)/gu,
+    ),
+    (match) => (match[1] ?? match[2] ?? "").replace(/\\(.)/gu, "$1"),
   );
 }
 
@@ -1053,6 +1067,36 @@ function repositoryCommitDate(
       encoding: "utf8",
     }).trim();
     return isIsoDate(date) ? date : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function repositoryPostTestProductChanges(
+  rootDirectory: string,
+  testedCommit: string,
+): string[] | undefined {
+  try {
+    const changedPaths = execFileSync(
+      "git",
+      [
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        `${testedCommit}..HEAD`,
+        "--",
+      ],
+      { cwd: rootDirectory, encoding: "utf8" },
+    )
+      .split("\0")
+      .filter(Boolean);
+    const runEvidencePrefix = `docs/evidence/p2z-webui/runs/${testedCommit}/`;
+    return changedPaths.filter(
+      (repositoryPath) =>
+        repositoryPath !== "docs/p2z-webui-visual-uat-package.md" &&
+        !repositoryPath.startsWith(runEvidencePrefix),
+    );
   } catch {
     return undefined;
   }
@@ -1681,6 +1725,16 @@ export function collectP2zVisualUatRecordIssues(
     : repositoryCommitDate(rootDirectory, testedCommit);
   if (!commitIssue && !testedCommitDate) {
     issues.push("tested commit must expose a valid repository commit date");
+  }
+  const postTestProductChanges = commitIssue
+    ? undefined
+    : repositoryPostTestProductChanges(rootDirectory, testedCommit);
+  if (!commitIssue && postTestProductChanges === undefined) {
+    issues.push("tested commit must support a post-test product drift check");
+  } else if (postTestProductChanges && postTestProductChanges.length > 0) {
+    issues.push(
+      `tested commit must remain product-current; post-test changes are limited to its UAT record and run evidence (${postTestProductChanges.join(", ")})`,
+    );
   }
   if (!isMeaningfulIdentity(namedHumanTester)) {
     issues.push("completed UAT must identify the named human tester");

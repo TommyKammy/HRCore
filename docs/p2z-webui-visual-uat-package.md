@@ -147,8 +147,10 @@ evidence must use the repository path
 `evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`.
 Evidence paths must use inline Markdown link syntax such as
 `[run](evidence/p2z-webui/runs/<tested-commit>/<scenario>.png)`; reference-style
-links are outside this record contract. A run screenshot whose content is
-identical to an automated reference screenshot is also invalid.
+links are outside this record contract. Angle-bracket destinations and optional
+inline link titles are valid. A run screenshot whose decoded pixels are
+identical to an automated reference screenshot is invalid even when PNG
+compression or ancillary metadata differs.
 External attachment links may be supplemental, but do not satisfy the formal
 evidence requirement. Repository-backed artifacts support a decodable `.png`
 screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must be an
@@ -170,7 +172,12 @@ extension are invalid. One artifact path belongs to exactly one execution or
 finding row across both records and cannot be reused.
 Record the package-level tester before execution, use that exact identity in
 every completed scenario row, and allow only that tester to fill `Overall
-verdict recorded by`. Every scenario in the formal run shares the recorded
+verdict recorded by`. This repository validator enforces record consistency;
+it does not authenticate a physical person from a free-form name. Under the
+repository's documented single-maintainer governance, the repository operator
+must confirm the tester's identity and live-run ownership before accepting a
+completed closeout. Automation or an agent must not supply that confirmation.
+Every scenario in the formal run shares the recorded
 `repo_owned_synthetic_webui_non_production` execution environment and generated
 dataset boundary. The execution date cannot be later than the validation date.
 Keep the documented route for fixed scenarios; for P2Z-UAT-07, replace
@@ -193,6 +200,11 @@ that resolves as a commit in this repository and is an ancestor of the
 validation `HEAD` (or `HEAD` itself), and no `Pending` values in either record.
 Verify it with `git cat-file -e <tested-commit>^{commit}` and
 `git merge-base --is-ancestor <tested-commit> HEAD` before closeout. Every
+`HEAD` change after the tested commit must be limited to this UAT package
+record and the run-specific
+`docs/evidence/p2z-webui/runs/<tested-commit>/` artifacts. Any product source,
+configuration, dependency, workflow, or other repository change invalidates the
+record and requires a new tested commit and run. Every
 `Conditional` scenario requires its own `must-fix` finding,
 including an executed Conditional scenario before a later blocker in a
 `Blocked` run; one finding cannot explain multiple scenario verdicts. `Blocked`
