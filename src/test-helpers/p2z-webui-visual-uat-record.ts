@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -454,7 +455,9 @@ function renderedMarkdown(markdown: string): string {
   let fence: { marker: string; length: number } | undefined;
   let htmlBlockClosingToken: string | undefined;
   let htmlBlockEndsAtBlankLine = false;
-  const lines = withoutComments.split("\n");
+  const lines = withoutComments
+    .split("\n")
+    .map((line) => line.replace(/^ {0,3}(?:>[\t ]?)+/u, ""));
   const renderedLines: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
@@ -829,6 +832,34 @@ function duplicatesAutomatedReferencePng(
   });
 }
 
+function hasMeaningfulPngContent(image: {
+  width: number;
+  height: number;
+  data: Buffer;
+}): boolean {
+  const histogram = new Uint32Array(4096);
+  let dominantPixels = 0;
+  const pixelCount = image.width * image.height;
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    const alpha = (image.data[offset + 3] ?? 0) / 255;
+    const red = Math.round(
+      (image.data[offset] ?? 0) * alpha + 255 * (1 - alpha),
+    );
+    const green = Math.round(
+      (image.data[offset + 1] ?? 0) * alpha + 255 * (1 - alpha),
+    );
+    const blue = Math.round(
+      (image.data[offset + 2] ?? 0) * alpha + 255 * (1 - alpha),
+    );
+    const bucket = (red >> 4) * 256 + (green >> 4) * 16 + (blue >> 4);
+    const count = (histogram[bucket] ?? 0) + 1;
+    histogram[bucket] = count;
+    dominantPixels = Math.max(dominantPixels, count);
+  }
+  const minimumVisiblePixels = Math.max(256, Math.ceil(pixelCount * 0.001));
+  return pixelCount - dominantPixels >= minimumVisiblePixels;
+}
+
 function trackedRepositoryArtifactIssue(
   rootDirectory: string,
   target: string,
@@ -871,7 +902,10 @@ function trackedRepositoryArtifactIssue(
           captureContract.viewport.height * captureContract.deviceScaleFactor;
         return `must match the recorded ${expectedViewport} capture geometry (${expectedPixelWidth}px wide and at least ${minimumPixelHeight}px high)`;
       }
-      PNG.sync.read(contents);
+      const image = PNG.sync.read(contents);
+      if (!hasMeaningfulPngContent(image)) {
+        return "must contain meaningful visual content";
+      }
     } else if (extension === ".json") {
       const value: unknown = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(contents),
@@ -892,6 +926,52 @@ function trackedRepositoryArtifactIssue(
     return `must contain valid ${extension.slice(1)} content`;
   }
   return undefined;
+}
+
+function trackedRepositoryArtifactDigest(
+  rootDirectory: string,
+  target: string,
+): string | undefined {
+  const trackedFile = readTrackedRegularRepositoryFile(
+    rootDirectory,
+    path.posix.join("docs", target),
+  );
+  if ("issue" in trackedFile) return undefined;
+  const hash = createHash("sha256");
+  if (path.posix.extname(target).toLowerCase() === ".png") {
+    try {
+      const image = PNG.sync.read(trackedFile.contents);
+      hash.update(`${image.width}x${image.height}\0`);
+      hash.update(image.data);
+    } catch {
+      return undefined;
+    }
+  } else {
+    hash.update(trackedFile.contents);
+  }
+  return hash.digest("hex");
+}
+
+function evidenceReuseKind(
+  evidenceTargets: Set<string>,
+  rootDirectory: string,
+  target: string,
+): "path" | "content" | undefined {
+  if (evidenceTargets.has(target)) return "path";
+  const digest = trackedRepositoryArtifactDigest(rootDirectory, target);
+  const digestKey = digest ? `sha256:${digest}` : undefined;
+  if (digestKey && evidenceTargets.has(digestKey)) return "content";
+  evidenceTargets.add(target);
+  if (digestKey) evidenceTargets.add(digestKey);
+  return undefined;
+}
+
+function renderedMarkdownLinkTargets(value: string): string[] {
+  const withoutCodeSpans = value.replace(/(`+)([\s\S]*?)\1/gu, "");
+  return Array.from(
+    withoutCodeSpans.matchAll(/\]\(([^)]+)\)/gu),
+    (match) => match[1] ?? "",
+  );
 }
 
 function repositoryCommitIssue(
@@ -1034,10 +1114,7 @@ function validateCompletedExecutionRow(
     issues.push(`${row.id} must use a completed scenario verdict`);
   }
 
-  const links = Array.from(
-    row.evidence.matchAll(/\]\(([^)]+)\)/gu),
-    (match) => match[1] ?? "",
-  );
+  const links = renderedMarkdownLinkTargets(row.evidence);
   const repositoryArtifact = new RegExp(
     `^evidence/p2z-webui/runs/${testedCommit}/${row.id}\\.(?:png|json|txt|md)$`,
     "u",
@@ -1057,12 +1134,12 @@ function validateCompletedExecutionRow(
     );
     if (artifactIssue) {
       issues.push(`${row.id} repository evidence ${artifactIssue}`);
-    } else if (evidenceTargets.has(repositoryTarget)) {
+    } else if (
+      evidenceReuseKind(evidenceTargets, rootDirectory, repositoryTarget)
+    ) {
       issues.push(
         `${row.id} must not reuse another scenario's evidence artifact`,
       );
-    } else {
-      evidenceTargets.add(repositoryTarget);
     }
   }
 }
@@ -1135,10 +1212,9 @@ function validateCompletedFindingRow(
     `^evidence/p2z-webui/runs/${testedCommit}/${row.id}-finding-[a-z0-9-]+\\.(?:png|json|txt|md)$`,
     "u",
   );
-  const repositoryTarget = Array.from(
-    row.evidence.matchAll(/\]\(([^)]+)\)/gu),
-    (match) => match[1] ?? "",
-  ).find((target) => repositoryEvidence.test(target));
+  const repositoryTarget = renderedMarkdownLinkTargets(row.evidence).find(
+    (target) => repositoryEvidence.test(target),
+  );
   if (!repositoryTarget) {
     issues.push(
       `${row.id} recorded finding must link its repository-backed screenshot or trace`,
@@ -1151,10 +1227,10 @@ function validateCompletedFindingRow(
     );
     if (artifactIssue) {
       issues.push(`${row.id} recorded finding evidence ${artifactIssue}`);
-    } else if (evidenceTargets.has(repositoryTarget)) {
+    } else if (
+      evidenceReuseKind(evidenceTargets, rootDirectory, repositoryTarget)
+    ) {
       issues.push(`${row.id} findings must not reuse an evidence artifact`);
-    } else {
-      evidenceTargets.add(repositoryTarget);
     }
   }
   if (!new Set(["completed", "not required"]).has(row.cleanupStatus)) {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   renameSync,
@@ -27,12 +28,70 @@ import {
   validateP2zVisualUatRecord as validateRecord,
 } from "./test-helpers/p2z-webui-visual-uat-record.js";
 
+const pngCache = new Map<string, Buffer>();
+
 function createPng(width: number, height: number, marker = 0): Buffer {
+  const cacheKey = `${width}x${height}:${marker}`;
+  const cached = pngCache.get(cacheKey);
+  if (cached) return cached;
+
   const image = new PNG({ width, height });
   image.data.fill(255);
-  image.data[0] = marker;
-  image.data[1] = marker;
-  image.data[2] = marker;
+
+  const fillRect = (
+    left: number,
+    top: number,
+    rectWidth: number,
+    rectHeight: number,
+    red: number,
+    green: number,
+    blue: number,
+  ) => {
+    for (let y = top; y < Math.min(height, top + rectHeight); y += 1) {
+      for (let x = left; x < Math.min(width, left + rectWidth); x += 1) {
+        const offset = (y * width + x) * 4;
+        image.data[offset] = red;
+        image.data[offset + 1] = green;
+        image.data[offset + 2] = blue;
+        image.data[offset + 3] = 255;
+      }
+    }
+  };
+
+  const accent = 40 + (marker % 160);
+  fillRect(0, 0, width, Math.max(1, Math.floor(height * 0.1)), 25, 45, accent);
+  fillRect(
+    0,
+    Math.floor(height * 0.1),
+    Math.max(1, Math.floor(width * 0.16)),
+    height,
+    225,
+    230,
+    238,
+  );
+  for (let row = 0; row < 4; row += 1) {
+    fillRect(
+      Math.floor(width * 0.22),
+      Math.floor(height * (0.2 + row * 0.16)),
+      Math.max(1, Math.floor(width * 0.62)),
+      Math.max(1, Math.floor(height * 0.07)),
+      205 - row * 8,
+      215 - row * 5,
+      accent,
+    );
+  }
+
+  const png = PNG.sync.write(image);
+  pngCache.set(cacheKey, png);
+  return png;
+}
+
+function createNearlyBlankPng(width: number, height: number): Buffer {
+  const image = new PNG({ width, height });
+  image.data.fill(255);
+  image.data[0] = 0;
+  image.data[1] = 0;
+  image.data[2] = 0;
   return PNG.sync.write(image);
 }
 
@@ -132,10 +191,12 @@ function createEvidenceRepository({
   );
   mkdirSync(artifactDirectory, { recursive: true });
   for (const scenarioId of p2zVisualUatScenarioIds) {
-    const screenshot = scenarioId === "P2Z-UAT-07" ? mobilePng : desktopPng;
+    const width = scenarioId === "P2Z-UAT-07" ? 1170 : 1440;
+    const height = scenarioId === "P2Z-UAT-07" ? 2532 : 900;
+    const scenarioMarker = Number(scenarioId.slice(-2));
     writeFileSync(
       path.join(artifactDirectory, `${scenarioId}.png`),
-      screenshot,
+      createPng(width, height, scenarioMarker),
     );
     if (includeFindingArtifacts) {
       for (let issueNumber = 500; issueNumber <= 520; issueNumber += 1) {
@@ -144,7 +205,7 @@ function createEvidenceRepository({
             artifactDirectory,
             `${scenarioId}-finding-${issueNumber}.png`,
           ),
-          screenshot,
+          createPng(width, height, 100 + issueNumber - 500),
         );
       }
     }
@@ -662,6 +723,32 @@ test("P2Z visual UAT record rejects automated reference copies as run evidence",
   }
 });
 
+test("P2Z visual UAT record rejects copied run evidence under another path", () => {
+  const repository = createEvidenceRepository();
+  try {
+    const sourceRelative = `evidence/p2z-webui/runs/${repository.commit}/P2Z-UAT-01.png`;
+    const copiedRelative = `evidence/p2z-webui/runs/${repository.commit}/P2Z-UAT-02.png`;
+    copyFileSync(
+      path.join(repository.root, "docs", ...sourceRelative.split("/")),
+      path.join(repository.root, "docs", ...copiedRelative.split("/")),
+    );
+    execFileSync("git", ["add", "docs/evidence"], {
+      cwd: repository.root,
+    });
+
+    const input = fixture("Accepted");
+    input.commit = repository.commit;
+    bindExecutionEvidenceToCommit(input, repository.commit);
+    input.executions[1]!.evidence = `[run](${copiedRelative})`;
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(input), repository.root),
+      /must not reuse another scenario's evidence artifact/u,
+    );
+  } finally {
+    rmSync(repository.root, { recursive: true, force: true });
+  }
+});
+
 test("P2Z visual UAT record parses escaped pipes inside table cells", () => {
   const input = fixture("Accepted");
   input.executions[3]!.actual = "Approve \\| Return separation is visible";
@@ -995,6 +1082,15 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
       autolink,
     );
   }
+
+  const blockquotedDuplicate = accepted.replace(
+    "Overall human verdict: **Accepted**",
+    "Overall human verdict: **Accepted**\n> Overall human verdict: **Blocked**",
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(blockquotedDuplicate),
+    /exactly one supported overall human verdict/u,
+  );
 });
 
 test("P2Z visual UAT record requires unique package declarations", () => {
@@ -1106,6 +1202,13 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       extension: "png",
       contents: tinyPng,
       valid: false,
+    },
+    {
+      name: "nearly blank PNG",
+      extension: "png",
+      contents: createNearlyBlankPng(1440, 900),
+      valid: false,
+      expected: /must contain meaningful visual content/u,
     },
     {
       name: "PNG outside safe decode bounds",
@@ -1816,6 +1919,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "repeated findings sharing one evidence artifact",
     input: reusedFindingEvidence,
     expected: /must not reuse an evidence artifact/u,
+  });
+
+  const codeSpanFindingEvidence = fixture("Conditional");
+  codeSpanFindingEvidence.findings[2]!.evidence = `\`${codeSpanFindingEvidence.findings[2]!.evidence}\``;
+  cases.push({
+    name: "finding evidence link shown only as code",
+    input: codeSpanFindingEvidence,
+    expected: /must link its repository-backed screenshot or trace/u,
   });
 
   const crossTableEvidenceReuse = fixture("Conditional");
