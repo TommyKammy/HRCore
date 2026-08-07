@@ -503,7 +503,13 @@ function renderedMarkdown(markdown: string): string {
       renderedLines.push("");
       continue;
     }
-    const htmlOpening = line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
+    const markdownAutolink =
+      /^ {0,3}<(?:[a-z][a-z0-9+.-]{1,31}:[^ <>]*|[^ <>@]+@[^ <>@]+)>/iu.test(
+        line,
+      );
+    const htmlOpening = markdownAutolink
+      ? null
+      : line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
     if (htmlOpening) {
       const tag = htmlOpening[1]?.toLowerCase() ?? "";
       if (htmlRawClosingTagElements.has(tag)) {
@@ -1715,7 +1721,6 @@ export function collectP2zVisualUatRecordIssues(
       `${overallVerdict} overall verdict requires a completed checklist`,
     );
   }
-  const findingStatuses = new Set(completedFindings.map((row) => row.status));
   const checklistDispositionValues = new Set(
     checklist.map((entry) => entry.disposition),
   );
@@ -1735,22 +1740,35 @@ export function collectP2zVisualUatRecordIssues(
       "Conditional overall verdict cannot retain blocked disposition",
     );
   }
-  for (const [findingStatus, dispositions] of findingDispositionsByStatus) {
+  for (const finding of completedFindings) {
     if (
-      findingStatuses.has(findingStatus) &&
-      ![...dispositions].some((disposition) =>
-        checklistDispositionValues.has(disposition),
-      )
+      finding.status !== "blocker" &&
+      finding.status !== "must-fix" &&
+      finding.status !== "post-UAT"
+    ) {
+      continue;
+    }
+    const allowedDispositions = findingDispositionsByStatus.get(finding.status);
+    if (
+      allowedDispositions?.has(finding.disposition) &&
+      !checklistDispositionValues.has(finding.disposition)
     ) {
       issues.push(
-        `${findingStatus} findings require a matching checklist disposition`,
+        `${finding.status} findings require a matching checklist disposition: ${finding.status} finding disposition ${finding.disposition} requires a matching checklist disposition`,
       );
     }
   }
   for (const disposition of checklistDispositionValues) {
     const requiredFindingStatus =
       findingStatusByChecklistDisposition.get(disposition);
-    if (requiredFindingStatus && !findingStatuses.has(requiredFindingStatus)) {
+    if (
+      requiredFindingStatus &&
+      !completedFindings.some(
+        (finding) =>
+          finding.status === requiredFindingStatus &&
+          finding.disposition === disposition,
+      )
+    ) {
       issues.push(
         `${disposition} checklist disposition requires a matching ${requiredFindingStatus} finding`,
       );

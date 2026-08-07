@@ -983,6 +983,18 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
       /must keep exactly one ## Human Execution Record/u,
     );
   }
+
+  for (const autolink of ["<https://example.com>", "<uat@example.com>"]) {
+    const record = accepted.replace(
+      "| ID | Human tester |",
+      `${autolink}\nOverall human verdict: **Blocked**\n\n| ID | Human tester |`,
+    );
+    assert.throws(
+      () => validateP2zVisualUatRecord(record),
+      /exactly one supported overall human verdict/u,
+      autolink,
+    );
+  }
 });
 
 test("P2Z visual UAT record requires unique package declarations", () => {
@@ -1875,6 +1887,16 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "conditional verdict without checklist disposition",
     input: conditionWithoutChecklistDisposition,
     expected: /must-fix findings require a matching checklist disposition/u,
+  });
+
+  const findingWithDifferentChecklistDisposition = fixture("Conditional");
+  findingWithDifferentChecklistDisposition.findings[2]!.disposition =
+    "workaround";
+  cases.push({
+    name: "finding and checklist using different allowed dispositions",
+    input: findingWithDifferentChecklistDisposition,
+    expected:
+      /must-fix finding disposition workaround requires a matching checklist disposition/u,
   });
 
   for (const disposition of ["defect", "workaround"] as const) {
