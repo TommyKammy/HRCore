@@ -945,6 +945,7 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     `<pre>\n${accepted}\n</pre>`,
     `<div>\n${accepted.replace("# Fixture\n\n", "# Fixture\n")}\n</div>`,
     `<div></div>\n${accepted.replace("# Fixture\n\n", "# Fixture\n")}`,
+    `</div>\n${accepted.replace("# Fixture\n\n", "# Fixture\n")}`,
     `<?uat\n${accepted}\n?>`,
     `<!UAT\n${accepted}\n>`,
     `<![CDATA[\n${accepted}\n]]>`,

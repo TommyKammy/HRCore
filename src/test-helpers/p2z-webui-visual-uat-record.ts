@@ -516,6 +516,11 @@ function renderedMarkdown(markdown: string): string {
       renderedLines.push("");
       continue;
     }
+    if (/^ {0,3}<\/[a-z][a-z0-9-]*[\t ]*>/iu.test(line)) {
+      htmlBlockEndsAtBlankLine = true;
+      renderedLines.push("");
+      continue;
+    }
     const referenceDefinitionLines = hiddenMarkdownReferenceDefinitionLineCount(
       lines,
       index,
