@@ -153,7 +153,14 @@ function createEvidenceRepository({
       "-m",
       "initialize fixture",
     ],
-    { cwd: root },
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: "2026-08-02T00:00:00Z",
+        GIT_COMMITTER_DATE: "2026-08-02T00:00:00Z",
+      },
+    },
   );
   const commit = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
@@ -176,7 +183,15 @@ function createEvidenceRepository({
       "-m",
       "unrelated fixture",
     ],
-    { cwd: root, encoding: "utf8" },
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: "2026-08-02T00:00:00Z",
+        GIT_COMMITTER_DATE: "2026-08-02T00:00:00Z",
+      },
+    },
   ).trim();
   execFileSync("git", ["update-ref", "refs/heads/unrelated", unrelatedCommit], {
     cwd: root,
@@ -1055,6 +1070,15 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     ),
   );
 
+  const escapedCommentOpener = accepted.replace(
+    "Overall human verdict: **Accepted**",
+    "Overall human verdict: **Accepted**\n\\<!--\nOverall human verdict: **Blocked**\n-->",
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(escapedCommentOpener),
+    /exactly one supported overall human verdict/u,
+  );
+
   for (const renderedEquivalentHeading of [
     "## Human Execution Record ##",
     "## Human Execution Record  ",
@@ -1103,6 +1127,17 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
       listPrefix,
     );
   }
+
+  const reorderedSection = accepted
+    .replace("## Backend Integration Boundary\n\nFixture boundary.\n\n", "")
+    .replace(
+      "| ID | Human tester |",
+      "## Backend Integration Boundary\n\nFixture boundary.\n\n| ID | Human tester |",
+    );
+  assert.throws(
+    () => validateP2zVisualUatRecord(reorderedSection),
+    /without an intervening section/u,
+  );
 });
 
 test("P2Z visual UAT record requires unique package declarations", () => {
@@ -1617,6 +1652,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     name: "completed scenario dated in the future",
     input: futureExecutionDate,
     expected: /must record a valid non-future ISO execution date/u,
+  });
+
+  const executionBeforeTestedCommit = fixture("Accepted");
+  executionBeforeTestedCommit.executions[0]!.date = "2026-08-01";
+  cases.push({
+    name: "completed scenario dated before the tested commit",
+    input: executionBeforeTestedCommit,
+    expected: /execution date must not predate the tested commit/u,
   });
 
   const tokenOnlyObservation = fixture("Accepted");

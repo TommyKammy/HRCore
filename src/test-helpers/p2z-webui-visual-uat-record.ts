@@ -446,12 +446,43 @@ function hiddenMarkdownReferenceDefinitionLineCount(
   return consumedLines + (possibleTitle ? 1 : 0);
 }
 
+function stripMarkdownHtmlComments(markdown: string): string {
+  let cursor = 0;
+  let rendered = "";
+  while (cursor < markdown.length) {
+    const opener = markdown.indexOf("<!--", cursor);
+    if (opener < 0) {
+      rendered += markdown.slice(cursor);
+      break;
+    }
+
+    let precedingBackslashes = 0;
+    for (
+      let index = opener - 1;
+      index >= 0 && markdown[index] === "\\";
+      index -= 1
+    ) {
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 2 === 1) {
+      rendered += markdown.slice(cursor, opener + 4);
+      cursor = opener + 4;
+      continue;
+    }
+
+    rendered += markdown.slice(cursor, opener);
+    const closingMarker = markdown.indexOf("-->", opener + 4);
+    const commentEnd = closingMarker < 0 ? markdown.length : closingMarker + 3;
+    rendered += markdown.slice(opener, commentEnd).replace(/[^\n]/gu, " ");
+    cursor = commentEnd;
+  }
+  return rendered;
+}
+
 function renderedMarkdown(markdown: string): string {
-  const withoutComments = markdown
-    .replaceAll("\r\n", "\n")
-    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) =>
-      comment.replace(/[^\n]/gu, " "),
-    );
+  const withoutComments = stripMarkdownHtmlComments(
+    markdown.replaceAll("\r\n", "\n"),
+  );
   let fence: { marker: string; length: number } | undefined;
   let htmlBlockClosingToken: string | undefined;
   let htmlBlockEndsAtBlankLine = false;
@@ -581,6 +612,15 @@ function section(
   if (starts.length !== 1 || ends.length !== 1 || end <= start) {
     issues.push(
       `must keep exactly one ${startHeading} before exactly one ${endHeading}`,
+    );
+    return "";
+  }
+  const interveningSection = lines
+    .slice(start + 1, end)
+    .some((line) => /^#{1,2}(?:[\t ]|$)/u.test(line));
+  if (interveningSection) {
+    issues.push(
+      `must keep ${startHeading} content before ${endHeading} without an intervening section`,
     );
     return "";
   }
@@ -1003,6 +1043,21 @@ function repositoryCommitIssue(
   return undefined;
 }
 
+function repositoryCommitDate(
+  rootDirectory: string,
+  commit: string,
+): string | undefined {
+  try {
+    const date = execFileSync("git", ["show", "-s", "--format=%cs", commit], {
+      cwd: rootDirectory,
+      encoding: "utf8",
+    }).trim();
+    return isIsoDate(date) ? date : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function validatePendingExecutionRow(
   row: ExecutionRow,
   issues: string[],
@@ -1064,6 +1119,7 @@ function validatePendingExecutionRow(
 function validateCompletedExecutionRow(
   row: ExecutionRow,
   testedCommit: string,
+  testedCommitDate: string | undefined,
   evidenceTargets: Set<string>,
   issues: string[],
   rootDirectory: string,
@@ -1082,6 +1138,8 @@ function validateCompletedExecutionRow(
   }
   if (!isPastOrPresentIsoDate(row.executionDate)) {
     issues.push(`${row.id} must record a valid non-future ISO execution date`);
+  } else if (testedCommitDate && row.executionDate < testedCommitDate) {
+    issues.push(`${row.id} execution date must not predate the tested commit`);
   }
   if (scenario.persona === "Any bounded persona") {
     if (!boundedPersonaLabels.has(row.persona)) {
@@ -1618,6 +1676,12 @@ export function collectP2zVisualUatRecordIssues(
   }
   const commitIssue = repositoryCommitIssue(rootDirectory, testedCommit);
   if (commitIssue) issues.push(`tested commit ${commitIssue}`);
+  const testedCommitDate = commitIssue
+    ? undefined
+    : repositoryCommitDate(rootDirectory, testedCommit);
+  if (!commitIssue && !testedCommitDate) {
+    issues.push("tested commit must expose a valid repository commit date");
+  }
   if (!isMeaningfulIdentity(namedHumanTester)) {
     issues.push("completed UAT must identify the named human tester");
   }
@@ -1639,6 +1703,7 @@ export function collectP2zVisualUatRecordIssues(
     validateCompletedExecutionRow(
       row,
       testedCommit,
+      testedCommitDate,
       evidenceTargets,
       issues,
       rootDirectory,
