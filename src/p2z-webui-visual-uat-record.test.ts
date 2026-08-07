@@ -1091,6 +1091,18 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     () => validateP2zVisualUatRecord(blockquotedDuplicate),
     /exactly one supported overall human verdict/u,
   );
+
+  for (const listPrefix of ["- ", "1. ", "- [ ] "]) {
+    const listDuplicate = accepted.replace(
+      "Overall human verdict: **Accepted**",
+      `Overall human verdict: **Accepted**\n${listPrefix}Overall human verdict: **Blocked**`,
+    );
+    assert.throws(
+      () => validateP2zVisualUatRecord(listDuplicate),
+      /exactly one supported overall human verdict/u,
+      listPrefix,
+    );
+  }
 });
 
 test("P2Z visual UAT record requires unique package declarations", () => {

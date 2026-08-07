@@ -457,7 +457,13 @@ function renderedMarkdown(markdown: string): string {
   let htmlBlockEndsAtBlankLine = false;
   const lines = withoutComments
     .split("\n")
-    .map((line) => line.replace(/^ {0,3}(?:>[\t ]?)+/u, ""));
+    .map((line) => line.replace(/^ {0,3}(?:>[\t ]?)+/u, ""))
+    .map((line) =>
+      line.replace(
+        /^ {0,3}(?:(?:[-+*]|\d{1,9}[.)])[\t ]+)+(?:\[[ xX]\][\t ]+)?/u,
+        "",
+      ),
+    );
   const renderedLines: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
