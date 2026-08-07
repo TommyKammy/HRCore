@@ -773,6 +773,16 @@ test("P2Z visual UAT record parses escaped pipes inside table cells", () => {
   const input = fixture("Accepted");
   input.executions[3]!.actual = "Approve \\| Return separation is visible";
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+
+  const evidence = input.executions[0]!.evidence;
+  const contradictoryRenderedVerdict = renderFixture(input).replace(
+    `${evidence} | Accepted |`,
+    `${evidence} \\\\| Blocked | Accepted |`,
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(contradictoryRenderedVerdict),
+    /must keep the human execution record schema/u,
+  );
 });
 
 test("P2Z visual UAT record requires canonical structure for every formal table", () => {
@@ -1421,6 +1431,12 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       valid: false,
     },
     {
+      name: "long single-word text trace",
+      extension: "txt",
+      contents: Buffer.from("successful"),
+      valid: false,
+    },
+    {
       name: "empty rendered Markdown trace",
       extension: "md",
       contents: Buffer.from("<span></span>"),
@@ -1729,6 +1745,14 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
   cases.push({
     name: "completed scenario with a token-only observation",
     input: tokenOnlyObservation,
+    expected: /must record a meaningful actual observation/u,
+  });
+
+  const longSingleWordObservation = fixture("Accepted");
+  longSingleWordObservation.executions[0]!.actual = "successful";
+  cases.push({
+    name: "completed scenario with a long single-word observation",
+    input: longSingleWordObservation,
     expected: /must record a meaningful actual observation/u,
   });
 

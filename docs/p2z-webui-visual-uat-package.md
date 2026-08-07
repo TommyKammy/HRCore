@@ -179,7 +179,8 @@ must confirm the tester's identity and live-run ownership before accepting a
 completed closeout. Automation or an agent must not supply that confirmation.
 Every scenario in the formal run shares the recorded
 `repo_owned_synthetic_webui_non_production` execution environment and generated
-dataset boundary. The execution date cannot be later than the validation date.
+dataset boundary. Record execution dates as UTC calendar dates
+(`YYYY-MM-DD`); the date cannot be later than the UTC validation date.
 Keep the documented route for fixed scenarios; for P2Z-UAT-07, replace
 `Pending actual route` with the concrete route allowed for the recorded persona.
 Keep each scenario's documented subject binding. P2Z-UAT-02 must attest that the

@@ -323,9 +323,26 @@ const findingRecordHeader = [
 const visualChecklistHeader = ["Review item", "Status", "Disposition"] as const;
 
 function markdownCells(line: string): string[] {
-  const cells = line.split(/(?<!\\)\|/u);
+  const cells: string[] = [];
+  let cellStart = 0;
+  let precedingBackslashes = 0;
+  let endsWithDelimiter = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === "\\") {
+      precedingBackslashes += 1;
+      continue;
+    }
+    if (character === "|" && precedingBackslashes % 2 === 0) {
+      cells.push(line.slice(cellStart, index));
+      cellStart = index + 1;
+      endsWithDelimiter = index === line.length - 1;
+    }
+    precedingBackslashes = 0;
+  }
+  cells.push(line.slice(cellStart));
   if (line.startsWith("|")) cells.shift();
-  if (line.endsWith("|")) cells.pop();
+  if (endsWithDelimiter) cells.pop();
   return cells.map((cell) => cell.replace(/\\\|/gu, "|").trim());
 }
 
@@ -714,8 +731,15 @@ function isIsoDate(value: string): boolean {
   );
 }
 
-function isPastOrPresentIsoDate(value: string): boolean {
-  return isIsoDate(value) && value <= new Date().toISOString().slice(0, 10);
+function utcIsoDate(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function isPastOrPresentIsoDate(
+  value: string,
+  validationTime = new Date(),
+): boolean {
+  return isIsoDate(value) && value <= utcIsoDate(validationTime);
 }
 
 function isSubstantive(value: string): boolean {
@@ -753,10 +777,14 @@ function isVisibleConcreteSubject(value: string): boolean {
 function isMeaningfulObservation(value: string): boolean {
   const visibleText = renderedText(value);
   const renderedCharacters = visibleText.match(/[\p{L}\p{N}]/gu) ?? [];
+  const substantiveWords = Array.from(
+    new Intl.Segmenter("und", { granularity: "word" }).segment(visibleText),
+  ).filter((segment) => segment.isWordLike);
   return (
     isSubstantive(visibleText) &&
     /\p{L}/u.test(visibleText) &&
-    renderedCharacters.length >= 8
+    renderedCharacters.length >= 8 &&
+    substantiveWords.length >= 2
   );
 }
 
@@ -1062,11 +1090,16 @@ function repositoryCommitDate(
   commit: string,
 ): string | undefined {
   try {
-    const date = execFileSync("git", ["show", "-s", "--format=%cs", commit], {
-      cwd: rootDirectory,
-      encoding: "utf8",
-    }).trim();
-    return isIsoDate(date) ? date : undefined;
+    const timestamp = execFileSync(
+      "git",
+      ["show", "-s", "--format=%cI", commit],
+      {
+        cwd: rootDirectory,
+        encoding: "utf8",
+      },
+    ).trim();
+    const date = new Date(timestamp);
+    return Number.isNaN(date.valueOf()) ? undefined : utcIsoDate(date);
   } catch {
     return undefined;
   }
