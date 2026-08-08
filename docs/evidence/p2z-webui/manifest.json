@@ -185,7 +185,7 @@
       "web/src/styles/shell.css",
       "web/src/styles/workflows.css"
     ],
-    "sha256": "1618915c9439e21dff0bb82b225c2fa05e09578d5e6d25e8cd987261e20045b8"
+    "sha256": "4914745254980690003fbfdd10c6da696b475700a6876f814105e320b42f967a"
   },
   "captures": [
     {
@@ -377,7 +377,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "1618915c9439e21dff0bb82b225c2fa05e09578d5e6d25e8cd987261e20045b8"
+        "sha256": "4914745254980690003fbfdd10c6da696b475700a6876f814105e320b42f967a"
       },
       "artifacts": [
         {
@@ -599,7 +599,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "1618915c9439e21dff0bb82b225c2fa05e09578d5e6d25e8cd987261e20045b8"
+        "sha256": "4914745254980690003fbfdd10c6da696b475700a6876f814105e320b42f967a"
       },
       "artifacts": [
         {
@@ -821,7 +821,7 @@
           "web/src/styles/shell.css",
           "web/src/styles/workflows.css"
         ],
-        "sha256": "1618915c9439e21dff0bb82b225c2fa05e09578d5e6d25e8cd987261e20045b8"
+        "sha256": "4914745254980690003fbfdd10c6da696b475700a6876f814105e320b42f967a"
       },
       "artifacts": [
         {

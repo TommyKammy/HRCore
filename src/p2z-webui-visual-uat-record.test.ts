@@ -1094,6 +1094,24 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     /exactly one supported overall human verdict/u,
   );
 
+  const loneCarriageReturnHeading = accepted.replace(
+    "Overall human verdict: **Accepted**",
+    "Overall human verdict: **Accepted**\r## Backend Integration Boundary",
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(loneCarriageReturnHeading),
+    /must keep exactly one ## Verdict Boundary before exactly one ## Backend Integration Boundary/u,
+  );
+
+  const inlineHtmlInsideParagraph = accepted.replace(
+    "Overall human verdict: **Accepted**",
+    "Overall human verdict: **Accepted**\nNarrative\n<span>\nOverall human verdict: **Blocked**",
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(inlineHtmlInsideParagraph),
+    /exactly one supported overall human verdict/u,
+  );
+
   for (const renderedEquivalentHeading of [
     "## Human Execution Record ##",
     "## Human Execution Record  ",

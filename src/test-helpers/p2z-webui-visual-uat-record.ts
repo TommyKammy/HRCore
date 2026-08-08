@@ -410,6 +410,71 @@ const htmlRawClosingTagElements = new Set([
   "textarea",
 ]);
 
+const htmlBlockTagElements = new Set([
+  "address",
+  "article",
+  "aside",
+  "base",
+  "basefont",
+  "blockquote",
+  "body",
+  "caption",
+  "center",
+  "col",
+  "colgroup",
+  "dd",
+  "details",
+  "dialog",
+  "dir",
+  "div",
+  "dl",
+  "dt",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "frame",
+  "frameset",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "head",
+  "header",
+  "hr",
+  "html",
+  "iframe",
+  "legend",
+  "li",
+  "link",
+  "main",
+  "menu",
+  "menuitem",
+  "nav",
+  "noframes",
+  "ol",
+  "optgroup",
+  "option",
+  "p",
+  "param",
+  "search",
+  "section",
+  "summary",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "title",
+  "tr",
+  "track",
+  "ul",
+]);
+
 const formalSectionLabels = new Set([
   "Verdict Boundary",
   "Backend Integration Boundary",
@@ -498,11 +563,12 @@ function stripMarkdownHtmlComments(markdown: string): string {
 
 function renderedMarkdown(markdown: string): string {
   const withoutComments = stripMarkdownHtmlComments(
-    markdown.replaceAll("\r\n", "\n"),
+    markdown.replace(/\r\n?/gu, "\n"),
   );
   let fence: { marker: string; length: number } | undefined;
   let htmlBlockClosingToken: string | undefined;
   let htmlBlockEndsAtBlankLine = false;
+  let paragraphOpen = false;
   const lines = withoutComments
     .split("\n")
     .map((line) => line.replace(/^ {0,3}(?:>[\t ]?)+/u, ""))
@@ -525,6 +591,7 @@ function renderedMarkdown(markdown: string): string {
         fence = undefined;
       }
       renderedLines.push("");
+      paragraphOpen = false;
       continue;
     }
     if (htmlBlockClosingToken) {
@@ -532,6 +599,7 @@ function renderedMarkdown(markdown: string): string {
         htmlBlockClosingToken = undefined;
       }
       renderedLines.push("");
+      paragraphOpen = false;
       continue;
     }
     if (htmlBlockEndsAtBlankLine) {
@@ -539,11 +607,13 @@ function renderedMarkdown(markdown: string): string {
         htmlBlockEndsAtBlankLine = false;
       }
       renderedLines.push("");
+      paragraphOpen = false;
       continue;
     }
     if (marker) {
       fence = { marker: marker[0] ?? "", length: marker.length };
       renderedLines.push("");
+      paragraphOpen = false;
       continue;
     }
     const rawHtmlBlockClosingToken = /^ {0,3}<\?/u.test(line)
@@ -558,6 +628,7 @@ function renderedMarkdown(markdown: string): string {
         htmlBlockClosingToken = rawHtmlBlockClosingToken;
       }
       renderedLines.push("");
+      paragraphOpen = false;
       continue;
     }
     const markdownAutolink =
@@ -569,20 +640,40 @@ function renderedMarkdown(markdown: string): string {
       : line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
     if (htmlOpening) {
       const tag = htmlOpening[1]?.toLowerCase() ?? "";
+      const standaloneGenericTag =
+        /^ {0,3}<[a-z][a-z0-9-]*\b[^>]*>[\t ]*$/iu.test(line);
       if (htmlRawClosingTagElements.has(tag)) {
         if (!line.toLowerCase().includes(`</${tag}>`)) {
           htmlBlockClosingToken = `</${tag}>`;
         }
-      } else {
+      } else if (
+        htmlBlockTagElements.has(tag) ||
+        (!paragraphOpen && standaloneGenericTag)
+      ) {
         htmlBlockEndsAtBlankLine = true;
+      } else {
+        renderedLines.push(canonicalRenderedMarkdownLine(line));
+        paragraphOpen = true;
+        continue;
       }
       renderedLines.push("");
+      paragraphOpen = false;
       continue;
     }
-    if (/^ {0,3}<\/[a-z][a-z0-9-]*[\t ]*>/iu.test(line)) {
-      htmlBlockEndsAtBlankLine = true;
-      renderedLines.push("");
-      continue;
+    const htmlClosing = line.match(/^ {0,3}<\/([a-z][a-z0-9-]*)[\t ]*>/iu);
+    if (htmlClosing) {
+      const tag = htmlClosing[1]?.toLowerCase() ?? "";
+      const standaloneGenericTag =
+        /^ {0,3}<\/[a-z][a-z0-9-]*[\t ]*>[\t ]*$/iu.test(line);
+      if (
+        htmlBlockTagElements.has(tag) ||
+        (!paragraphOpen && standaloneGenericTag)
+      ) {
+        htmlBlockEndsAtBlankLine = true;
+        renderedLines.push("");
+        paragraphOpen = false;
+        continue;
+      }
     }
     const referenceDefinitionLines = hiddenMarkdownReferenceDefinitionLineCount(
       lines,
@@ -591,6 +682,7 @@ function renderedMarkdown(markdown: string): string {
     if (referenceDefinitionLines > 0) {
       renderedLines.push(...Array<string>(referenceDefinitionLines).fill(""));
       index += referenceDefinitionLines - 1;
+      paragraphOpen = false;
       continue;
     }
     const setextUnderline = lines[index + 1]?.match(/^ {0,3}-+[\t ]*$/u);
@@ -602,11 +694,19 @@ function renderedMarkdown(markdown: string): string {
     ) {
       renderedLines.push(`## ${setextLabel}`, "");
       index += 1;
+      paragraphOpen = false;
       continue;
     }
-    renderedLines.push(
-      /^(?: {4}|\t)/u.test(line) ? "" : canonicalRenderedMarkdownLine(line),
-    );
+    const indentedCode = /^(?: {4}|\t)/u.test(line);
+    const renderedLine = indentedCode
+      ? ""
+      : canonicalRenderedMarkdownLine(line);
+    renderedLines.push(renderedLine);
+    paragraphOpen =
+      !indentedCode &&
+      line.trim() !== "" &&
+      !/^ {0,3}#{1,6}(?:[\t ]|$)/u.test(line) &&
+      !/^ {0,3}\|/u.test(line);
   }
   return renderedLines.join("\n");
 }
