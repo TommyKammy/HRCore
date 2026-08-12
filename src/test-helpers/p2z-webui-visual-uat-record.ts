@@ -854,14 +854,12 @@ function isSubstantive(value: string): boolean {
 }
 
 function renderedText(value: string): string {
-  return value
+  const withoutMarkup = value
     .replace(/!\[[^\]]*\]\([^)]+\)/gu, " ")
     .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
     .replace(/<[^>]*>/gu, " ")
-    .replace(/[`*_~>#|\\-]/gu, " ")
-    .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/giu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
+    .replace(/[`*_~>#|\\-]/gu, " ");
+  return decodeHTMLStrict(withoutMarkup).replace(/\s+/gu, " ").trim();
 }
 
 function isVisibleSubstantive(value: string): boolean {
@@ -1157,14 +1155,49 @@ function evidenceReuseKind(
   return undefined;
 }
 
+function isEscapedMarkdownCharacter(value: string, index: number): boolean {
+  let backslashes = 0;
+  for (
+    let cursor = index - 1;
+    cursor >= 0 && value[cursor] === "\\";
+    cursor -= 1
+  ) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+function hasMarkdownLinkOpener(value: string, closingBracket: number): boolean {
+  let nestedClosers = 0;
+  for (let index = closingBracket - 1; index >= 0; index -= 1) {
+    if (isEscapedMarkdownCharacter(value, index)) continue;
+    if (value[index] === "]") {
+      nestedClosers += 1;
+    } else if (value[index] === "[") {
+      if (nestedClosers === 0) return true;
+      nestedClosers -= 1;
+    }
+  }
+  return false;
+}
+
 function renderedMarkdownLinkTargets(value: string): string[] {
   const withoutCodeSpans = value.replace(/(`+)([\s\S]*?)\1/gu, "");
   return Array.from(
     withoutCodeSpans.matchAll(
       /\]\([\t ]*(?:<((?:\\.|[^<>\n\\])*)>|((?:\\.|[^\s()\\])+))(?:[\t ]+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\)))?[\t ]*\)/gu,
     ),
-    (match) => (match[1] ?? match[2] ?? "").replace(/\\(.)/gu, "$1"),
-  );
+  ).flatMap((match) => {
+    const closingBracket = match.index;
+    if (
+      closingBracket === undefined ||
+      isEscapedMarkdownCharacter(withoutCodeSpans, closingBracket) ||
+      !hasMarkdownLinkOpener(withoutCodeSpans, closingBracket)
+    ) {
+      return [];
+    }
+    return [(match[1] ?? match[2] ?? "").replace(/\\(.)/gu, "$1")];
+  });
 }
 
 function repositoryCommitIssue(

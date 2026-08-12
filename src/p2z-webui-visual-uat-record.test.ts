@@ -677,6 +677,12 @@ test("P2Z visual UAT record accepts literal pending UI copy in observations", ()
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record decodes rendered observation entities", () => {
+  const input = fixture("Accepted");
+  input.executions[0]!.actual = "Queue &#108;&#111;&#97;&#100;&#101;&#100;";
+  assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
+});
+
 test("P2Z visual UAT record requires an execution-level Audit correlation ID", () => {
   const input = fixture("Accepted");
   input.executions[5]!.correlationId = "not applicable";
@@ -1719,6 +1725,20 @@ test("P2Z visual UAT record rejects cross-state contradictions", () => {
     input: externalAttachment,
     expected: /must link repository evidence for this run and scenario/u,
   });
+
+  for (const malformedLabel of ["\\[run]", "]"]) {
+    const malformedEvidenceLink = fixture("Accepted");
+    const target = malformedEvidenceLink.executions[0]!.evidence.replace(
+      /^\[run\]/u,
+      "",
+    );
+    malformedEvidenceLink.executions[0]!.evidence = `${malformedLabel}${target}`;
+    cases.push({
+      name: `repository evidence with malformed label ${malformedLabel}`,
+      input: malformedEvidenceLink,
+      expected: /must link repository evidence for this run and scenario/u,
+    });
+  }
 
   const nonexistentTestedCommit = fixture("Accepted");
   nonexistentTestedCommit.commit = "0".repeat(40);
