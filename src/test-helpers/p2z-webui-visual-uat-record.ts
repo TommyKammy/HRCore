@@ -584,7 +584,8 @@ function renderedMarkdown(markdown: string): string {
   const renderedLines: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
-    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+    const fenceLine = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+    const marker = fenceLine?.[1];
     if (fence) {
       if (
         marker?.[0] === fence.marker &&
@@ -613,7 +614,10 @@ function renderedMarkdown(markdown: string): string {
       paragraphOpen = false;
       continue;
     }
-    if (marker) {
+    if (
+      marker &&
+      (marker[0] !== "`" || !(fenceLine?.[2] ?? "").includes("`"))
+    ) {
       fence = { marker: marker[0] ?? "", length: marker.length };
       renderedLines.push("");
       paragraphOpen = false;
@@ -640,11 +644,11 @@ function renderedMarkdown(markdown: string): string {
       );
     const htmlOpening = markdownAutolink
       ? null
-      : line.match(/^ {0,3}<([a-z][a-z0-9-]*)\b[^>]*>/iu);
+      : line.match(/^ {0,3}<([a-z][a-z0-9-]*)(?=[\t ]|\/?>)[^>]*>/iu);
     if (htmlOpening) {
       const tag = htmlOpening[1]?.toLowerCase() ?? "";
       const standaloneGenericTag =
-        /^ {0,3}<[a-z][a-z0-9-]*\b[^>]*>[\t ]*$/iu.test(line);
+        /^ {0,3}<[a-z][a-z0-9-]*(?=[\t ]|\/?>)[^>]*>[\t ]*$/iu.test(line);
       if (htmlRawClosingTagElements.has(tag)) {
         if (!line.toLowerCase().includes(`</${tag}>`)) {
           htmlBlockClosingToken = `</${tag}>`;

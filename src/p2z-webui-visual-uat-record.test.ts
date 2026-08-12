@@ -1118,6 +1118,24 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     /exactly one supported overall human verdict/u,
   );
 
+  const invalidBacktickFence = accepted.replace(
+    "Overall human verdict: **Accepted**",
+    "Overall human verdict: **Accepted**\n```language`variant\nOverall human verdict: **Blocked**\n```",
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(invalidBacktickFence),
+    /exactly one supported overall human verdict/u,
+  );
+
+  const invalidHtmlTagBoundary = accepted.replace(
+    "Overall human verdict: **Accepted**",
+    "Overall human verdict: **Accepted**\n<div.foo>\nOverall human verdict: **Blocked**\n",
+  );
+  assert.throws(
+    () => validateP2zVisualUatRecord(invalidHtmlTagBoundary),
+    /exactly one supported overall human verdict/u,
+  );
+
   for (const encodedColon of ["&#58;", "&#x3a;", "&colon;"]) {
     const encodedDeclaration = accepted.replace(
       "Overall human verdict: **Accepted**",
