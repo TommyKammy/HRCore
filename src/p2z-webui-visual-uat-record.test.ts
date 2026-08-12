@@ -1112,6 +1112,18 @@ test("P2Z visual UAT record parses only rendered Markdown records", () => {
     /exactly one supported overall human verdict/u,
   );
 
+  for (const encodedColon of ["&#58;", "&#x3a;", "&colon;"]) {
+    const encodedDeclaration = accepted.replace(
+      "Overall human verdict: **Accepted**",
+      `Overall human verdict: **Accepted**\nOverall human verdict${encodedColon} **Blocked**`,
+    );
+    assert.throws(
+      () => validateP2zVisualUatRecord(encodedDeclaration),
+      /exactly one supported overall human verdict/u,
+      encodedColon,
+    );
+  }
+
   for (const renderedEquivalentHeading of [
     "## Human Execution Record ##",
     "## Human Execution Record  ",

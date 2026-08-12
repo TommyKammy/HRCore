@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { decodeHTMLStrict } from "entities";
 import { PNG } from "pngjs";
 
 import {
@@ -750,7 +751,11 @@ function singletonDeclaration(
   issue: string,
   issues: string[],
 ): string | undefined {
-  const matches = Array.from(record.matchAll(pattern));
+  const decodedRecord = record
+    .split("\n")
+    .map((line) => decodeHTMLStrict(line).replace(/[\r\n]/gu, " "))
+    .join("\n");
+  const matches = Array.from(decodedRecord.matchAll(pattern));
   if (matches.length !== 1) {
     issues.push(issue);
     return undefined;
