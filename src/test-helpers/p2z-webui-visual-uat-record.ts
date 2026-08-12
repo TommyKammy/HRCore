@@ -492,7 +492,9 @@ function canonicalRenderedMarkdownLine(line: string): string {
   const heading = line.match(/^ {0,3}(#{1,6})(?:[\t ]+(.*)|[\t ]*)$/u);
   if (!heading) return line;
   const marker = heading[1] ?? "";
-  const label = (heading[2] ?? "").replace(/[\t ]+#+[\t ]*$/u, "").trim();
+  const label = decodeHTMLStrict(
+    (heading[2] ?? "").replace(/[\t ]+#+[\t ]*$/u, "").trim(),
+  );
   return label ? `${marker} ${label}` : marker;
 }
 
@@ -687,7 +689,7 @@ function renderedMarkdown(markdown: string): string {
       continue;
     }
     const setextUnderline = lines[index + 1]?.match(/^ {0,3}-+[\t ]*$/u);
-    const setextLabel = line.trim();
+    const setextLabel = decodeHTMLStrict(line.trim());
     if (
       setextUnderline &&
       !/^(?: {4}|\t)/u.test(line) &&
