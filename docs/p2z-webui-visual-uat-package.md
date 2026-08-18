@@ -1,8 +1,10 @@
 # P2Z WebUI Visual UAT Package
 
-Date: 2026-07-18  
-UAT scope: bounded/non-production visual and workflow rehearsal  
-Automated gate: Passed
+- Issue: #406
+- Package date: 2026-07-18
+- Boundary review date: 2026-08-01
+- UAT scope: bounded/non-production visual and workflow rehearsal
+- Automated gate: Passed
 
 ## Entry Verdict
 
@@ -13,20 +15,80 @@ P2Y synthetic workflows.
 This package is not HR practical-use readiness, production-like readiness, or
 go-live approval.
 
+## Verdict Boundary
+
+| Decision surface                | Current verdict                          |
+| ------------------------------- | ---------------------------------------- |
+| Automated visual UAT candidate  | Go                                       |
+| Formal human visual UAT verdict | Pending human execution                  |
+| Issue #406 close eligibility    | Blocked pending the formal human verdict |
+| Production-like readiness       | Blocked                                  |
+| Go-live approval                | Blocked                                  |
+
+The automated checks and repository-owned screenshots prepare the package for
+formal visual UAT, but they do not supply its verdict. Only the named human UAT
+tester may record `Accepted`, `Conditional`, or `Blocked` for each scenario and
+the overall verdict. Agent-prepared evidence must remain identified as
+preflight evidence and cannot unlock Issue #406 closeout.
+
+When the overall human verdict changes, update both human rows in this table in
+the same commit. `Issue #406 close eligibility` must be `Eligible after evidence
+linkage` for `Accepted`, `Blocked pending named conditions` for `Conditional`,
+or `Blocked by the formal human verdict` for `Blocked`.
+
+## Backend Integration Boundary
+
+- The local test runner uses `GET /health` only to confirm that the API process
+  is ready. The WebUI loads `GET /openapi.json` to render the API contract
+  connection status.
+- The later bounded P2LIST implementation connects the employee and lifecycle
+  list/detail screens, plus their explicitly allowlisted export actions, to
+  repository-owned synthetic/non-production APIs. Those routes retain their
+  server-owned authorization, scope, masking, cursor, and audit boundaries.
+- Onboarding, transfer, termination, approval, CSV dry-run, Ops/DLQ, Audit, and
+  support-review workflow mutations remain repository-owned client-state
+  synthetic simulations unless a scenario explicitly names a P2LIST API.
+- Persona selection remains a client-side visual/navigation boundary. It is not
+  production authentication or proof of server-side authorization.
+
+Consequently, this visual UAT validates bounded UI comprehension and workflow
+rehearsal. It must not be described as end-to-end workflow API integration,
+production authorization, or production-like readiness.
+
 ## Preconditions
 
 1. Use repository-owned synthetic/non-production fixtures only.
 2. Do not configure live provider credentials.
-3. Start the local API and WebUI:
+3. Record the exact tested commit in the Human Execution Record before starting:
 
    ```sh
+   git rev-parse HEAD
+   ```
+
+4. Generate the bounded P2LIST UAT dataset and environment files. This replaces
+   only `.local/p2list-uat/`:
+
+   ```sh
+   npm run setup:p2list:uat
+   ```
+
+5. Start the local API and WebUI in separate shells with the generated
+   server-owned actor registry and bounded browser tokens:
+
+   ```sh
+   source .local/p2list-uat/api-environment.sh
    npm run dev
+   ```
+
+   ```sh
+   source .local/p2list-uat/web-environment.sh
    npm run dev:web
    ```
 
-4. Open `http://127.0.0.1:5173`.
-5. Use the persona specified by each scenario.
-6. Use `EMP-000128` for bounded direct employee lookup.
+6. Open `http://127.0.0.1:5173`.
+7. Use the persona specified by each scenario. Browser persona selection does
+   not replace the generated API actor binding.
+8. Use `EMP-000128` for bounded direct employee lookup.
 
 ## Automated Gate
 
@@ -51,7 +113,7 @@ Expected result:
 | ID         | Persona                   | Screen            | Procedure                                               | Expected result                                                                           |
 | ---------- | ------------------------- | ----------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | P2Z-UAT-01 | HR operator               | Dashboard         | Select HR operator                                      | KPI, seven-day work queue, integration health, and recent drafts are visible              |
-| P2Z-UAT-02 | HR operator               | Employee detail   | Open Employees or look up `EMP-000128`                  | masked profile, lifecycle timeline, and external IDs are visible                          |
+| P2Z-UAT-02 | HR operator               | Employee detail   | Look up `EMP-000128`                                    | masked profile, lifecycle timeline, and external IDs are visible                          |
 | P2Z-UAT-03 | HR operator               | Transfer          | Open Transfer and inspect defaults                      | step 3/5, input, impact preview, validation, and request detail are visible               |
 | P2Z-UAT-04 | HR operator then Approver | Approval inbox    | Create transfer request, switch persona, open Approvals | selected transfer evidence and separated reject/return/approve/cancel actions are visible |
 | P2Z-UAT-05 | HR Ops/support            | Job monitor       | Open Ops/DLQ                                            | runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible          |
@@ -59,24 +121,208 @@ Expected result:
 | P2Z-UAT-07 | Any bounded persona       | Mobile drawer     | Repeat at 390 x 844                                     | drawer opens explicitly, closes after route selection, and no primary action is lost      |
 | P2Z-UAT-08 | No persona                | Fail-closed entry | Reload without persona                                  | workflows remain hidden and the bounded reason is visible                                 |
 
+## Human Execution Record
+
+Overall human verdict: **Pending human execution**
+Tested commit: **Pending human execution**
+Named human tester: **Pending assignment**
+Overall verdict recorded by: **Pending assignment**
+Execution environment/dataset: **repo_owned_synthetic_webui_non_production**
+
+Keep exactly one rendered declaration for each package-level field above.
+Formal record headings, declarations, tables, and rows inside HTML comments,
+raw HTML blocks, fenced code blocks, or indented code blocks are not part of the
+UAT record. Each formal table must keep its header immediately followed by a
+valid Markdown delimiter row with the same number of columns. The header,
+delimiter, and every contiguous visible data row must each start and end with
+`|`. Every visible row is part of the formal record, and later detached rows
+are invalid; the inventory rules below define where repetition is allowed.
+
+The named human tester must replace every pending field during one formal run
+against a recorded commit. `Actual result` must describe what the tester
+observed with meaningful rendered text; one-token and Markdown-only values are
+not observations. `Evidence` must link the run-specific screenshot or trace
+rather than relying only on the automated reference image. Formal closeout
+evidence must use the repository path
+`evidence/p2z-webui/runs/<tested-commit>/<scenario>.<artifact-extension>`.
+Evidence paths must use inline Markdown link syntax such as
+`[run](evidence/p2z-webui/runs/<tested-commit>/<scenario>.png)`; reference-style
+links are outside this record contract. Angle-bracket destinations and optional
+inline link titles are valid. A run screenshot whose decoded pixels are
+identical to an automated reference screenshot is invalid even when PNG
+compression or ancillary metadata differs.
+External attachment links may be supplemental, but do not satisfy the formal
+evidence requirement. Repository-backed artifacts support a decodable `.png`
+screenshot or a valid `.json`, `.txt`, or `.md` trace. A JSON trace must be an
+object with a non-empty `events` array. Every entry in that array must be an
+object with a substantive string `type` or `eventType` discriminator. Root-level
+metadata may accompany the events but is not evidence by itself; empty,
+metadata-only, scalar, or mixed valid/invalid event arrays are rejected. Each
+text or Markdown trace must contain a meaningful rendered observation rather
+than a token, punctuation, markup, or placeholder alone. A `.png` screenshot
+must use the repository capture geometry for the scenario's recorded and
+authoritative CSS viewport: width equals viewport width times the documented
+device scale factor (`1440px` for desktop and `1170px` for mobile), and height is
+at least viewport height times that factor (`900px` and `2532px` respectively).
+Taller full-page captures are valid within the pre-decode safety limit of
+`16384px` per side and `16777216` total pixels; trace formats are not subject to
+this pixel dimension check. Each artifact must be a non-empty Git-tracked
+regular file under `docs/`; symbolic links and content that does not match its
+extension are invalid. One artifact path belongs to exactly one execution or
+finding row across both records and cannot be reused.
+Record the package-level tester before execution, use that exact identity in
+every completed scenario row, and allow only that tester to fill `Overall
+verdict recorded by`. This repository validator enforces record consistency;
+it does not authenticate a physical person from a free-form name. Under the
+repository's documented single-maintainer governance, the repository operator
+must confirm the tester's identity and live-run ownership before accepting a
+completed closeout. Automation or an agent must not supply that confirmation.
+Every scenario in the formal run shares the recorded
+`repo_owned_synthetic_webui_non_production` execution environment and generated
+dataset boundary. Record execution dates as UTC calendar dates
+(`YYYY-MM-DD`); the date cannot be later than the UTC validation date.
+Keep the documented route for fixed scenarios; for P2Z-UAT-07, replace
+`Pending actual route` with the concrete route allowed for the recorded persona.
+Keep each scenario's documented subject binding. P2Z-UAT-02 must attest that the
+tester looked up the bounded `EMP-000128` fixture; scenarios without a required
+subject use `not applicable`.
+For P2Z-UAT-06, replace `Pending exact correlation ID` with the exact correlation
+identifier used for the Audit lookup; every other scenario uses `not applicable`.
+
+The `evidence/p2z-webui/runs/` namespace is reserved for formal human-run
+artifacts and is excluded from the strict automated reference-image inventory.
+Run screenshots therefore remain provenance-bound without being treated as
+additional baseline captures.
+
+The overall verdict may be `Pending human execution`, `Accepted`, `Conditional`,
+or `Blocked`. Each scenario verdict may be `Pending`, `Accepted`, `Conditional`,
+or `Blocked`. `Accepted` and `Conditional` require a 40-character tested commit
+that resolves as a commit in this repository and is an ancestor of the
+validation `HEAD` (or `HEAD` itself), and no `Pending` values in either record.
+Verify it with `git cat-file -e <tested-commit>^{commit}` and
+`git merge-base --is-ancestor <tested-commit> HEAD` before closeout. Every
+`HEAD` change after the tested commit must be limited to this UAT package
+record and the run-specific
+`docs/evidence/p2z-webui/runs/<tested-commit>/` artifacts. Any product source,
+configuration, dependency, workflow, or other repository change invalidates the
+record and requires a new tested commit and run. Every
+`Conditional` scenario requires its own `must-fix` finding,
+including an executed Conditional scenario before a later blocker in a
+`Blocked` run; one finding cannot explain multiple scenario verdicts. `Blocked`
+requires the tested commit, a completed `Blocked` scenario, and its `blocker`
+finding. Because the run stops at the first blocker, every
+execution-specific and finding field in later rows must retain its original
+pending value rather than recording partial work after the stop point.
+Before execution, `Pending human execution` may use either the initial pending
+commit placeholder or the 40-character commit recorded in precondition 3. Its
+recorded commit must satisfy the same ancestor-or-equal rule. Scenario verdicts,
+finding rows, and checklist remain pending until the formal verdict is recorded.
+
+| ID         | Human tester       | Execution date | Viewport | Persona                   | Route                   | Subject binding | Correlation ID               | Expected result                                                                           | Actual result           | Evidence                                                                                  | Scenario verdict |
+| ---------- | ------------------ | -------------- | -------- | ------------------------- | ----------------------- | --------------- | ---------------------------- | ----------------------------------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| P2Z-UAT-01 | Pending assignment | Pending        | 1440x900 | HR operator               | /queue                  | not applicable  | not applicable               | KPI, seven-day work queue, integration health, and recent drafts are visible              | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-dashboard.png); run capture pending       | Pending          |
+| P2Z-UAT-02 | Pending assignment | Pending        | 1440x900 | HR operator               | /employee               | EMP-000128      | not applicable               | Masked profile, lifecycle timeline, and external IDs are visible                          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-employee-detail.png); run capture pending | Pending          |
+| P2Z-UAT-03 | Pending assignment | Pending        | 1440x900 | HR operator               | /transfer               | not applicable  | not applicable               | Step 3/5, input, impact preview, validation, and request detail are visible               | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-transfer.png); run capture pending        | Pending          |
+| P2Z-UAT-04 | Pending assignment | Pending        | 1440x900 | HR operator then Approver | /transfer -> /approvals | not applicable  | not applicable               | Selected transfer evidence and separated reject/return/approve/cancel actions are visible | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-approval-inbox.png); run capture pending  | Pending          |
+| P2Z-UAT-05 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | /ops                    | not applicable  | not applicable               | Runtime KPI, recent runs, failed items, job detail, and DLQ decision are visible          | Pending human execution | [reference](evidence/p2z-webui/desktop-chromium-job-monitor.png); run capture pending     | Pending          |
+| P2Z-UAT-06 | Pending assignment | Pending        | 1440x900 | HR Ops/support            | /audit                  | not applicable  | Pending exact correlation ID | One exact correlation lookup and evidence timeline are visible                            | Pending human execution | Run-specific Audit capture pending                                                        | Pending          |
+| P2Z-UAT-07 | Pending assignment | Pending        | 390x844  | Pending actual persona    | Pending actual route    | not applicable  | not applicable               | Drawer opens explicitly, closes after route selection, and no primary action is lost      | Pending human execution | [mobile references](evidence/p2z-webui/README.md); run capture pending                    | Pending          |
+| P2Z-UAT-08 | Pending assignment | Pending        | 1440x900 | No persona                | /queue                  | not applicable  | not applicable               | Workflows remain hidden and the bounded reason is visible                                 | Pending human execution | Run-specific fail-closed entry capture pending                                            | Pending          |
+
+## Scenario Finding Record
+
+| ID         | Finding status | Linked GitHub Issue | Owner   | Scope boundary | Actor   | Tenant/environment | Subject binding | Route and viewport | Correlation ID | Evidence version | Screenshot or trace | Cleanup status | Disposition |
+| ---------- | -------------- | ------------------- | ------- | -------------- | ------- | ------------------ | --------------- | ------------------ | -------------- | ---------------- | ------------------- | -------------- | ----------- |
+| P2Z-UAT-01 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-02 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-03 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-04 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-05 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-06 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-07 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+| P2Z-UAT-08 | Pending        | Pending             | Pending | Pending        | Pending | Pending            | Pending         | Pending            | Pending        | Pending          | Pending             | Pending        | Pending     |
+
+For each `blocker`, `must-fix`, or `post-UAT` result, add a row, create or link a
+GitHub Issue, and complete every Evidence Record field in that same row before
+assigning the overall verdict. Repeated scenario IDs are allowed when one
+scenario has multiple findings, but each finding must retain its own evidence
+link and every scenario must have at least one row. A scenario without a
+recorded finding uses exactly one `Pending` or `none observed` marker row;
+marker rows cannot be duplicated or mixed with recorded findings. `Owner` must
+render as a meaningful identity, and every other recorded metadata field must
+render substantive visible text rather than empty HTML or punctuation alone,
+except for the canonical `not applicable` subject and correlation sentinels
+described below.
+Repository-backed finding evidence uses
+`evidence/p2z-webui/runs/<tested-commit>/<scenario>-finding-<slug>.<artifact-extension>`;
+the same validated `.png`, `.json`, `.txt`, and `.md` artifact contract applies.
+External attachment links remain supplemental and do not replace that tracked
+artifact. If no finding exists, record `none observed` in `Finding status` and
+`not applicable` in every remaining finding field; do not leave the finding
+status implicit.
+
+After creating every linked Issue and before assigning the overall verdict,
+generate the run-scoped Issue snapshot from GitHub:
+
+```sh
+npm run update:p2z:uat-issue-registry -- --issue <finding-issue-number>
+```
+
+This explicit network step requires an authenticated GitHub CLI session. The
+updater reads the 40-character `Tested commit` above, queries GraphQL
+`repository.issue` for each number, and atomically writes the snapshot. Repeat
+`--issue <finding-issue-number>` for every distinct linked finding Issue. The
+output path is
+`docs/evidence/p2z-webui/runs/<tested-commit>/finding-issues.json`. It refuses a
+missing number or a pull request, even though the REST Issues endpoint exposes
+pull requests. Stage the printed snapshot path with the rest of the run
+evidence. Canonical verification re-queries GitHub with the CI-provided token
+and requires every tracked snapshot number, node ID, and URL to match the
+authenticated response; a manually shaped snapshot is not accepted. Closed
+Issues still prove existence; their workflow state is not a visual-UAT gate. A
+run containing only `Pending` or `none observed` finding rows does not need a
+snapshot.
+
+The linked Issue must use `#<number>` or the exact
+`https://github.com/TommyKammy/HRCore/issues/<number>` form. Match finding status
+to disposition in the same row: `blocker` to `blocked`, `must-fix` to `defect`
+or `workaround`, and `post-UAT` to `post-UAT backlog`. When an execution row has
+a concrete subject binding, every finding for that scenario must repeat the
+same subject. When the execution subject is `not applicable`, use that exact
+sentinel unless the finding itself has a concrete, substantive subject to
+record; placeholders such as `N/A`, `Pending`, or empty markup are invalid. For
+P2Z-UAT-04, bind a finding from the request-creation leg to `HR operator` on
+`/transfer`, or a
+finding from the decision leg to `Approver` on `/approvals`. P2Z-UAT-06 always
+records the exact Audit lookup correlation ID when it has a finding; `not
+applicable` is not valid for that scenario.
+
 ## Visual Review Checklist
 
-For each primary screen, record `completed`, `blocked`, `workaround`, `defect`,
-and `post-UAT backlog`.
+For each review item, set `Status` to `Completed` and record one explicit
+`Disposition`: `completed`, `blocked`, `workaround`, `defect`, or
+`post-UAT backlog`. Pending records keep both fields `Pending`.
+Keep exactly the canonical checklist rows shown below, once each and in order;
+additional, duplicate, missing, or reordered rows are invalid.
+`Conditional` requires a named `must-fix` finding with a `defect` or
+`workaround` disposition; a cosmetic `post-UAT backlog` alone remains eligible
+for `Accepted`. `Blocked` requires a `blocked` disposition. Each `blocked`,
+`defect`, `workaround`, or `post-UAT backlog` checklist disposition also requires
+its matching `blocker`, `must-fix`, or `post-UAT` finding, and each such finding
+requires a matching checklist disposition.
 
-- [ ] Navigation, page heading, and workspace use the same visual hierarchy.
-- [ ] Japanese task labels are primary and technical identifiers remain
-      readable.
-- [ ] Status, priority, deadline, provider, and scope are distinguishable
-      without relying on color alone.
-- [ ] Forms and impact previews remain aligned at desktop width.
-- [ ] Master/detail selection is visually clear.
-- [ ] Destructive and primary actions are visually separated.
-- [ ] Text does not clip or overlap.
-- [ ] Loading, empty, error, blocked, success, and disabled states are
-      understandable.
-- [ ] Keyboard focus is visible.
-- [ ] Mobile controls remain inside the viewport.
+| Review item                                                                                         | Status  | Disposition |
+| --------------------------------------------------------------------------------------------------- | ------- | ----------- |
+| Navigation, page heading, and workspace use the same visual hierarchy.                              | Pending | Pending     |
+| Japanese task labels are primary and technical identifiers remain readable.                         | Pending | Pending     |
+| Status, priority, deadline, provider, and scope are distinguishable without relying on color alone. | Pending | Pending     |
+| Forms and impact previews remain aligned at desktop width.                                          | Pending | Pending     |
+| Master/detail selection is visually clear.                                                          | Pending | Pending     |
+| Destructive and primary actions are visually separated.                                             | Pending | Pending     |
+| Text does not clip or overlap.                                                                      | Pending | Pending     |
+| Loading, empty, error, blocked, success, and disabled states are understandable.                    | Pending | Pending     |
+| Keyboard focus is visible.                                                                          | Pending | Pending     |
+| Mobile controls remain inside the viewport.                                                         | Pending | Pending     |
 
 ## Evidence Matrix
 
@@ -135,4 +381,7 @@ For every finding capture:
 
 Bounded visual UAT is accepted only when blocker and must-fix counts are zero,
 all primary scenarios are completed, and any post-UAT backlog is recorded with
-an owner and scope boundary.
+an owner and scope boundary. The final human owner must then record the overall
+`Accepted`, `Conditional`, or `Blocked` verdict in Issue #406 and link it from
+the Obsidian P2Z plan. Automated or agent-prepared results cannot perform this
+step.

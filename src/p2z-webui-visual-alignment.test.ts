@@ -42,6 +42,7 @@ import {
   validateP2zInstalledDependencyTree,
   validateP2zVisualEvidenceCaptureProvenance,
 } from "./p2z-webui-visual-evidence-integrity.js";
+import { validateP2zVisualUatRecord } from "./test-helpers/p2z-webui-visual-uat-record.js";
 import { readRepoFile } from "./test-helpers/database.js";
 
 const contractPath = "docs/p2z-webui-visual-alignment-contract.md";
@@ -322,6 +323,8 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     playwrightConfig,
     packageJson,
     captureScript,
+    issueRegistryUpdater,
+    issueRegistryVerifier,
     ci,
     readme,
   ] = await Promise.all([
@@ -336,6 +339,8 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     readRepoFile("playwright.config.ts"),
     readRepoFile("package.json"),
     readRepoFile("scripts/capture-p2z-web-evidence.ts"),
+    readRepoFile("scripts/update-p2z-uat-issue-registry.ts"),
+    readRepoFile("scripts/verify-p2z-uat-issue-registry.ts"),
     readRepoFile(".github/workflows/ci.yml"),
     readRepoFile("README.md"),
   ]);
@@ -374,17 +379,25 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     assert.ok(contract.includes(boundary), `missing P2Z boundary: ${boundary}`);
   }
 
-  for (const scenario of [
-    "P2Z-UAT-01",
-    "P2Z-UAT-02",
-    "P2Z-UAT-03",
-    "P2Z-UAT-04",
-    "P2Z-UAT-05",
-    "P2Z-UAT-06",
-    "P2Z-UAT-07",
-    "P2Z-UAT-08",
+  validateP2zVisualUatRecord(uat);
+
+  for (const uatBoundary of [
+    "Formal human visual UAT verdict",
+    "Issue #406 close eligibility",
+    "GET /openapi.json",
+    "client-state",
+    "synthetic simulations",
+    "end-to-end workflow API integration",
+    "git rev-parse HEAD",
+    "npm run setup:p2list:uat",
+    "npm run update:p2z:uat-issue-registry",
+    "source .local/p2list-uat/api-environment.sh",
+    "source .local/p2list-uat/web-environment.sh",
   ] as const) {
-    assert.ok(uat.includes(scenario), `${uatPath} must include ${scenario}`);
+    assert.ok(
+      uat.includes(uatBoundary),
+      `${uatPath} must preserve UAT boundary: ${uatBoundary}`,
+    );
   }
 
   for (const sourceSignal of [
@@ -518,6 +531,11 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     "CI must install Chromium before canonical verification",
   );
   assert.match(
+    ci,
+    /fetch-depth:\s*0/u,
+    "CI must fetch repository history before validating a tested commit",
+  );
+  assert.match(
     readme,
     /P2Z WebUI Visual Alignment Contract/u,
     "README must link the P2Z visual contract",
@@ -536,6 +554,45 @@ test("P2Z visual alignment contract is implemented and reproducible", async () =
     packageJson,
     /"update:p2z:evidence-manifest":\s*"tsx scripts\/update-p2z-evidence-manifest\.ts"/u,
     "package scripts must expose deterministic manifest regeneration",
+  );
+  assert.match(
+    packageJson,
+    /"update:p2z:uat-issue-registry":\s*"tsx scripts\/update-p2z-uat-issue-registry\.ts"/u,
+    "package scripts must expose explicit finding Issue verification",
+  );
+  for (const updaterSignal of [
+    'execFileSync("gh", ["api", "graphql"',
+    "p2zVisualUatFindingIssueSnapshotFromGraphql",
+    "rename(temporaryPath, absoluteRegistryPath)",
+  ] as const) {
+    assert.ok(
+      issueRegistryUpdater.includes(updaterSignal),
+      `finding Issue updater must preserve verification signal: ${updaterSignal}`,
+    );
+  }
+  for (const verifierSignal of [
+    'execFileSync("gh", ["api", "graphql"',
+    "validateP2zVisualUatFindingIssueRegistryAgainstGraphql",
+  ] as const) {
+    assert.ok(
+      issueRegistryVerifier.includes(verifierSignal),
+      `finding Issue verifier must preserve authentication signal: ${verifierSignal}`,
+    );
+  }
+  assert.match(
+    ci,
+    /run:\s*npx tsx scripts\/verify-p2z-uat-issue-registry\.ts/u,
+    "CI must run authenticated finding Issue verification",
+  );
+  assert.match(
+    ci,
+    /GH_TOKEN:\s*\$\{\{\s*github\.token\s*\}\}/u,
+    "CI must authenticate live finding Issue verification",
+  );
+  assert.match(
+    ci,
+    /^\s+issues: read$/mu,
+    "CI token must have read-only Issue access for live verification",
   );
   assert.ok(
     contract.includes(
@@ -750,13 +807,16 @@ test("P2Z evidence manifest rejects inventory, digest, and viewport drift", asyn
   );
 });
 
-test("P2Z capture setup invalidates all projects and finds nested PNG evidence", async (t) => {
+test("P2Z capture setup isolates run artifacts from nested reference evidence", async (t) => {
   const rootDirectory = await mkdtemp(
     path.join(tmpdir(), "hrcore-p2z-evidence-"),
   );
   t.after(() => rm(rootDirectory, { recursive: true, force: true }));
   const evidenceDirectory = path.join(rootDirectory, evidencePath);
   await mkdir(path.join(evidenceDirectory, "archive"), { recursive: true });
+  await mkdir(path.join(evidenceDirectory, "runs", "tested-commit"), {
+    recursive: true,
+  });
   await Promise.all(
     p2zVisualEvidenceProjectNames.map((project) =>
       writeFile(
@@ -771,6 +831,10 @@ test("P2Z capture setup invalidates all projects and finds nested PNG evidence",
   await writeFile(path.join(evidenceDirectory, "root.png"), "");
   await writeFile(
     path.join(evidenceDirectory, "archive", "comparison.PNG"),
+    "",
+  );
+  await writeFile(
+    path.join(evidenceDirectory, "runs", "tested-commit", "P2Z-UAT-01.png"),
     "",
   );
 

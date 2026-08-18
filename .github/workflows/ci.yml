@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  issues: read
 
 jobs:
   verify-pre-pr:
@@ -20,6 +21,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -35,3 +38,8 @@ jobs:
 
       - name: Run canonical pre-PR verification
         run: npm run verify:pre-pr
+
+      - name: Authenticate P2Z visual UAT finding Issues
+        run: npx tsx scripts/verify-p2z-uat-issue-registry.ts
+        env:
+          GH_TOKEN: ${{ github.token }}

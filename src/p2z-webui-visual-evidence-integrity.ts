@@ -149,6 +149,7 @@ export async function listP2zPngEvidenceFiles(
         );
       }
       if (entry.isDirectory()) {
+        if (relativePath === "runs") continue;
         await visit(entryPath);
       } else if (entry.isFile() && isP2zPngEvidenceFile(entry.name)) {
         files.push(relativePath);
