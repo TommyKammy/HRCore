@@ -706,7 +706,8 @@ test("P2Z visual UAT record rejects pixel-identical automated references as run 
       "docs",
       "evidence",
       "p2z-webui",
-      "desktop-chromium-dashboard.png",
+      "archive",
+      "comparison.PNG",
     );
     const runPath = path.join(
       repository.root,
@@ -717,6 +718,7 @@ test("P2Z visual UAT record rejects pixel-identical automated references as run 
       repository.commit,
       "P2Z-UAT-01.png",
     );
+    mkdirSync(path.dirname(referencePath), { recursive: true });
     writeFileSync(referencePath, copiedReference);
     writeFileSync(runPath, reencodedReference);
     execFileSync("git", ["add", "docs/evidence"], {

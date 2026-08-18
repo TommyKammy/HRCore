@@ -1005,6 +1005,7 @@ function duplicatesAutomatedReferencePng(
 ): boolean {
   const candidateDigest = pngPixelDigest(contents);
   if (!candidateDigest) return false;
+  const evidenceRoot = "docs/evidence/p2z-webui/";
 
   let trackedPaths: string[];
   try {
@@ -1014,8 +1015,11 @@ function duplicatesAutomatedReferencePng(
       { cwd: rootDirectory, encoding: "utf8" },
     )
       .split("\0")
-      .filter((repositoryPath) =>
-        /^docs\/evidence\/p2z-webui\/[^/]+\.png$/u.test(repositoryPath),
+      .filter(
+        (repositoryPath) =>
+          repositoryPath.startsWith(evidenceRoot) &&
+          !repositoryPath.startsWith(`${evidenceRoot}runs/`) &&
+          /\.png$/iu.test(repositoryPath),
       );
   } catch {
     return false;
