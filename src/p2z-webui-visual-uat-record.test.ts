@@ -683,6 +683,90 @@ test("P2Z visual UAT record decodes rendered observation entities", () => {
   assert.doesNotThrow(() => validateP2zVisualUatRecord(renderFixture(input)));
 });
 
+test("P2Z visual UAT record counts only initially visible details text", () => {
+  const observationIssue =
+    /P2Z-UAT-01 must record a meaningful actual observation/u;
+  for (const hiddenObservation of [
+    "<details><summary>Result</summary>Observed queue loaded</details>",
+    "<details data-open><summary>Result</summary>Observed queue loaded</details>",
+    "<details><summary>success<span></span>ful</summary>Observed queue loaded</details>",
+    "<details><div><summary>Observed queue loaded</summary></div></details>",
+    "<details><summary>Result</summary><summary>Observed queue loaded</summary></details>",
+    "<details open><summary>R</summary><details><summary>M</summary>Observed queue loaded</details></details>",
+    "`<details><summary>Result</summary>Observed queue loaded</details>``",
+    "\\`<details><summary>Result</summary>Observed queue loaded</details>`",
+    '<a href="`"><details><summary>Result</summary>Observed queue loaded</details>`',
+    '<details title="a > b"><summary>Result</summary>Observed queue loaded</details>',
+    "<details><summary>Result</summary>Observed queue loaded",
+  ]) {
+    const collapsed = fixture("Accepted");
+    collapsed.executions[0]!.actual = hiddenObservation;
+    assert.throws(
+      () => validateP2zVisualUatRecord(renderFixture(collapsed)),
+      observationIssue,
+      hiddenObservation,
+    );
+  }
+
+  const meaningfulSummary = fixture("Accepted");
+  meaningfulSummary.executions[0]!.actual =
+    "<details><summary>Observed queue loaded</summary>Hidden detail</details>";
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(renderFixture(meaningfulSummary)),
+  );
+
+  for (const visibleObservation of [
+    "<details open><summary>Result</summary>Observed queue loaded</details>",
+    '<details open="false"><summary>Result</summary>Observed queue loaded</details>',
+    '<DETAILS TITLE="a > b" OPEN><SUMMARY>Result</SUMMARY>Observed queue loaded</DETAILS>',
+    "\\<details> Observed queue loaded",
+  ]) {
+    const visible = fixture("Accepted");
+    visible.executions[0]!.actual = visibleObservation;
+    assert.doesNotThrow(() =>
+      validateP2zVisualUatRecord(renderFixture(visible)),
+    );
+  }
+});
+
+test("P2Z visual UAT record rejects inline HTML comments in formal content", () => {
+  const commentedObservation = fixture("Accepted");
+  commentedObservation.executions[0]!.actual =
+    "<details><summary>success<!-- -->ful</summary>Observed queue loaded</details>";
+  const commentedPipe = fixture("Accepted");
+  commentedPipe.executions[0]!.actual = "success<!-- | -->ful";
+  const accepted = renderFixture(fixture("Accepted"));
+  for (const record of [
+    renderFixture(commentedObservation),
+    renderFixture(commentedPipe),
+    accepted.replace("| --- | --- |", "| ---<!-- --> | --- |"),
+  ]) {
+    assert.throws(
+      () => validateP2zVisualUatRecord(record),
+      /must not place HTML comments inline with formal record content/u,
+    );
+  }
+
+  for (const bridgedHeading of [
+    "##<!-- --> Human Execution Record",
+    "<!-- -->## Human Execution Record",
+  ]) {
+    assert.throws(
+      () =>
+        validateP2zVisualUatRecord(
+          accepted.replace("## Human Execution Record", bridgedHeading),
+        ),
+      /must keep exactly one ## Human Execution Record/u,
+    );
+  }
+
+  const literalMarker = fixture("Accepted");
+  literalMarker.executions[0]!.actual = "Queue \u{e000} loaded";
+  assert.doesNotThrow(() =>
+    validateP2zVisualUatRecord(renderFixture(literalMarker)),
+  );
+});
+
 test("P2Z visual UAT record requires an execution-level Audit correlation ID", () => {
   const input = fixture("Accepted");
   input.executions[5]!.correlationId = "not applicable";
@@ -1409,6 +1493,14 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       valid: true,
     },
     {
+      name: "markup-like opaque JSON event type",
+      extension: "json",
+      contents: Buffer.from(
+        '{"events":[{"type":"<details><summary></summary>visual.capture</details>"}]}',
+      ),
+      valid: true,
+    },
+    {
       name: "empty PNG",
       extension: "png",
       contents: Buffer.alloc(0),
@@ -1480,6 +1572,14 @@ test("P2Z visual UAT record validates repository-backed artifact contents", (t) 
       name: "meaningful text trace",
       extension: "txt",
       contents: Buffer.from("Observed employee detail trace"),
+      valid: true,
+    },
+    {
+      name: "markup-like plain text trace",
+      extension: "txt",
+      contents: Buffer.from(
+        "<details><summary>Result</summary>Observed queue loaded</details>",
+      ),
       valid: true,
     },
     {

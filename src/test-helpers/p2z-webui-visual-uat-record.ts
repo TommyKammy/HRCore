@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import { decodeHTMLStrict } from "entities";
@@ -12,6 +13,18 @@ import {
   validateP2zVisualUatFindingIssueRegistry,
 } from "./p2z-webui-visual-uat-issue-registry.js";
 import { p2zVisualEvidenceProjects } from "../p2z-webui-visual-evidence-contract.js";
+
+interface HtmlVisibilityNode {
+  readonly nodeType: number;
+  readonly nodeName: string;
+  readonly nodeValue: string | null;
+  readonly childNodes: ArrayLike<HtmlVisibilityNode>;
+  readonly attributes?: { getNamedItem(name: string): unknown };
+}
+
+const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
+  JSDOM: { fragment(value: string): HtmlVisibilityNode };
+};
 
 export const p2zVisualUatScenarioIds = [
   "P2Z-UAT-01",
@@ -485,6 +498,8 @@ const formalSectionLabels = new Set([
   "Evidence Matrix",
 ]);
 
+const inlineMarkdownHtmlCommentMarker = "\u{e000}";
+
 function canonicalRenderedMarkdownLine(line: string): string {
   const tableLine = line.match(/^ {0,3}(\|.*)$/u)?.[1];
   if (tableLine) return tableLine;
@@ -532,33 +547,45 @@ function hiddenMarkdownReferenceDefinitionLineCount(
 }
 
 function stripMarkdownHtmlComments(markdown: string): string {
+  const source = markdown.replaceAll(
+    inlineMarkdownHtmlCommentMarker,
+    "&#xe000;",
+  );
   let cursor = 0;
   let rendered = "";
-  while (cursor < markdown.length) {
-    const opener = markdown.indexOf("<!--", cursor);
+  while (cursor < source.length) {
+    const opener = source.indexOf("<!--", cursor);
     if (opener < 0) {
-      rendered += markdown.slice(cursor);
+      rendered += source.slice(cursor);
       break;
     }
 
     let precedingBackslashes = 0;
     for (
       let index = opener - 1;
-      index >= 0 && markdown[index] === "\\";
+      index >= 0 && source[index] === "\\";
       index -= 1
     ) {
       precedingBackslashes += 1;
     }
     if (precedingBackslashes % 2 === 1) {
-      rendered += markdown.slice(cursor, opener + 4);
+      rendered += source.slice(cursor, opener + 4);
       cursor = opener + 4;
       continue;
     }
 
-    rendered += markdown.slice(cursor, opener);
-    const closingMarker = markdown.indexOf("-->", opener + 4);
-    const commentEnd = closingMarker < 0 ? markdown.length : closingMarker + 3;
-    rendered += markdown.slice(opener, commentEnd).replace(/[^\n]/gu, " ");
+    rendered += source.slice(cursor, opener);
+    const closingMarker = source.indexOf("-->", opener + 4);
+    const commentEnd = closingMarker < 0 ? source.length : closingMarker + 3;
+    const lineStart = source.lastIndexOf("\n", opener - 1) + 1;
+    const closingLineEnd = source.indexOf("\n", commentEnd);
+    const lineEnd = closingLineEnd === -1 ? source.length : closingLineEnd;
+    const inline =
+      source.slice(lineStart, opener).trim() !== "" ||
+      source.slice(commentEnd, lineEnd).trim() !== "";
+    rendered += source
+      .slice(opener, commentEnd)
+      .replace(/[^\n]/gu, inline ? inlineMarkdownHtmlCommentMarker : " ");
     cursor = commentEnd;
   }
   return rendered;
@@ -859,17 +886,53 @@ function isSubstantive(value: string): boolean {
   );
 }
 
-function renderedText(value: string): string {
-  const withoutMarkup = value
-    .replace(/!\[[^\]]*\]\([^)]+\)/gu, " ")
-    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
-    .replace(/<[^>]*>/gu, " ")
-    .replace(/[`*_~>#|\\-]/gu, " ");
-  return decodeHTMLStrict(withoutMarkup).replace(/\s+/gu, " ").trim();
+function initiallyVisibleHtml(value: string): string {
+  const renderedNode = (node: HtmlVisibilityNode): string => {
+    if (node.nodeType === 3) return node.nodeValue ?? "";
+
+    const tag = node.nodeName.toLowerCase();
+    let children = Array.from(node.childNodes);
+    if (tag === "details" && !node.attributes?.getNamedItem("open")) {
+      const summary = children.find(
+        ({ nodeName }) => nodeName.toLowerCase() === "summary",
+      );
+      children = summary ? [summary] : [];
+    }
+    const contents = children.map(renderedNode).join("");
+    const separatesText =
+      tag === "br" ||
+      htmlBlockTagElements.has(tag) ||
+      htmlRawClosingTagElements.has(tag);
+    return separatesText ? ` ${contents} ` : contents;
+  };
+
+  return Array.from(JSDOM.fragment(value).childNodes)
+    .map(renderedNode)
+    .join("");
 }
 
-function isVisibleSubstantive(value: string): boolean {
-  const visibleText = renderedText(value);
+function renderedText(value: string, htmlVisibility = true): string {
+  const escapedLiteralHtml = value.replace(/</gu, (character, index) =>
+    isEscapedMarkdownCharacter(value, index) ? "&lt;" : character,
+  );
+  const withoutLinks = escapedLiteralHtml
+    .replace(/!\[[^\]]*\]\([^)]+\)/gu, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1");
+  const visibleHtml = htmlVisibility
+    ? initiallyVisibleHtml(withoutLinks)
+    : withoutLinks;
+  const withoutHtmlMarkup = htmlVisibility
+    ? visibleHtml
+    : visibleHtml.replace(/<[^>]*>/gu, " ");
+  const withoutMarkup = withoutHtmlMarkup.replace(/[`*_~>#|\\-]/gu, " ");
+  const decoded = htmlVisibility
+    ? withoutMarkup
+    : decodeHTMLStrict(withoutMarkup);
+  return decoded.replace(/\s+/gu, " ").trim();
+}
+
+function isVisibleSubstantive(value: string, htmlVisibility = true): boolean {
+  const visibleText = renderedText(value, htmlVisibility);
   return isSubstantive(visibleText) && /[\p{L}\p{N}]/u.test(visibleText);
 }
 
@@ -883,8 +946,11 @@ function isVisibleConcreteSubject(value: string): boolean {
   );
 }
 
-function isMeaningfulObservation(value: string): boolean {
-  const visibleText = renderedText(value);
+function isMeaningfulObservation(
+  value: string,
+  htmlVisibility = true,
+): boolean {
+  const visibleText = renderedText(value, htmlVisibility);
   const renderedCharacters = visibleText.match(/[\p{L}\p{N}]/gu) ?? [];
   const substantiveWords = Array.from(
     new Intl.Segmenter("und", { granularity: "word" }).segment(visibleText),
@@ -921,7 +987,7 @@ function hasStructuredTraceEvents(value: unknown): boolean {
     return [eventRecord.type, eventRecord.eventType].some(
       (discriminator) =>
         typeof discriminator === "string" &&
-        isVisibleSubstantive(discriminator),
+        isVisibleSubstantive(discriminator, false),
     );
   });
 }
@@ -1121,7 +1187,7 @@ function trackedRepositoryArtifactIssue(
     } else if (extension === ".txt" || extension === ".md") {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(contents);
       const visibleText = extension === ".md" ? renderedMarkdown(text) : text;
-      if (!isMeaningfulObservation(visibleText)) {
+      if (!isMeaningfulObservation(visibleText, extension === ".md")) {
         throw new Error("empty trace");
       }
     } else {
@@ -1697,6 +1763,16 @@ export function collectP2zVisualUatRecordIssues(
     "## Evidence Matrix",
     issues,
   );
+  if (
+    [verdictSection, executionSection, findingSection, checklistSection].some(
+      (formalSection) =>
+        formalSection.includes(inlineMarkdownHtmlCommentMarker),
+    )
+  ) {
+    issues.push(
+      "must not place HTML comments inline with formal record content",
+    );
+  }
 
   const overallVerdict = singletonDeclaration(
     executionSection,
